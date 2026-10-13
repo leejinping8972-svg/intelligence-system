@@ -7,6 +7,7 @@
       "label": "益生菌",
       "category": "肠道与益生菌",
       "scientific": "probiotic",
+      "clinicalRequiredTerms": ["probiotic"],
       "queries": {
         "US": "probiotic supplement",
         "MX": "suplemento probiótico",
@@ -19,6 +20,7 @@
       "category": "功能性营养",
       "scientific": "magnesium glycinate",
       "compound": "magnesium glycinate",
+      "clinicalRequiredTerms": ["magnesium", "glycinate"],
       "queries": {
         "US": "magnesium glycinate supplement",
         "MX": "suplemento glicinato de magnesio",
@@ -31,6 +33,7 @@
       "category": "女性健康",
       "scientific": "inositol supplement",
       "compound": "myo-inositol",
+      "clinicalRequiredTerms": ["inositol"],
       "queries": {
         "US": "inositol supplement",
         "MX": "suplemento inositol",
@@ -42,6 +45,7 @@
       "label": "胶原蛋白肽",
       "category": "女性健康",
       "scientific": "collagen peptide supplement",
+      "clinicalRequiredTerms": ["collagen", "peptide"],
       "queries": {
         "US": "collagen peptide supplement",
         "MX": "suplemento péptidos de colágeno",
@@ -54,6 +58,7 @@
       "category": "体重管理",
       "scientific": "berberine supplement",
       "compound": "berberine",
+      "clinicalRequiredTerms": ["berberine"],
       "queries": {
         "US": "berberine supplement",
         "MX": "suplemento berberina",
@@ -66,6 +71,7 @@
       "category": "功能性营养",
       "scientific": "creatine supplement",
       "compound": "creatine",
+      "clinicalRequiredTerms": ["creatine"],
       "queries": {
         "US": "creatine supplement",
         "MX": "suplemento creatina",
@@ -77,6 +83,7 @@
       "label": "电解质补充",
       "category": "功能性营养",
       "scientific": "electrolyte supplement",
+      "clinicalRequiredTerms": ["electrolyte"],
       "queries": {
         "US": "electrolyte supplement",
         "MX": "suplemento electrolitos",
@@ -88,6 +95,7 @@
       "label": "膳食纤维",
       "category": "肠道与益生菌",
       "scientific": "fiber supplement",
+      "clinicalRequiredTerms": ["fiber", "supplement"],
       "queries": {
         "US": "fiber supplement",
         "MX": "suplemento fibra",

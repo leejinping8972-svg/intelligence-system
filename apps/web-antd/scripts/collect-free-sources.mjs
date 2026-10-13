@@ -289,15 +289,34 @@ async function collectClinicalTrials(config) {
   try {
     for (const term of config.terms) {
       const params = new URLSearchParams({
-        'query.intr': term.scientific.replace(' supplement', ''),
-        pageSize: String(Math.min(3, config.maxPerQuery)),
+        'query.intr': term.scientific,
+        pageSize: String(Math.min(12, config.maxPerQuery * 3)),
         format: 'json',
         sort: 'StudyFirstPostDate:desc',
       });
       const data = await fetchJson(
         `https://clinicaltrials.gov/api/v2/studies?${params}`,
       );
-      for (const study of data?.studies || []) {
+      const requiredTerms = (term.clinicalRequiredTerms || []).map((item) =>
+        item.toLowerCase(),
+      );
+      const matchedStudies = (data?.studies || []).filter((study) => {
+        const protocol = study.protocolSection || {};
+        const interventions =
+          protocol.armsInterventionsModule?.interventions || [];
+        const searchable = [
+          protocol.identificationModule?.briefTitle,
+          ...interventions.flatMap((item) => [
+            item.name,
+            ...(item.otherNames || []),
+          ]),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return requiredTerms.every((item) => searchable.includes(item));
+      });
+      for (const study of matchedStudies.slice(0, config.maxPerQuery)) {
         const protocol = study.protocolSection || {};
         const identification = protocol.identificationModule || {};
         const status = protocol.statusModule || {};
@@ -330,7 +349,7 @@ async function collectClinicalTrials(config) {
             metrics: {
               enrollment: protocol.designModule?.enrollmentInfo?.count ?? null,
               phases: protocol.designModule?.phases || [],
-              interventionMatch: true,
+              matchRule: 'title_or_intervention_names_v3',
             },
           }),
         );
@@ -656,7 +675,7 @@ function mergeSignals(current, previous, retentionDays, validCompoundQueries) {
       continue;
     if (
       signal.source === 'CLINICAL_TRIALS' &&
-      signal.metrics?.interventionMatch !== true
+      signal.metrics?.matchRule !== 'title_or_intervention_names_v3'
     )
       continue;
     const date = new Date(`${normalizeDate(signal.observedAt)}T00:00:00Z`);

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-13T23:00:38.227Z",
+  "generatedAt": "2026-10-13T23:25:54.385Z",
   "retentionDays": 365,
   "sourceRuns": [
     {
@@ -9,7 +9,7 @@
       "count": 32,
       "note": "美国膳食补充剂标签公开数据；收录日期不等于首次上市日期",
       "documentation": "https://dsld.od.nih.gov/api-guide",
-      "finishedAt": "2026-10-13T23:00:44.373Z"
+      "finishedAt": "2026-10-13T23:26:05.716Z"
     },
     {
       "source": "PUBMED",
@@ -17,15 +17,15 @@
       "count": 6,
       "note": "无Key低频模式（不超过3请求/秒）",
       "documentation": "https://www.ncbi.nlm.nih.gov/home/develop/api/",
-      "finishedAt": "2026-10-13T23:00:53.268Z"
+      "finishedAt": "2026-10-13T23:26:17.442Z"
     },
     {
       "source": "CLINICAL_TRIALS",
       "status": "success",
-      "count": 24,
+      "count": 31,
       "note": "公开临床研究登记；登记不代表研究结论或功效确认",
       "documentation": "https://clinicaltrials.gov/data-api/about-api",
-      "finishedAt": "2026-10-13T23:00:59.005Z"
+      "finishedAt": "2026-10-13T23:26:33.539Z"
     },
     {
       "source": "PUBCHEM",
@@ -33,7 +33,7 @@
       "count": 4,
       "note": "成分标识与基础化学信息，不构成功效或安全结论",
       "documentation": "https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest",
-      "finishedAt": "2026-10-13T23:01:03.234Z"
+      "finishedAt": "2026-10-13T23:26:38.291Z"
     },
     {
       "source": "OPENFDA",
@@ -41,7 +41,7 @@
       "count": 22,
       "note": "无Key低配额模式；召回与CAERS只作监管线索",
       "documentation": "https://open.fda.gov/apis/food/",
-      "finishedAt": "2026-10-13T23:01:11.363Z"
+      "finishedAt": "2026-10-13T23:26:52.638Z"
     },
     {
       "source": "YOUTUBE",
@@ -49,21 +49,21 @@
       "count": 0,
       "note": "等待Google Cloud免费API Key；密钥只放GitHub Secrets",
       "documentation": "https://developers.google.com/youtube/v3",
-      "finishedAt": "2026-10-13T23:01:11.364Z"
+      "finishedAt": "2026-10-13T23:26:52.639Z"
     },
     {
       "source": "GDELT",
-      "status": "error",
+      "status": "rate_limited",
       "count": 0,
-      "note": "fetch failed",
+      "note": "429 Too Many Requests",
       "documentation": "https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/",
-      "finishedAt": "2026-10-13T23:01:45.695Z"
+      "finishedAt": "2026-10-13T23:27:29.132Z"
     }
   ],
   "signals": [
     {
       "id": "pubmed-654a80a66340334341c6",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBMED",
       "sourceId": "42866894",
       "kind": "research",
@@ -82,7 +82,7 @@
     },
     {
       "id": "pubchem-9c501d2db6b11177b5cf",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBCHEM",
       "sourceId": "84645",
       "kind": "ingredient_profile",
@@ -99,7 +99,7 @@
     },
     {
       "id": "pubchem-0bfaf9a0b13f7572e187",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBCHEM",
       "sourceId": "892",
       "kind": "ingredient_profile",
@@ -116,7 +116,7 @@
     },
     {
       "id": "pubchem-148e3302b980af5b53c5",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBCHEM",
       "sourceId": "2353",
       "kind": "ingredient_profile",
@@ -133,7 +133,7 @@
     },
     {
       "id": "pubchem-0909bcc7e01e93135502",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBCHEM",
       "sourceId": "586",
       "kind": "ingredient_profile",
@@ -150,7 +150,7 @@
     },
     {
       "id": "openfda-55e46415f8bd557922d5",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-probiotic",
       "kind": "safety_aggregate",
@@ -167,7 +167,7 @@
     },
     {
       "id": "openfda-bf7368ccfdf2ed11bac8",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-magnesium-glycinate",
       "kind": "safety_aggregate",
@@ -184,7 +184,7 @@
     },
     {
       "id": "openfda-5292c12f674bfe75d97e",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-inositol",
       "kind": "safety_aggregate",
@@ -201,7 +201,7 @@
     },
     {
       "id": "openfda-654af2931a88308db899",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-collagen-peptide",
       "kind": "safety_aggregate",
@@ -218,7 +218,7 @@
     },
     {
       "id": "openfda-b5661340b689beb60d1a",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-berberine",
       "kind": "safety_aggregate",
@@ -235,7 +235,7 @@
     },
     {
       "id": "openfda-4dae7ccf40076b11cec1",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-creatine",
       "kind": "safety_aggregate",
@@ -252,7 +252,7 @@
     },
     {
       "id": "openfda-8bc84331db53e7a953ed",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-electrolyte",
       "kind": "safety_aggregate",
@@ -269,7 +269,7 @@
     },
     {
       "id": "openfda-13b077294acb06127e44",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "caers-fiber",
       "kind": "safety_aggregate",
@@ -286,7 +286,7 @@
     },
     {
       "id": "clinical_trials-2c132203f74cfb82ebed",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07872514",
       "kind": "trial",
@@ -302,12 +302,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "clinical_trials-078b0591f916e0c607a6",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07870824",
       "kind": "trial",
@@ -323,54 +323,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-d8480efdda9c58ac7ce2",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07871318",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "胶原蛋白肽",
-      "category": "女性健康",
-      "title": "Nutraceutical Supplementation Combined With Physiotherapy for Rotator Cuff Tendinopathy",
-      "summary": "COMPLETED · Rotator Cuff Tendinopathy · Doltendix® / Exercise-based Physiotherapy",
-      "observedAt": "2026-10-13",
-      "url": "https://clinicaltrials.gov/study/NCT07871318",
-      "metrics": {
-        "enrollment": 42,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-6d1bcb311e4248fd16af",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07870317",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "膳食纤维",
-      "category": "肠道与益生菌",
-      "title": "450 nm Blue Diode Laser Versus Blue LED for In-Office Tooth Bleaching",
-      "summary": "COMPLETED · Tooth Discoloration · 450 nm Blue Diode Laser / Blue Light-Emitting Diode Lamp",
-      "observedAt": "2026-10-13",
-      "url": "https://clinicaltrials.gov/study/NCT07870317",
-      "metrics": {
-        "enrollment": 40,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "pubmed-88238de801789adac3cb",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBMED",
       "sourceId": "42865927",
       "kind": "research",
@@ -389,7 +347,7 @@
     },
     {
       "id": "clinical_trials-ab9fc4ed4203cf91c219",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07867496",
       "kind": "trial",
@@ -405,33 +363,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-f004a4762f33c5e4dde8",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07869017",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "肌醇",
-      "category": "女性健康",
-      "title": "Longitudinal Metabolic Assessment in PCOS",
-      "summary": "COMPLETED · Polycystic Ovarian Syndrome (PCOS) · the investigators give inositol for two months.",
-      "observedAt": "2026-10-09",
-      "url": "https://clinicaltrials.gov/study/NCT07869017",
-      "metrics": {
-        "enrollment": 45,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "clinical_trials-af2eabc00456bd20cec5",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07867041",
       "kind": "trial",
@@ -447,115 +384,54 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
-      "id": "clinical_trials-40e653938e16ee17785e",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "id": "clinical_trials-b7ef709845a11f1c60b9",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07867951",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "电解质补充",
-      "category": "功能性营养",
-      "title": "Comparison of Postoperative Pain After Double Antibiotic Paste vs Calcium Hydroxide in Teeth With Symptomatic Apical Periodontitis",
-      "summary": "RECRUITING · Symptomatic Apical Periodontitis · Calcium Hydroxide (Ca(OH)2) / Double Antibiotic Paste",
-      "observedAt": "2026-10-09",
-      "url": "https://clinicaltrials.gov/study/NCT07867951",
-      "metrics": {
-        "enrollment": 662,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-4abca98b0f7a4a799eb2",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07869459",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "电解质补充",
-      "category": "功能性营养",
-      "title": "Digital Flashcards for Fluid and Electrolyte Education in Surgical Nursing: A Solomon Four-Group Study",
-      "summary": "NOT_YET_RECRUITING · Education / Surgical Nursing / Teaching Methods · Digital Flashcard Training & Pre-test/Post-test / Digital Flashcard Training & Post-test Only",
-      "observedAt": "2026-10-09",
-      "url": "https://clinicaltrials.gov/study/NCT07869459",
-      "metrics": {
-        "enrollment": 180,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-26e5f47c85eecd6ad5ff",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07868614",
+      "sourceId": "NCT07868211",
       "kind": "trial",
       "market": "GLOBAL",
       "query": "膳食纤维",
       "category": "肠道与益生菌",
-      "title": "Intraoperative Microelectrode Recordings Using MAVEN Compared to Standard Recording Apparatuses",
-      "summary": "RECRUITING · Essential Tremor / Parkinson's Disease / Dystonia · Multifunctional Apparatus for Voltammetry, Electrophysiology, and Neuromodulation (MAVEN)",
+      "title": "Effect of Dietary Fiber Supplementation on Systemic Inflammation and Clinical Parameters in COPD: A Randomized, Double-Blind, Placebo-Controlled Clinical Trial",
+      "summary": "NOT_YET_RECRUITING · Pulmonary Disease, Chronic Obstructive (COPD) / Pulmonary Diseases / Pulmonary Diseases, Obstructive · Dietary Fiber Supplementation / Placebo Control",
       "observedAt": "2026-10-09",
-      "url": "https://clinicaltrials.gov/study/NCT07868614",
+      "url": "https://clinicaltrials.gov/study/NCT07868211",
       "metrics": {
-        "enrollment": 30,
-        "phases": [],
-        "interventionMatch": true
+        "enrollment": 100,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
-      "id": "clinical_trials-d18bc6eb8e3fa85dd502",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "id": "clinical_trials-811d3ad680258c494846",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07868016",
+      "sourceId": "NCT07865715",
       "kind": "trial",
       "market": "GLOBAL",
-      "query": "膳食纤维",
+      "query": "益生菌",
       "category": "肠道与益生菌",
-      "title": "Clinical Evaluation of Different Bulk-Fill Restorative Materials in Primary Molars",
-      "summary": "NOT_YET_RECRUITING · Decayed Primary Molars / Decayed Tooth / Dentin Caries · Stela Capsule Bulk Fill Flowable Self-Cure Restorative / Filtek One Bulk Fill Restorative",
-      "observedAt": "2026-10-09",
-      "url": "https://clinicaltrials.gov/study/NCT07868016",
+      "title": "Effect of Probiotic Nasal Irrigation on the Postoperative Care of Chronic Rhinosinusitis",
+      "summary": "NOT_YET_RECRUITING · Sinusitis Chronic / Postoperative Care · heat-killed probiotic LDL557 (Lactobacillus delbrueckii subsp. lactis LDL557) / Normal Saline (NS)",
+      "observedAt": "2026-10-08",
+      "url": "https://clinicaltrials.gov/study/NCT07865715",
       "metrics": {
-        "enrollment": 70,
+        "enrollment": 120,
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-7f1f719804f35e2f9ace",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07856550",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "电解质补充",
-      "category": "功能性营养",
-      "title": "Evaluating the Efficacy of the Flush Advanced+ Dietary Supplement Drink Mix Compared to a Placebo in Women Ages 18-75 With a History of Recurrent, Bothersome Urinary Tract Symptoms",
-      "summary": "ACTIVE_NOT_RECRUITING · Urinary Tract · Flush Advanced+ Dietary Drink Mix / Placebo Dietary Drink Mix",
-      "observedAt": "2026-10-02",
-      "url": "https://clinicaltrials.gov/study/NCT07856550",
-      "metrics": {
-        "enrollment": 180,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "pubmed-d62f674feae9231ecd64",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBMED",
       "sourceId": "42866476",
       "kind": "research",
@@ -574,29 +450,8 @@
       }
     },
     {
-      "id": "clinical_trials-64b605bf4f72359da5eb",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07841106",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "胶原蛋白肽",
-      "category": "女性健康",
-      "title": "Early Prophylactic Versus Late Salvage Recombinant Human Endostatin in Managing Radiosurgery-Induced Brain Injury for NSCLC Brain Metastases",
-      "summary": "NOT_YET_RECRUITING · Lung Cancer (Non-Small Cell) / Radiation / Brain Injury · Recombinant Human Endostatin (Endostar) / Recombinant Human Endostatin (Endostar)",
-      "observedAt": "2026-09-25",
-      "url": "https://clinicaltrials.gov/study/NCT07841106",
-      "metrics": {
-        "enrollment": 49,
-        "phases": [
-          "PHASE2"
-        ],
-        "interventionMatch": true
-      }
-    },
-    {
       "id": "clinical_trials-fcb02960be124b4aeeca",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07839312",
       "kind": "trial",
@@ -612,12 +467,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "clinical_trials-2af66d174cb69caeee6b",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07839299",
       "kind": "trial",
@@ -633,12 +488,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "clinical_trials-56db673ff8a97e3d4732",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07838805",
       "kind": "trial",
@@ -654,12 +509,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "clinical_trials-64e8fd06d1153cbfe773",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07838090",
       "kind": "trial",
@@ -675,33 +530,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-4bd84fab7e25c7417390",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07827014",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "胶原蛋白肽",
-      "category": "女性健康",
-      "title": "An Open-Label, Two-Arm Pilot Study of the Tolerability, Consumer Acceptability, and Exploratory Well-Being Outcomes of a Multi-Ingredient Protein Formula in Two Flavors in Healthy Adults",
-      "summary": "RECRUITING · Healthy · Vanilla Protein Formula / Chocolate Protein Formula",
-      "observedAt": "2026-09-18",
-      "url": "https://clinicaltrials.gov/study/NCT07827014",
-      "metrics": {
-        "enrollment": 50,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "clinical_trials-026180f95a6a67936ddb",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07821073",
       "kind": "trial",
@@ -717,12 +551,12 @@
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "pubmed-280deb5ece05cbdd19a8",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBMED",
       "sourceId": "42684237",
       "kind": "research",
@@ -741,8 +575,29 @@
       }
     },
     {
+      "id": "clinical_trials-863af7320d9e00fec4b2",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07800780",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Effects of Different Collagen Formulations on Knee Osteoarthritis",
+      "summary": "NOT_YET_RECRUITING · Osteoarthritis, Knee · 10g Hydrolyzed Collagen / 5g Bioactive Collagen Peptide",
+      "observedAt": "2026-09-02",
+      "url": "https://clinicaltrials.gov/study/NCT07800780",
+      "metrics": {
+        "enrollment": 45,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
       "id": "pubmed-97297ba3e1bbd826af9a",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBMED",
       "sourceId": "42283837",
       "kind": "research",
@@ -762,7 +617,7 @@
     },
     {
       "id": "pubmed-2a9ae03bb93ea33e7eae",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "PUBMED",
       "sourceId": "42398916",
       "kind": "research",
@@ -781,50 +636,197 @@
       }
     },
     {
-      "id": "clinical_trials-fac8224c8cfd0cc83e92",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "id": "clinical_trials-c0b374edebb073571733",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07789366",
+      "sourceId": "NCT07795853",
       "kind": "trial",
       "market": "GLOBAL",
-      "query": "小檗碱",
-      "category": "体重管理",
-      "title": "Berberol P for Mild-to-Moderate Hypercholesterolaemia",
-      "summary": "NOT_YET_RECRUITING · Hypercholesterolemia · Berberol® P (manufacturer: PharmExtracta S.p.A.) / Berberol® K (manufacturer: PharmExtracta S.p.A.)",
-      "observedAt": "2026-08-27",
-      "url": "https://clinicaltrials.gov/study/NCT07789366",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Creatine for Recovery and Thinking in Mothers",
+      "summary": "NOT_YET_RECRUITING · Post-partum / Women · Creatine Monohdyrate",
+      "observedAt": "2026-08-31",
+      "url": "https://clinicaltrials.gov/study/NCT07795853",
       "metrics": {
-        "enrollment": 255,
+        "enrollment": 40,
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
-      "id": "clinical_trials-92c5e572f27b707a1417",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "id": "clinical_trials-1b61b60eadcb34b4a943",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07779850",
+      "sourceId": "NCT07788924",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Assessing Changes in the Gut Microbiome of Non-Gastrointestinal Disordered Subjects Before and After Oral Prebiotic Supplementation Using the SIMBA Capsule",
+      "summary": "NOT_YET_RECRUITING · Prebiotics / Metagenomic Next Generation Sequencing / Microbiome · FiberSmart / Placebo",
+      "observedAt": "2026-08-27",
+      "url": "https://clinicaltrials.gov/study/NCT07788924",
+      "metrics": {
+        "enrollment": 30,
+        "phases": [
+          "PHASE4"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-4d3b09ee14a9a48e42cf",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07787026",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Assessing the Short-Term Effects of Multi-Fiber Supplementation on Gut Health",
+      "summary": "RECRUITING · Mixed Fiber Supplementation for Healthy Adults · Prebiotic / Placebo",
+      "observedAt": "2026-08-26",
+      "url": "https://clinicaltrials.gov/study/NCT07787026",
+      "metrics": {
+        "enrollment": 100,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-1a5bad0ecc1f9f67dda6",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07770711",
       "kind": "trial",
       "market": "GLOBAL",
       "query": "肌醇",
       "category": "女性健康",
-      "title": "Myo-Inositol for Ovarian Stimulation and ICSI Outcomes in Women With PCOS",
-      "summary": "COMPLETED · Polycystic Ovary Syndrome · Myo-Inositol / Folic Acid",
-      "observedAt": "2026-08-21",
-      "url": "https://clinicaltrials.gov/study/NCT07779850",
+      "title": "Inositol and Metformin Administration in Mediterranean Diet and Low-Carbohydrate Diets in Women With PCOS",
+      "summary": "NOT_YET_RECRUITING · PCOS (Polycystic Ovary Syndrome) / Insulin Resistance / Obesity (BMI>30) · Metformin / İnositol",
+      "observedAt": "2026-08-18",
+      "url": "https://clinicaltrials.gov/study/NCT07770711",
       "metrics": {
-        "enrollment": 88,
+        "enrollment": 90,
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-04665b419c5d5a5d0ed3",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07765420",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "A Clinical Trial to Evaluate the Effects of an Electrolyte Supplement on Women's Wellness",
+      "summary": "COMPLETED · Low Energy / Dehydration / Bloating · Daily Love Electrolytes",
+      "observedAt": "2026-08-14",
+      "url": "https://clinicaltrials.gov/study/NCT07765420",
+      "metrics": {
+        "enrollment": 40,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-ea9aa1b74e1c436ba45d",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07755735",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "A Study to Evaluate the Effects of a Fiber Supplement on Gut Health",
+      "summary": "COMPLETED · Gut Health / Bloating / Irregular Bowel Movements · Active Supplement / Placebo Comparator",
+      "observedAt": "2026-08-10",
+      "url": "https://clinicaltrials.gov/study/NCT07755735",
+      "metrics": {
+        "enrollment": 50,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-697b30cc3c22ded87567",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07746466",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Efficacy of Bioactive Collagen Peptide Compared to Glucosamine and Chondroitin Sulphate in Grade I-III Knee Osteoarthritis",
+      "summary": "COMPLETED · Knee Osteoarthritis (Kellgren-Lawrence Grade 1-3) · Bioactive Collagen Peptide / Glucosamine and Chondroitin Sulphate",
+      "observedAt": "2026-08-05",
+      "url": "https://clinicaltrials.gov/study/NCT07746466",
+      "metrics": {
+        "enrollment": 150,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-7b1824c660e14ecbfda7",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07740967",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Dietary Supplements and Middle Aged Women (Collagen & Omega)",
+      "summary": "RECRUITING · Cognition / Inflammation Biomarkers / Bone Metabolism Biomarkers · Collagen peptides and omega-3 / Placebo control",
+      "observedAt": "2026-08-03",
+      "url": "https://clinicaltrials.gov/study/NCT07740967",
+      "metrics": {
+        "enrollment": 34,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-e29a71d0d18a114195b4",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07742748",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Carbohydrate-Optimized Nutritional Solution Versus Electrolyte Hydration in Labor",
+      "summary": "RECRUITING · Obstetric Labor · High carbohydrate sports gel / Low carbohydrate hydrogel",
+      "observedAt": "2026-08-03",
+      "url": "https://clinicaltrials.gov/study/NCT07742748",
+      "metrics": {
+        "enrollment": 147,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "openfda-2ca2e8ddd8bde833d27a",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "H-1152-2026",
       "kind": "regulatory",
@@ -843,7 +845,7 @@
     },
     {
       "id": "openfda-641f2e285bd1cce71038",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "H-1153-2026",
       "kind": "regulatory",
@@ -861,8 +863,71 @@
       }
     },
     {
+      "id": "clinical_trials-7295d7ea9e53349adbea",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07704450",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Dynamic Monitoring of Urinary Electrolytes",
+      "summary": "ACTIVE_NOT_RECRUITING · Healthy · Urinary electrolyte / fruit diet",
+      "observedAt": "2026-07-15",
+      "url": "https://clinicaltrials.gov/study/NCT07704450",
+      "metrics": {
+        "enrollment": 40,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-7b7716752328be8ebcdd",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07685015",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "The Impact of Myo-Inositol on Glycemic Control and Oxidative Stress in Gestational Diabetes Mellitus",
+      "summary": "RECRUITING · Gestational Diabetes Mellitus (GDM) · Myo-inositol 2 g + Folic acid 200 µg / Folic acid 200 µg",
+      "observedAt": "2026-07-06",
+      "url": "https://clinicaltrials.gov/study/NCT07685015",
+      "metrics": {
+        "enrollment": 40,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-547892b81ba6b0fa7b8a",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07683741",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Hydrolyzed Collagen As A Host Modulation Agent in Non-Surgical Periodontal Treatment",
+      "summary": "COMPLETED · Periodontitis (Stage 3) · Collagen hydrolyzed peptides / Placebo + cognitive behavioral therapy",
+      "observedAt": "2026-07-06",
+      "url": "https://clinicaltrials.gov/study/NCT07683741",
+      "metrics": {
+        "enrollment": 52,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
       "id": "openfda-2a897c709ebe02883fc9",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "H-1079-2026",
       "kind": "regulatory",
@@ -881,7 +946,7 @@
     },
     {
       "id": "clinical_trials-7c6253dc530b25e6c79f",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
       "sourceId": "NCT07655817",
       "kind": "trial",
@@ -898,12 +963,12 @@
           "PHASE2",
           "PHASE3"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "openfda-da36883a4307ecb9b05c",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "H-1109-2026",
       "kind": "regulatory",
@@ -921,50 +986,92 @@
       }
     },
     {
-      "id": "clinical_trials-3ece0e3e33eeafa9c6e2",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "id": "clinical_trials-1a2cb8a6f72347ab3821",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07615777",
+      "sourceId": "NCT07640685",
       "kind": "trial",
       "market": "GLOBAL",
-      "query": "小檗碱",
-      "category": "体重管理",
-      "title": "Nutritional Supplementation on Physiological and Metabolic Markers in Females",
-      "summary": "RECRUITING · Perimenopausal Women / Body Composition Changes · Nutritional Supplement / Placebo",
-      "observedAt": "2026-05-29",
-      "url": "https://clinicaltrials.gov/study/NCT07615777",
-      "metrics": {
-        "enrollment": 80,
-        "phases": [
-          "NA"
-        ],
-        "interventionMatch": true
-      }
-    },
-    {
-      "id": "clinical_trials-cc25fdf1b3726e227309",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
-      "source": "CLINICAL_TRIALS",
-      "sourceId": "NCT07606872",
-      "kind": "trial",
-      "market": "GLOBAL",
-      "query": "小檗碱",
-      "category": "体重管理",
-      "title": "Validation of the Snouda Metabolic Score for Phenotyping and Guiding Reversal in Type 2 Diabetes",
-      "summary": "ENROLLING_BY_INVITATION · Type 2 Diabetes Mellitus (T2DM) / Insulin Resistance / Metabolic Syndrome · Phenotype-Matched Dietary Protocol / Structured Progressive Exercise Protocol",
-      "observedAt": "2026-05-26",
-      "url": "https://clinicaltrials.gov/study/NCT07606872",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "UCLA Magnesium Formulation Athlete Study",
+      "summary": "NOT_YET_RECRUITING · Athletic Performance / Recovery / Sleep · Magnesium glycinate / Magnesium L-threonate",
+      "observedAt": "2026-06-11",
+      "url": "https://clinicaltrials.gov/study/NCT07640685",
       "metrics": {
         "enrollment": 150,
         "phases": [
           "NA"
         ],
-        "interventionMatch": true
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-e1bceef8c806555b5c83",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07541898",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Effects of Berberine on Cardiometabolic Outcomes",
+      "summary": "NOT_YET_RECRUITING · Cardiometabolic Syndrome · Berberine / Placebo",
+      "observedAt": "2026-04-21",
+      "url": "https://clinicaltrials.gov/study/NCT07541898",
+      "metrics": {
+        "enrollment": 40,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-7c2af8d46ecb9e3586aa",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07480018",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Berberine Supplementation, Sprint Interval Training, and Immune Function Study",
+      "summary": "COMPLETED · Berberine / Sprint Training / Wellbeing · Berberine / Placebo",
+      "observedAt": "2026-03-18",
+      "url": "https://clinicaltrials.gov/study/NCT07480018",
+      "metrics": {
+        "enrollment": 40,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
+      "id": "clinical_trials-0718285b07a6e7ae7e92",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07420231",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Evaluation of the Synergistic Effect of Combining a Prebiotic and a Postbiotic on Intestinal Discomfort",
+      "summary": "RECRUITING · Intestinal Discomfort / Abdominal Pain/ Discomfort · Berberine / Bifidobacterium longum",
+      "observedAt": "2026-02-19",
+      "url": "https://clinicaltrials.gov/study/NCT07420231",
+      "metrics": {
+        "enrollment": 140,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
       }
     },
     {
       "id": "openfda-ef284c628546a1a14785",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "OPENFDA",
       "sourceId": "H-0440-2026",
       "kind": "regulatory",
@@ -982,8 +1089,29 @@
       }
     },
     {
+      "id": "clinical_trials-d5017b7b0abe7598765b",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07380841",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "Metformin vs Inositol vs Diet vs Combination Therapy in PCOS",
+      "summary": "COMPLETED · Polycystic Ovary Syndrome / Insulin Resistance / Metabolic Syndrome · Metformin Hydrochloride / Myo-Inositol",
+      "observedAt": "2026-02-02",
+      "url": "https://clinicaltrials.gov/study/NCT07380841",
+      "metrics": {
+        "enrollment": 192,
+        "phases": [
+          "NA"
+        ],
+        "matchRule": "title_or_intervention_names_v3"
+      }
+    },
+    {
       "id": "nih_dsld-8c9f0daa682d96bd2434",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "333240",
       "kind": "product",
@@ -1013,7 +1141,7 @@
     },
     {
       "id": "nih_dsld-9a625d79b1e65a61da0a",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "335553",
       "kind": "product",
@@ -1045,7 +1173,7 @@
     },
     {
       "id": "nih_dsld-10d091a20e97985e18ca",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "335562",
       "kind": "product",
@@ -1074,7 +1202,7 @@
     },
     {
       "id": "nih_dsld-170e6e455ca91faaeac6",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "335627",
       "kind": "product",
@@ -1111,7 +1239,7 @@
     },
     {
       "id": "nih_dsld-ec35e64d4c3c5fd385de",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328639",
       "kind": "product",
@@ -1148,7 +1276,7 @@
     },
     {
       "id": "nih_dsld-631609a947025a5e10a7",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "332278",
       "kind": "product",
@@ -1180,7 +1308,7 @@
     },
     {
       "id": "nih_dsld-3716ca157ffca38a9c27",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "333206",
       "kind": "product",
@@ -1217,7 +1345,7 @@
     },
     {
       "id": "nih_dsld-c9a99bacc8947a9a29d1",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "333240",
       "kind": "product",
@@ -1247,7 +1375,7 @@
     },
     {
       "id": "nih_dsld-460491095b1dcc34e24e",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328540",
       "kind": "product",
@@ -1284,7 +1412,7 @@
     },
     {
       "id": "nih_dsld-c6d143065562d466845a",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328604",
       "kind": "product",
@@ -1321,7 +1449,7 @@
     },
     {
       "id": "nih_dsld-21b1278b4a37f582f9f9",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328639",
       "kind": "product",
@@ -1358,7 +1486,7 @@
     },
     {
       "id": "nih_dsld-00401c6b962428f02810",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328791",
       "kind": "product",
@@ -1395,7 +1523,7 @@
     },
     {
       "id": "nih_dsld-83e2d27c08f48a980f58",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328540",
       "kind": "product",
@@ -1432,7 +1560,7 @@
     },
     {
       "id": "nih_dsld-5899a6ccf91374dd91e2",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328604",
       "kind": "product",
@@ -1469,7 +1597,7 @@
     },
     {
       "id": "nih_dsld-86625a8a4ed9eecbae31",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328639",
       "kind": "product",
@@ -1506,7 +1634,7 @@
     },
     {
       "id": "nih_dsld-6ac7c741f71ff56e322e",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328791",
       "kind": "product",
@@ -1543,7 +1671,7 @@
     },
     {
       "id": "nih_dsld-cf940e2c06b95c8749aa",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328540",
       "kind": "product",
@@ -1580,7 +1708,7 @@
     },
     {
       "id": "nih_dsld-0a7a2390be5cb0f0e0ad",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328604",
       "kind": "product",
@@ -1617,7 +1745,7 @@
     },
     {
       "id": "nih_dsld-5befa998777dd5acc94a",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328639",
       "kind": "product",
@@ -1654,7 +1782,7 @@
     },
     {
       "id": "nih_dsld-17439f5205b170de168a",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328791",
       "kind": "product",
@@ -1691,7 +1819,7 @@
     },
     {
       "id": "nih_dsld-76644b61309ade58990e",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328540",
       "kind": "product",
@@ -1728,7 +1856,7 @@
     },
     {
       "id": "nih_dsld-2c92b16b0d3f99f558ef",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328604",
       "kind": "product",
@@ -1765,7 +1893,7 @@
     },
     {
       "id": "nih_dsld-033cb61bd60ce012c686",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328639",
       "kind": "product",
@@ -1802,7 +1930,7 @@
     },
     {
       "id": "nih_dsld-20a0880669d9f2d41cde",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328791",
       "kind": "product",
@@ -1839,7 +1967,7 @@
     },
     {
       "id": "nih_dsld-9b9a197b3e5e83853d2b",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328540",
       "kind": "product",
@@ -1876,7 +2004,7 @@
     },
     {
       "id": "nih_dsld-a1f19077bd75ebc4b410",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328604",
       "kind": "product",
@@ -1913,7 +2041,7 @@
     },
     {
       "id": "nih_dsld-afb1a3109b38f9ad7b46",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328639",
       "kind": "product",
@@ -1950,7 +2078,7 @@
     },
     {
       "id": "nih_dsld-0334429f787d8922a157",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328791",
       "kind": "product",
@@ -1987,7 +2115,7 @@
     },
     {
       "id": "nih_dsld-07947933409186ab0019",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328540",
       "kind": "product",
@@ -2024,7 +2152,7 @@
     },
     {
       "id": "nih_dsld-2132344dbfb552589228",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328604",
       "kind": "product",
@@ -2061,7 +2189,7 @@
     },
     {
       "id": "nih_dsld-61c37034396e3aedb8dc",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328639",
       "kind": "product",
@@ -2098,7 +2226,7 @@
     },
     {
       "id": "nih_dsld-0330d7247638c76a2ca4",
-      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "collectedAt": "2026-10-13T23:25:54.385Z",
       "source": "NIH_DSLD",
       "sourceId": "328791",
       "kind": "product",
