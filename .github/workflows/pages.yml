@@ -40,6 +40,15 @@ jobs:
           HCI_COLLECTOR_PREVIOUS_URL: https://leejinping8972-svg.github.io/intelligence-system/data/public-site-observations.json
         run: pnpm --filter @vben/web-antd run collect:public
 
+      - name: Collect zero-cost public sources
+        env:
+          HCI_FREE_SOURCES_PREVIOUS_URL: https://leejinping8972-svg.github.io/intelligence-system/data/free-source-observations.json
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          NCBI_EMAIL: ${{ secrets.NCBI_EMAIL }}
+          OPENFDA_API_KEY: ${{ secrets.OPENFDA_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: pnpm --filter @vben/web-antd run collect:free
+
       - name: Build demo
         run: pnpm --filter @vben/web-antd exec vite build --mode demo --base=/intelligence-system/
 

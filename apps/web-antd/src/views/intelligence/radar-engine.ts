@@ -1,4 +1,5 @@
 import type { Ad, DemoState, Keyword, Market, Product } from './data';
+import type { FreeSourceData, PublicSignal } from './public-sources';
 
 export type RadarFindingType = 'concept' | 'ingredient' | 'product';
 export type RadarFindingStatus =
@@ -10,7 +11,15 @@ export type RadarFindingStatus =
 export interface RadarEvidence {
   detail: string;
   id: string;
-  kind: 'ad' | 'keyword' | 'product' | 'site' | 'trend';
+  kind:
+    | 'ad'
+    | 'content'
+    | 'keyword'
+    | 'product'
+    | 'regulatory'
+    | 'research'
+    | 'site'
+    | 'trend';
   observedAt: string;
   source: string;
   url?: string;
@@ -480,9 +489,139 @@ export function buildCollectedRadarFindings(
     });
 }
 
+function freeSignalEvidence(signal: PublicSignal): RadarEvidence {
+  let kind: RadarEvidence['kind'] = 'research';
+  if (signal.kind === 'product') kind = 'product';
+  if (signal.kind === 'content' || signal.kind === 'news') kind = 'content';
+  if (signal.kind === 'regulatory' || signal.kind === 'safety_aggregate')
+    kind = 'regulatory';
+  return {
+    id: `public-${signal.id}`,
+    kind,
+    source: signal.source,
+    detail: `${signal.title}；${signal.summary}`,
+    observedAt: signal.observedAt,
+    url: signal.url,
+  };
+}
+
+export function buildFreeSourceRadarFindings(
+  data: FreeSourceData | null,
+  windowDays: number,
+): RadarFinding[] {
+  if (!data) return [];
+  const findings: RadarFinding[] = [];
+  const products = data.signals.filter(
+    (signal) =>
+      signal.kind === 'product' &&
+      signal.market === 'US' &&
+      withinWindow(signal.observedAt, windowDays),
+  );
+  for (const signal of products) {
+    findings.push({
+      id: `public-product-${signal.id}`,
+      type: 'product',
+      title: signal.title,
+      subtitle: `${signal.brand || '品牌待核'} · NIH DSLD公开标签`,
+      category: signal.category,
+      market: 'US',
+      firstSeenAt: signal.observedAt,
+      status: 'pending',
+      confidenceScore: clamp(
+        62 + Math.max(0, 14 - daysSince(signal.observedAt)),
+      ),
+      businessScore: null,
+      trendGrowth: null,
+      adoptionCount: 1,
+      evidence: [freeSignalEvidence(signal)],
+      rationale: [
+        `DSLD于 ${signal.observedAt} 收录该在售标签`,
+        `公开标签包含 ${signal.ingredients?.length || 0} 个已提取成分名称`,
+      ],
+      gaps: [
+        'DSLD收录日期不等于首次上市日期',
+        '尚未关联官网首发、趋势、广告和供应链数据，因此不计算商业机会分',
+      ],
+    });
+  }
+
+  const contentGroups = new Map<string, PublicSignal[]>();
+  for (const signal of data.signals) {
+    if (signal.kind !== 'content' || signal.market === 'GLOBAL') continue;
+    if (!withinWindow(signal.observedAt, windowDays)) continue;
+    const key = `${signal.market}:${signal.query}`;
+    contentGroups.set(key, [...(contentGroups.get(key) || []), signal]);
+  }
+  for (const [key, signals] of contentGroups) {
+    const market = key.split(':')[0] as Market;
+    const first = signals[0]!;
+    findings.push({
+      id: `public-content-${key}`,
+      type: 'concept',
+      title: first.query,
+      subtitle: `${signals.length} 条近期公开视频内容`,
+      category: first.category,
+      market,
+      firstSeenAt: signals
+        .map((item) => item.observedAt)
+        .toSorted()
+        .at(-1)!,
+      status: 'pending',
+      confidenceScore: clamp(28 + Math.min(32, signals.length * 5)),
+      businessScore: null,
+      trendGrowth: null,
+      adoptionCount: signals.length,
+      evidence: signals.slice(0, 5).map(freeSignalEvidence),
+      rationale: [
+        `最近观察窗口内出现 ${signals.length} 条相关视频`,
+        '内容数量用于判断传播活跃度，不代表搜索需求或销售增长',
+      ],
+      gaps: ['尚未与官网商品、关键词趋势和广告数据交叉验证'],
+    });
+  }
+
+  const regulatoryGroups = new Map<string, PublicSignal[]>();
+  for (const signal of data.signals) {
+    if (signal.kind !== 'regulatory' || signal.market !== 'US') continue;
+    if (!withinWindow(signal.observedAt, windowDays)) continue;
+    regulatoryGroups.set(signal.query, [
+      ...(regulatoryGroups.get(signal.query) || []),
+      signal,
+    ]);
+  }
+  for (const [query, signals] of regulatoryGroups) {
+    const first = signals[0]!;
+    findings.push({
+      id: `public-regulatory-US-${query}`,
+      type: 'ingredient',
+      title: `${query} · 监管信号`,
+      subtitle: `${signals.length} 条openFDA近期召回记录`,
+      category: first.category,
+      market: 'US',
+      firstSeenAt: signals
+        .map((item) => item.observedAt)
+        .toSorted()
+        .at(-1)!,
+      status: 'pending',
+      confidenceScore: 72,
+      businessScore: null,
+      trendGrowth: null,
+      adoptionCount: signals.length,
+      evidence: signals.slice(0, 5).map(freeSignalEvidence),
+      rationale: [
+        `观察窗口内匹配 ${signals.length} 条FDA召回记录`,
+        '该信号用于风险复核，不用于判断市场机会大小',
+      ],
+      gaps: ['需要核对具体产品、批次、召回原因以及与拟开发配方的关联'],
+    });
+  }
+  return findings;
+}
+
 export function buildSourceCoverage(
   state: DemoState,
   collector: null | PublicCollectorData = null,
+  freeData: FreeSourceData | null = null,
 ): RadarSourceCoverage[] {
   const latest = (values: (string | undefined)[]) =>
     values.filter(Boolean).sort().reverse()[0] || '尚无数据';
@@ -495,20 +634,35 @@ export function buildSourceCoverage(
     (item) => item.dataNature !== 'demo',
   );
   const trendKeywords = realKeywords.filter((item) => item.series.length >= 2);
+  const publicProducts =
+    freeData?.signals.filter((item) => item.kind === 'product').length || 0;
+  const publicScience =
+    freeData?.signals.filter((item) =>
+      ['ingredient_profile', 'research', 'trial'].includes(item.kind),
+    ).length || 0;
+  const publicRegulatory =
+    freeData?.signals.filter((item) =>
+      ['regulatory', 'safety_aggregate'].includes(item.kind),
+    ).length || 0;
+  const publicContent =
+    freeData?.signals.filter((item) => ['content', 'news'].includes(item.kind))
+      .length || 0;
   return [
     {
       key: 'products',
-      label: '官网商品与标签',
-      count: realProducts.length + collectedProducts.length,
+      label: '商品与公开标签',
+      count: realProducts.length + collectedProducts.length + publicProducts,
       lastUpdated:
         (collectedProducts.length && collector?.generatedAt?.slice(0, 10)) ||
         latest(realProducts.map((item) => item.firstSeenAt)),
       status:
-        realProducts.length + collectedProducts.length ? 'partial' : 'missing',
+        realProducts.length + collectedProducts.length + publicProducts
+          ? 'partial'
+          : 'missing',
       automated:
         !!collector?.configuredSites ||
         state.sites.some((site) => site.collectorMode === 'automatic'),
-      note: '商品事实、新成分和卖点的主要证据',
+      note: '官网商品事实与NIH DSLD公开标签',
     },
     {
       key: 'ads',
@@ -536,6 +690,33 @@ export function buildSourceCoverage(
       status: trendKeywords.length > 0 ? 'partial' : 'missing',
       automated: false,
       note: '需求变化验证；网页端数据按查询批次解释',
+    },
+    {
+      key: 'science',
+      label: '科研与成分档案',
+      count: publicScience,
+      lastUpdated: freeData?.generatedAt?.slice(0, 10) || '尚无数据',
+      status: publicScience > 0 ? 'available' : 'missing',
+      automated: true,
+      note: 'PubMed、ClinicalTrials.gov与PubChem',
+    },
+    {
+      key: 'regulatory',
+      label: '监管与安全线索',
+      count: publicRegulatory,
+      lastUpdated: freeData?.generatedAt?.slice(0, 10) || '尚无数据',
+      status: publicRegulatory > 0 ? 'available' : 'missing',
+      automated: true,
+      note: 'openFDA召回与CAERS汇总',
+    },
+    {
+      key: 'content',
+      label: '新闻与内容信号',
+      count: publicContent,
+      lastUpdated: freeData?.generatedAt?.slice(0, 10) || '尚无数据',
+      status: publicContent > 0 ? 'partial' : 'missing',
+      automated: true,
+      note: 'GDELT与可选YouTube免费配额',
     },
     {
       key: 'supply',

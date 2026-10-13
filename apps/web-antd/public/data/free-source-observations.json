@@ -1,0 +1,2137 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-13T23:00:38.227Z",
+  "retentionDays": 365,
+  "sourceRuns": [
+    {
+      "source": "NIH_DSLD",
+      "status": "success",
+      "count": 32,
+      "note": "美国膳食补充剂标签公开数据；收录日期不等于首次上市日期",
+      "documentation": "https://dsld.od.nih.gov/api-guide",
+      "finishedAt": "2026-10-13T23:00:44.373Z"
+    },
+    {
+      "source": "PUBMED",
+      "status": "success",
+      "count": 6,
+      "note": "无Key低频模式（不超过3请求/秒）",
+      "documentation": "https://www.ncbi.nlm.nih.gov/home/develop/api/",
+      "finishedAt": "2026-10-13T23:00:53.268Z"
+    },
+    {
+      "source": "CLINICAL_TRIALS",
+      "status": "success",
+      "count": 24,
+      "note": "公开临床研究登记；登记不代表研究结论或功效确认",
+      "documentation": "https://clinicaltrials.gov/data-api/about-api",
+      "finishedAt": "2026-10-13T23:00:59.005Z"
+    },
+    {
+      "source": "PUBCHEM",
+      "status": "success",
+      "count": 4,
+      "note": "成分标识与基础化学信息，不构成功效或安全结论",
+      "documentation": "https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest",
+      "finishedAt": "2026-10-13T23:01:03.234Z"
+    },
+    {
+      "source": "OPENFDA",
+      "status": "success",
+      "count": 22,
+      "note": "无Key低配额模式；召回与CAERS只作监管线索",
+      "documentation": "https://open.fda.gov/apis/food/",
+      "finishedAt": "2026-10-13T23:01:11.363Z"
+    },
+    {
+      "source": "YOUTUBE",
+      "status": "needs_key",
+      "count": 0,
+      "note": "等待Google Cloud免费API Key；密钥只放GitHub Secrets",
+      "documentation": "https://developers.google.com/youtube/v3",
+      "finishedAt": "2026-10-13T23:01:11.364Z"
+    },
+    {
+      "source": "GDELT",
+      "status": "error",
+      "count": 0,
+      "note": "fetch failed",
+      "documentation": "https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/",
+      "finishedAt": "2026-10-13T23:01:45.695Z"
+    }
+  ],
+  "signals": [
+    {
+      "id": "pubmed-654a80a66340334341c6",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBMED",
+      "sourceId": "42866894",
+      "kind": "research",
+      "market": "GLOBAL",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "Innovative jelly formulation enriched with microencapsulated Bacillus coagulans via chia seed mucilage-based nanoemulsions and nanofibers.",
+      "summary": "Journal of the science of food and agriculture · Rashnoei S, Yazdanpanah S, Shahamirian M · DOI 10.1002/jsfa.71103",
+      "observedAt": "2026-10-13",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42866894/",
+      "metrics": {
+        "publicationType": [
+          "Journal Article"
+        ]
+      }
+    },
+    {
+      "id": "pubchem-9c501d2db6b11177b5cf",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBCHEM",
+      "sourceId": "84645",
+      "kind": "ingredient_profile",
+      "market": "GLOBAL",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Magnesium Glycinate",
+      "summary": "分子式 C4H8MgN2O4 · 分子量 172.42 · InChIKey AACACXATQSKRQG-UHFFFAOYSA-L",
+      "observedAt": "2026-10-13",
+      "url": "https://pubchem.ncbi.nlm.nih.gov/compound/84645",
+      "metrics": {
+        "cid": 84645
+      }
+    },
+    {
+      "id": "pubchem-0bfaf9a0b13f7572e187",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBCHEM",
+      "sourceId": "892",
+      "kind": "ingredient_profile",
+      "market": "GLOBAL",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "An inositol",
+      "summary": "分子式 C6H12O6 · 分子量 180.16 · InChIKey CDAISMWEOUEBRE-UHFFFAOYSA-N",
+      "observedAt": "2026-10-13",
+      "url": "https://pubchem.ncbi.nlm.nih.gov/compound/892",
+      "metrics": {
+        "cid": 892
+      }
+    },
+    {
+      "id": "pubchem-148e3302b980af5b53c5",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBCHEM",
+      "sourceId": "2353",
+      "kind": "ingredient_profile",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Berberine",
+      "summary": "分子式 C20H18NO4+ · 分子量 336.4 · InChIKey YBHILYKTIRIUTE-UHFFFAOYSA-N",
+      "observedAt": "2026-10-13",
+      "url": "https://pubchem.ncbi.nlm.nih.gov/compound/2353",
+      "metrics": {
+        "cid": 2353
+      }
+    },
+    {
+      "id": "pubchem-0909bcc7e01e93135502",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBCHEM",
+      "sourceId": "586",
+      "kind": "ingredient_profile",
+      "market": "GLOBAL",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Creatine",
+      "summary": "分子式 C4H9N3O2 · 分子量 131.13 · InChIKey CVSVTCORWBXHQV-UHFFFAOYSA-N",
+      "observedAt": "2026-10-13",
+      "url": "https://pubchem.ncbi.nlm.nih.gov/compound/586",
+      "metrics": {
+        "cid": 586
+      }
+    },
+    {
+      "id": "openfda-55e46415f8bd557922d5",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-probiotic",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "益生菌 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 1216
+      }
+    },
+    {
+      "id": "openfda-bf7368ccfdf2ed11bac8",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-magnesium-glycinate",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "甘氨酸镁 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 1805
+      }
+    },
+    {
+      "id": "openfda-5292c12f674bfe75d97e",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-inositol",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "肌醇 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 93
+      }
+    },
+    {
+      "id": "openfda-654af2931a88308db899",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-collagen-peptide",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "胶原蛋白肽 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 486
+      }
+    },
+    {
+      "id": "openfda-b5661340b689beb60d1a",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-berberine",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "小檗碱 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 68
+      }
+    },
+    {
+      "id": "openfda-4dae7ccf40076b11cec1",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-creatine",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "肌酸 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 210
+      }
+    },
+    {
+      "id": "openfda-8bc84331db53e7a953ed",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-electrolyte",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "电解质补充 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 230
+      }
+    },
+    {
+      "id": "openfda-13b077294acb06127e44",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "caers-fiber",
+      "kind": "safety_aggregate",
+      "market": "US",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "膳食纤维 · CAERS匹配记录",
+      "summary": "仅表示公开报告中出现相关名称；报告未经因果验证，不能用于估计发生率或医疗决策。",
+      "observedAt": "2026-10-13",
+      "url": "https://open.fda.gov/apis/food/event/",
+      "metrics": {
+        "matchedReports": 740
+      }
+    },
+    {
+      "id": "clinical_trials-2c132203f74cfb82ebed",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07872514",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "Personalized Probiotic Treatments for Irritable Bowel Syndrome",
+      "summary": "ENROLLING_BY_INVITATION · Irritable Bowel Syndrome (IBS) · Probiotic containing B longum / Probiotic Lactobacillus",
+      "observedAt": "2026-10-13",
+      "url": "https://clinicaltrials.gov/study/NCT07872514",
+      "metrics": {
+        "enrollment": 30,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-078b0591f916e0c607a6",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07870824",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "A Study to Investigate the Effect of Probiotics (L. Reuteri DSM 17938 and L. Reuteri DSM 33633) on Symptoms of Viral Upper Respiratory Tract Infections in Children",
+      "summary": "NOT_YET_RECRUITING · Virus Diseases in Children · Probiotics (L. reuteri DSM 17938 and L. reuteri DSM 33633) / Placebo",
+      "observedAt": "2026-10-13",
+      "url": "https://clinicaltrials.gov/study/NCT07870824",
+      "metrics": {
+        "enrollment": 194,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-d8480efdda9c58ac7ce2",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07871318",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Nutraceutical Supplementation Combined With Physiotherapy for Rotator Cuff Tendinopathy",
+      "summary": "COMPLETED · Rotator Cuff Tendinopathy · Doltendix® / Exercise-based Physiotherapy",
+      "observedAt": "2026-10-13",
+      "url": "https://clinicaltrials.gov/study/NCT07871318",
+      "metrics": {
+        "enrollment": 42,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-6d1bcb311e4248fd16af",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07870317",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "450 nm Blue Diode Laser Versus Blue LED for In-Office Tooth Bleaching",
+      "summary": "COMPLETED · Tooth Discoloration · 450 nm Blue Diode Laser / Blue Light-Emitting Diode Lamp",
+      "observedAt": "2026-10-13",
+      "url": "https://clinicaltrials.gov/study/NCT07870317",
+      "metrics": {
+        "enrollment": 40,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "pubmed-88238de801789adac3cb",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBMED",
+      "sourceId": "42865927",
+      "kind": "research",
+      "market": "GLOBAL",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "In vitro characterization of the candidate prebiotic potential of melon and watermelon seeds: strain-specific fermentation and targeted metabolic profiling.",
+      "summary": "Open life sciences · Teksoy S, Yilmaz-Ersan L · DOI 10.1515/biol-2025-1386",
+      "observedAt": "2026-10-12",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42865927/",
+      "metrics": {
+        "publicationType": [
+          "Journal Article"
+        ]
+      }
+    },
+    {
+      "id": "clinical_trials-ab9fc4ed4203cf91c219",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07867496",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "Exploration of Tolerability and Dose Responses for a Yeast-based Probiotic",
+      "summary": "NOT_YET_RECRUITING · Healthy Adult Participants / Gut Health · 9.9 x 10^7 Pichia kluyveri PK88 / 1 x 10^8 Pichia kluyveri PK88",
+      "observedAt": "2026-10-09",
+      "url": "https://clinicaltrials.gov/study/NCT07867496",
+      "metrics": {
+        "enrollment": 50,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-f004a4762f33c5e4dde8",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07869017",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "Longitudinal Metabolic Assessment in PCOS",
+      "summary": "COMPLETED · Polycystic Ovarian Syndrome (PCOS) · the investigators give inositol for two months.",
+      "observedAt": "2026-10-09",
+      "url": "https://clinicaltrials.gov/study/NCT07869017",
+      "metrics": {
+        "enrollment": 45,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-af2eabc00456bd20cec5",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07867041",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Effects of Short-Term Creatine Supplementation on Cognitive Function in Healthy Young Adults",
+      "summary": "COMPLETED · Cognitive Function Assessment / Mental Fatigue · Creatine Monohydrate / Maltodextrin Placebo",
+      "observedAt": "2026-10-09",
+      "url": "https://clinicaltrials.gov/study/NCT07867041",
+      "metrics": {
+        "enrollment": 24,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-40e653938e16ee17785e",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07867951",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Comparison of Postoperative Pain After Double Antibiotic Paste vs Calcium Hydroxide in Teeth With Symptomatic Apical Periodontitis",
+      "summary": "RECRUITING · Symptomatic Apical Periodontitis · Calcium Hydroxide (Ca(OH)2) / Double Antibiotic Paste",
+      "observedAt": "2026-10-09",
+      "url": "https://clinicaltrials.gov/study/NCT07867951",
+      "metrics": {
+        "enrollment": 662,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-4abca98b0f7a4a799eb2",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07869459",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Digital Flashcards for Fluid and Electrolyte Education in Surgical Nursing: A Solomon Four-Group Study",
+      "summary": "NOT_YET_RECRUITING · Education / Surgical Nursing / Teaching Methods · Digital Flashcard Training & Pre-test/Post-test / Digital Flashcard Training & Post-test Only",
+      "observedAt": "2026-10-09",
+      "url": "https://clinicaltrials.gov/study/NCT07869459",
+      "metrics": {
+        "enrollment": 180,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-26e5f47c85eecd6ad5ff",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07868614",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Intraoperative Microelectrode Recordings Using MAVEN Compared to Standard Recording Apparatuses",
+      "summary": "RECRUITING · Essential Tremor / Parkinson's Disease / Dystonia · Multifunctional Apparatus for Voltammetry, Electrophysiology, and Neuromodulation (MAVEN)",
+      "observedAt": "2026-10-09",
+      "url": "https://clinicaltrials.gov/study/NCT07868614",
+      "metrics": {
+        "enrollment": 30,
+        "phases": [],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-d18bc6eb8e3fa85dd502",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07868016",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Clinical Evaluation of Different Bulk-Fill Restorative Materials in Primary Molars",
+      "summary": "NOT_YET_RECRUITING · Decayed Primary Molars / Decayed Tooth / Dentin Caries · Stela Capsule Bulk Fill Flowable Self-Cure Restorative / Filtek One Bulk Fill Restorative",
+      "observedAt": "2026-10-09",
+      "url": "https://clinicaltrials.gov/study/NCT07868016",
+      "metrics": {
+        "enrollment": 70,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-7f1f719804f35e2f9ace",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07856550",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Evaluating the Efficacy of the Flush Advanced+ Dietary Supplement Drink Mix Compared to a Placebo in Women Ages 18-75 With a History of Recurrent, Bothersome Urinary Tract Symptoms",
+      "summary": "ACTIVE_NOT_RECRUITING · Urinary Tract · Flush Advanced+ Dietary Drink Mix / Placebo Dietary Drink Mix",
+      "observedAt": "2026-10-02",
+      "url": "https://clinicaltrials.gov/study/NCT07856550",
+      "metrics": {
+        "enrollment": 180,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "pubmed-d62f674feae9231ecd64",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBMED",
+      "sourceId": "42866476",
+      "kind": "research",
+      "market": "GLOBAL",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "Remodeling the gut microbiota: mechanistic insights into probiotic-mediated alleviation of weaning stress in piglets.",
+      "summary": "Frontiers in immunology · Zhuo W, Yu Z, Liu K · DOI 10.3389/fimmu.2026.1964247",
+      "observedAt": "2026-09-28",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42866476/",
+      "metrics": {
+        "publicationType": [
+          "Journal Article",
+          "Review"
+        ]
+      }
+    },
+    {
+      "id": "clinical_trials-64b605bf4f72359da5eb",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07841106",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Early Prophylactic Versus Late Salvage Recombinant Human Endostatin in Managing Radiosurgery-Induced Brain Injury for NSCLC Brain Metastases",
+      "summary": "NOT_YET_RECRUITING · Lung Cancer (Non-Small Cell) / Radiation / Brain Injury · Recombinant Human Endostatin (Endostar) / Recombinant Human Endostatin (Endostar)",
+      "observedAt": "2026-09-25",
+      "url": "https://clinicaltrials.gov/study/NCT07841106",
+      "metrics": {
+        "enrollment": 49,
+        "phases": [
+          "PHASE2"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-fcb02960be124b4aeeca",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07839312",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Bonafide Sleep Supplement for Menopausal Women With Sleep Complaints",
+      "summary": "COMPLETED · Sleep Disturbance · S-Adenosyl Methionine (SAMe), Propyl Gallate, Gamma-Aminobutyric Acid (GABA), L-Theanine, and Magnesium Glycinate",
+      "observedAt": "2026-09-24",
+      "url": "https://clinicaltrials.gov/study/NCT07839312",
+      "metrics": {
+        "enrollment": 111,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-2af66d174cb69caeee6b",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07839299",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Bonafide Sleep Supplement for Menopausal Women With Impaired Sleep",
+      "summary": "COMPLETED · Sleep Disturbances · S-Adenosyl Methionine (SAMe), Propyl Gallate, Gamma-Aminobutyric Acid (GABA), L-Theanine, and Magnesium Glycinate",
+      "observedAt": "2026-09-24",
+      "url": "https://clinicaltrials.gov/study/NCT07839299",
+      "metrics": {
+        "enrollment": 90,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-56db673ff8a97e3d4732",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07838805",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Changing in Plasma Concentration of a New Form of Creatine",
+      "summary": "NOT_YET_RECRUITING · Creatine · New Formulation of Creatine (Creamix) / Active Comparator: Creatine Monohydrate",
+      "observedAt": "2026-09-24",
+      "url": "https://clinicaltrials.gov/study/NCT07838805",
+      "metrics": {
+        "enrollment": 9,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-64e8fd06d1153cbfe773",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07838090",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Resistance Training and Creatine Supplementation for Head and Neck Cancer",
+      "summary": "NOT_YET_RECRUITING · Head and Neck Cancer / Cancer Survivorship / Treatment-related Muscle Loss · Creatine Supplementation / Resistance Training",
+      "observedAt": "2026-09-24",
+      "url": "https://clinicaltrials.gov/study/NCT07838090",
+      "metrics": {
+        "enrollment": 30,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-4bd84fab7e25c7417390",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07827014",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "An Open-Label, Two-Arm Pilot Study of the Tolerability, Consumer Acceptability, and Exploratory Well-Being Outcomes of a Multi-Ingredient Protein Formula in Two Flavors in Healthy Adults",
+      "summary": "RECRUITING · Healthy · Vanilla Protein Formula / Chocolate Protein Formula",
+      "observedAt": "2026-09-18",
+      "url": "https://clinicaltrials.gov/study/NCT07827014",
+      "metrics": {
+        "enrollment": 50,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-026180f95a6a67936ddb",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07821073",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "Myo-Inositol and Folic Acid for Improving Inflammation in Polycystic Ovary Syndrome",
+      "summary": "ACTIVE_NOT_RECRUITING · Inflammation Biomarkers / Poly Cystic Ovary Syndrome / PCOS (Polycystic Ovary Syndrome) · myo-inositol 2000 gm + folic acid 200 mcg",
+      "observedAt": "2026-09-15",
+      "url": "https://clinicaltrials.gov/study/NCT07821073",
+      "metrics": {
+        "enrollment": 50,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "pubmed-280deb5ece05cbdd19a8",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBMED",
+      "sourceId": "42684237",
+      "kind": "research",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Recurrent Torsades de Pointes Precipitated by Berberine Supplement.",
+      "summary": "JACC. Case reports · Mohammadi A, Abdalla HM, Falls N · DOI 10.1016/j.jaccas.2026.110193",
+      "observedAt": "2026-09-02",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42684237/",
+      "metrics": {
+        "publicationType": [
+          "Case Reports",
+          "Journal Article"
+        ]
+      }
+    },
+    {
+      "id": "pubmed-97297ba3e1bbd826af9a",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBMED",
+      "sourceId": "42283837",
+      "kind": "research",
+      "market": "GLOBAL",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Clinical evaluation of adjunctive magnesium therapy in patients receiving antidepressants for depression-open label, nonrandomized clinical trial.",
+      "summary": "Naunyn-Schmiedeberg's archives of pharmacology · Siddique A, Naeem U, Khokhar MM · DOI 10.1007/s00210-026-05540-1",
+      "observedAt": "2026-09-01",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42283837/",
+      "metrics": {
+        "publicationType": [
+          "Controlled Clinical Trial",
+          "Journal Article"
+        ]
+      }
+    },
+    {
+      "id": "pubmed-2a9ae03bb93ea33e7eae",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "PUBMED",
+      "sourceId": "42398916",
+      "kind": "research",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Considerations for Dietary Supplements after GLP-1RA Treatment: A Narrative Review.",
+      "summary": "The Journal of nutrition · Johnson BV · DOI 10.1016/j.tjnut.2026.101695",
+      "observedAt": "2026-09-01",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42398916/",
+      "metrics": {
+        "publicationType": [
+          "Journal Article",
+          "Review"
+        ]
+      }
+    },
+    {
+      "id": "clinical_trials-fac8224c8cfd0cc83e92",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07789366",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Berberol P for Mild-to-Moderate Hypercholesterolaemia",
+      "summary": "NOT_YET_RECRUITING · Hypercholesterolemia · Berberol® P (manufacturer: PharmExtracta S.p.A.) / Berberol® K (manufacturer: PharmExtracta S.p.A.)",
+      "observedAt": "2026-08-27",
+      "url": "https://clinicaltrials.gov/study/NCT07789366",
+      "metrics": {
+        "enrollment": 255,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-92c5e572f27b707a1417",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07779850",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "Myo-Inositol for Ovarian Stimulation and ICSI Outcomes in Women With PCOS",
+      "summary": "COMPLETED · Polycystic Ovary Syndrome · Myo-Inositol / Folic Acid",
+      "observedAt": "2026-08-21",
+      "url": "https://clinicaltrials.gov/study/NCT07779850",
+      "metrics": {
+        "enrollment": 88,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "openfda-2ca2e8ddd8bde833d27a",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "H-1152-2026",
+      "kind": "regulatory",
+      "market": "US",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Nutricia North America · Class II",
+      "summary": "functional formularies LIQUID HOPE ORGANIC WHOLE FOODS MEAL REPLACEMENT PEPTIDE FORMULA BERRY MEDLEY NET WT. 12 OZ (341g) case UPC 8 57858 00453 3, package UPC 8 57858 00450 2；Subpotent for Vitamin A. The firm discovered that the testing laboratory used the wrong method when testing for Vitamin A. The test results gave a higher concentration of vitamin A than what is actually in the product.",
+      "observedAt": "2026-07-22",
+      "url": "https://www.accessdata.fda.gov/scripts/ires/?Product=H-1152-2026",
+      "metrics": {
+        "recallNumber": "H-1152-2026",
+        "status": "Ongoing",
+        "classification": "Class II"
+      }
+    },
+    {
+      "id": "openfda-641f2e285bd1cce71038",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "H-1153-2026",
+      "kind": "regulatory",
+      "market": "US",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Nutricia North America · Class II",
+      "summary": "functional formularies NOURISH ORGANIC WHOLE FOODS MEAL REPLACEMENT PEPTIDE FORMULA BERRY MEDLEY COMPLETE PLANT BASED NUTRITION NET WT. 12 OZ (341g) case UPC 8 57858 00445 8, package UPC 8 57858 00447 2；Subpotent for Vitamin A. The firm discovered that the testing laboratory used the wrong method when testing for Vitamin A. The test results gave a higher concentration of vitamin A than what is actually in the product.",
+      "observedAt": "2026-07-22",
+      "url": "https://www.accessdata.fda.gov/scripts/ires/?Product=H-1153-2026",
+      "metrics": {
+        "recallNumber": "H-1153-2026",
+        "status": "Ongoing",
+        "classification": "Class II"
+      }
+    },
+    {
+      "id": "openfda-2a897c709ebe02883fc9",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "H-1079-2026",
+      "kind": "regulatory",
+      "market": "US",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Dkiru LLC · Class II",
+      "summary": "Adndale Magnesium Glycinate Gummies 400 mg. Plastic bottle containing 90 gummies. Net weight: 11.36 ounces. Serving size: 2 gummies. UPC: 860008784551 Firm name and address listed on label: Dkiru Ltd, Keepers Cottage, 3 Dublin Rd, Leixlip, Co. Kildare W23 H3C4, Ireland；Undeclared melatonin.",
+      "observedAt": "2026-06-24",
+      "url": "https://www.accessdata.fda.gov/scripts/ires/?Product=H-1079-2026",
+      "metrics": {
+        "recallNumber": "H-1079-2026",
+        "status": "Ongoing",
+        "classification": "Class II"
+      }
+    },
+    {
+      "id": "clinical_trials-7c6253dc530b25e6c79f",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07655817",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Oral Versus Intravenous Magnesium on Emergence Delirium",
+      "summary": "RECRUITING · Magnesium / Emergence Delirium / Children · Magnesium glycinate / Magnesium sulfate injection",
+      "observedAt": "2026-06-18",
+      "url": "https://clinicaltrials.gov/study/NCT07655817",
+      "metrics": {
+        "enrollment": 360,
+        "phases": [
+          "PHASE2",
+          "PHASE3"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "openfda-da36883a4307ecb9b05c",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "H-1109-2026",
+      "kind": "regulatory",
+      "market": "US",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "SENSORY SUPPLEMENT LLC · Class II",
+      "summary": "NEURO NOURISH dietary supplement; 6-IN-1 PREBIOTIC, PROBIOTIC, VITAMIN, MINERAL, FATTY ACID, AND ANTIOXIDANT NUTRITIONAL SUPPLEMENT TO SUPPORT DRAIN AND GUT HEALTH NET WT. 5.9 OZ; UPC: 310M5951601；Premature lipid oxidation causing quality issue potentially causing product to have an off odor and bitter taste.",
+      "observedAt": "2026-06-17",
+      "url": "https://www.accessdata.fda.gov/scripts/ires/?Product=H-1109-2026",
+      "metrics": {
+        "recallNumber": "H-1109-2026",
+        "status": "Ongoing",
+        "classification": "Class II"
+      }
+    },
+    {
+      "id": "clinical_trials-3ece0e3e33eeafa9c6e2",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07615777",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Nutritional Supplementation on Physiological and Metabolic Markers in Females",
+      "summary": "RECRUITING · Perimenopausal Women / Body Composition Changes · Nutritional Supplement / Placebo",
+      "observedAt": "2026-05-29",
+      "url": "https://clinicaltrials.gov/study/NCT07615777",
+      "metrics": {
+        "enrollment": 80,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "clinical_trials-cc25fdf1b3726e227309",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "CLINICAL_TRIALS",
+      "sourceId": "NCT07606872",
+      "kind": "trial",
+      "market": "GLOBAL",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Validation of the Snouda Metabolic Score for Phenotyping and Guiding Reversal in Type 2 Diabetes",
+      "summary": "ENROLLING_BY_INVITATION · Type 2 Diabetes Mellitus (T2DM) / Insulin Resistance / Metabolic Syndrome · Phenotype-Matched Dietary Protocol / Structured Progressive Exercise Protocol",
+      "observedAt": "2026-05-26",
+      "url": "https://clinicaltrials.gov/study/NCT07606872",
+      "metrics": {
+        "enrollment": 150,
+        "phases": [
+          "NA"
+        ],
+        "interventionMatch": true
+      }
+    },
+    {
+      "id": "openfda-ef284c628546a1a14785",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "OPENFDA",
+      "sourceId": "H-0440-2026",
+      "kind": "regulatory",
+      "market": "US",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Rich Products Corp · Class II",
+      "summary": "GLUTEN FREE 14\" SEASONED VEGAN PIZZA CRUST; INGREDIENTS: WATER, RICE FLOUR, POTATO STARCH, RICE STARCH, TAPIOCA STARCH, CANE SUGAR, MODIFIED RICE STARCH, POTATO FLOUR, PEA FIBER, CONTAINS LESS THAN 2% OF THE FOLLOWING: CANOLA OIL, YEAST, SALT, CELLULOSE GEL, EXTRA VIRGIN OLIVE OIL, GARLIC POWDER, SPICES, XANTHAN GUM, CELLULOSE GUM, CULTURED BROW RICE, BROWN RICE FLOUR, CITRIC ACID, LACTIC ACID; MAY CONTAIN MILK AND EGGS; MANUFACTURED BY VENCE BAKERY; Net Case Wt: 14 LB 6 OZ (6.52 KG); Unit Net Wt: 11.5 OZ (326 G); COUNT: 20; KEEP FROZEN; GTIN code on shipper case (01) 0 0859955 00412 6；Product contains undeclared milk and egg",
+      "observedAt": "2026-02-11",
+      "url": "https://www.accessdata.fda.gov/scripts/ires/?Product=H-0440-2026",
+      "metrics": {
+        "recallNumber": "H-0440-2026",
+        "status": "Terminated",
+        "classification": "Class II"
+      }
+    },
+    {
+      "id": "nih_dsld-8c9f0daa682d96bd2434",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "333240",
+      "kind": "product",
+      "market": "US",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "Digestive Balance",
+      "summary": "Country Life Gut Connection · Botanical with Nutrients · Capsule · All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/333240",
+      "brand": "Country Life Gut Connection",
+      "ingredients": [
+        "PreticX",
+        "EpiCor",
+        "Actazin",
+        "Benegut",
+        "Cellulose",
+        "Rice Bran Extract",
+        "Vegetable Glaze",
+        "Sunflower Oil",
+        "Silica"
+      ],
+      "metrics": {
+        "ingredientCount": 9,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-9a625d79b1e65a61da0a",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "335553",
+      "kind": "product",
+      "market": "US",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "ProbioMax Plus DF",
+      "summary": "XYMOGEN · Other Combinations · Powder · All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/335553",
+      "brand": "XYMOGEN",
+      "ingredients": [
+        "Calories",
+        "Total Carbohydrates",
+        "Dietary Fiber",
+        "Arabinogalactan",
+        "Saccharomyces boulardii",
+        "Proprietary Blend",
+        "Lactobacillus acidophilus La-14",
+        "Bifidobacterium longum Bl-05",
+        "Lactobacillus plantarum Lp-115",
+        "Bifidobacterium lactis HN019",
+        "Silica"
+      ],
+      "metrics": {
+        "ingredientCount": 11,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-10d091a20e97985e18ca",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "335562",
+      "kind": "product",
+      "market": "US",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "Saccharomycin DF",
+      "summary": "XYMOGEN · Botanical · Capsule · All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/335562",
+      "brand": "XYMOGEN",
+      "ingredients": [
+        "Saccharomyces boulardii",
+        "Hypromellose",
+        "Water",
+        "Microcrystalline Cellulose",
+        "Stearic Acid",
+        "Magnesium Stearate",
+        "Silica",
+        "Medium Chain Triglyceride Oil"
+      ],
+      "metrics": {
+        "ingredientCount": 8,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-170e6e455ca91faaeac6",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "335627",
+      "kind": "product",
+      "market": "US",
+      "query": "益生菌",
+      "category": "肠道与益生菌",
+      "title": "Greens & Probiotics Powder",
+      "summary": "Hardy Nutritionals · Other Combinations · Powder · All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/335627",
+      "brand": "Hardy Nutritionals",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin E",
+        "Proprietary Blend",
+        "Alfalfa",
+        "Apple Fiber",
+        "Sunflower Lecithin",
+        "Apple Pectin",
+        "Barley Grass",
+        "Spirulina",
+        "Wheat Grass",
+        "Chlorella",
+        "Acerola Berry Extract",
+        "Carrot",
+        "Bee Pollen",
+        "Fennel",
+        "Green Tea Leaf Extract"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-ec35e64d4c3c5fd385de",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328639",
+      "kind": "product",
+      "market": "US",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Plant-Based Multivitamin",
+      "summary": "Life Extension · Botanical with Nutrients · Capsule · Nutrient / All Other",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328639",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Iodine",
+        "Magnesium",
+        "Zinc",
+        "Selenium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-631609a947025a5e10a7",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "332278",
+      "kind": "product",
+      "market": "US",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Magnesium Night High Absorption 325 mg Naturally Flavored",
+      "summary": "Natrol · Other Combinations · Powder · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/332278",
+      "brand": "Natrol",
+      "ingredients": [
+        "Magnesium",
+        "Potassium",
+        "Proprietary Sleep Blend",
+        "Glycine",
+        "Gamma-Aminobutyric Acid",
+        "Lemon Balm leaf Complex",
+        "Melatonin",
+        "Citric Acid",
+        "Rebaudioside A",
+        "Beet Root",
+        "Natural flavor"
+      ],
+      "metrics": {
+        "ingredientCount": 11,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-3716ca157ffca38a9c27",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "333206",
+      "kind": "product",
+      "market": "US",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Max for Women Iron Free",
+      "summary": "Country Life · Other Combinations · Capsule · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/333206",
+      "brand": "Country Life",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D",
+        "Vitamin E",
+        "Vitamin K",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Folic Acid",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Choline",
+        "Calcium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-c9a99bacc8947a9a29d1",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "333240",
+      "kind": "product",
+      "market": "US",
+      "query": "甘氨酸镁",
+      "category": "功能性营养",
+      "title": "Digestive Balance",
+      "summary": "Country Life Gut Connection · Botanical with Nutrients · Capsule · All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/333240",
+      "brand": "Country Life Gut Connection",
+      "ingredients": [
+        "PreticX",
+        "EpiCor",
+        "Actazin",
+        "Benegut",
+        "Cellulose",
+        "Rice Bran Extract",
+        "Vegetable Glaze",
+        "Sunflower Oil",
+        "Silica"
+      ],
+      "metrics": {
+        "ingredientCount": 9,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-460491095b1dcc34e24e",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328540",
+      "kind": "product",
+      "market": "US",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "ADHD Vitamin Support",
+      "summary": "Brainchild Nutritionals · Other Combinations · Powder · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328540",
+      "brand": "Brainchild Nutritionals",
+      "ingredients": [
+        "Calories",
+        "Sodium",
+        "Total Carbohydrates",
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Vitamin B1",
+        "Vitamin B2",
+        "Vitamin B3",
+        "Vitamin B6",
+        "Quatrefolic",
+        "Vitamin B12",
+        "Biotin",
+        "Vitamin B5",
+        "Choline"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-c6d143065562d466845a",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328604",
+      "kind": "product",
+      "market": "US",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "Once-Daily Health Booster",
+      "summary": "Life Extension · Non-Nutrient/Non-Botanical · Softgel Capsule · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328604",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin E",
+        "Vitamin K Activity From",
+        "Vitamin K1",
+        "Vitamin K2",
+        "Vitamin K2",
+        "MacuGuard Proprietary Blend",
+        "Phospholipids",
+        "Marigold Flower Extract",
+        "Lutein",
+        "Blend",
+        "Meso-Zeaxanthin",
+        "Trans-Zeaxanthin",
+        "Mixed Carotenoids",
+        "Alpha-Carotene",
+        "Chlorophyllin",
+        "Mixed Tocotrienols"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-21b1278b4a37f582f9f9",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328639",
+      "kind": "product",
+      "market": "US",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "Plant-Based Multivitamin",
+      "summary": "Life Extension · Botanical with Nutrients · Capsule · Nutrient / All Other",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328639",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Iodine",
+        "Magnesium",
+        "Zinc",
+        "Selenium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-00401c6b962428f02810",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328791",
+      "kind": "product",
+      "market": "US",
+      "query": "肌醇",
+      "category": "女性健康",
+      "title": "Triple Strength Fish Oil plus CoQ-10",
+      "summary": "GNC · Other Combinations · Softgel Capsule · Nutrient / All Other / Qualified Health / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328791",
+      "brand": "GNC",
+      "ingredients": [
+        "Calories",
+        "Total Fat",
+        "Cholesterol",
+        "Total Omega-3 Fatty Acids",
+        "Total EPA + DHA",
+        "Eicosapentaenoic Acid",
+        "Docosahexaenoic Acid",
+        "Other Omega Fatty Acids",
+        "Coenzyme Q-10",
+        "Fish Oil",
+        "Gelatin",
+        "Water, Purified",
+        "Glycerin",
+        "Annatto",
+        "Ethylcellulose",
+        "Sodium Alginate"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-83e2d27c08f48a980f58",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328540",
+      "kind": "product",
+      "market": "US",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "ADHD Vitamin Support",
+      "summary": "Brainchild Nutritionals · Other Combinations · Powder · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328540",
+      "brand": "Brainchild Nutritionals",
+      "ingredients": [
+        "Calories",
+        "Sodium",
+        "Total Carbohydrates",
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Vitamin B1",
+        "Vitamin B2",
+        "Vitamin B3",
+        "Vitamin B6",
+        "Quatrefolic",
+        "Vitamin B12",
+        "Biotin",
+        "Vitamin B5",
+        "Choline"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-5899a6ccf91374dd91e2",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328604",
+      "kind": "product",
+      "market": "US",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Once-Daily Health Booster",
+      "summary": "Life Extension · Non-Nutrient/Non-Botanical · Softgel Capsule · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328604",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin E",
+        "Vitamin K Activity From",
+        "Vitamin K1",
+        "Vitamin K2",
+        "Vitamin K2",
+        "MacuGuard Proprietary Blend",
+        "Phospholipids",
+        "Marigold Flower Extract",
+        "Lutein",
+        "Blend",
+        "Meso-Zeaxanthin",
+        "Trans-Zeaxanthin",
+        "Mixed Carotenoids",
+        "Alpha-Carotene",
+        "Chlorophyllin",
+        "Mixed Tocotrienols"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-86625a8a4ed9eecbae31",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328639",
+      "kind": "product",
+      "market": "US",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Plant-Based Multivitamin",
+      "summary": "Life Extension · Botanical with Nutrients · Capsule · Nutrient / All Other",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328639",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Iodine",
+        "Magnesium",
+        "Zinc",
+        "Selenium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-6ac7c741f71ff56e322e",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328791",
+      "kind": "product",
+      "market": "US",
+      "query": "胶原蛋白肽",
+      "category": "女性健康",
+      "title": "Triple Strength Fish Oil plus CoQ-10",
+      "summary": "GNC · Other Combinations · Softgel Capsule · Nutrient / All Other / Qualified Health / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328791",
+      "brand": "GNC",
+      "ingredients": [
+        "Calories",
+        "Total Fat",
+        "Cholesterol",
+        "Total Omega-3 Fatty Acids",
+        "Total EPA + DHA",
+        "Eicosapentaenoic Acid",
+        "Docosahexaenoic Acid",
+        "Other Omega Fatty Acids",
+        "Coenzyme Q-10",
+        "Fish Oil",
+        "Gelatin",
+        "Water, Purified",
+        "Glycerin",
+        "Annatto",
+        "Ethylcellulose",
+        "Sodium Alginate"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-cf940e2c06b95c8749aa",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328540",
+      "kind": "product",
+      "market": "US",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "ADHD Vitamin Support",
+      "summary": "Brainchild Nutritionals · Other Combinations · Powder · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328540",
+      "brand": "Brainchild Nutritionals",
+      "ingredients": [
+        "Calories",
+        "Sodium",
+        "Total Carbohydrates",
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Vitamin B1",
+        "Vitamin B2",
+        "Vitamin B3",
+        "Vitamin B6",
+        "Quatrefolic",
+        "Vitamin B12",
+        "Biotin",
+        "Vitamin B5",
+        "Choline"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-0a7a2390be5cb0f0e0ad",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328604",
+      "kind": "product",
+      "market": "US",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Once-Daily Health Booster",
+      "summary": "Life Extension · Non-Nutrient/Non-Botanical · Softgel Capsule · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328604",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin E",
+        "Vitamin K Activity From",
+        "Vitamin K1",
+        "Vitamin K2",
+        "Vitamin K2",
+        "MacuGuard Proprietary Blend",
+        "Phospholipids",
+        "Marigold Flower Extract",
+        "Lutein",
+        "Blend",
+        "Meso-Zeaxanthin",
+        "Trans-Zeaxanthin",
+        "Mixed Carotenoids",
+        "Alpha-Carotene",
+        "Chlorophyllin",
+        "Mixed Tocotrienols"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-5befa998777dd5acc94a",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328639",
+      "kind": "product",
+      "market": "US",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Plant-Based Multivitamin",
+      "summary": "Life Extension · Botanical with Nutrients · Capsule · Nutrient / All Other",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328639",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Iodine",
+        "Magnesium",
+        "Zinc",
+        "Selenium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-17439f5205b170de168a",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328791",
+      "kind": "product",
+      "market": "US",
+      "query": "小檗碱",
+      "category": "体重管理",
+      "title": "Triple Strength Fish Oil plus CoQ-10",
+      "summary": "GNC · Other Combinations · Softgel Capsule · Nutrient / All Other / Qualified Health / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328791",
+      "brand": "GNC",
+      "ingredients": [
+        "Calories",
+        "Total Fat",
+        "Cholesterol",
+        "Total Omega-3 Fatty Acids",
+        "Total EPA + DHA",
+        "Eicosapentaenoic Acid",
+        "Docosahexaenoic Acid",
+        "Other Omega Fatty Acids",
+        "Coenzyme Q-10",
+        "Fish Oil",
+        "Gelatin",
+        "Water, Purified",
+        "Glycerin",
+        "Annatto",
+        "Ethylcellulose",
+        "Sodium Alginate"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-76644b61309ade58990e",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328540",
+      "kind": "product",
+      "market": "US",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "ADHD Vitamin Support",
+      "summary": "Brainchild Nutritionals · Other Combinations · Powder · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328540",
+      "brand": "Brainchild Nutritionals",
+      "ingredients": [
+        "Calories",
+        "Sodium",
+        "Total Carbohydrates",
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Vitamin B1",
+        "Vitamin B2",
+        "Vitamin B3",
+        "Vitamin B6",
+        "Quatrefolic",
+        "Vitamin B12",
+        "Biotin",
+        "Vitamin B5",
+        "Choline"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-2c92b16b0d3f99f558ef",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328604",
+      "kind": "product",
+      "market": "US",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Once-Daily Health Booster",
+      "summary": "Life Extension · Non-Nutrient/Non-Botanical · Softgel Capsule · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328604",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin E",
+        "Vitamin K Activity From",
+        "Vitamin K1",
+        "Vitamin K2",
+        "Vitamin K2",
+        "MacuGuard Proprietary Blend",
+        "Phospholipids",
+        "Marigold Flower Extract",
+        "Lutein",
+        "Blend",
+        "Meso-Zeaxanthin",
+        "Trans-Zeaxanthin",
+        "Mixed Carotenoids",
+        "Alpha-Carotene",
+        "Chlorophyllin",
+        "Mixed Tocotrienols"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-033cb61bd60ce012c686",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328639",
+      "kind": "product",
+      "market": "US",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Plant-Based Multivitamin",
+      "summary": "Life Extension · Botanical with Nutrients · Capsule · Nutrient / All Other",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328639",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Iodine",
+        "Magnesium",
+        "Zinc",
+        "Selenium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-20a0880669d9f2d41cde",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328791",
+      "kind": "product",
+      "market": "US",
+      "query": "肌酸",
+      "category": "功能性营养",
+      "title": "Triple Strength Fish Oil plus CoQ-10",
+      "summary": "GNC · Other Combinations · Softgel Capsule · Nutrient / All Other / Qualified Health / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328791",
+      "brand": "GNC",
+      "ingredients": [
+        "Calories",
+        "Total Fat",
+        "Cholesterol",
+        "Total Omega-3 Fatty Acids",
+        "Total EPA + DHA",
+        "Eicosapentaenoic Acid",
+        "Docosahexaenoic Acid",
+        "Other Omega Fatty Acids",
+        "Coenzyme Q-10",
+        "Fish Oil",
+        "Gelatin",
+        "Water, Purified",
+        "Glycerin",
+        "Annatto",
+        "Ethylcellulose",
+        "Sodium Alginate"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-9b9a197b3e5e83853d2b",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328540",
+      "kind": "product",
+      "market": "US",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "ADHD Vitamin Support",
+      "summary": "Brainchild Nutritionals · Other Combinations · Powder · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328540",
+      "brand": "Brainchild Nutritionals",
+      "ingredients": [
+        "Calories",
+        "Sodium",
+        "Total Carbohydrates",
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Vitamin B1",
+        "Vitamin B2",
+        "Vitamin B3",
+        "Vitamin B6",
+        "Quatrefolic",
+        "Vitamin B12",
+        "Biotin",
+        "Vitamin B5",
+        "Choline"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-a1f19077bd75ebc4b410",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328604",
+      "kind": "product",
+      "market": "US",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Once-Daily Health Booster",
+      "summary": "Life Extension · Non-Nutrient/Non-Botanical · Softgel Capsule · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328604",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin E",
+        "Vitamin K Activity From",
+        "Vitamin K1",
+        "Vitamin K2",
+        "Vitamin K2",
+        "MacuGuard Proprietary Blend",
+        "Phospholipids",
+        "Marigold Flower Extract",
+        "Lutein",
+        "Blend",
+        "Meso-Zeaxanthin",
+        "Trans-Zeaxanthin",
+        "Mixed Carotenoids",
+        "Alpha-Carotene",
+        "Chlorophyllin",
+        "Mixed Tocotrienols"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-afb1a3109b38f9ad7b46",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328639",
+      "kind": "product",
+      "market": "US",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Plant-Based Multivitamin",
+      "summary": "Life Extension · Botanical with Nutrients · Capsule · Nutrient / All Other",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328639",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Iodine",
+        "Magnesium",
+        "Zinc",
+        "Selenium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-0334429f787d8922a157",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328791",
+      "kind": "product",
+      "market": "US",
+      "query": "电解质补充",
+      "category": "功能性营养",
+      "title": "Triple Strength Fish Oil plus CoQ-10",
+      "summary": "GNC · Other Combinations · Softgel Capsule · Nutrient / All Other / Qualified Health / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328791",
+      "brand": "GNC",
+      "ingredients": [
+        "Calories",
+        "Total Fat",
+        "Cholesterol",
+        "Total Omega-3 Fatty Acids",
+        "Total EPA + DHA",
+        "Eicosapentaenoic Acid",
+        "Docosahexaenoic Acid",
+        "Other Omega Fatty Acids",
+        "Coenzyme Q-10",
+        "Fish Oil",
+        "Gelatin",
+        "Water, Purified",
+        "Glycerin",
+        "Annatto",
+        "Ethylcellulose",
+        "Sodium Alginate"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-07947933409186ab0019",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328540",
+      "kind": "product",
+      "market": "US",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "ADHD Vitamin Support",
+      "summary": "Brainchild Nutritionals · Other Combinations · Powder · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328540",
+      "brand": "Brainchild Nutritionals",
+      "ingredients": [
+        "Calories",
+        "Sodium",
+        "Total Carbohydrates",
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Vitamin B1",
+        "Vitamin B2",
+        "Vitamin B3",
+        "Vitamin B6",
+        "Quatrefolic",
+        "Vitamin B12",
+        "Biotin",
+        "Vitamin B5",
+        "Choline"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-2132344dbfb552589228",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328604",
+      "kind": "product",
+      "market": "US",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Once-Daily Health Booster",
+      "summary": "Life Extension · Non-Nutrient/Non-Botanical · Softgel Capsule · Nutrient / All Other / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328604",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin E",
+        "Vitamin K Activity From",
+        "Vitamin K1",
+        "Vitamin K2",
+        "Vitamin K2",
+        "MacuGuard Proprietary Blend",
+        "Phospholipids",
+        "Marigold Flower Extract",
+        "Lutein",
+        "Blend",
+        "Meso-Zeaxanthin",
+        "Trans-Zeaxanthin",
+        "Mixed Carotenoids",
+        "Alpha-Carotene",
+        "Chlorophyllin",
+        "Mixed Tocotrienols"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-61c37034396e3aedb8dc",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328639",
+      "kind": "product",
+      "market": "US",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Plant-Based Multivitamin",
+      "summary": "Life Extension · Botanical with Nutrients · Capsule · Nutrient / All Other",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328639",
+      "brand": "Life Extension",
+      "ingredients": [
+        "Vitamin A",
+        "Vitamin C",
+        "Vitamin D3",
+        "Vitamin E",
+        "Thiamine",
+        "Riboflavin",
+        "Niacin",
+        "Vitamin B6",
+        "Folate",
+        "Vitamin B12",
+        "Biotin",
+        "Pantothenic Acid",
+        "Iodine",
+        "Magnesium",
+        "Zinc",
+        "Selenium"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    },
+    {
+      "id": "nih_dsld-0330d7247638c76a2ca4",
+      "collectedAt": "2026-10-13T23:00:38.227Z",
+      "source": "NIH_DSLD",
+      "sourceId": "328791",
+      "kind": "product",
+      "market": "US",
+      "query": "膳食纤维",
+      "category": "肠道与益生菌",
+      "title": "Triple Strength Fish Oil plus CoQ-10",
+      "summary": "GNC · Other Combinations · Softgel Capsule · Nutrient / All Other / Qualified Health / Structure/Function",
+      "observedAt": "2025-09-25",
+      "url": "https://dsld.od.nih.gov/label/328791",
+      "brand": "GNC",
+      "ingredients": [
+        "Calories",
+        "Total Fat",
+        "Cholesterol",
+        "Total Omega-3 Fatty Acids",
+        "Total EPA + DHA",
+        "Eicosapentaenoic Acid",
+        "Docosahexaenoic Acid",
+        "Other Omega Fatty Acids",
+        "Coenzyme Q-10",
+        "Fish Oil",
+        "Gelatin",
+        "Water, Purified",
+        "Glycerin",
+        "Annatto",
+        "Ethylcellulose",
+        "Sodium Alginate"
+      ],
+      "metrics": {
+        "ingredientCount": 16,
+        "onMarket": true
+      }
+    }
+  ]
+}

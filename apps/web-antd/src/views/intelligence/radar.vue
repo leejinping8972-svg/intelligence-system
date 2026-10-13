@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PublicCollectorData, RadarFinding } from './radar-engine';
+import type { FreeSourceData } from './public-sources';
 
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -24,6 +25,7 @@ import PageHeader from './components/PageHeader.vue';
 import { download, marketName, marketOptions, state } from './data';
 import {
   buildCollectedRadarFindings,
+  buildFreeSourceRadarFindings,
   buildRadarFindings,
   buildRadarReport,
   buildSourceCoverage,
@@ -37,9 +39,11 @@ const selected = ref<RadarFinding>();
 const reportOpen = ref(false);
 const sourceOpen = ref(false);
 const collectorData = ref<null | PublicCollectorData>(null);
+const freeSourceData = ref<FreeSourceData | null>(null);
 
 const allFindings = computed(() => [
   ...buildCollectedRadarFindings(collectorData.value, windowDays.value),
+  ...buildFreeSourceRadarFindings(freeSourceData.value, windowDays.value),
   ...buildRadarFindings(state, windowDays.value, includeDemo.value),
 ]);
 const findings = computed(() =>
@@ -50,7 +54,7 @@ const findings = computed(() =>
   ),
 );
 const sourceCoverage = computed(() =>
-  buildSourceCoverage(state, collectorData.value),
+  buildSourceCoverage(state, collectorData.value, freeSourceData.value),
 );
 const report = computed(() =>
   buildRadarReport(findings.value, windowDays.value, marketName(state.market)),
@@ -105,14 +109,14 @@ const typeLabel: Record<string, string> = {
 };
 
 onMounted(async () => {
-  try {
-    const response = await fetch(
-      `${import.meta.env.BASE_URL}data/public-site-observations.json`,
-    );
-    if (response.ok) collectorData.value = await response.json();
-  } catch {
-    collectorData.value = null;
-  }
+  const [collectorResult, freeResult] = await Promise.allSettled([
+    fetch(`${import.meta.env.BASE_URL}data/public-site-observations.json`),
+    fetch(`${import.meta.env.BASE_URL}data/free-source-observations.json`),
+  ]);
+  if (collectorResult.status === 'fulfilled' && collectorResult.value.ok)
+    collectorData.value = await collectorResult.value.json();
+  if (freeResult.status === 'fulfilled' && freeResult.value.ok)
+    freeSourceData.value = await freeResult.value.json();
 });
 
 const activityOption = computed(() => {
@@ -205,6 +209,7 @@ function openRelated(item: RadarFinding) {
       description="从商品事实、广告传播、关键词和趋势中识别变化，再用供应链条件判断是否值得行动。"
     >
       <Button @click="sourceOpen = true">数据来源</Button>
+      <Button @click="router.push('/signals')">公共情报源</Button>
       <Button @click="router.push('/imports')">导入真实数据</Button>
       <Button type="primary" @click="reportOpen = true">生成分析报告</Button>
     </PageHeader>
@@ -378,8 +383,8 @@ function openRelated(item: RadarFinding) {
             </template>
             <template v-else-if="column.key === 'action'">
               <Button type="link" size="small" @click="selectFinding(record)">
-证据
-</Button>
+                证据
+              </Button>
             </template>
           </template>
         </Table>
@@ -417,9 +422,9 @@ function openRelated(item: RadarFinding) {
                     ? 'orange'
                     : 'default'
               "
-              >
-{{ source.count }} 条真实记录
-</Tag>
+            >
+              {{ source.count }} 条真实记录
+            </Tag>
             <small>{{ source.automated ? '自动采集' : '导入/待接入' }}</small>
           </div>
         </div>
@@ -437,16 +442,20 @@ function openRelated(item: RadarFinding) {
           <div>
             <Tag>{{ typeLabel[selected.type] }}</Tag>
             <Tag :color="statusColor[selected.status]">
-{{
-              statusLabel[selected.status]
-            }}
-</Tag>
+              {{ statusLabel[selected.status] }}
+            </Tag>
             <h2>{{ selected.title }}</h2>
             <p>{{ selected.subtitle }}</p>
           </div>
           <div class="hci-radar-dual-score">
-            <span><b>{{ selected.confidenceScore }}</b>新鲜度可信度</span>
-            <span><b>{{ selected.businessScore ?? '—' }}</b>商业机会</span>
+            <span
+              ><b>{{ selected.confidenceScore }}</b
+              >新鲜度可信度</span
+            >
+            <span
+              ><b>{{ selected.businessScore ?? '—' }}</b
+              >商业机会</span
+            >
           </div>
         </div>
 
@@ -471,7 +480,8 @@ function openRelated(item: RadarFinding) {
               :href="evidence.url"
               target="_blank"
               rel="noreferrer"
-              >打开来源 ↗</a>
+              >打开来源 ↗</a
+            >
             <span v-else class="hci-subtle">演示来源，不提供外链</span>
           </article>
         </div>
@@ -491,8 +501,8 @@ function openRelated(item: RadarFinding) {
         <div class="hci-radar-drawer-actions">
           <Button @click="router.push('/reviews')">进入人工审核</Button>
           <Button type="primary" @click="openRelated(selected)">
-查看关联数据
-</Button>
+            查看关联数据
+          </Button>
         </div>
       </template>
     </Drawer>

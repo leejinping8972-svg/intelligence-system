@@ -1,0 +1,98 @@
+{
+  "retentionDays": 365,
+  "maxPerQuery": 4,
+  "terms": [
+    {
+      "id": "probiotic",
+      "label": "益生菌",
+      "category": "肠道与益生菌",
+      "scientific": "probiotic",
+      "queries": {
+        "US": "probiotic supplement",
+        "MX": "suplemento probiótico",
+        "VN": "thực phẩm bổ sung men vi sinh"
+      }
+    },
+    {
+      "id": "magnesium-glycinate",
+      "label": "甘氨酸镁",
+      "category": "功能性营养",
+      "scientific": "magnesium glycinate",
+      "compound": "magnesium glycinate",
+      "queries": {
+        "US": "magnesium glycinate supplement",
+        "MX": "suplemento glicinato de magnesio",
+        "VN": "thực phẩm bổ sung magie glycinate"
+      }
+    },
+    {
+      "id": "inositol",
+      "label": "肌醇",
+      "category": "女性健康",
+      "scientific": "inositol supplement",
+      "compound": "myo-inositol",
+      "queries": {
+        "US": "inositol supplement",
+        "MX": "suplemento inositol",
+        "VN": "thực phẩm bổ sung inositol"
+      }
+    },
+    {
+      "id": "collagen-peptide",
+      "label": "胶原蛋白肽",
+      "category": "女性健康",
+      "scientific": "collagen peptide supplement",
+      "queries": {
+        "US": "collagen peptide supplement",
+        "MX": "suplemento péptidos de colágeno",
+        "VN": "thực phẩm bổ sung collagen peptide"
+      }
+    },
+    {
+      "id": "berberine",
+      "label": "小檗碱",
+      "category": "体重管理",
+      "scientific": "berberine supplement",
+      "compound": "berberine",
+      "queries": {
+        "US": "berberine supplement",
+        "MX": "suplemento berberina",
+        "VN": "thực phẩm bổ sung berberine"
+      }
+    },
+    {
+      "id": "creatine",
+      "label": "肌酸",
+      "category": "功能性营养",
+      "scientific": "creatine supplement",
+      "compound": "creatine",
+      "queries": {
+        "US": "creatine supplement",
+        "MX": "suplemento creatina",
+        "VN": "thực phẩm bổ sung creatine"
+      }
+    },
+    {
+      "id": "electrolyte",
+      "label": "电解质补充",
+      "category": "功能性营养",
+      "scientific": "electrolyte supplement",
+      "queries": {
+        "US": "electrolyte supplement",
+        "MX": "suplemento electrolitos",
+        "VN": "thực phẩm bổ sung điện giải"
+      }
+    },
+    {
+      "id": "fiber",
+      "label": "膳食纤维",
+      "category": "肠道与益生菌",
+      "scientific": "fiber supplement",
+      "queries": {
+        "US": "fiber supplement",
+        "MX": "suplemento fibra",
+        "VN": "thực phẩm bổ sung chất xơ"
+      }
+    }
+  ]
+}

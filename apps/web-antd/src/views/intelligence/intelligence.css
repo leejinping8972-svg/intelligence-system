@@ -1440,3 +1440,123 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+.hci-signal-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.hci-signal-stats article {
+  display: grid;
+  gap: 6px;
+  min-height: 126px;
+  padding: 20px;
+  border: 1px solid var(--hci-border);
+  border-radius: 14px;
+  background: var(--hci-paper);
+}
+
+.hci-signal-stats span,
+.hci-signal-stats small {
+  color: var(--hci-muted);
+}
+
+.hci-signal-stats b {
+  color: var(--hci-ink);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.hci-free-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hci-free-source-grid article {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid var(--hci-border);
+  border-radius: 12px;
+  background: var(--hci-subtle);
+}
+
+.hci-free-source-grid h3,
+.hci-free-source-grid p {
+  margin: 0 0 4px;
+}
+
+.hci-free-source-grid p,
+.hci-free-source-grid small {
+  color: var(--hci-muted);
+}
+
+.hci-free-source-state {
+  display: grid;
+  gap: 5px;
+  justify-items: end;
+  white-space: nowrap;
+}
+
+.hci-signal-chart .hci-chart {
+  height: 320px;
+}
+
+.hci-signal-filters {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 190px 170px;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.hci-signal-detail-head h2 {
+  margin: 14px 0 8px;
+  color: var(--hci-ink);
+}
+
+.hci-signal-detail-head p {
+  color: var(--hci-muted);
+}
+
+.hci-signal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 14px;
+}
+
+@media (max-width: 1100px) {
+  .hci-signal-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .hci-free-source-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hci-signal-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .hci-signal-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .hci-free-source-grid article {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .hci-free-source-state {
+    grid-column: 2;
+    justify-items: start;
+  }
+}

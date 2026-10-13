@@ -26,27 +26,81 @@ const resetOpen = ref(false);
 const selected = ref<{ name: string; status: string; detail: string }>();
 const sources = [
   {
+    mark: 'DS',
+    name: 'NIH DSLD 商品标签',
+    status: '零成本自动',
+    detail:
+      '美国国家卫生研究院膳食补充剂标签库。自动获取商品、品牌、剂型和标签成分；收录日期不等于首次上市日期。',
+  },
+  {
+    mark: 'FD',
+    name: 'openFDA 召回 / CAERS',
+    status: '零成本自动',
+    detail:
+      '自动获取美国召回记录和CAERS名称匹配汇总。公开报告不证明因果关系，也不能估计不良事件发生率。',
+  },
+  {
+    mark: 'PM',
+    name: 'PubMed / ClinicalTrials.gov',
+    status: '零成本自动',
+    detail:
+      '自动获取近期论文和临床研究登记，用于跟踪研究方向。登记、发表与营销功效成立是不同口径。',
+  },
+  {
+    mark: 'PC',
+    name: 'PubChem 成分档案',
+    status: '零成本自动',
+    detail:
+      '获取可明确匹配的单一成分标识、分子式和基础化学信息。复合物和泛品类不强行匹配。',
+  },
+  {
+    mark: 'GW',
+    name: '品牌官网公开页面',
+    status: '白名单自动',
+    detail:
+      '按确认后的品牌官网白名单低频采集公开商品页，遵守robots.txt，并在403或429时停止。',
+  },
+  {
+    mark: 'YT',
+    name: 'YouTube Data API',
+    status: '等待免费Key',
+    detail:
+      '按美、墨、越市场跟踪新视频及公开互动量。需要Google Cloud启用YouTube Data API并把Key配置为GitHub Secret YOUTUBE_API_KEY。',
+  },
+  {
+    mark: 'GD',
+    name: 'GDELT 全球新闻',
+    status: '零成本试运行',
+    detail:
+      '跟踪全球新闻提及。公共接口可能限流；限流时保留历史数据并显示状态，不阻塞其他来源。',
+  },
+  {
+    mark: 'G',
     name: 'Google 联想词 / SERP',
     status: '未接入',
     detail:
       '用于关键词发现与自然搜索结果。需核验服务商账号、国家参数、配额及使用许可。',
   },
   {
+    mark: 'T',
     name: 'Google Trends',
     status: '未接入',
     detail: '用于同市场90天相对趋势。查询尺度、批次和低数据量状态单独保存。',
   },
   {
+    mark: 'SL',
     name: 'Store Leads',
     status: '未接入',
     detail: '用于站点发现与背景补充。需要正式套餐和字段覆盖验证。',
   },
   {
+    mark: 'SS',
     name: '卖家精灵',
     status: '导入优先',
     detail: '先使用已有关键词和ASIN导出资料；正式接口按权限与预算接入。',
   },
   {
+    mark: 'AD',
     name: 'Meta / TikTok 广告',
     status: '导入优先',
     detail: '首版先导入资料、人工关联商品。自动来源需逐国验证授权。',
@@ -89,11 +143,7 @@ function saveBranding() {
     return;
   }
   Object.assign(state.branding, brandingDraft, values);
-  audit(
-    '更新基础配置',
-    `${values.appName} / ${values.workspaceName}`,
-    'ALL',
-  );
+  audit('更新基础配置', `${values.appName} / ${values.workspaceName}`, 'ALL');
   message.success('基础配置已保存，并已同步到后台界面');
 }
 
@@ -155,7 +205,9 @@ function handleLogo(event: Event) {
             </div>
           </div>
           <div class="hci-workspace-preview">
-            <Tag color="gold">{{ brandingDraft.environmentLabel || '环境标识' }}</Tag>
+            <Tag color="gold">{{
+              brandingDraft.environmentLabel || '环境标识'
+            }}</Tag>
             <span>{{ brandingDraft.workspaceName || '工作区名称' }}</span>
           </div>
           <input
@@ -303,8 +355,12 @@ function handleLogo(event: Event) {
           <div class="hci-cost-reference hci-full">
             默认参考：SerpApi Developer 套餐 $75 / 5,000 次，折算
             $0.015/次；DataForSEO Trends $0.0012/任务、每任务最多5词。Store
-            Leads 按实际套餐填写分摊成本。价格会变化，正式接入时以供应商账单为准。
-            <a href="https://serpapi.com/pricing" target="_blank" rel="noreferrer"
+            Leads
+            按实际套餐填写分摊成本。价格会变化，正式接入时以供应商账单为准。
+            <a
+              href="https://serpapi.com/pricing"
+              target="_blank"
+              rel="noreferrer"
               >SerpApi 价格</a
             >
             ·
@@ -327,8 +383,8 @@ function handleLogo(event: Event) {
         <h2>{{ marketName(state.market) }} · 数据来源</h2>
         <span class="hci-subtle">密钥将在服务端配置，前台演示不收集密钥</span>
       </div>
-      <div v-for="(s, i) in sources" :key="s.name" class="hci-source-card">
-        <div class="hci-source-mark">{{ ['G', 'T', 'S', 'S', 'AD'][i] }}</div>
+      <div v-for="s in sources" :key="s.name" class="hci-source-card">
+        <div class="hci-source-mark">{{ s.mark }}</div>
         <div class="hci-source-info">
           <h3>{{ s.name }}</h3>
           <p class="hci-subtle">
@@ -339,11 +395,19 @@ function handleLogo(event: Event) {
             }}
           </p>
         </div>
-        <Tag :color="s.status === '未接入' ? 'default' : 'orange'">{{
-          s.name === '卖家精灵' && state.market === 'VN'
-            ? '本地站点不支持'
-            : s.status
-        }}</Tag
+        <Tag
+          :color="
+            s.status.includes('自动')
+              ? 'green'
+              : s.status === '未接入'
+                ? 'default'
+                : 'orange'
+          "
+          >{{
+            s.name === '卖家精灵' && state.market === 'VN'
+              ? '本地站点不支持'
+              : s.status
+          }}</Tag
         ><Button size="small" @click="selected = s">接入说明</Button>
       </div>
     </section>
