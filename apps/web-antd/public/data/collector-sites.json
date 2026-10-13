@@ -1,0 +1,13 @@
+{
+  "sites": [
+    {
+      "id": "example-us-brand",
+      "brand": "Example Brand",
+      "domain": "brand.example",
+      "market": "US",
+      "enabled": false,
+      "maxPages": 20,
+      "note": "将示例替换为已确认允许低频访问的真实品牌官网"
+    }
+  ]
+}

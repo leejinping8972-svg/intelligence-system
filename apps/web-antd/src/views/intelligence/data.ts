@@ -1,7 +1,7 @@
 import { computed, reactive, watch } from 'vue';
 
-export type Market = 'US' | 'MX' | 'VN';
-export type MarketFilter = Market | 'ALL';
+export type Market = 'MX' | 'US' | 'VN';
+export type MarketFilter = 'ALL' | Market;
 export const markets = [
   {
     code: 'US' as Market,
@@ -44,11 +44,13 @@ export interface Keyword {
   market: Market;
   category: string;
   source: string;
-  growth: number | null;
+  growth: null | number;
   series: number[];
   favorite: boolean;
   productIds: string[];
   siteIds: string[];
+  updatedAt?: string;
+  dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface IngredientInsight {
   name: string;
@@ -76,6 +78,10 @@ export interface Product {
   color: string;
   reviewed: boolean;
   favorite: boolean;
+  firstSeenAt?: string;
+  publishedAt?: string;
+  evidenceUrl?: string;
+  dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Site {
   id: string;
@@ -91,6 +97,8 @@ export interface Site {
   ownershipOperations: string;
   ownershipEvidence: string;
   ownershipSource: string;
+  collectorMode?: 'automatic' | 'manual' | 'restricted';
+  lastCollectedAt?: string;
 }
 export interface Ad {
   id: string;
@@ -103,6 +111,9 @@ export interface Ad {
   productId: string;
   status: string;
   color: string;
+  firstSeenAt?: string;
+  evidenceUrl?: string;
+  dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Review {
   id: string;
@@ -111,14 +122,14 @@ export interface Review {
   current: string;
   proposed: string;
   quote: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'approved' | 'pending' | 'rejected';
   reason: string;
 }
 export interface Task {
   id: string;
   title: string;
   market: Market;
-  status: 'queued' | 'completed' | 'partial' | 'cancelled';
+  status: 'cancelled' | 'completed' | 'partial' | 'queued';
   created: string;
   steps: string[];
 }
@@ -229,6 +240,8 @@ function initial(): DemoState {
       ownershipOperations: '创始团队运营',
       ownershipEvidence: '官网 About 页面披露品牌与团队，未披露母公司信息。',
       ownershipSource: '官网 About / 品牌故事页',
+      collectorMode: 'manual',
+      lastCollectedAt: '2026-10-13',
     },
     {
       id: `s${i * 2 + 2}`,
@@ -248,6 +261,8 @@ function initial(): DemoState {
       ownershipOperations: '营养健康团队运营',
       ownershipEvidence: '官网页脚与隐私政策展示集团运营主体；当前为演示摘录。',
       ownershipSource: '官网页脚 / Privacy Policy',
+      collectorMode: 'manual',
+      lastCollectedAt: '2026-10-12',
     },
   ]);
   const products: Product[] = markets.flatMap((m, i) => [
@@ -261,7 +276,7 @@ function initial(): DemoState {
       category: '女性健康',
       form: '胶囊',
       size: '30粒 / 30份',
-      price: [32, 549, 385000][i]!,
+      price: [32, 549, 385_000][i]!,
       currency: m.currency,
       ingredient: 'Lactobacillus acidophilus',
       dose: '10 billion CFU / 份',
@@ -280,6 +295,10 @@ function initial(): DemoState {
       color: 'sage',
       reviewed: i === 0,
       favorite: i === 0,
+      firstSeenAt: `2026-10-${String(12 - i).padStart(2, '0')}`,
+      publishedAt: i === 0 ? '2026-10-10' : undefined,
+      evidenceUrl: `https://${sites[i * 2]!.domain}/products/daily-probiotic`,
+      dataNature: 'demo',
     },
     {
       id: `p${i * 3 + 2}`,
@@ -289,7 +308,7 @@ function initial(): DemoState {
       category: '功能性营养',
       form: '胶囊',
       size: '60粒 / 30份',
-      price: [26, 429, 295000][i]!,
+      price: [26, 429, 295_000][i]!,
       currency: m.currency,
       ingredient: 'Magnesium glycinate',
       dose: '200 mg / 份',
@@ -308,6 +327,9 @@ function initial(): DemoState {
       color: 'lavender',
       reviewed: false,
       favorite: false,
+      firstSeenAt: `2026-10-${String(9 - i).padStart(2, '0')}`,
+      evidenceUrl: `https://${sites[i * 2 + 1]!.domain}/products/magnesium`,
+      dataNature: 'demo',
     },
     {
       id: `p${i * 3 + 3}`,
@@ -317,13 +339,14 @@ function initial(): DemoState {
       category: '肠道与益生菌',
       form: '粉剂',
       size: '180g / 30份',
-      price: [29, 479, 325000][i]!,
+      price: [29, 479, 325_000][i]!,
       currency: m.currency,
       ingredient: 'Inulin · Psyllium husk',
       dose: '6 g / 份',
       claim: '补充膳食纤维',
       benefits: ['膳食纤维补充', '肠道规律支持'],
-      benefitEvidence: '官网商品页卖点区提及 fiber intake 与 regularity support。',
+      benefitEvidence:
+        '官网商品页卖点区提及 fiber intake 与 regularity support。',
       ingredientInsights: [
         {
           name: 'Inulin',
@@ -342,6 +365,9 @@ function initial(): DemoState {
       color: 'sand',
       reviewed: true,
       favorite: false,
+      firstSeenAt: `2026-10-${String(6 - i).padStart(2, '0')}`,
+      evidenceUrl: `https://${sites[i * 2]!.domain}/products/daily-fiber`,
+      dataNature: 'demo',
     },
   ]);
   return {
@@ -360,8 +386,7 @@ function initial(): DemoState {
           term: localized[m.code][i]!,
           market: m.code,
           category: String(t[2]),
-          source:
-            mi === 2 ? 'Google 联想词 · 演示' : 'Google / Amazon · 演示',
+          source: mi === 2 ? 'Google 联想词 · 演示' : 'Google / Amazon · 演示',
           growth: mi === 2 && i === 5 ? null : Number(t[3]) - mi * 5,
           series: Array.from({ length: 90 }, (_, j) =>
             Math.max(
@@ -379,7 +404,11 @@ function initial(): DemoState {
           ),
           favorite: i === 0,
           productIds: relatedProducts.map((product) => product.id),
-          siteIds: [...new Set(relatedProducts.map((product) => product.siteId))],
+          siteIds: [
+            ...new Set(relatedProducts.map((product) => product.siteId)),
+          ],
+          updatedAt: `2026-10-${String(13 - (i % 4)).padStart(2, '0')}`,
+          dataNature: 'demo' as const,
         };
       }),
     ),
@@ -402,6 +431,9 @@ function initial(): DemoState {
         productId: p.id,
         status: '观察到活跃',
         color: p.color,
+        firstSeenAt: `2026-10-${String(13 - (i % 5)).padStart(2, '0')}`,
+        evidenceUrl: `https://ads.example/${i + 1}`,
+        dataNature: 'demo' as const,
       })),
     reviews: products
       .filter((p) => !p.reviewed)
@@ -479,19 +511,22 @@ function restore(): DemoState {
     ) {
       const defaults = initial();
       const products: Product[] = saved.products.map((product: Product) => {
-        const fallback = defaults.products.find((item) => item.id === product.id);
+        const fallback = defaults.products.find(
+          (item) => item.id === product.id,
+        );
         return {
           ...fallback,
           ...product,
-          benefits: product.benefits || fallback?.benefits || [product.claim].filter(Boolean),
+          benefits:
+            product.benefits ||
+            fallback?.benefits ||
+            [product.claim].filter(Boolean),
           benefitEvidence:
             product.benefitEvidence ||
             fallback?.benefitEvidence ||
             '人工导入，待补充官网商品页卖点依据。',
-          ingredientInsights:
-            product.ingredientInsights ||
-            fallback?.ingredientInsights ||
-            [
+          ingredientInsights: product.ingredientInsights ||
+            fallback?.ingredientInsights || [
               {
                 name: product.ingredient || '未知成分',
                 amount: product.dose || '剂量未知',
@@ -501,28 +536,36 @@ function restore(): DemoState {
             ],
         } as Product;
       });
-      const sites: Site[] = (saved.sites || defaults.sites).map((site: Site) => {
-        const fallback = defaults.sites.find((item) => item.id === site.id);
-        return {
-          ...fallback,
-          ...site,
-          category: site.category || fallback?.category || '待分类',
-          mainProducts: site.mainProducts || fallback?.mainProducts || [],
-          ownershipBackground:
-            site.ownershipBackground || fallback?.ownershipBackground || '待核验',
-          ownershipOperations:
-            site.ownershipOperations || fallback?.ownershipOperations || '待核验',
-          ownershipEvidence:
-            site.ownershipEvidence ||
-            fallback?.ownershipEvidence ||
-            '尚未从官网获取股权或运营主体信息。',
-          ownershipSource:
-            site.ownershipSource || fallback?.ownershipSource || '官网待采集',
-        } as Site;
-      });
+      const sites: Site[] = (saved.sites || defaults.sites).map(
+        (site: Site) => {
+          const fallback = defaults.sites.find((item) => item.id === site.id);
+          return {
+            ...fallback,
+            ...site,
+            category: site.category || fallback?.category || '待分类',
+            mainProducts: site.mainProducts || fallback?.mainProducts || [],
+            ownershipBackground:
+              site.ownershipBackground ||
+              fallback?.ownershipBackground ||
+              '待核验',
+            ownershipOperations:
+              site.ownershipOperations ||
+              fallback?.ownershipOperations ||
+              '待核验',
+            ownershipEvidence:
+              site.ownershipEvidence ||
+              fallback?.ownershipEvidence ||
+              '尚未从官网获取股权或运营主体信息。',
+            ownershipSource:
+              site.ownershipSource || fallback?.ownershipSource || '官网待采集',
+          } as Site;
+        },
+      );
       const keywords: Keyword[] = (saved.keywords || defaults.keywords).map(
         (keyword: Keyword) => {
-          const fallback = defaults.keywords.find((item) => item.id === keyword.id);
+          const fallback = defaults.keywords.find(
+            (item) => item.id === keyword.id,
+          );
           const relatedProducts = products.filter(
             (product) =>
               product.market === keyword.market &&
@@ -535,19 +578,30 @@ function restore(): DemoState {
               keyword.productIds ||
               fallback?.productIds ||
               relatedProducts.map((product) => product.id),
-            siteIds:
-              keyword.siteIds ||
-              fallback?.siteIds ||
-              [...new Set(relatedProducts.map((product) => product.siteId))],
+            siteIds: keyword.siteIds ||
+              fallback?.siteIds || [
+                ...new Set(relatedProducts.map((product) => product.siteId)),
+              ],
           } as Keyword;
         },
       );
+      const ads: Ad[] = (saved.ads || defaults.ads).map((ad: Ad) => {
+        const fallback = defaults.ads.find((item) => item.id === ad.id);
+        return {
+          ...fallback,
+          ...ad,
+          firstSeenAt: ad.firstSeenAt || fallback?.firstSeenAt,
+          evidenceUrl: ad.evidenceUrl || fallback?.evidenceUrl,
+          dataNature: ad.dataNature || fallback?.dataNature || 'imported',
+        } as Ad;
+      });
       return {
         ...defaults,
         ...saved,
         products,
         sites,
         keywords,
+        ads,
         branding: { ...defaults.branding, ...saved.branding },
         settings: { ...defaults.settings, ...saved.settings },
       };
@@ -661,15 +715,14 @@ export function csvValue(value: unknown) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 export function exportCsv(name: string, rows: Record<string, unknown>[]) {
-  if (!rows.length) return;
+  if (rows.length === 0) return;
   const keys = Object.keys(rows[0]!);
   download(
     name,
-    '\uFEFF' +
-      [
-        keys.map(csvValue).join(','),
-        ...rows.map((r) => keys.map((k) => csvValue(r[k])).join(',')),
-      ].join('\r\n'),
+    `\uFEFF${[
+      keys.map(csvValue).join(','),
+      ...rows.map((r) => keys.map((k) => csvValue(r[k])).join(',')),
+    ].join('\r\n')}`,
     'text/csv;charset=utf-8',
   );
 }

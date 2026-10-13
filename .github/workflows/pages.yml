@@ -3,6 +3,8 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '23 1 * * *'
   workflow_dispatch:
 
 permissions:
@@ -32,6 +34,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Collect public website observations
+        env:
+          HCI_COLLECTOR_PREVIOUS_URL: https://leejinping8972-svg.github.io/intelligence-system/data/public-site-observations.json
+        run: pnpm --filter @vben/web-antd run collect:public
 
       - name: Build demo
         run: pnpm --filter @vben/web-antd exec vite build --mode demo --base=/intelligence-system/

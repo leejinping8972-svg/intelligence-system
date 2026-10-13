@@ -46,34 +46,40 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '广告观察', icon: 'lucide:megaphone', order: 5 },
   },
   {
+    name: 'HciRadar',
+    path: '/radar',
+    component: () => import('#/views/intelligence/radar.vue'),
+    meta: { title: '新品雷达', icon: 'lucide:radar', order: 6 },
+  },
+  {
     name: 'HciOpportunities',
     path: '/opportunities',
     component: () => import('#/views/intelligence/opportunities.vue'),
-    meta: { title: '机会研究', icon: 'lucide:lightbulb', order: 6 },
+    meta: { title: '机会研究', icon: 'lucide:lightbulb', order: 7 },
   },
   {
     name: 'HciReviews',
     path: '/reviews',
     component: () => import('#/views/intelligence/reviews.vue'),
-    meta: { title: '人工审核', icon: 'lucide:clipboard-check', order: 7 },
+    meta: { title: '人工审核', icon: 'lucide:clipboard-check', order: 8 },
   },
   {
     name: 'HciImports',
     path: '/imports',
     component: () => import('#/views/intelligence/imports.vue'),
-    meta: { title: '数据导入', icon: 'lucide:upload', order: 8 },
+    meta: { title: '数据导入', icon: 'lucide:upload', order: 9 },
   },
   {
     name: 'HciMonitor',
     path: '/monitor',
     component: () => import('#/views/intelligence/monitor.vue'),
-    meta: { title: '监控与任务', icon: 'lucide:activity', order: 9 },
+    meta: { title: '监控与任务', icon: 'lucide:activity', order: 10 },
   },
   {
     name: 'HciSettings',
     path: '/settings',
     component: () => import('#/views/intelligence/settings.vue'),
-    meta: { title: '数据源与设置', icon: 'lucide:settings-2', order: 10 },
+    meta: { title: '数据源与设置', icon: 'lucide:settings-2', order: 11 },
   },
 ];
 export default routes;
