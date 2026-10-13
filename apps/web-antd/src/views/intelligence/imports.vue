@@ -133,8 +133,8 @@ async function load(event: Event) {
         Object.keys(rows[0]!).find((h) => aliases[field.key]?.includes(h)) ||
         '';
     step.value = 1;
-  } catch (error) {
-    error.value = error instanceof Error ? error.message : '读取失败';
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : '读取失败';
   } finally {
     loading.value = false;
     (event.target as HTMLInputElement).value = '';
