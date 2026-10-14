@@ -58,7 +58,7 @@ const sources = [
   {
     mark: 'BS',
     name: 'Brave Search 独立站发现',
-    status: '等待Worker部署',
+    status: '已接入',
     detail:
       '从关键词搜索结果发现候选域名，再访问候选官网验证商品、价格、购物车和独立站平台；不需要预先提供品牌名单。',
   },
@@ -79,15 +79,16 @@ const sources = [
   {
     mark: 'G',
     name: 'Google 联想词 / SERP',
-    status: '未接入',
+    status: '联想词已接入',
     detail:
       '用于关键词发现与自然搜索结果。需核验服务商账号、国家参数、配额及使用许可。',
   },
   {
     mark: 'T',
     name: 'Google Trends',
-    status: '未接入',
-    detail: '用于同市场90天相对趋势。查询尺度、批次和低数据量状态单独保存。',
+    status: '零成本试运行',
+    detail:
+      '通过公开网页接口采集同市场近90天相对趋势并计算最近28天变化；接口限流或低数据量时保留失败原因。',
   },
   {
     mark: 'SL',

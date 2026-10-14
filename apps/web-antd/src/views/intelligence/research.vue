@@ -42,6 +42,7 @@ const LIVE_SOURCE_IDS: Record<string, string> = {
   [AMAZON_SUGGEST_SOURCE]: 'amazon_autocomplete',
   [DISCOVERY_SOURCE]: 'site_discovery',
   [GOOGLE_SUGGEST_SOURCE]: 'google_autocomplete',
+  'Google Trends': 'google_trends',
 };
 const route = useRoute();
 const router = useRouter();
@@ -117,9 +118,9 @@ const costEstimate = computed(() => {
   if (form.sources.includes('Google Trends'))
     add(
       'trends',
-      'Google Trends',
+      'Google Trends公开网页接口（免费，可能限流）',
       Math.ceil(estimatedKeywords / state.settings.trendsKeywordsPerTask),
-      state.settings.trendsTaskCost,
+      0,
     );
   if (form.sources.includes('Google SERP'))
     add(
@@ -274,8 +275,100 @@ function mergeCollectedKeyword(record: Keyword) {
     ...new Set([...current.productIds, ...record.productIds]),
   ];
   current.siteIds = [...new Set([...current.siteIds, ...record.siteIds])];
+  if (record.series.length > 0) {
+    current.series = record.series;
+    current.growth = record.growth;
+  }
+  if (current.category === '待分类' && record.category !== '待分类')
+    current.category = record.category;
   current.updatedAt = record.updatedAt;
   return current;
+}
+
+async function collectKeywordTrends(records: Keyword[]) {
+  if (records.length === 0) {
+    message.warning('请先勾选要补齐趋势的关键词');
+    return;
+  }
+  if (records.length > 3) {
+    message.warning('Google Trends每批最多查询3个关键词');
+    return;
+  }
+  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
+    researchError.value =
+      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
+    message.error(researchError.value);
+    return;
+  }
+
+  const groups = new Map<Market, Keyword[]>();
+  for (const record of records) {
+    const marketRecords = groups.get(record.market) ?? [];
+    marketRecords.push(record);
+    groups.set(record.market, marketRecords);
+  }
+  researching.value = true;
+  researchError.value = '';
+  let completed = 0;
+  const failures: string[] = [];
+  try {
+    for (const [market, marketRecords] of groups) {
+      try {
+        const result = await discoverSites({
+          accessKey: state.settings.researchAccessKey,
+          apiUrl: state.settings.researchApiUrl,
+          keywords: marketRecords.map((item) => item.term),
+          markets: [market],
+          maxSites: 1,
+          productsPerSite: 1,
+          sources: ['google_trends'],
+        });
+        for (const trend of result.trends || []) {
+          const original = marketRecords.find(
+            (item) =>
+              item.term.toLocaleLowerCase() ===
+              trend.keyword.toLocaleLowerCase(),
+          );
+          if (!original) continue;
+          if (trend.series.length > 0) {
+            mergeCollectedKeyword({
+              ...original,
+              growth: trend.growth,
+              series: trend.series,
+              source: 'Google Trends · 实采',
+              updatedAt: result.generatedAt,
+            });
+            completed += 1;
+            audit(
+              '完成Google Trends采集',
+              `${original.term} / ${marketName(market)} / ${trend.series.length}个时点 / 28天变化${trend.growth ?? '数据不足'}`,
+              market,
+            );
+          } else {
+            failures.push(
+              `${original.term}：${trend.message || '未返回趋势序列'}`,
+            );
+          }
+        }
+      } catch (error) {
+        failures.push(
+          `${marketName(market)}：${error instanceof Error ? error.message : '趋势采集失败'}`,
+        );
+      }
+    }
+    if (completed > 0)
+      message.success(`已补齐 ${completed} 个关键词的趋势和28天变化`);
+    if (failures.length > 0) {
+      researchError.value = failures.join('；');
+      message.warning(`有 ${failures.length} 个趋势查询未完成`);
+    }
+  } finally {
+    researching.value = false;
+  }
+}
+
+function collectSelectedKeywordTrends() {
+  return collectKeywordTrends(selectedKeywords.value);
 }
 
 async function discoverKeywordRecords(records: Keyword[]) {
@@ -350,6 +443,9 @@ async function discoverKeywordRecords(records: Keyword[]) {
           mergeById(state.products, products);
           mergeCollectedKeyword({
             ...original,
+            category:
+              sites.find((site) => site.category !== '待分类')?.category ||
+              original.category,
             source: 'Brave Search / 官网验证 · 实采',
             productIds: products.map((product) => product.id),
             siteIds: sites.map((site) => site.id),
@@ -520,6 +616,35 @@ async function createResearch() {
     let totalSites = 0;
     let totalProducts = 0;
     let totalSuggestions = 0;
+    let totalTrends = 0;
+    for (const trend of result.trends || []) {
+      const task = tasks.get(`${trend.keyword}|${trend.market}`);
+      task?.steps.push(
+        `Google Trends：${trend.series.length}个时点${trend.message ? `（${trend.message}）` : ''}`,
+      );
+      if (trend.series.length === 0) continue;
+      mergeCollectedKeyword({
+        id: crypto.randomUUID(),
+        term: trend.keyword,
+        market: trend.market,
+        category: '待分类',
+        source: 'Google Trends · 实采',
+        growth: trend.growth,
+        series: trend.series,
+        favorite: false,
+        productIds: [],
+        siteIds: [],
+        updatedAt: result.generatedAt,
+        dataNature: 'collected',
+      });
+      totalTrends += 1;
+      if (task) task.status = 'completed';
+      audit(
+        '完成Google Trends采集',
+        `${trend.keyword} / ${marketName(trend.market)} / ${trend.series.length}个时点`,
+        trend.market,
+      );
+    }
     for (const group of result.suggestions || []) {
       const task = tasks.get(`${group.keyword}|${group.market}`);
       for (const source of group.sources) {
@@ -567,7 +692,9 @@ async function createResearch() {
         id: crypto.randomUUID(),
         term: group.keyword,
         market: group.market,
-        category: '待分类',
+        category:
+          sites.find((site) => site.category !== '待分类')?.category ||
+          '待分类',
         source: 'Brave Search / 官网验证 · 实采',
         growth: null,
         series: [],
@@ -603,9 +730,9 @@ async function createResearch() {
     state.market =
       form.markets.length === 1 ? (form.markets[0] ?? 'US') : 'ALL';
     open.value = false;
-    if (totalSites || totalSuggestions) {
+    if (totalSites || totalSuggestions || totalTrends) {
       message.success(
-        `已采集 ${totalSuggestions} 条联想词，验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
+        `已采集 ${totalSuggestions} 条联想词、${totalTrends} 条趋势序列，验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
       );
     } else {
       message.warning(
@@ -669,6 +796,12 @@ async function createResearch() {
           @click="discoverSelectedKeywords"
         >
           批量查找独立站（{{ selectedKeywords.length }}/3）
+</Button><Button
+          :disabled="selectedKeywords.length === 0 || researching"
+          :loading="researching"
+          @click="collectSelectedKeywordTrends"
+        >
+          补齐28天趋势（{{ selectedKeywords.length }}/3）
 </Button><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span>
       </div>
       <Table
@@ -792,8 +925,8 @@ async function createResearch() {
     <div class="hci-demo-note">
       <b>免费真实采集</b>
       Google 联想词支持美国、墨西哥和越南；Amazon
-      联想词支持美国和墨西哥；独立站发现使用 Brave Search
-      和官网直接验证。联想词不等于搜索量，28天趋势仍显示“数据不足”。
+      联想词支持美国和墨西哥；独立站发现使用 Brave Search 和官网直接验证；Google
+      Trends用于补齐近90天相对趋势与28天变化。低量词或接口限流时仍会显示“数据不足”。
     </div>
     <Modal
       v-model:open="open"
@@ -935,9 +1068,8 @@ async function createResearch() {
           Store Leads 为套餐制，当前未配置分摊成本，因此未计入金额。
         </p>
         <p class="hci-subtle" style="margin: 10px 0 0">
-          估算规则：Google和Amazon联想词当前按免费公开接口计为$0；SERP按预计关键词数、Trends按每批最多
-          {{ state.settings.trendsKeywordsPerTask }}
-          词计算。税费、汇率和套餐基础费不在本次估算内。
+          估算规则：Google和Amazon联想词、Google
+          Trends公开网页接口当前计为$0；SERP按预计关键词数计算。公开接口可能限流，税费、汇率和套餐基础费不在本次估算内。
         </p>
       </section>
       <Alert

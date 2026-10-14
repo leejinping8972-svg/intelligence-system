@@ -5,11 +5,15 @@ import test from 'node:test';
 import {
   amazonSuggestUrl,
   braveSearchRequest,
+  calculate28DayGrowth,
   classifyStore,
   extractJsonLdProducts,
   googleSuggestUrl,
+  googleTrendsExploreUrl,
   hostnameRoot,
+  inferCategory,
   isCandidateUrl,
+  parseGoogleTrendsPayload,
   productFromJsonLd,
   productPageUrl,
   productPageUrls,
@@ -90,6 +94,48 @@ test('extracts image, formula, size, benefits and ingredient records', () => {
   assert.equal(labeled.size, '30 servings');
   assert.match(labeled.ingredients, /Inulin/);
   assert.match(labeled.ingredientInsights[0].role, /膳食纤维/);
+
+  const sanitized = productFromJsonLd(
+    {
+      '@type': 'Product',
+      name: 'Multi Collagen Peptides Powder',
+      ingredients: 'trên cùng một trục ngang */ display:flex',
+      description: 'Hydrolyzed collagen peptide formula.',
+    },
+    'https://example.vn/products/collagen',
+    'VN',
+    'Codeage',
+    '<style>.ingredients{/* trên cùng một trục ngang */}</style><meta property="og:image" content="/collagen.webp"><h3>Thành phần</h3><p>Hydrolyzed collagen peptides 10 g</p>',
+  );
+  assert.equal(sanitized.image, 'https://example.vn/collagen.webp');
+  assert.equal(sanitized.ingredients, 'Hydrolyzed collagen peptides 10 g');
+});
+
+test('classifies supplement categories from multilingual evidence', () => {
+  assert.equal(inferCategory('men vi sinh cho nữ'), '肠道与益生菌');
+  assert.equal(inferCategory('multi collagen beauty powder'), '美容与抗衰');
+  assert.equal(inferCategory('creatine sport nutrition'), '运动营养');
+});
+
+test('builds and calculates Google Trends series', () => {
+  const url = new URL(googleTrendsExploreUrl('sức khỏe phụ nữ', 'VN'));
+  const request = JSON.parse(url.searchParams.get('req'));
+  assert.equal(request.comparisonItem[0].geo, 'VN');
+  assert.equal(request.comparisonItem[0].time, 'today 3-m');
+  assert.deepEqual(parseGoogleTrendsPayload(`)]}',\n{"ok":true}`), {
+    ok: true,
+  });
+  assert.equal(
+    calculate28DayGrowth([
+      ...Array.from({ length: 28 }, () => 50),
+      ...Array.from({ length: 28 }, () => 75),
+    ]),
+    50,
+  );
+  assert.equal(
+    calculate28DayGrowth(Array.from({ length: 20 }, () => 10)),
+    null,
+  );
 });
 
 test('classifies a product-selling independent site', () => {

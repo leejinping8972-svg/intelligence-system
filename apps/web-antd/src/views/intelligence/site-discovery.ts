@@ -47,6 +47,18 @@ export interface DiscoveryResponse {
   generatedAt: string;
   groups: DiscoveryGroup[];
   suggestions: SuggestionGroup[];
+  trends: TrendGroup[];
+}
+
+export interface TrendGroup {
+  growth: null | number;
+  keyword: string;
+  market: Market;
+  message: string;
+  points: Array<{ date: string; value: number }>;
+  series: number[];
+  source: string;
+  status: 'empty' | 'error' | 'success';
 }
 
 export interface SuggestionGroup {

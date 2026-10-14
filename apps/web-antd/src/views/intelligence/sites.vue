@@ -14,6 +14,7 @@ const search = ref('');
 const platform = ref('ALL');
 const category = ref('ALL');
 const ownership = ref('ALL');
+const keywordFilter = ref('');
 const selected = ref<Site>();
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keywordId),
@@ -36,6 +37,19 @@ const platformOptions = computed(() => [
     (value) => ({ label: value, value }),
   ),
 ]);
+const keywordOptions = computed(() => [
+  { label: '全部关联关键词', value: '' },
+  ...state.keywords
+    .filter(
+      (keyword) =>
+        keyword.siteIds.length > 0 &&
+        (state.market === 'ALL' || keyword.market === state.market),
+    )
+    .map((keyword) => ({
+      label: `${keyword.term} · ${keyword.market}`,
+      value: keyword.id,
+    })),
+]);
 const collectedCount = computed(
   () => rows.value.filter((site) => site.dataNature === 'collected').length,
 );
@@ -56,6 +70,15 @@ watch(
   () => state.market,
   () => {
     selected.value = undefined;
+    if (
+      keywordFilter.value &&
+      !state.keywords.some(
+        (keyword) =>
+          keyword.id === keywordFilter.value &&
+          (state.market === 'ALL' || keyword.market === state.market),
+      )
+    )
+      keywordFilter.value = '';
   },
 );
 const rows = computed(() =>
@@ -77,6 +100,10 @@ const rows = computed(() =>
       (category.value === 'ALL' || s.category === category.value) &&
       (ownership.value === 'ALL' ||
         s.ownershipBackground === ownership.value) &&
+      (!keywordFilter.value ||
+        state.keywords
+          .find((keyword) => keyword.id === keywordFilter.value)
+          ?.siteIds.includes(s.id)) &&
       (!linkedKeyword.value || linkedKeyword.value.siteIds.includes(s.id)),
   ),
 );
@@ -142,6 +169,13 @@ const columns = [
           v-model:value="search"
           placeholder="搜索关键词、品牌、网址、商品或成分"
           allow-clear
+        /><Select
+          v-model:value="keywordFilter"
+          :options="keywordOptions"
+          show-search
+          option-filter-prop="label"
+          aria-label="按关联关键词筛选独立站"
+          style="min-width: 240px"
         /><Select v-model:value="platform" :options="platformOptions" /><Select
           v-model:value="category"
           :options="categoryOptions"

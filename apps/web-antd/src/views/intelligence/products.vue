@@ -36,6 +36,7 @@ const selected = ref<string>();
 const compareIds = ref<string[]>([]);
 const compareOpen = ref(false);
 const siteFilter = ref('');
+const keywordFilter = ref('');
 const availableSites = computed(() =>
   state.sites.filter(
     (site) => state.market === 'ALL' || site.market === state.market,
@@ -47,6 +48,19 @@ const siteOptions = computed(() => [
     label: `${site.brand} · ${site.domain}`,
     value: site.id,
   })),
+]);
+const keywordOptions = computed(() => [
+  { label: '全部关联关键词', value: '' },
+  ...state.keywords
+    .filter(
+      (keyword) =>
+        keyword.productIds.length > 0 &&
+        (state.market === 'ALL' || keyword.market === state.market),
+    )
+    .map((keyword) => ({
+      label: `${keyword.term} · ${keyword.market}`,
+      value: keyword.id,
+    })),
 ]);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keyword),
@@ -91,6 +105,15 @@ watch(
       )
     )
       siteFilter.value = '';
+    if (
+      keywordFilter.value &&
+      !state.keywords.some(
+        (keyword) =>
+          keyword.id === keywordFilter.value &&
+          (state.market === 'ALL' || keyword.market === state.market),
+      )
+    )
+      keywordFilter.value = '';
   },
 );
 const rows = computed(() =>
@@ -111,6 +134,10 @@ const rows = computed(() =>
         )) &&
       (!favorites.value || p.favorite) &&
       (!siteFilter.value || p.siteId === siteFilter.value) &&
+      (!keywordFilter.value ||
+        state.keywords
+          .find((keyword) => keyword.id === keywordFilter.value)
+          ?.productIds.includes(p.id)) &&
       (!linkedKeyword.value || linkedKeyword.value.productIds.includes(p.id)),
   ),
 );
@@ -187,6 +214,13 @@ function toggleCompare(id: string) {
           v-model:value="search"
           placeholder="搜索关键词、商品、站点、配方、规格或卖点"
           allow-clear
+        /><Select
+          v-model:value="keywordFilter"
+          :options="keywordOptions"
+          show-search
+          option-filter-prop="label"
+          aria-label="按关联关键词筛选商品"
+          style="min-width: 240px"
         /><Select
           v-model:value="category"
           :options="[

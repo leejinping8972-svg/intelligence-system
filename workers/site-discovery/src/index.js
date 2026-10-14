@@ -44,6 +44,7 @@ const AMAZON_SUGGEST_OPTIONS = {
 const LIVE_SOURCES = new Set([
   'amazon_autocomplete',
   'google_autocomplete',
+  'google_trends',
   'site_discovery',
 ]);
 
@@ -178,6 +179,10 @@ function firstOffer(product) {
 
 function readableText(html = '') {
   return String(html)
+    .replaceAll(
+      /<(?:script|style|noscript|svg)[^>]*>[\s\S]*?<\/(?:script|style|noscript|svg)>/gi,
+      ' ',
+    )
     .replaceAll(/<(?:br|hr)\s*\/?>/gi, '\n')
     .replaceAll(/<\/(?:div|h[1-6]|li|p|section|tr)>/gi, '\n')
     .replaceAll(/<[^>]+>/g, ' ')
@@ -188,6 +193,20 @@ function readableText(html = '') {
     .replaceAll(/[ \t]+/g, ' ')
     .replaceAll(/\s*\n\s*/g, '\n')
     .trim();
+}
+
+function plausibleIngredients(value) {
+  const text = cleanText(value);
+  if (text.length < 2 || text.length > 1500) return '';
+  if (/[{}]|\*\/|\/\*|=>|var\(|@media|display\s*:|position\s*:/i.test(text))
+    return '';
+  if (
+    /trên cùng một trục ngang|căn chỉnh|stylesheet|javascript|cookie policy/i.test(
+      text,
+    )
+  )
+    return '';
+  return text;
 }
 
 function additionalProperty(product, names) {
@@ -308,6 +327,60 @@ function absoluteUrl(value, pageUrl) {
   }
 }
 
+function imageFromHtml(html, pageUrl) {
+  const metadata =
+    meta(html, 'og:image') ||
+    meta(html, 'og:image:secure_url') ||
+    meta(html, 'twitter:image');
+  if (metadata) return absoluteUrl(metadata, pageUrl);
+  const images = [...String(html).matchAll(/<img\b[^>]*>/gi)];
+  const ranked = images
+    .map(([tag]) => {
+      const source =
+        tag.match(/(?:src|data-src|data-original)=["']([^"']+)["']/i)?.[1] ||
+        tag.match(/srcset=["']([^"',\s]+)[^"']*["']/i)?.[1] ||
+        '';
+      const context = tag.toLowerCase();
+      let score = 0;
+      if (/product|featured|main|gallery|zoom/.test(context)) score += 4;
+      if (/logo|icon|avatar|flag|payment|tracking/.test(context)) score -= 5;
+      if (/\.svg(?:$|\?)/i.test(source)) score -= 3;
+      return { score, source: absoluteUrl(source, pageUrl) };
+    })
+    .filter((item) => item.source)
+    .toSorted((a, b) => b.score - a.score);
+  return ranked[0]?.source || null;
+}
+
+export function inferCategory(...values) {
+  const text = values.join(' ').toLowerCase();
+  const rules = [
+    [
+      /probiotic|prebiotic|gut|digest|inulin|psyllium|fiber|fibre|men vi sinh|đường ruột|chất xơ|probiótico|digestiv/,
+      '肠道与益生菌',
+    ],
+    [
+      /women|woman|female|menopause|prenatal|fertility|inositol|phụ nữ|nội tiết|mujer|femenin/,
+      '女性健康',
+    ],
+    [
+      /collagen|skin|beauty|hair|nail|anti-aging|anti aging|làm đẹp|da tóc|belleza/,
+      '美容与抗衰',
+    ],
+    [
+      /weight|slim|metabolism|fat burn|keto|giảm cân|control de peso/,
+      '体重管理',
+    ],
+    [/sleep|stress|calm|melatonin|ashwagandha|ngủ|estrés|sueño/, '睡眠与压力'],
+    [/protein|creatine|bcaa|workout|sport|gym|thể thao|deport/, '运动营养'],
+    [
+      /multivitamin|vitamin|mineral|magnesium|omega|zinc|supplement|thực phẩm bổ sung|vitamina|suplemento/,
+      '功能性营养',
+    ],
+  ];
+  return rules.find(([pattern]) => pattern.test(text))?.[1] || '待分类';
+}
+
 export function productFromJsonLd(
   product,
   pageUrl,
@@ -322,17 +395,22 @@ export function productFromJsonLd(
   let image = product.image;
   if (Array.isArray(image)) image = image[0];
   else if (typeof image === 'object') image = image?.url;
+  const resolvedImage =
+    absoluteUrl(image, pageUrl) || imageFromHtml(html, pageUrl);
   const text = readableText(html || product.description || '');
-  const ingredients = cleanText(
-    product.ingredients ||
+  const ingredients =
+    plausibleIngredients(product.ingredients) ||
+    plausibleIngredients(
       additionalProperty(product, [
         'ingredient',
         'ingrediente',
         'thành phần',
         'formula',
-      ]) ||
+      ]),
+    ) ||
+    plausibleIngredients(
       labeledText(text, ['ingredients', 'ingredientes', 'thành phần']),
-  );
+    );
   const servingSize = cleanText(
     product.servingSize ||
       additionalProperty(product, [
@@ -370,7 +448,7 @@ export function productFromJsonLd(
   const benefits = benefitExcerpts(description);
   const ingredientInsights = ingredientRecords(ingredients, pageUrl);
   const collectionFields = [
-    ['图片', image],
+    ['图片', resolvedImage],
     ['规格', size],
     ['剂型', inferForm(`${product.name} ${size} ${description}`)],
     ['配方', ingredients],
@@ -391,7 +469,7 @@ export function productFromJsonLd(
         : Number(offer.price),
     currency: offer.priceCurrency || MARKET_OPTIONS[market].currency,
     availability: offer.availability || null,
-    image: absoluteUrl(image, pageUrl),
+    image: resolvedImage,
     url: product.url ? new URL(product.url, pageUrl).toString() : pageUrl,
     size,
     form: inferForm(`${product.name} ${size} ${description}`),
@@ -724,6 +802,16 @@ async function validateCandidate(candidate, keyword, market, productsPerSite) {
         .split(/[|–—-]/)[0]
         ?.trim() ||
       domain;
+    const category = inferCategory(
+      keyword,
+      readableText(landingHtml).slice(0, 20_000),
+      ...normalizedProducts.flatMap((product) => [
+        product.title,
+        product.description,
+        product.ingredients,
+        ...product.benefits,
+      ]),
+    );
     return {
       id: `${market}-${domain}`,
       brand: cleanText(brand),
@@ -732,7 +820,7 @@ async function validateCandidate(candidate, keyword, market, productsPerSite) {
       platform: classification.platform,
       type: '搜索发现独立站',
       keyword,
-      category: '待分类',
+      category,
       mainProducts: normalizedProducts
         .map((item) => item.title)
         .filter(Boolean)
@@ -983,6 +1071,110 @@ async function braveSearch(keyword, market, env, count) {
     .filter((url) => isCandidateUrl(url));
 }
 
+export function parseGoogleTrendsPayload(text) {
+  const start = String(text).indexOf('{');
+  if (start === -1) throw new Error('Google Trends返回内容无法解析');
+  return JSON.parse(String(text).slice(start));
+}
+
+export function calculate28DayGrowth(series) {
+  if (!Array.isArray(series) || series.length < 56) return null;
+  const average = (values) =>
+    values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
+  const previous = average(series.slice(-56, -28));
+  if (previous <= 0) return null;
+  const recent = average(series.slice(-28));
+  return Math.round(((recent - previous) / previous) * 1000) / 10;
+}
+
+export function googleTrendsExploreUrl(keyword, market) {
+  const options = MARKET_OPTIONS[market];
+  const url = new URL('https://trends.google.com/trends/api/explore');
+  url.searchParams.set('hl', options.language);
+  url.searchParams.set('tz', '0');
+  url.searchParams.set(
+    'req',
+    JSON.stringify({
+      category: 0,
+      comparisonItem: [{ geo: market, keyword, time: 'today 3-m' }],
+      property: '',
+    }),
+  );
+  return url.toString();
+}
+
+async function fetchGoogleTrends(keyword, market) {
+  const headers = {
+    accept: 'application/json,text/plain,*/*',
+    'accept-language': `${MARKET_OPTIONS[market].language},en;q=0.8`,
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36',
+  };
+  const exploreResponse = await fetch(googleTrendsExploreUrl(keyword, market), {
+    headers,
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!exploreResponse.ok)
+    throw new Error(`Google Trends探索接口返回HTTP ${exploreResponse.status}`);
+  const explore = parseGoogleTrendsPayload(await exploreResponse.text());
+  const widget = (explore.widgets || []).find(
+    (item) => item.id === 'TIMESERIES',
+  );
+  if (!widget?.token || !widget?.request)
+    throw new Error('Google Trends未返回时间序列组件');
+
+  const timelineUrl = new URL(
+    'https://trends.google.com/trends/api/widgetdata/multiline',
+  );
+  timelineUrl.searchParams.set('hl', MARKET_OPTIONS[market].language);
+  timelineUrl.searchParams.set('tz', '0');
+  timelineUrl.searchParams.set('req', JSON.stringify(widget.request));
+  timelineUrl.searchParams.set('token', widget.token);
+  const timelineResponse = await fetch(timelineUrl, {
+    headers,
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!timelineResponse.ok)
+    throw new Error(
+      `Google Trends时间序列接口返回HTTP ${timelineResponse.status}`,
+    );
+  const timeline = parseGoogleTrendsPayload(await timelineResponse.text());
+  const points = (timeline.default?.timelineData || [])
+    .map((item) => ({
+      date: item.formattedTime || item.time || '',
+      value: Number(item.value?.[0]),
+    }))
+    .filter((item) => Number.isFinite(item.value));
+  const series = points.map((item) => item.value);
+  return {
+    growth: calculate28DayGrowth(series),
+    keyword,
+    market,
+    message: series.length < 56 ? '有效日序列不足56天，暂不计算28天变化' : '',
+    points,
+    series,
+    source: 'Google Trends',
+    status: series.length > 0 ? 'success' : 'empty',
+  };
+}
+
+async function collectGoogleTrends(keyword, market) {
+  try {
+    return await fetchGoogleTrends(keyword, market);
+  } catch (error) {
+    return {
+      growth: null,
+      keyword,
+      market,
+      message: error instanceof Error ? error.message : 'Google Trends采集失败',
+      points: [],
+      series: [],
+      source: 'Google Trends',
+      status: 'error',
+    };
+  }
+}
+
 async function runResearch(input, env) {
   const keywords = [
     ...new Set(input.keywords.map((item) => item.trim())),
@@ -1017,9 +1209,12 @@ async function runResearch(input, env) {
 
   const groups = [];
   const suggestions = [];
+  const trends = [];
   const suggestionRequestBudget = { remaining: 20 };
   for (const keyword of keywords) {
     for (const market of markets) {
+      if (sources.includes('google_trends'))
+        trends.push(await collectGoogleTrends(keyword, market));
       if (
         sources.includes('google_autocomplete') ||
         sources.includes('amazon_autocomplete')
@@ -1073,6 +1268,7 @@ async function runResearch(input, env) {
     generatedAt: new Date().toISOString(),
     groups,
     suggestions,
+    trends,
   };
 }
 

@@ -37,6 +37,9 @@ export const categories = [
   '女性健康',
   '功能性营养',
   '体重管理',
+  '美容与抗衰',
+  '睡眠与压力',
+  '运动营养',
 ];
 export interface Keyword {
   id: string;
@@ -535,6 +538,10 @@ function restore(): DemoState {
         const fallback = defaults.products.find(
           (item) => item.id === product.id,
         );
+        const suspiciousIngredient =
+          /\*\/|\/\*|display\s*:|position\s*:|trên cùng một trục ngang|stylesheet|javascript/i.test(
+            String(product.ingredient || ''),
+          );
         return {
           ...fallback,
           ...product,
@@ -546,15 +553,25 @@ function restore(): DemoState {
             product.benefitEvidence ||
             fallback?.benefitEvidence ||
             '人工导入，待补充官网商品页卖点依据。',
-          ingredientInsights: product.ingredientInsights ||
-            fallback?.ingredientInsights || [
-              {
-                name: product.ingredient || '未知成分',
-                amount: product.dose || '剂量未知',
-                role: '待分析',
-                evidence: '人工导入，待补充标签或官网依据',
-              },
-            ],
+          ingredient: suspiciousIngredient
+            ? '疑似网页样式误识别，待重新采集'
+            : product.ingredient || fallback?.ingredient || '官网配方待采集',
+          ingredientInsights: suspiciousIngredient
+            ? []
+            : product.ingredientInsights ||
+              fallback?.ingredientInsights || [
+                {
+                  name: product.ingredient || '未知成分',
+                  amount: product.dose || '剂量未知',
+                  role: '待分析',
+                  evidence: '人工导入，待补充标签或官网依据',
+                },
+              ],
+          collectionFields: suspiciousIngredient
+            ? (product.collectionFields || []).filter(
+                (field) => !['成分分析', '配方'].includes(field),
+              )
+            : product.collectionFields,
         } as Product;
       });
       const sites: Site[] = (saved.sites || defaults.sites).map(
