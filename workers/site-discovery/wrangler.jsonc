@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zhiheng-site-discovery",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-14",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://leejinping8972-svg.github.io,http://127.0.0.1:5666,http://localhost:5666"
+  }
+}

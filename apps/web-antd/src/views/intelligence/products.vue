@@ -1,27 +1,29 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+
 import {
   Button,
-  Input,
-  Select,
   Checkbox,
-  Tag,
-  Modal,
   Empty,
+  Input,
   message,
+  Modal,
+  Select,
+  Tag,
 } from 'ant-design-vue';
+
 import PageHeader from './components/PageHeader.vue';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
 import {
-  state,
-  filteredProducts,
   categories,
-  money,
-  marketName,
-  toggleFavorite,
   exportCsv,
+  filteredProducts,
+  marketName,
+  money,
+  state,
+  toggleFavorite,
 } from './data';
 const route = useRoute();
 const router = useRouter();
@@ -124,11 +126,12 @@ function toggleCompare(id: string) {
     <PageHeader
       title="商品情报库"
       description="从配方、规格到市场定位，建立可追溯的商品认知。"
-      ><Button
+      >
+<Button
         :disabled="!rows.length"
         @click="
           exportCsv(
-            '商品库-演示.csv',
+            '商品库.csv',
             rows.map((p) => ({
               商品: p.title,
               品牌: p.brand,
@@ -147,18 +150,21 @@ function toggleCompare(id: string) {
                 state.sites.find((site) => site.id === p.siteId)?.brand || '',
               独立站域名:
                 state.sites.find((site) => site.id === p.siteId)?.domain || '',
-              性质: '演示',
+              证据网址: p.evidenceUrl || '',
+              性质: p.dataNature === 'collected' ? '官网实采' : '演示',
             })),
           )
         "
-        >导出商品</Button
-      ><Button
+        >
+导出商品
+</Button><Button
         type="primary"
         :disabled="comparison.length < 2"
         @click="compareOpen = true"
-        >对比商品（{{ comparison.length }}/3）</Button
-      ></PageHeader
-    >
+        >
+对比商品（{{ comparison.length }}/3）
+</Button>
+</PageHeader>
     <div v-if="linkedKeyword" class="hci-demo-note">
       <b>关键词关联筛选</b>{{ linkedKeyword.term }} · 当前显示
       {{ linkedKeyword.productIds.length }} 个已关联商品。
@@ -166,7 +172,9 @@ function toggleCompare(id: string) {
         class="hci-link"
         style="margin-left: 12px"
         @click="router.replace('/products')"
-      >清除关联筛选</button>
+      >
+        清除关联筛选
+      </button>
     </div>
     <section class="hci-panel" style="margin-bottom: 22px">
       <div class="hci-toolbar" style="margin-bottom: 0">
@@ -195,11 +203,8 @@ function toggleCompare(id: string) {
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
-        /><Checkbox v-model:checked="favorites">仅看收藏</Checkbox
-        ><span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 个商品 · 关联
-          {{ new Set(rows.map((p) => p.siteId)).size }} 家独立站</span
-        >
+        /><Checkbox v-model:checked="favorites">仅看收藏</Checkbox><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个商品 · 关联
+          {{ new Set(rows.map((p) => p.siteId)).size }} 家独立站</span>
       </div>
     </section>
     <Empty v-if="!rows.length" description="没有符合条件的商品，请调整筛选" />
@@ -235,23 +240,35 @@ function toggleCompare(id: string) {
           </button>
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
           <div class="hci-product-meta">
-            <Tag>{{ product.category }}</Tag
-            ><Tag :color="product.reviewed ? 'green' : 'orange'">{{
-              product.reviewed ? '已核验示例' : '待审核'
-            }}</Tag>
+            <Tag>{{ product.category }}</Tag><Tag :color="product.reviewed ? 'green' : 'orange'">
+{{
+              product.reviewed
+                ? '已核验示例'
+                : product.dataNature === 'collected'
+                  ? '官网实采 · 待审核'
+                  : '待审核'
+            }}
+</Tag>
           </div>
           <div class="hci-product-insights">
             <div>
               <span>功效卖点</span>
               <div class="hci-compact-tags">
-                <Tag v-for="benefit in product.benefits" :key="benefit" color="green">
+                <Tag
+                  v-for="benefit in product.benefits"
+                  :key="benefit"
+                  color="green"
+                >
                   {{ benefit }}
                 </Tag>
+                <span v-if="!product.benefits.length" class="hci-subtle">待提取</span>
               </div>
             </div>
             <div>
               <span>成分分析</span>
-              <b>{{ product.ingredientInsights.map((item) => item.name).join(' · ') }}</b>
+              <b>{{
+                product.ingredientInsights.map((item) => item.name).join(' · ')
+              }}</b>
             </div>
           </div>
           <button
@@ -268,10 +285,11 @@ function toggleCompare(id: string) {
           </button>
           <div class="hci-product-bottom">
             <span class="hci-price">{{
-              money(product.price, product.currency)
-            }}</span
-            ><button
-              :class="['hci-favorite', { active: product.favorite }]"
+              product.price > 0
+                ? money(product.price, product.currency)
+                : '价格待获取'
+            }}</span><button
+              class="hci-favorite" :class="[{ active: product.favorite }]"
               :aria-label="`${product.favorite ? '取消收藏' : '收藏'}${product.title}`"
               @click="toggleFavorite(product)"
             >
@@ -282,36 +300,39 @@ function toggleCompare(id: string) {
             <Checkbox
               :checked="compareIds.includes(product.id)"
               @change="toggleCompare(product.id)"
-              >加入对比</Checkbox
-            >
+              >
+加入对比
+</Checkbox>
           </div>
         </div>
       </article>
     </div>
     <div class="hci-demo-footer">
-      <span>原币种价格 · 不同包装与币种不直接排名</span
-      ><span>全部商品和包装均为虚构演示</span>
+      <span>原币种价格 · 不同包装与币种不直接排名</span><span>官网实采记录保留证据网址，演示记录继续标注为样本</span>
     </div>
     <ProductDrawer :id="selected" @close="selected = undefined" /><Modal
       v-model:open="compareOpen"
       title="商品对比"
       :width="980"
       :footer="null"
-      ><div class="hci-demo-note">
+      >
+<div class="hci-demo-note">
         保留原币种与规格；未接入汇率，不计算跨币种价格高低。
       </div>
       <div class="hci-comparison">
         <div v-for="p in comparison" :key="p.id">
           <h3>{{ p.title }}</h3>
           <p>{{ p.brand }} · {{ marketName(p.market) }}</p>
-          <p class="hci-price">{{ money(p.price, p.currency) }}</p>
+          <p class="hci-price">
+            {{ p.price > 0 ? money(p.price, p.currency) : '价格待获取' }}
+          </p>
           <p>{{ p.size }}</p>
           <p>{{ p.ingredient }}</p>
           <p>{{ p.dose }}</p>
           <p>{{ p.claim }}（竞品宣称示例）</p>
           <Button size="small" @click="toggleCompare(p.id)">移除对比</Button>
         </div>
-      </div></Modal
-    >
+      </div>
+</Modal>
   </main>
 </template>

@@ -1,22 +1,24 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+
 import {
   Button,
-  Tag,
+  Form,
   Input,
   InputNumber,
-  Form,
-  Modal,
   message,
+  Modal,
+  Tag,
 } from 'ant-design-vue';
+
 import PageHeader from './components/PageHeader.vue';
 import {
-  state,
-  markets,
-  marketName,
-  resetDemo,
   audit,
   defaultBranding,
+  marketName,
+  markets,
+  resetDemo,
+  state,
 } from './data';
 
 const draft = reactive({ ...state.settings });
@@ -54,11 +56,11 @@ const sources = [
       '获取可明确匹配的单一成分标识、分子式和基础化学信息。复合物和泛品类不强行匹配。',
   },
   {
-    mark: 'GW',
-    name: '品牌官网公开页面',
-    status: '白名单自动',
+    mark: 'BS',
+    name: 'Brave Search 独立站发现',
+    status: '等待Worker部署',
     detail:
-      '按确认后的品牌官网白名单低频采集公开商品页，遵守robots.txt，并在403或429时停止。',
+      '从关键词搜索结果发现候选域名，再访问候选官网验证商品、价格、购物车和独立站平台；不需要预先提供品牌名单。',
   },
   {
     mark: 'YT',
@@ -110,12 +112,26 @@ const visibleMarkets = computed(() =>
   markets.filter((m) => state.market === 'ALL' || m.code === state.market),
 );
 function save() {
+  const numericValues = [
+    draft.taskBudget,
+    draft.monthlyBudget,
+    draft.trendLimit,
+    draft.productsPerSite,
+    draft.serpSearchCost,
+    draft.trendsTaskCost,
+    draft.trendsKeywordsPerTask,
+    draft.storeLeadsMarketCost,
+    draft.costBufferRate,
+    draft.researchMaxSites,
+  ];
   if (
-    Object.values(draft).some((v) => v === null || v < 0) ||
+    numericValues.some((value) => value === null || value < 0) ||
     draft.trendLimit < 1 ||
     draft.trendLimit > 100 ||
     draft.productsPerSite < 1 ||
     draft.productsPerSite > 50 ||
+    draft.researchMaxSites < 1 ||
+    draft.researchMaxSites > 6 ||
     draft.trendsKeywordsPerTask < 1 ||
     draft.trendsKeywordsPerTask > 5 ||
     draft.costBufferRate > 100
@@ -123,12 +139,21 @@ function save() {
     message.error('请检查预算和采集数量范围');
     return;
   }
+  if (draft.researchApiUrl) {
+    try {
+      const url = new URL(draft.researchApiUrl);
+      if (url.protocol !== 'https:') throw new Error('HTTPS required');
+    } catch {
+      message.error('Worker API地址必须是有效的HTTPS网址');
+      return;
+    }
+  }
   Object.assign(state.settings, draft);
   audit(
     '保存演示配额',
     `任务预算$${draft.taskBudget} / 单站商品${draft.productsPerSite}`,
   );
-  message.success('配置已保存；当前不会发生付费调用');
+  message.success('配置已保存；研究访问码只保存在当前浏览器');
 }
 
 function saveBranding() {
@@ -154,6 +179,13 @@ function resetBranding() {
   message.success('已恢复默认品牌配置');
 }
 
+function sourceStatus(source: (typeof sources)[number]) {
+  if (source.name !== 'Brave Search 独立站发现') return source.status;
+  return state.settings.researchApiUrl && state.settings.researchAccessKey
+    ? '已配置'
+    : '等待配置';
+}
+
 function chooseLogo() {
   logoInput.value?.click();
 }
@@ -163,7 +195,7 @@ function handleLogo(event: Event) {
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
     message.error('Logo 仅支持 PNG、JPG 或 WebP');
     return;
   }
@@ -205,9 +237,11 @@ function handleLogo(event: Event) {
             </div>
           </div>
           <div class="hci-workspace-preview">
-            <Tag color="gold">{{
+            <Tag color="gold">
+{{
               brandingDraft.environmentLabel || '环境标识'
-            }}</Tag>
+            }}
+</Tag>
             <span>{{ brandingDraft.workspaceName || '工作区名称' }}</span>
           </div>
           <input
@@ -288,28 +322,62 @@ function handleLogo(event: Event) {
         </p>
       </section>
       <section class="hci-panel">
-        <div class="hci-panel-head"><h2>工作区共享配额 · 演示配置</h2></div>
-        <Form layout="vertical"
-          ><div class="hci-form-grid">
-            <Form.Item label="单任务预算（USD）"
-              ><InputNumber
+        <div class="hci-panel-head"><h2>研究服务与成本配置</h2></div>
+        <Form layout="vertical">
+<div class="hci-form-grid">
+            <Form.Item label="单任务预算（USD）">
+<InputNumber
                 v-model:value="draft.taskBudget"
-                :min="0" /></Form.Item
-            ><Form.Item label="月度预算（USD）"
-              ><InputNumber
+                :min="0"
+/>
+</Form.Item><Form.Item label="月度预算（USD）">
+<InputNumber
                 v-model:value="draft.monthlyBudget"
-                :min="0" /></Form.Item
-            ><Form.Item label="单任务趋势查询项"
-              ><InputNumber
+                :min="0"
+/>
+</Form.Item><Form.Item label="单任务趋势查询项">
+<InputNumber
                 v-model:value="draft.trendLimit"
                 :min="1"
-                :max="100" /></Form.Item
-            ><Form.Item label="每站商品上限"
-              ><InputNumber
+                :max="100"
+/>
+</Form.Item><Form.Item label="每站商品上限">
+<InputNumber
                 v-model:value="draft.productsPerSite"
                 :min="1"
                 :max="50"
-            /></Form.Item>
+            />
+</Form.Item>
+          </div>
+          <div class="hci-form-section-title hci-full">关键词找独立站</div>
+          <div class="hci-form-grid hci-full">
+            <Form.Item label="Cloudflare Worker API 地址">
+              <Input
+                v-model:value="draft.researchApiUrl"
+                placeholder="https://zhiheng-site-discovery.你的子域.workers.dev"
+              />
+            </Form.Item>
+            <Form.Item label="研究访问码">
+              <Input.Password
+                v-model:value="draft.researchAccessKey"
+                placeholder="填写 Worker 中的 RESEARCH_ACCESS_KEY"
+                autocomplete="off"
+              />
+            </Form.Item>
+            <Form.Item label="每组最多保留站点">
+              <InputNumber
+                v-model:value="draft.researchMaxSites"
+                :min="1"
+                :max="6"
+              />
+            </Form.Item>
+          </div>
+          <div class="hci-cost-reference hci-full">
+            Worker 用 Brave Search
+            发现候选域名，再直接访问官网验证商品、价格、购物车和建站平台。 Brave
+            密钥只保存在 Cloudflare；研究访问码只保存在当前浏览器，不会提交到
+            GitHub。 为控制免费额度和超时，单次最多执行 3 个“关键词 ×
+            市场”组合。
           </div>
           <div class="hci-form-section-title hci-full">成本估算规则</div>
           <div class="hci-form-grid hci-full">
@@ -361,27 +429,22 @@ function handleLogo(event: Event) {
               href="https://serpapi.com/pricing"
               target="_blank"
               rel="noreferrer"
-              >SerpApi 价格</a
-            >
+              >SerpApi 价格</a>
             ·
             <a
               href="https://dataforseo.com/pricing/keywords-data/dataforseo-trends-api-pricing"
               target="_blank"
               rel="noreferrer"
-              >Trends 价格</a
-            >
+              >Trends 价格</a>
           </div>
-          <Button type="primary" @click="save">保存配置</Button
-          ><span class="hci-subtle" style="margin-left: 12px"
-            >预算0：禁止付费</span
-          ></Form
-        >
+          <Button type="primary" @click="save">保存配置</Button><span class="hci-subtle" style="margin-left: 12px">预算0：禁止付费</span>
+</Form>
       </section>
     </div>
     <section class="hci-panel">
       <div class="hci-panel-head">
         <h2>{{ marketName(state.market) }} · 数据来源</h2>
-        <span class="hci-subtle">密钥将在服务端配置，前台演示不收集密钥</span>
+        <span class="hci-subtle">Brave 密钥仅在 Worker 服务端配置</span>
       </div>
       <div v-for="s in sources" :key="s.name" class="hci-source-card">
         <div class="hci-source-mark">{{ s.mark }}</div>
@@ -397,18 +460,19 @@ function handleLogo(event: Event) {
         </div>
         <Tag
           :color="
-            s.status.includes('自动')
+            sourceStatus(s).includes('自动') || sourceStatus(s) === '已配置'
               ? 'green'
-              : s.status === '未接入'
+              : sourceStatus(s) === '未接入'
                 ? 'default'
                 : 'orange'
           "
-          >{{
+          >
+{{
             s.name === '卖家精灵' && state.market === 'VN'
               ? '本地站点不支持'
-              : s.status
-          }}</Tag
-        ><Button size="small" @click="selected = s">接入说明</Button>
+              : sourceStatus(s)
+          }}
+</Tag><Button size="small" @click="selected = s">接入说明</Button>
       </div>
     </section>
     <section class="hci-panel">
@@ -434,19 +498,21 @@ function handleLogo(event: Event) {
         resetOpen = false;
         message.success('演示数据已恢复');
       "
-      ><p>
+      >
+<p>
         这会清除本地导入、收藏、审核和任务，恢复初始样本。电脑上的原始文件不会受到影响。
-      </p></Modal
-    ><Modal
+      </p>
+</Modal><Modal
       :open="!!selected"
       :title="selected?.name"
       :footer="null"
       @cancel="selected = undefined"
-      ><p style="padding: 18px 0">{{ selected?.detail }}</p>
+      >
+<p style="padding: 18px 0">{{ selected?.detail }}</p>
       <div class="hci-evidence">
         后续接入步骤：确认账号与许可 → 验证美/墨/越覆盖 → 配置服务端密钥 →
         小样本测试 → 启用预算控制。
-      </div></Modal
-    >
+      </div>
+</Modal>
   </main>
 </template>

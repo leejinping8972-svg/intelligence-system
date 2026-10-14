@@ -99,6 +99,10 @@ export interface Site {
   ownershipSource: string;
   collectorMode?: 'automatic' | 'manual' | 'restricted';
   lastCollectedAt?: string;
+  evidenceUrl?: string;
+  confidence?: number;
+  signals?: string[];
+  dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Ad {
   id: string;
@@ -193,6 +197,9 @@ export interface DemoState {
     trendsKeywordsPerTask: number;
     storeLeadsMarketCost: number;
     costBufferRate: number;
+    researchApiUrl: string;
+    researchAccessKey: string;
+    researchMaxSites: number;
   };
 }
 const seedTerms = [
@@ -484,6 +491,9 @@ function initial(): DemoState {
       trendsKeywordsPerTask: 5,
       storeLeadsMarketCost: 0,
       costBufferRate: 20,
+      researchApiUrl: '',
+      researchAccessKey: '',
+      researchMaxSites: 6,
     },
   };
 }

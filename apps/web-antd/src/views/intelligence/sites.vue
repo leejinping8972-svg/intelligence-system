@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import type { Site } from './data';
+
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Button, Input, Select, Table, Tag, Drawer } from 'ant-design-vue';
+
+import { Button, Drawer, Input, Select, Table, Tag } from 'ant-design-vue';
+
 import PageHeader from './components/PageHeader.vue';
-import { filteredSites, state, marketName, exportCsv } from './data';
-import type { Site } from './data';
+import { exportCsv, filteredSites, marketName, state } from './data';
 const router = useRouter();
 const route = useRoute();
 const search = ref('');
@@ -27,6 +30,15 @@ const ownershipOptions = computed(() => [
     ...new Set(filteredSites.value.map((site) => site.ownershipBackground)),
   ].map((value) => ({ label: value, value })),
 ]);
+const platformOptions = computed(() => [
+  { label: '全部平台', value: 'ALL' },
+  ...[...new Set(filteredSites.value.map((site) => site.platform))].map(
+    (value) => ({ label: value, value }),
+  ),
+]);
+const collectedCount = computed(
+  () => rows.value.filter((site) => site.dataNature === 'collected').length,
+);
 watch(
   () => route.query.site,
   async (siteId) => {
@@ -74,11 +86,11 @@ const columns = [
     <PageHeader
       title="竞品独立站"
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"
-      ><Button @click="router.push('/imports')">导入站点</Button
-      ><Button
+      >
+<Button @click="router.push('/imports')">导入站点</Button><Button
         @click="
           exportCsv(
-            '独立站-演示.csv',
+            '独立站.csv',
             rows.map((s) => ({
               品牌: s.brand,
               域名: s.domain,
@@ -87,23 +99,33 @@ const columns = [
               主要产品: s.mainProducts.join('、'),
               股权背景: s.ownershipBackground,
               官网依据: s.ownershipEvidence,
-              性质: '演示',
+              证据网址: s.evidenceUrl || '',
+              验证置信度: s.confidence ?? '',
+              验证信号: s.signals?.join('、') || '',
+              性质: s.dataNature === 'collected' ? '官网实采' : '演示',
             })),
           )
         "
         :disabled="!rows.length"
-        >导出</Button
-      ></PageHeader
-    >
+        >
+导出
+</Button>
+</PageHeader>
     <div v-if="route.query.keyword || linkedKeyword" class="hci-demo-note">
       <b>研究上下文</b>{{ linkedKeyword?.term || route.query.keyword }} ·
-      {{ linkedKeyword ? '仅显示已关联站点。' : '当前展示候选站点，具体关联需人工核验。' }}
+      {{
+        linkedKeyword
+          ? '仅显示已关联站点。'
+          : '当前展示候选站点，具体关联需人工核验。'
+      }}
       <button
         v-if="linkedKeyword"
         class="hci-link"
         style="margin-left: 12px"
         @click="router.replace('/sites')"
-      >清除关联筛选</button>
+      >
+        清除关联筛选
+      </button>
     </div>
     <section class="hci-panel">
       <div class="hci-toolbar">
@@ -111,14 +133,7 @@ const columns = [
           v-model:value="search"
           placeholder="搜索品牌、网址、主要产品"
           allow-clear
-        /><Select
-          v-model:value="platform"
-          :options="[
-            { label: '全部平台', value: 'ALL' },
-            { label: 'Shopify', value: 'Shopify' },
-            { label: 'WooCommerce', value: 'WooCommerce' },
-          ]"
-        /><Select
+        /><Select v-model:value="platform" :options="platformOptions" /><Select
           v-model:value="category"
           :options="categoryOptions"
           aria-label="按站点类别筛选"
@@ -127,9 +142,7 @@ const columns = [
           :options="ownershipOptions"
           aria-label="按股权背景筛选"
           style="min-width: 200px"
-        /><span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 家演示站点</span
-        >
+        /><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 家站点 · {{ collectedCount }} 家实采</span>
       </div>
       <Table
         :columns="columns"
@@ -137,48 +150,71 @@ const columns = [
         row-key="id"
         :scroll="{ x: 1250 }"
         :pagination="{ pageSize: 8 }"
-        ><template #bodyCell="{ column, record }"
-          ><template v-if="column.key === 'brand'"
-            ><button
+        >
+<template #bodyCell="{ column, record }">
+<template v-if="column.key === 'brand'">
+<button
               class="hci-link"
               @click="selected = state.sites.find((s) => s.id === record.id)"
             >
               {{ record.brand }}
             </button>
-            <div class="hci-subtle">{{ record.domain }}</div></template
-          ><template v-if="column.key === 'market'"
-            ><Tag>{{ marketName(record.market) }}</Tag></template
-          ><template v-if="column.key === 'mainProducts'"
-            ><div class="hci-compact-tags">
-              <Tag v-for="item in record.mainProducts" :key="item">{{ item }}</Tag>
-            </div></template
-          ><template v-if="column.key === 'ownership'"
-            ><Tag :color="record.ownershipBackground === '待核验' ? 'orange' : 'blue'">
+            <div class="hci-subtle">
+              {{ record.domain }}
+              <Tag v-if="record.dataNature === 'collected'" color="green">
+官网实采
+</Tag>
+            </div>
+</template><template v-if="column.key === 'market'">
+<Tag>{{ marketName(record.market) }}</Tag>
+</template><template v-if="column.key === 'mainProducts'">
+<div class="hci-compact-tags">
+              <Tag v-for="item in record.mainProducts" :key="item">
+{{
+                item
+              }}
+</Tag>
+            </div>
+</template><template v-if="column.key === 'ownership'">
+<Tag
+              :color="
+                record.ownershipBackground.includes('待') ? 'orange' : 'blue'
+              "
+            >
               {{ record.ownershipBackground }}
             </Tag>
-            <div class="hci-subtle">{{ record.ownershipSource }}</div></template
-          ><template v-if="column.key === 'products'">{{
+            <div class="hci-subtle">{{ record.ownershipSource }}</div>
+</template><template v-if="column.key === 'products'">
+{{
             state.products.filter((p) => p.siteId === record.id).length
-          }}</template
-          ><template v-if="column.key === 'actions'"
-            ><button
+          }}
+</template><template v-if="column.key === 'actions'">
+<button
               class="hci-link"
               @click="selected = state.sites.find((s) => s.id === record.id)"
             >
               查看档案 →
-            </button></template
-          ></template
-        ></Table
-      >
+            </button>
+</template>
+</template>
+</Table>
     </section>
     <Drawer
       :open="!!selected"
       :width="560"
       title="品牌与站点档案"
       @close="selected = undefined"
-      ><template v-if="selected"
-        ><h2 style="font-size: 25px">{{ selected.brand }}</h2>
-        <p class="hci-subtle">{{ selected.domain }} · 虚构示例域名</p>
+      >
+<template v-if="selected">
+<h2 style="font-size: 25px">{{ selected.brand }}</h2>
+        <p class="hci-subtle">
+          {{ selected.domain }} ·
+          {{
+            selected.dataNature === 'collected'
+              ? '官网实采记录'
+              : '虚构示例域名'
+          }}
+        </p>
         <dl class="hci-detail-grid">
           <dt>销售市场</dt>
           <dd>{{ marketName(selected.market) }}</dd>
@@ -193,14 +229,30 @@ const columns = [
           <dt>发现关键词</dt>
           <dd>{{ selected.keyword }}</dd>
           <dt>来源</dt>
-          <dd>演示 SERP / Store Leads 样本</dd>
+          <dd>
+            {{
+              selected.dataNature === 'collected'
+                ? 'Brave Search发现 / 官网直接验证'
+                : '演示 SERP / Store Leads 样本'
+            }}
+          </dd>
           <dt>首次观察</dt>
-          <dd>2026-10-13（不等于品牌成立日期）</dd>
+          <dd>
+            {{ selected.lastCollectedAt || '2026-10-13' }}（不等于品牌成立日期）
+          </dd>
+          <template v-if="selected.dataNature === 'collected'">
+            <dt>验证置信度</dt>
+            <dd>{{ selected.confidence ?? 0 }} / 100</dd>
+            <dt>验证信号</dt>
+            <dd>{{ selected.signals?.join('、') || '待补充' }}</dd>
+          </template>
         </dl>
         <h3 class="hci-section-heading">官网股权与运营背景</h3>
         <dl class="hci-detail-grid">
           <dt>股权背景</dt>
-          <dd><Tag color="blue">{{ selected.ownershipBackground }}</Tag></dd>
+          <dd>
+            <Tag color="blue">{{ selected.ownershipBackground }}</Tag>
+          </dd>
           <dt>运营主体</dt>
           <dd>{{ selected.ownershipOperations }}</dd>
           <dt>官网来源</dt>
@@ -208,19 +260,32 @@ const columns = [
         </dl>
         <div class="hci-evidence">
           <b>官网信息摘录</b><br />{{ selected.ownershipEvidence }}<br />
-          <span class="hci-subtle">演示数据仅说明字段结构，真实结论需保留官网 URL、原文与采集时间。</span>
+          <span class="hci-subtle">
+            {{
+              selected.dataNature === 'collected'
+                ? '股权背景仍需继续采集 About、页脚及隐私政策后人工核验。'
+                : '演示数据仅说明字段结构，真实结论需保留官网 URL、原文与采集时间。'
+            }}
+          </span>
         </div>
         <div class="hci-evidence">
-          此处将展示原始搜索命中、自然排名和采集批次。目前没有真实网页证据。
+          <template v-if="selected.evidenceUrl">
+            已保留官网验证页面：
+            <a :href="selected.evidenceUrl" target="_blank" rel="noreferrer">打开官网证据</a>
+          </template>
+          <template v-else>
+            此处将展示原始搜索命中、自然排名和采集批次。目前没有真实网页证据。
+          </template>
         </div>
         <Button
           type="primary"
           @click="
             router.push({ path: '/products', query: { site: selected.id } })
           "
-          >查看该站商品</Button
-        ></template
-      ></Drawer
-    >
+          >
+查看该站商品
+</Button>
+</template>
+</Drawer>
   </main>
 </template>
