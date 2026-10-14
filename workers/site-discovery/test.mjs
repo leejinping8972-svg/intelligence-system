@@ -1,13 +1,24 @@
 import assert from 'node:assert/strict';
+// oxlint-disable-next-line vitest/no-import-node-test -- this Worker package uses Node's built-in test runner
 import test from 'node:test';
 
 import {
+  braveSearchRequest,
   classifyStore,
   extractJsonLdProducts,
   hostnameRoot,
   isCandidateUrl,
   productPageUrl,
 } from './src/index.js';
+
+test('uses Brave-compatible targeting for Vietnam', () => {
+  const request = braveSearchRequest('Sức khỏe phụ nữ', 'VN', 20);
+  const url = new URL(request.url);
+  assert.equal(url.searchParams.get('country'), 'ALL');
+  assert.equal(url.searchParams.get('search_lang'), 'vi');
+  assert.match(url.searchParams.get('q'), /Việt Nam/);
+  assert.equal(request.locationCountry, 'VN');
+});
 
 const productPage = `<!doctype html><html><head>
 <meta property="og:site_name" content="Natura Lab">

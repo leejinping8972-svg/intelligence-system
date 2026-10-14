@@ -12,9 +12,12 @@ const MARKET_OPTIONS = {
     currency: 'MXN',
   },
   VN: {
-    country: 'vn',
+    // Brave Web Search supports Vietnamese content, but VN is not one of its
+    // country-ranking enums. Search globally and use Vietnamese intent plus
+    // the location header to keep the results focused on Vietnam.
+    country: 'ALL',
     language: 'vi',
-    intent: 'thực phẩm bổ sung mua cửa hàng chính hãng',
+    intent: 'Việt Nam thực phẩm bổ sung mua cửa hàng chính hãng',
     currency: 'VND',
   },
 };
@@ -419,7 +422,7 @@ async function validateCandidate(candidate, keyword, market) {
   }
 }
 
-async function braveSearch(keyword, market, env, count) {
+export function braveSearchRequest(keyword, market, count) {
   const options = MARKET_OPTIONS[market];
   const params = new URLSearchParams({
     q: `${keyword} ${options.intent}`,
@@ -428,20 +431,35 @@ async function braveSearch(keyword, market, env, count) {
     count: String(Math.min(20, count)),
     safesearch: 'moderate',
   });
-  const response = await fetch(
-    `https://api.search.brave.com/res/v1/web/search?${params}`,
-    {
-      headers: {
-        accept: 'application/json',
-        'x-subscription-token': env.BRAVE_SEARCH_API_KEY,
-      },
-      signal: AbortSignal.timeout(12_000),
+  return {
+    locationCountry: market,
+    url: `https://api.search.brave.com/res/v1/web/search?${params}`,
+  };
+}
+
+async function braveSearch(keyword, market, env, count) {
+  const request = braveSearchRequest(keyword, market, count);
+  const response = await fetch(request.url, {
+    headers: {
+      accept: 'application/json',
+      'x-subscription-token': env.BRAVE_SEARCH_API_KEY,
+      'x-loc-country': request.locationCountry,
     },
-  );
+    signal: AbortSignal.timeout(12_000),
+  });
   if (!response.ok) {
     if (response.status === 429)
       throw new Error('Brave Search免费额度或速率已达上限');
-    throw new Error(`Brave Search返回HTTP ${response.status}`);
+    const payload = await response.json().catch(() => null);
+    const detail = cleanText(
+      payload?.error?.detail ||
+        payload?.error?.message ||
+        payload?.message ||
+        '',
+    );
+    throw new Error(
+      `Brave Search返回HTTP ${response.status}${detail ? `：${detail}` : ''}`,
+    );
   }
   const data = await response.json();
   return (data.web?.results || [])
