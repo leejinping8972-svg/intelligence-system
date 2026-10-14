@@ -8,6 +8,7 @@ import {
   calculate28DayGrowth,
   classifyStore,
   extractJsonLdProducts,
+  googleCookieHeader,
   googleSuggestUrl,
   googleTrendsExploreUrl,
   hostnameRoot,
@@ -135,6 +136,13 @@ test('builds and calculates Google Trends series', () => {
   assert.equal(
     calculate28DayGrowth(Array.from({ length: 20 }, () => 10)),
     null,
+  );
+});
+
+test('keeps only cookie pairs for a Google Trends session', () => {
+  assert.equal(
+    googleCookieHeader('NID=abc; Path=/; Secure, CONSENT=yes; Path=/'),
+    'NID=abc; CONSENT=yes',
   );
 });
 

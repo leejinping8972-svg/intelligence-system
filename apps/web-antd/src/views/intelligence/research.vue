@@ -218,6 +218,7 @@ function createDemoResearch(seeds: string[]) {
       id: crypto.randomUUID(),
       title: `${form.entry === 'asin' ? 'ASIN ' : ''}${seeds.join('、')} · ${marketName(market)}`,
       market,
+      mode: 'demo',
       status: 'queued',
       created: stamp(),
       steps: [
@@ -400,6 +401,7 @@ async function discoverKeywordRecords(records: Keyword[]) {
       id: crypto.randomUUID(),
       title: `${record.term} · ${marketName(record.market)} · 独立站发现`,
       market: record.market,
+      mode: 'live',
       status: 'queued',
       created: stamp(),
       steps: ['来源：Brave Search', '验证：官网可访问性与商品结构化数据'],
@@ -581,6 +583,7 @@ async function createResearch() {
         id: crypto.randomUUID(),
         title: `${keyword} · ${marketName(market)} · 真实研究`,
         market,
+        mode: 'live',
         status: 'queued',
         created: stamp(),
         steps: [

@@ -1103,17 +1103,71 @@ export function googleTrendsExploreUrl(keyword, market) {
   return url.toString();
 }
 
-async function fetchGoogleTrends(keyword, market) {
+export function googleCookieHeader(setCookie) {
+  return String(setCookie || '')
+    .split(/,(?=\s*[^;,=\s]+=[^;,]+)/)
+    .map((item) => item.trim().split(';')[0])
+    .filter(Boolean)
+    .join('; ');
+}
+
+const GOOGLE_TRENDS_USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/129 Safari/537.36',
+];
+
+function googleTrendsHeaders(market, cookie = '', attempt = 0) {
   const headers = {
     accept: 'application/json,text/plain,*/*',
     'accept-language': `${MARKET_OPTIONS[market].language},en;q=0.8`,
+    referer: `https://trends.google.com/trends/explore?geo=${market}`,
     'user-agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36',
+      GOOGLE_TRENDS_USER_AGENTS[attempt % GOOGLE_TRENDS_USER_AGENTS.length],
   };
-  const exploreResponse = await fetch(googleTrendsExploreUrl(keyword, market), {
-    headers,
-    signal: AbortSignal.timeout(15_000),
-  });
+  if (cookie) headers.cookie = cookie;
+  return headers;
+}
+
+async function googleTrendsSession(market) {
+  const response = await fetch(
+    `https://trends.google.com/trends/explore?geo=${market}`,
+    {
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'accept-language': `${MARKET_OPTIONS[market].language},en;q=0.8`,
+        'user-agent': GOOGLE_TRENDS_USER_AGENTS[0],
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  return googleCookieHeader(response.headers.get('set-cookie'));
+}
+
+async function fetchGoogleTrendsEndpoint(url, market, cookie) {
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(url, {
+      headers: googleTrendsHeaders(market, cookie, attempt),
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (response.ok) return response;
+    lastStatus = response.status;
+    if (response.status !== 429 && response.status < 500) return response;
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+  }
+  return new Response('', { status: lastStatus || 503 });
+}
+
+async function fetchGoogleTrends(keyword, market) {
+  const cookie = await googleTrendsSession(market).catch(() => '');
+  const exploreResponse = await fetchGoogleTrendsEndpoint(
+    googleTrendsExploreUrl(keyword, market),
+    market,
+    cookie,
+  );
   if (!exploreResponse.ok)
     throw new Error(`Google Trends探索接口返回HTTP ${exploreResponse.status}`);
   const explore = parseGoogleTrendsPayload(await exploreResponse.text());
@@ -1130,10 +1184,11 @@ async function fetchGoogleTrends(keyword, market) {
   timelineUrl.searchParams.set('tz', '0');
   timelineUrl.searchParams.set('req', JSON.stringify(widget.request));
   timelineUrl.searchParams.set('token', widget.token);
-  const timelineResponse = await fetch(timelineUrl, {
-    headers,
-    signal: AbortSignal.timeout(15_000),
-  });
+  const timelineResponse = await fetchGoogleTrendsEndpoint(
+    timelineUrl,
+    market,
+    cookie,
+  );
   if (!timelineResponse.ok)
     throw new Error(
       `Google Trends时间序列接口返回HTTP ${timelineResponse.status}`,

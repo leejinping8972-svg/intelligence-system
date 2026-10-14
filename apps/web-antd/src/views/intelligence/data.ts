@@ -138,6 +138,7 @@ export interface Task {
   id: string;
   title: string;
   market: Market;
+  mode?: 'demo' | 'live';
   status: 'cancelled' | 'completed' | 'partial' | 'queued';
   created: string;
   steps: string[];
@@ -475,6 +476,7 @@ function initial(): DemoState {
         id: 'task-demo-1',
         title: '女性益生菌 · 首轮研究',
         market: 'US',
+        mode: 'demo',
         status: 'partial',
         created: '2026-10-13 09:30',
         steps: [
