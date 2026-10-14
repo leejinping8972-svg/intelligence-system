@@ -479,8 +479,12 @@ export function amazonSuggestUrl(keyword, market) {
 
 async function fetchGoogleSuggestions(keyword, market) {
   const response = await fetch(googleSuggestUrl(keyword, market), {
-    headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(8000),
+    headers: {
+      accept: 'application/json',
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36',
+    },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Google联想词返回HTTP ${response.status}`);
   const payload = await response.json();
