@@ -309,9 +309,10 @@ function toggleCompare(id: string) {
             </div>
             <div>
               <span>成分分析</span>
-              <b>{{
+              <b v-if="product.ingredientInsights.length">{{
                 product.ingredientInsights.map((item) => item.name).join(' · ')
               }}</b>
+              <span v-else class="hci-subtle">官网未提供明确配方，待识别</span>
             </div>
           </div>
           <button
