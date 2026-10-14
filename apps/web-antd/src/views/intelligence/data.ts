@@ -491,7 +491,8 @@ function initial(): DemoState {
       trendsKeywordsPerTask: 5,
       storeLeadsMarketCost: 0,
       costBufferRate: 20,
-      researchApiUrl: '',
+      researchApiUrl:
+        'https://zhiheng-site-discovery.leejinping8972.workers.dev',
       researchAccessKey: '',
       researchMaxSites: 6,
     },
@@ -613,7 +614,12 @@ function restore(): DemoState {
         keywords,
         ads,
         branding: { ...defaults.branding, ...saved.branding },
-        settings: { ...defaults.settings, ...saved.settings },
+        settings: {
+          ...defaults.settings,
+          ...saved.settings,
+          researchApiUrl:
+            saved.settings?.researchApiUrl || defaults.settings.researchApiUrl,
+        },
       };
     }
   } catch {

@@ -356,8 +356,8 @@ async function createResearch() {
     } else {
       message.warning('本次未找到通过官网验证的独立站，可更换关键词重试');
     }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : '真实研究执行失败';
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : '真实研究执行失败';
     for (const task of tasks.values()) {
       task.status = 'partial';
       task.steps.push(`执行失败：${detail}`);
