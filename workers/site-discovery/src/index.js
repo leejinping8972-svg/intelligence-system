@@ -22,6 +22,31 @@ const MARKET_OPTIONS = {
   },
 };
 
+const GOOGLE_SUGGEST_OPTIONS = {
+  US: { gl: 'us', hl: 'en' },
+  MX: { gl: 'mx', hl: 'es' },
+  VN: { gl: 'vn', hl: 'vi' },
+};
+
+const AMAZON_SUGGEST_OPTIONS = {
+  US: {
+    host: 'completion.amazon.com',
+    locale: 'en_US',
+    marketplace: 'ATVPDKIKX0DER',
+  },
+  MX: {
+    host: 'completion.amazon.com.mx',
+    locale: 'es_MX',
+    marketplace: 'A1AM78C64UM0Y8',
+  },
+};
+
+const LIVE_SOURCES = new Set([
+  'amazon_autocomplete',
+  'google_autocomplete',
+  'site_discovery',
+]);
+
 const EXCLUDED_DOMAINS = [
   'alibaba.com',
   'aliexpress.com',
@@ -422,6 +447,184 @@ async function validateCandidate(candidate, keyword, market) {
   }
 }
 
+export function googleSuggestUrl(keyword, market) {
+  const options = GOOGLE_SUGGEST_OPTIONS[market];
+  const params = new URLSearchParams({
+    client: 'firefox',
+    gl: options.gl,
+    hl: options.hl,
+    q: keyword,
+  });
+  return `https://suggestqueries.google.com/complete/search?${params}`;
+}
+
+export function amazonSuggestUrl(keyword, market) {
+  const options = AMAZON_SUGGEST_OPTIONS[market];
+  if (!options) return null;
+  const params = new URLSearchParams({
+    alias: 'aps',
+    'client-info': 'amazon-search-ui',
+    event: 'onkeypress',
+    limit: '11',
+    lop: options.locale,
+    mid: options.marketplace,
+    prefix: keyword,
+    'response-type': 'COMPLETIONS',
+    'site-variant': 'desktop',
+    'suggestion-type': 'KEYWORD',
+    version: '3',
+  });
+  return `https://${options.host}/api/2017/suggestions?${params}`;
+}
+
+async function fetchGoogleSuggestions(keyword, market) {
+  const response = await fetch(googleSuggestUrl(keyword, market), {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) throw new Error(`Google联想词返回HTTP ${response.status}`);
+  const payload = await response.json();
+  return Array.isArray(payload?.[1])
+    ? payload[1].map((item) => cleanText(item)).filter(Boolean)
+    : [];
+}
+
+async function fetchAmazonSuggestions(keyword, market) {
+  const url = amazonSuggestUrl(keyword, market);
+  if (!url) return null;
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36',
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) throw new Error(`Amazon联想词返回HTTP ${response.status}`);
+  const payload = await response.json();
+  return Array.isArray(payload?.suggestions)
+    ? payload.suggestions
+        .map((item) => cleanText(item?.value || ''))
+        .filter(Boolean)
+    : [];
+}
+
+async function suggestionSource(
+  source,
+  keyword,
+  market,
+  depth,
+  limit,
+  requestBudget,
+) {
+  const label =
+    source === 'google_autocomplete' ? 'Google 联想词' : 'Amazon 联想词';
+  if (source === 'amazon_autocomplete' && !AMAZON_SUGGEST_OPTIONS[market]) {
+    return {
+      items: [],
+      message: '越南没有Amazon本地站，未执行Amazon联想词',
+      source: label,
+      status: 'unsupported',
+    };
+  }
+
+  const fetcher =
+    source === 'google_autocomplete'
+      ? fetchGoogleSuggestions
+      : fetchAmazonSuggestions;
+  const items = [];
+  const seen = new Set();
+  const add = (values) => {
+    for (const value of values || []) {
+      const normalized = cleanText(value);
+      const key = normalized.toLocaleLowerCase();
+      if (!normalized || seen.has(key)) continue;
+      seen.add(key);
+      items.push({ source: label, term: normalized });
+      if (items.length >= limit) break;
+    }
+  };
+  const query = async (term) => {
+    if (requestBudget.remaining <= 0) return false;
+    requestBudget.remaining -= 1;
+    add(await fetcher(term, market));
+    return true;
+  };
+
+  try {
+    await query(keyword);
+    if (depth === 2 && items.length < limit) {
+      const parents = items.slice(0, 5).map((item) => item.term);
+      for (const parent of parents) {
+        if (items.length >= limit || !(await query(parent))) break;
+      }
+    }
+    const capped = items.slice(0, limit);
+    return {
+      items: capped,
+      message:
+        requestBudget.remaining <= 0 && depth === 2
+          ? '已达到免费请求保护上限，保留当前结果'
+          : '',
+      source: label,
+      status: capped.length > 0 ? 'success' : 'empty',
+    };
+  } catch (error) {
+    return {
+      items: items.slice(0, limit),
+      message: error instanceof Error ? error.message : `${label}请求失败`,
+      source: label,
+      status: items.length > 0 ? 'partial' : 'error',
+    };
+  }
+}
+
+async function collectSuggestions(
+  keyword,
+  market,
+  sources,
+  depth,
+  limit,
+  requestBudget,
+) {
+  const sourceResults = [];
+  for (const source of sources) {
+    if (!['amazon_autocomplete', 'google_autocomplete'].includes(source))
+      continue;
+    sourceResults.push(
+      await suggestionSource(
+        source,
+        keyword,
+        market,
+        depth,
+        limit,
+        requestBudget,
+      ),
+    );
+  }
+  const items = [];
+  const seen = new Set();
+  for (const result of sourceResults) {
+    for (const item of result.items) {
+      const key = `${item.source}|${item.term.toLocaleLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push(item);
+      if (items.length >= limit) break;
+    }
+    if (items.length >= limit) break;
+  }
+  return {
+    items,
+    keyword,
+    market,
+    sources: sourceResults.map(({ items: values, ...result }) => ({
+      ...result,
+      count: values.length,
+    })),
+  };
+}
+
 export function braveSearchRequest(keyword, market, count) {
   const options = MARKET_OPTIONS[market];
   const params = new URLSearchParams({
@@ -472,49 +675,86 @@ async function runResearch(input, env) {
     ...new Set(input.keywords.map((item) => item.trim())),
   ].filter(Boolean);
   const markets = [...new Set(input.markets)];
+  const sources = [
+    ...new Set(
+      Array.isArray(input.sources) && input.sources.length > 0
+        ? input.sources
+        : ['site_discovery'],
+    ),
+  ];
+  const depth = Number(input.depth) === 2 ? 2 : 1;
+  const suggestionLimit = Math.max(
+    1,
+    Math.min(100, Number(input.limit) || 100),
+  );
   const maxSites = Math.max(1, Math.min(6, Number(input.maxSites) || 6));
   const candidateLimit = Math.min(12, Math.max(6, maxSites * 2));
   if (keywords.length === 0 || keywords.length > 3)
     throw new Error('每次请输入1至3个关键词');
   if (markets.length === 0 || markets.some((market) => !MARKET_OPTIONS[market]))
     throw new Error('市场仅支持US、MX、VN');
+  if (sources.some((source) => !LIVE_SOURCES.has(source)))
+    throw new Error('包含尚未接入的真实数据源');
   if (keywords.length * markets.length > 3)
     throw new Error('单次最多运行3个“关键词 × 市场”组合，请减少关键词或市场');
 
   const groups = [];
+  const suggestions = [];
+  const suggestionRequestBudget = { remaining: 20 };
   for (const keyword of keywords) {
     for (const market of markets) {
-      const urls = await braveSearch(keyword, market, env, 20);
-      const unique = [];
-      const domains = new Set();
-      for (const url of urls) {
-        const domain = hostnameRoot(new URL(url).hostname);
-        if (domains.has(domain)) continue;
-        domains.add(domain);
-        unique.push(url);
-        if (unique.length >= candidateLimit) break;
+      if (
+        sources.includes('google_autocomplete') ||
+        sources.includes('amazon_autocomplete')
+      ) {
+        suggestions.push(
+          await collectSuggestions(
+            keyword,
+            market,
+            sources,
+            depth,
+            suggestionLimit,
+            suggestionRequestBudget,
+          ),
+        );
       }
-      const candidates = await Promise.all(
-        unique.map((url) => validateCandidate(url, keyword, market)),
-      );
-      const validated = candidates
-        .filter(Boolean)
-        .toSorted((a, b) => b.confidence - a.confidence)
-        .slice(0, maxSites);
-      groups.push({
-        keyword,
-        market,
-        coverage: {
-          searchResults: urls.length,
-          candidateDomains: unique.length,
-          validatedSites: validated.length,
-          rejectedOrUnreachable: unique.length - validated.length,
-        },
-        sites: validated,
-      });
+      if (sources.includes('site_discovery')) {
+        const urls = await braveSearch(keyword, market, env, 20);
+        const unique = [];
+        const domains = new Set();
+        for (const url of urls) {
+          const domain = hostnameRoot(new URL(url).hostname);
+          if (domains.has(domain)) continue;
+          domains.add(domain);
+          unique.push(url);
+          if (unique.length >= candidateLimit) break;
+        }
+        const candidates = await Promise.all(
+          unique.map((url) => validateCandidate(url, keyword, market)),
+        );
+        const validated = candidates
+          .filter(Boolean)
+          .toSorted((a, b) => b.confidence - a.confidence)
+          .slice(0, maxSites);
+        groups.push({
+          keyword,
+          market,
+          coverage: {
+            searchResults: urls.length,
+            candidateDomains: unique.length,
+            validatedSites: validated.length,
+            rejectedOrUnreachable: unique.length - validated.length,
+          },
+          sites: validated,
+        });
+      }
     }
   }
-  return { generatedAt: new Date().toISOString(), groups };
+  return {
+    generatedAt: new Date().toISOString(),
+    groups,
+    suggestions,
+  };
 }
 
 export default {

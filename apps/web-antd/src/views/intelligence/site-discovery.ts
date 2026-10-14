@@ -34,6 +34,22 @@ export interface DiscoveryGroup {
 export interface DiscoveryResponse {
   generatedAt: string;
   groups: DiscoveryGroup[];
+  suggestions: SuggestionGroup[];
+}
+
+export interface SuggestionGroup {
+  items: Array<{
+    source: string;
+    term: string;
+  }>;
+  keyword: string;
+  market: Market;
+  sources: Array<{
+    count: number;
+    message: string;
+    source: string;
+    status: 'empty' | 'error' | 'partial' | 'success' | 'unsupported';
+  }>;
 }
 
 function stableId(value: string) {
@@ -48,9 +64,12 @@ function stableId(value: string) {
 export async function discoverSites(input: {
   accessKey: string;
   apiUrl: string;
+  depth?: number;
   keywords: string[];
+  limit?: number;
   markets: Market[];
   maxSites: number;
+  sources?: string[];
 }) {
   const response = await fetch(input.apiUrl.replace(/\/$/, ''), {
     method: 'POST',
@@ -62,6 +81,9 @@ export async function discoverSites(input: {
       keywords: input.keywords,
       markets: input.markets,
       maxSites: input.maxSites,
+      depth: input.depth,
+      limit: input.limit,
+      sources: input.sources,
     }),
   });
   const payload = (await response.json().catch(() => ({}))) as

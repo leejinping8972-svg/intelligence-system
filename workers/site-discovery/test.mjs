@@ -3,13 +3,30 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  amazonSuggestUrl,
   braveSearchRequest,
   classifyStore,
   extractJsonLdProducts,
+  googleSuggestUrl,
   hostnameRoot,
   isCandidateUrl,
   productPageUrl,
 } from './src/index.js';
+
+test('builds localized Google suggestion requests', () => {
+  const url = new URL(googleSuggestUrl('sức khỏe phụ nữ', 'VN'));
+  assert.equal(url.hostname, 'suggestqueries.google.com');
+  assert.equal(url.searchParams.get('gl'), 'vn');
+  assert.equal(url.searchParams.get('hl'), 'vi');
+});
+
+test('builds Amazon requests only for local marketplaces', () => {
+  const us = new URL(amazonSuggestUrl('probiotic', 'US'));
+  const mx = new URL(amazonSuggestUrl('probioticos', 'MX'));
+  assert.equal(us.hostname, 'completion.amazon.com');
+  assert.equal(mx.hostname, 'completion.amazon.com.mx');
+  assert.equal(amazonSuggestUrl('men vi sinh', 'VN'), null);
+});
 
 test('uses Brave-compatible targeting for Vietnam', () => {
   const request = braveSearchRequest('Sức khỏe phụ nữ', 'VN', 20);
