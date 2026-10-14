@@ -110,6 +110,22 @@ test('extracts image, formula, size, benefits and ingredient records', () => {
   );
   assert.equal(sanitized.image, 'https://example.vn/collagen.webp');
   assert.equal(sanitized.ingredients, 'Hydrolyzed collagen peptides 10 g');
+
+  const marketingCopy = productFromJsonLd(
+    {
+      '@type': 'Product',
+      name: 'Women Probiotic',
+      ingredients:
+        'work together to support balanced vaginal and gut microbiomes',
+    },
+    'https://example.com/products/women-probiotic',
+    'US',
+    'Example',
+    '<h3>Ingredients</h3><p>Label Directions</p>',
+  );
+  assert.equal(marketingCopy.ingredients, '');
+  assert.deepEqual(marketingCopy.ingredientInsights, []);
+  assert.ok(!marketingCopy.collectionFields.includes('配方'));
 });
 
 test('classifies supplement categories from multilingual evidence', () => {

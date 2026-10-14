@@ -206,6 +206,24 @@ function plausibleIngredients(value) {
     )
   )
     return '';
+  if (
+    /^(?:label directions?|directions?|supplement facts?|nutrition facts?|product details?|suggested use)$/i.test(
+      text,
+    )
+  )
+    return '';
+  const hasIngredientEvidence =
+    /[,;；•·|]|\b\d+(?:\.\d+)?\s*(?:mcg|mg|g|ml|iu|cfu)\b|lactobacillus|bifidobacter|inulin|psyllium|magnesium|inositol|collagen|vitamin|zinc|omega|dha|epa/i.test(
+      text,
+    );
+  if (
+    !hasIngredientEvidence &&
+    /\b(?:work together|supports?|promotes?|maintains?|feel your best|fast shipping|shop now|health benefits?)\b/i.test(
+      text,
+    )
+  )
+    return '';
+  if (!hasIngredientEvidence && text.split(/\s+/).length > 8) return '';
   return text;
 }
 

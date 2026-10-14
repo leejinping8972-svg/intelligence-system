@@ -541,7 +541,7 @@ function restore(): DemoState {
           (item) => item.id === product.id,
         );
         const suspiciousIngredient =
-          /\*\/|\/\*|display\s*:|position\s*:|trên cùng một trục ngang|stylesheet|javascript/i.test(
+          /\*\/|\/\*|display\s*:|position\s*:|trên cùng một trục ngang|stylesheet|javascript|^label directions?$|work together to support/i.test(
             String(product.ingredient || ''),
           );
         return {
@@ -556,7 +556,7 @@ function restore(): DemoState {
             fallback?.benefitEvidence ||
             '人工导入，待补充官网商品页卖点依据。',
           ingredient: suspiciousIngredient
-            ? '疑似网页样式误识别，待重新采集'
+            ? '疑似非配方网页文案，待重新采集'
             : product.ingredient || fallback?.ingredient || '官网配方待采集',
           ingredientInsights: suspiciousIngredient
             ? []
