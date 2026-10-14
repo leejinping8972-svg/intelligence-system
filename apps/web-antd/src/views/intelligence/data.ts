@@ -76,6 +76,8 @@ export interface Product {
   ingredientInsights: IngredientInsight[];
   siteId: string;
   color: string;
+  imageUrl?: string;
+  collectionFields?: string[];
   reviewed: boolean;
   favorite: boolean;
   firstSeenAt?: string;
@@ -229,18 +231,26 @@ const localized = {
     'collagen peptide',
   ],
 };
+
+function at<T>(values: readonly T[], index: number): T {
+  const value = values[index];
+  if (value === undefined) throw new Error(`演示数据索引越界：${index}`);
+  return value;
+}
+
 function initial(): DemoState {
   const sites: Site[] = markets.flatMap((m, i) => [
     {
       id: `s${i * 2 + 1}`,
-      brand: ['Natura Lab', 'Vida Clara', 'An Nhiên'][i]!,
-      domain: ['natura-lab.example', 'vidaclara.example', 'annhien.example'][
-        i
-      ]!,
+      brand: at(['Natura Lab', 'Vida Clara', 'An Nhiên'], i),
+      domain: at(
+        ['natura-lab.example', 'vidaclara.example', 'annhien.example'],
+        i,
+      ),
       market: m.code,
       platform: 'Shopify',
       type: '品牌直营',
-      keyword: localized[m.code][0]!,
+      keyword: at(localized[m.code], 0),
       category: '肠道与女性健康',
       mainProducts: ['女性益生菌', '膳食纤维'],
       ownershipBackground: '独立品牌（官网自述）',
@@ -252,16 +262,15 @@ function initial(): DemoState {
     },
     {
       id: `s${i * 2 + 2}`,
-      brand: ['Daily Form', 'Raíz Vital', 'Lành Studio'][i]!,
-      domain: [
-        'daily-form.example',
-        'raizvital.example',
-        'lanh-studio.example',
-      ][i]!,
+      brand: at(['Daily Form', 'Raíz Vital', 'Lành Studio'], i),
+      domain: at(
+        ['daily-form.example', 'raizvital.example', 'lanh-studio.example'],
+        i,
+      ),
       market: m.code,
       platform: 'WooCommerce',
       type: '品牌直营',
-      keyword: localized[m.code][2]!,
+      keyword: at(localized[m.code], 2),
       category: '功能性营养',
       mainProducts: ['甘氨酸镁', '日常矿物质配方'],
       ownershipBackground: '集团品牌（官网自述）',
@@ -275,15 +284,16 @@ function initial(): DemoState {
   const products: Product[] = markets.flatMap((m, i) => [
     {
       id: `p${i * 3 + 1}`,
-      title: ['Women’s Daily Probiotic', 'Probióticos Mujer', 'Men vi sinh nữ'][
-        i
-      ]!,
-      brand: sites[i * 2]!.brand,
+      title: at(
+        ['Women’s Daily Probiotic', 'Probióticos Mujer', 'Men vi sinh nữ'],
+        i,
+      ),
+      brand: at(sites, i * 2).brand,
       market: m.code,
       category: '女性健康',
       form: '胶囊',
       size: '30粒 / 30份',
-      price: [32, 549, 385_000][i]!,
+      price: at([32, 549, 385_000], i),
       currency: m.currency,
       ingredient: 'Lactobacillus acidophilus',
       dose: '10 billion CFU / 份',
@@ -298,24 +308,24 @@ function initial(): DemoState {
           evidence: 'Supplement Facts / 商品页成分区',
         },
       ],
-      siteId: sites[i * 2]!.id,
+      siteId: at(sites, i * 2).id,
       color: 'sage',
       reviewed: i === 0,
       favorite: i === 0,
       firstSeenAt: `2026-10-${String(12 - i).padStart(2, '0')}`,
       publishedAt: i === 0 ? '2026-10-10' : undefined,
-      evidenceUrl: `https://${sites[i * 2]!.domain}/products/daily-probiotic`,
+      evidenceUrl: `https://${at(sites, i * 2).domain}/products/daily-probiotic`,
       dataNature: 'demo',
     },
     {
       id: `p${i * 3 + 2}`,
-      title: ['Magnesium Complex', 'Magnesio Esencial', 'Magie Balance'][i]!,
-      brand: sites[i * 2 + 1]!.brand,
+      title: at(['Magnesium Complex', 'Magnesio Esencial', 'Magie Balance'], i),
+      brand: at(sites, i * 2 + 1).brand,
       market: m.code,
       category: '功能性营养',
       form: '胶囊',
       size: '60粒 / 30份',
-      price: [26, 429, 295_000][i]!,
+      price: at([26, 429, 295_000], i),
       currency: m.currency,
       ingredient: 'Magnesium glycinate',
       dose: '200 mg / 份',
@@ -330,23 +340,23 @@ function initial(): DemoState {
           evidence: 'Supplement Facts / 商品页配方区',
         },
       ],
-      siteId: sites[i * 2 + 1]!.id,
+      siteId: at(sites, i * 2 + 1).id,
       color: 'lavender',
       reviewed: false,
       favorite: false,
       firstSeenAt: `2026-10-${String(9 - i).padStart(2, '0')}`,
-      evidenceUrl: `https://${sites[i * 2 + 1]!.domain}/products/magnesium`,
+      evidenceUrl: `https://${at(sites, i * 2 + 1).domain}/products/magnesium`,
       dataNature: 'demo',
     },
     {
       id: `p${i * 3 + 3}`,
-      title: ['Daily Fiber Blend', 'Fibra Prebiótica', 'Chất Xơ Daily'][i]!,
-      brand: sites[i * 2]!.brand,
+      title: at(['Daily Fiber Blend', 'Fibra Prebiótica', 'Chất Xơ Daily'], i),
+      brand: at(sites, i * 2).brand,
       market: m.code,
       category: '肠道与益生菌',
       form: '粉剂',
       size: '180g / 30份',
-      price: [29, 479, 325_000][i]!,
+      price: at([29, 479, 325_000], i),
       currency: m.currency,
       ingredient: 'Inulin · Psyllium husk',
       dose: '6 g / 份',
@@ -368,12 +378,12 @@ function initial(): DemoState {
           evidence: 'Supplement Facts',
         },
       ],
-      siteId: sites[i * 2]!.id,
+      siteId: at(sites, i * 2).id,
       color: 'sand',
       reviewed: true,
       favorite: false,
       firstSeenAt: `2026-10-${String(6 - i).padStart(2, '0')}`,
-      evidenceUrl: `https://${sites[i * 2]!.domain}/products/daily-fiber`,
+      evidenceUrl: `https://${at(sites, i * 2).domain}/products/daily-fiber`,
       dataNature: 'demo',
     },
   ]);
@@ -390,7 +400,7 @@ function initial(): DemoState {
         );
         return {
           id: `k${mi * 6 + i + 1}`,
-          term: localized[m.code][i]!,
+          term: at(localized[m.code], i),
           market: m.code,
           category: String(t[2]),
           source: mi === 2 ? 'Google 联想词 · 演示' : 'Google / Amazon · 演示',
@@ -485,7 +495,7 @@ function initial(): DemoState {
       taskBudget: 0,
       monthlyBudget: 0,
       trendLimit: 100,
-      productsPerSite: 30,
+      productsPerSite: 20,
       serpSearchCost: 0.015,
       trendsTaskCost: 0.0012,
       trendsKeywordsPerTask: 5,
@@ -617,6 +627,16 @@ function restore(): DemoState {
         settings: {
           ...defaults.settings,
           ...saved.settings,
+          productsPerSite: Math.min(
+            20,
+            Number(saved.settings?.productsPerSite) ||
+              defaults.settings.productsPerSite,
+          ),
+          researchMaxSites: Math.min(
+            10,
+            Number(saved.settings?.researchMaxSites) ||
+              defaults.settings.researchMaxSites,
+          ),
           researchApiUrl:
             saved.settings?.researchApiUrl || defaults.settings.researchApiUrl,
         },
@@ -653,11 +673,11 @@ export const filteredSites = computed(() =>
   state.sites.filter((p) => inMarket(p.market)),
 );
 export const pendingReviews = computed(() =>
-  state.reviews.filter(
-    (r) =>
-      r.status === 'pending' &&
-      inMarket(state.products.find((p) => p.id === r.productId)!.market),
-  ),
+  state.reviews.filter((review) => {
+    if (review.status !== 'pending') return false;
+    const product = state.products.find((item) => item.id === review.productId);
+    return product ? inMarket(product.market) : false;
+  }),
 );
 export function marketName(code: string) {
   return markets.find((m) => m.code === code)?.name ?? '全部市场';
@@ -731,12 +751,13 @@ export function csvValue(value: unknown) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 export function exportCsv(name: string, rows: Record<string, unknown>[]) {
-  if (rows.length === 0) return;
-  const keys = Object.keys(rows[0]!);
+  const [firstRow] = rows;
+  if (!firstRow) return;
+  const keys = Object.keys(firstRow);
   download(
     name,
     `\uFEFF${[
-      keys.map(csvValue).join(','),
+      keys.map((key) => csvValue(key)).join(','),
       ...rows.map((r) => keys.map((k) => csvValue(r[k])).join(',')),
     ].join('\r\n')}`,
     'text/csv;charset=utf-8',

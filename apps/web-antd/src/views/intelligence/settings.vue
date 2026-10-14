@@ -129,9 +129,9 @@ function save() {
     draft.trendLimit < 1 ||
     draft.trendLimit > 100 ||
     draft.productsPerSite < 1 ||
-    draft.productsPerSite > 50 ||
+    draft.productsPerSite > 20 ||
     draft.researchMaxSites < 1 ||
-    draft.researchMaxSites > 6 ||
+    draft.researchMaxSites > 10 ||
     draft.trendsKeywordsPerTask < 1 ||
     draft.trendsKeywordsPerTask > 5 ||
     draft.costBufferRate > 100
@@ -204,11 +204,13 @@ function handleLogo(event: Event) {
     return;
   }
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.addEventListener('load', () => {
     brandingDraft.logo = String(reader.result);
     message.success('Logo 已载入，保存后同步到后台界面');
-  };
-  reader.onerror = () => message.error('Logo 读取失败，请重新选择');
+  });
+  reader.addEventListener('error', () =>
+    message.error('Logo 读取失败，请重新选择'),
+  );
   reader.readAsDataURL(file);
 }
 </script>
@@ -238,10 +240,8 @@ function handleLogo(event: Event) {
           </div>
           <div class="hci-workspace-preview">
             <Tag color="gold">
-{{
-              brandingDraft.environmentLabel || '环境标识'
-            }}
-</Tag>
+              {{ brandingDraft.environmentLabel || '环境标识' }}
+            </Tag>
             <span>{{ brandingDraft.workspaceName || '工作区名称' }}</span>
           </div>
           <input
@@ -324,30 +324,30 @@ function handleLogo(event: Event) {
       <section class="hci-panel">
         <div class="hci-panel-head"><h2>研究服务与成本配置</h2></div>
         <Form layout="vertical">
-<div class="hci-form-grid">
+          <div class="hci-form-grid">
             <Form.Item label="单任务预算（USD）">
-<InputNumber
+              <InputNumber
                 v-model:value="draft.taskBudget"
                 :min="0"
-/>
+              />
 </Form.Item><Form.Item label="月度预算（USD）">
-<InputNumber
+              <InputNumber
                 v-model:value="draft.monthlyBudget"
                 :min="0"
-/>
+              />
 </Form.Item><Form.Item label="单任务趋势查询项">
-<InputNumber
+              <InputNumber
                 v-model:value="draft.trendLimit"
                 :min="1"
                 :max="100"
-/>
+              />
 </Form.Item><Form.Item label="每站商品上限">
-<InputNumber
+              <InputNumber
                 v-model:value="draft.productsPerSite"
                 :min="1"
-                :max="50"
-            />
-</Form.Item>
+                :max="20"
+              />
+            </Form.Item>
           </div>
           <div class="hci-form-section-title hci-full">关键词找独立站</div>
           <div class="hci-form-grid hci-full">
@@ -368,7 +368,7 @@ function handleLogo(event: Event) {
               <InputNumber
                 v-model:value="draft.researchMaxSites"
                 :min="1"
-                :max="6"
+                :max="10"
               />
             </Form.Item>
           </div>
@@ -438,7 +438,7 @@ function handleLogo(event: Event) {
               >Trends 价格</a>
           </div>
           <Button type="primary" @click="save">保存配置</Button><span class="hci-subtle" style="margin-left: 12px">预算0：禁止付费</span>
-</Form>
+        </Form>
       </section>
     </div>
     <section class="hci-panel">
@@ -466,8 +466,8 @@ function handleLogo(event: Event) {
                 ? 'default'
                 : 'orange'
           "
-          >
-{{
+        >
+          {{
             s.name === '卖家精灵' && state.market === 'VN'
               ? '本地站点不支持'
               : sourceStatus(s)
@@ -498,8 +498,8 @@ function handleLogo(event: Event) {
         resetOpen = false;
         message.success('演示数据已恢复');
       "
-      >
-<p>
+    >
+      <p>
         这会清除本地导入、收藏、审核和任务，恢复初始样本。电脑上的原始文件不会受到影响。
       </p>
 </Modal><Modal
@@ -507,12 +507,12 @@ function handleLogo(event: Event) {
       :title="selected?.name"
       :footer="null"
       @cancel="selected = undefined"
-      >
-<p style="padding: 18px 0">{{ selected?.detail }}</p>
+    >
+      <p style="padding: 18px 0">{{ selected?.detail }}</p>
       <div class="hci-evidence">
         后续接入步骤：确认账号与许可 → 验证美/墨/越覆盖 → 配置服务端密钥 →
         小样本测试 → 启用预算控制。
       </div>
-</Modal>
+    </Modal>
   </main>
 </template>

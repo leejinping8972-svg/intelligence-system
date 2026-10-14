@@ -67,6 +67,8 @@ const form = reactive({
   sources: [DISCOVERY_SOURCE],
   depth: 1,
   limit: state.settings.trendLimit,
+  maxSites: Math.min(10, state.settings.researchMaxSites),
+  productsPerSite: Math.min(20, state.settings.productsPerSite),
   budget: state.settings.taskBudget,
 });
 const seedValues = computed(() =>
@@ -170,6 +172,8 @@ watch(open, (value) => {
   if (value) {
     form.markets = state.market === 'ALL' ? ['US', 'MX', 'VN'] : [state.market];
     form.limit = state.settings.trendLimit;
+    form.maxSites = Math.min(10, state.settings.researchMaxSites);
+    form.productsPerSite = Math.min(20, state.settings.productsPerSite);
     form.budget = state.settings.taskBudget;
   }
 });
@@ -181,6 +185,19 @@ const rows = computed(() =>
       (!favoritesOnly.value || k.favorite),
   ),
 );
+const selectedKeywordIds = ref<string[]>([]);
+const selectedKeywords = computed(() =>
+  rows.value.filter((item) => selectedKeywordIds.value.includes(item.id)),
+);
+const rowSelection = computed(() => ({
+  getCheckboxProps: (record: Keyword) => ({
+    disabled: record.dataNature !== 'collected',
+  }),
+  onChange: (keys: (number | string)[]) => {
+    selectedKeywordIds.value = keys.map(String);
+  },
+  selectedRowKeys: selectedKeywordIds.value,
+}));
 const collectedCount = computed(
   () => rows.value.filter((item) => item.dataNature === 'collected').length,
 );
@@ -261,6 +278,153 @@ function mergeCollectedKeyword(record: Keyword) {
   return current;
 }
 
+async function discoverKeywordRecords(records: Keyword[]) {
+  if (records.length === 0) {
+    message.warning('请先勾选要查找独立站的关键词');
+    return;
+  }
+  if (records.length > 3) {
+    message.warning('为控制免费搜索额度，每次最多选择3个关键词');
+    return;
+  }
+  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
+    researchError.value =
+      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
+    message.error(researchError.value);
+    return;
+  }
+
+  const groups = new Map<Market, Keyword[]>();
+  for (const record of records) {
+    const marketRecords = groups.get(record.market) ?? [];
+    marketRecords.push(record);
+    groups.set(record.market, marketRecords);
+  }
+
+  const tasks = new Map<string, Task>();
+  for (const record of records) {
+    const task: Task = {
+      id: crypto.randomUUID(),
+      title: `${record.term} · ${marketName(record.market)} · 独立站发现`,
+      market: record.market,
+      status: 'queued',
+      created: stamp(),
+      steps: ['来源：Brave Search', '验证：官网可访问性与商品结构化数据'],
+    };
+    tasks.set(record.id, task);
+    state.tasks.unshift(task);
+  }
+
+  researching.value = true;
+  researchError.value = '';
+  let totalSites = 0;
+  let totalProducts = 0;
+  const failures: string[] = [];
+  try {
+    for (const [market, marketRecords] of groups) {
+      try {
+        const result = await discoverSites({
+          accessKey: state.settings.researchAccessKey,
+          apiUrl: state.settings.researchApiUrl,
+          depth: 1,
+          keywords: marketRecords.map((item) => item.term),
+          limit: 1,
+          markets: [market],
+          maxSites: state.settings.researchMaxSites,
+          productsPerSite: state.settings.productsPerSite,
+          sources: ['site_discovery'],
+        });
+        const returnedKeys = new Set<string>();
+        for (const group of result.groups) {
+          const original = marketRecords.find(
+            (item) =>
+              item.term.toLocaleLowerCase() ===
+              group.keyword.toLocaleLowerCase(),
+          );
+          if (!original) continue;
+          returnedKeys.add(original.id);
+
+          const sites = group.sites.map(siteRecord);
+          const products = group.sites.flatMap(productRecords);
+          mergeById(state.sites, sites);
+          mergeById(state.products, products);
+          mergeCollectedKeyword({
+            ...original,
+            source: 'Brave Search / 官网验证 · 实采',
+            productIds: products.map((product) => product.id),
+            siteIds: sites.map((site) => site.id),
+            updatedAt: result.generatedAt,
+          });
+
+          totalSites += sites.length;
+          totalProducts += products.length;
+          const task = tasks.get(original.id);
+          if (task) {
+            task.status = sites.length > 0 ? 'completed' : 'partial';
+            task.steps.push(
+              `搜索结果 ${group.coverage.searchResults} 条 / 候选域名 ${group.coverage.candidateDomains} 个`,
+              `官网验证通过 ${group.coverage.validatedSites} 家 / 未通过或不可达 ${group.coverage.rejectedOrUnreachable} 家`,
+              `提取结构化商品 ${products.length} 件`,
+            );
+          }
+          audit(
+            '完成关键词独立站发现',
+            `${original.term} / ${marketName(market)} / ${sites.length}家站点 / ${products.length}件商品`,
+            market,
+          );
+        }
+        for (const record of marketRecords) {
+          if (returnedKeys.has(record.id)) continue;
+          const task = tasks.get(record.id);
+          if (task) {
+            task.status = 'partial';
+            task.steps.push('服务未返回该关键词的独立站结果');
+          }
+        }
+      } catch (error) {
+        const detail =
+          error instanceof Error ? error.message : '独立站发现失败';
+        failures.push(`${marketName(market)}：${detail}`);
+        for (const record of marketRecords) {
+          const task = tasks.get(record.id);
+          if (task) {
+            task.status = 'partial';
+            task.steps.push(`执行失败：${detail}`);
+          }
+        }
+      }
+    }
+
+    selectedKeywordIds.value = selectedKeywordIds.value.filter(
+      (id) => !records.some((record) => record.id === id),
+    );
+    if (failures.length > 0) {
+      researchError.value = failures.join('；');
+      message.warning(
+        `部分查询未完成；已验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
+      );
+    } else if (totalSites > 0) {
+      message.success(
+        `已为 ${records.length} 个关键词验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
+      );
+    } else {
+      message.warning(
+        '本次没有找到通过官网验证的独立站，可尝试更明确的产品或成分关键词',
+      );
+    }
+  } finally {
+    researching.value = false;
+  }
+}
+
+function discoverSelectedKeywords() {
+  return discoverKeywordRecords(selectedKeywords.value);
+}
+
+function discoverKeywordRecord(record: Record<string, unknown>) {
+  return discoverKeywordRecords([record as unknown as Keyword]);
+}
+
 async function createResearch() {
   const seeds = form.seeds
     .split(/[\n,，]/)
@@ -283,8 +447,17 @@ async function createResearch() {
       '越南不支持本地 Amazon ASIN 入口，请选择美国或墨西哥，或改用关键词。';
     return;
   }
-  if (form.limit < 1 || form.limit > 100 || form.budget < 0) {
-    researchError.value = '趋势查询项应为1～100，预算不能为负数。';
+  if (
+    form.limit < 1 ||
+    form.limit > 100 ||
+    form.maxSites < 1 ||
+    form.maxSites > 10 ||
+    form.productsPerSite < 1 ||
+    form.productsPerSite > 20 ||
+    form.budget < 0
+  ) {
+    researchError.value =
+      '趋势查询项应为1～100，站点应为1～10，每站商品应为1～20，预算不能为负数。';
     return;
   }
   if (!liveSourceSelected.value) {
@@ -338,7 +511,8 @@ async function createResearch() {
       keywords: seeds,
       limit: form.limit,
       markets: form.markets,
-      maxSites: state.settings.researchMaxSites,
+      maxSites: form.maxSites,
+      productsPerSite: form.productsPerSite,
       sources: form.sources
         .map((source) => LIVE_SOURCE_IDS[source])
         .filter((source): source is string => Boolean(source)),
@@ -489,11 +663,18 @@ async function createResearch() {
             { label: '全部品类', value: 'ALL' },
             ...categories.map((c) => ({ label: c, value: c })),
           ]"
-        /><Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span>
+        /><Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox><Button
+          :disabled="selectedKeywords.length === 0 || researching"
+          :loading="researching"
+          @click="discoverSelectedKeywords"
+        >
+          批量查找独立站（{{ selectedKeywords.length }}/3）
+</Button><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span>
       </div>
       <Table
         :data-source="rows"
         :columns="columns"
+        :row-selection="rowSelection"
         row-key="id"
         :pagination="{ pageSize: 8, showSizeChanger: false }"
         :scroll="{ x: 1200 }"
@@ -519,13 +700,13 @@ async function createResearch() {
             class="hci-field-title"
             >关联商品
             <Tooltip
-              title="当前关键词已建立关联的商品记录数；点击数量可进入商品库查看。"
+              title="当前关键词已建立关联的商品记录数。联想词首次采集只记录关键词；勾选并执行“查找独立站”后，系统才会验证官网并回填关联。"
             >
               <button class="hci-help-button" aria-label="查看关联商品字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
               </button> </Tooltip></span><span v-else-if="column.key === 'siteLinks'" class="hci-field-title">关联站点
             <Tooltip
-              title="由关联商品去重得到的独立站数量；点击数量可进入站点库查看。"
+              title="当前关键词通过搜索和官网验证后关联的独立站数量。联想词未执行独立站发现前会显示0。"
             >
               <button class="hci-help-button" aria-label="查看关联站点字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
@@ -589,11 +770,10 @@ async function createResearch() {
 </button><button
               class="hci-link"
               style="margin-left: 14px"
-              @click="
-                router.push({ path: '/sites', query: { keyword: record.term } })
-              "
+              :disabled="researching || record.dataNature !== 'collected'"
+              @click="discoverKeywordRecord(record)"
             >
-              找竞品
+              查找独立站
             </button>
           </template>
         </template>
@@ -691,6 +871,18 @@ async function createResearch() {
               :min="1"
               :max="100"
             />
+</Form.Item><Form.Item label="每个关键词目标站点数（1～10）">
+            <InputNumber
+              v-model:value="form.maxSites"
+              :min="1"
+              :max="10"
+            />
+</Form.Item><Form.Item label="每站商品采集上限（1～20）">
+            <InputNumber
+              v-model:value="form.productsPerSite"
+              :min="1"
+              :max="20"
+            />
 </Form.Item><Form.Item label="任务预算上限（USD，0代表禁止付费）">
             <InputNumber
               v-model:value="form.budget"
@@ -754,6 +946,10 @@ async function createResearch() {
         type="error"
         show-icon
       />
+      <p class="hci-subtle">
+        数量为采集目标上限；实际结果取决于搜索命中、官网可访问性和网页公开字段。
+        Shopify 站点优先使用公开商品目录，其他站点逐页读取公开商品信息。
+      </p>
       <p class="hci-subtle">
         计划生成
         {{ form.markets.length }}

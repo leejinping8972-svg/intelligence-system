@@ -2,11 +2,23 @@ import type { Market, Product, Site } from './data';
 
 export interface DiscoveredProduct {
   availability: null | string;
+  benefits: string[];
   brand: string;
+  collectionFields: string[];
   currency: string;
   description: string;
+  form: string;
   image: null | string;
+  ingredientInsights: Array<{
+    amount: string;
+    evidence: string;
+    name: string;
+    role: string;
+  }>;
+  ingredients: string;
   price: null | number;
+  servingSize: string;
+  size: string;
   sku: string;
   title: string;
   url: string;
@@ -69,6 +81,7 @@ export async function discoverSites(input: {
   limit?: number;
   markets: Market[];
   maxSites: number;
+  productsPerSite?: number;
   sources?: string[];
 }) {
   const response = await fetch(input.apiUrl.replace(/\/$/, ''), {
@@ -81,6 +94,7 @@ export async function discoverSites(input: {
       keywords: input.keywords,
       markets: input.markets,
       maxSites: input.maxSites,
+      productsPerSite: input.productsPerSite,
       depth: input.depth,
       limit: input.limit,
       sources: input.sources,
@@ -104,30 +118,35 @@ export function siteRecord(site: DiscoveredSite): Site {
 }
 
 export function productRecords(site: DiscoveredSite): Product[] {
-  return site.products.map((product) => ({
-    id: `web-${stableId(`${site.market}|${product.url}|${product.sku}`)}`,
-    title: product.title,
-    brand: product.brand || site.brand,
-    market: site.market,
-    category: site.category || '待分类',
-    form: '待识别',
-    size: product.sku || '规格待识别',
-    price: Number.isFinite(product.price) ? Number(product.price) : 0,
-    currency: product.currency,
-    ingredient: '待从商品标签提取',
-    dose: '待从商品标签提取',
-    claim: product.description || '官网商品页暂未提供结构化卖点',
-    benefits: [],
-    benefitEvidence: product.description
-      ? `官网商品页描述：${product.description}`
-      : '官网商品页未提供结构化描述。',
-    ingredientInsights: [],
-    siteId: site.id,
-    color: '#e9f4f0',
-    reviewed: false,
-    favorite: false,
-    firstSeenAt: site.lastCollectedAt,
-    evidenceUrl: product.url || site.evidenceUrl,
-    dataNature: 'collected',
-  }));
+  return site.products.map((product) => {
+    const productSize = product.size;
+    return {
+      id: `web-${stableId(`${site.market}|${product.url}|${product.sku}`)}`,
+      title: product.title,
+      brand: product.brand || site.brand,
+      market: site.market,
+      category: site.category || '待分类',
+      form: product.form || '待识别',
+      size: productSize || product.sku || '规格待识别',
+      price: Number.isFinite(product.price) ? Number(product.price) : 0,
+      currency: product.currency,
+      ingredient: product.ingredients || '官网未公开结构化配方',
+      dose: product.servingSize || '官网未公开每份用量',
+      claim: product.description || '官网商品页暂未提供结构化卖点',
+      benefits: product.benefits,
+      benefitEvidence: product.description
+        ? `官网商品页描述：${product.description}`
+        : '官网商品页未提供结构化描述。',
+      ingredientInsights: product.ingredientInsights,
+      siteId: site.id,
+      color: '#e9f4f0',
+      imageUrl: product.image || undefined,
+      collectionFields: product.collectionFields,
+      reviewed: false,
+      favorite: false,
+      firstSeenAt: site.lastCollectedAt,
+      evidenceUrl: product.url || site.evidenceUrl,
+      dataNature: 'collected',
+    };
+  });
 }

@@ -10,7 +10,9 @@ import {
   googleSuggestUrl,
   hostnameRoot,
   isCandidateUrl,
+  productFromJsonLd,
   productPageUrl,
+  productPageUrls,
 } from './src/index.js';
 
 test('builds localized Google suggestion requests', () => {
@@ -53,6 +55,43 @@ test('extracts Product JSON-LD', () => {
   assert.equal(products[0].name, 'Daily Probiotic');
 });
 
+test('extracts image, formula, size, benefits and ingredient records', () => {
+  const record = productFromJsonLd(
+    {
+      '@type': 'Product',
+      name: 'Daily Probiotic Capsules',
+      image: '/daily.webp',
+      size: '30 capsules',
+      ingredients: 'Lactobacillus acidophilus 10 mg, Inulin 100 mg',
+      description: 'Supports digestive balance. Designed for daily use.',
+    },
+    'https://example.com/products/daily',
+    'US',
+    'Natura Lab',
+  );
+  assert.equal(record.image, 'https://example.com/daily.webp');
+  assert.equal(record.form, '胶囊');
+  assert.equal(record.size, '30 capsules');
+  assert.equal(record.benefits.length, 2);
+  assert.equal(record.ingredientInsights.length, 2);
+  assert.ok(record.collectionFields.includes('配方'));
+
+  const labeled = productFromJsonLd(
+    {
+      '@type': 'Product',
+      name: 'Fiber Powder 30 servings',
+      description: 'Helps support digestive regularity.',
+    },
+    'https://example.com/products/fiber',
+    'US',
+    'Natura Lab',
+    '<h3>Ingredients</h3><p>Inulin 5 g, Psyllium husk 3 g</p>',
+  );
+  assert.equal(labeled.size, '30 servings');
+  assert.match(labeled.ingredients, /Inulin/);
+  assert.match(labeled.ingredientInsights[0].role, /膳食纤维/);
+});
+
 test('classifies a product-selling independent site', () => {
   const result = classifyStore(
     productPage,
@@ -82,5 +121,13 @@ test('finds an on-site product page without following external links', () => {
   assert.equal(
     productPageUrl(html, 'https://brand.com/'),
     'https://brand.com/products/daily-probiotic',
+  );
+  assert.deepEqual(
+    productPageUrls(
+      '<a href="/products/a">A</a><a href="/products/b">B</a>',
+      'https://brand.com/',
+      2,
+    ),
+    ['https://brand.com/products/a', 'https://brand.com/products/b'],
   );
 });

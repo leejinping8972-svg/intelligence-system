@@ -61,7 +61,16 @@ watch(
 const rows = computed(() =>
   filteredSites.value.filter(
     (s) =>
-      `${s.brand} ${s.domain} ${s.keyword} ${s.mainProducts.join(' ')} ${s.category} ${s.ownershipBackground}`
+      `${s.brand} ${s.domain} ${s.keyword} ${s.mainProducts.join(' ')} ${s.category} ${s.ownershipBackground} ${state.products
+        .filter((product) => product.siteId === s.id)
+        .map(
+          (product) =>
+            `${product.title} ${product.ingredient} ${product.benefits.join(' ')}`,
+        )
+        .join(' ')} ${state.keywords
+        .filter((keyword) => keyword.siteIds.includes(s.id))
+        .map((keyword) => keyword.term)
+        .join(' ')}`
         .toLowerCase()
         .includes(search.value.toLowerCase()) &&
       (platform.value === 'ALL' || s.platform === platform.value) &&
@@ -86,8 +95,8 @@ const columns = [
     <PageHeader
       title="竞品独立站"
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"
-      >
-<Button @click="router.push('/imports')">导入站点</Button><Button
+    >
+      <Button @click="router.push('/imports')">导入站点</Button><Button
         @click="
           exportCsv(
             '独立站.csv',
@@ -107,10 +116,10 @@ const columns = [
           )
         "
         :disabled="!rows.length"
-        >
-导出
-</Button>
-</PageHeader>
+      >
+        导出
+      </Button>
+    </PageHeader>
     <div v-if="route.query.keyword || linkedKeyword" class="hci-demo-note">
       <b>研究上下文</b>{{ linkedKeyword?.term || route.query.keyword }} ·
       {{
@@ -131,7 +140,7 @@ const columns = [
       <div class="hci-toolbar">
         <Input.Search
           v-model:value="search"
-          placeholder="搜索品牌、网址、主要产品"
+          placeholder="搜索关键词、品牌、网址、商品或成分"
           allow-clear
         /><Select v-model:value="platform" :options="platformOptions" /><Select
           v-model:value="category"
@@ -150,10 +159,10 @@ const columns = [
         row-key="id"
         :scroll="{ x: 1250 }"
         :pagination="{ pageSize: 8 }"
-        >
-<template #bodyCell="{ column, record }">
-<template v-if="column.key === 'brand'">
-<button
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'brand'">
+            <button
               class="hci-link"
               @click="selected = state.sites.find((s) => s.id === record.id)"
             >
@@ -162,51 +171,51 @@ const columns = [
             <div class="hci-subtle">
               {{ record.domain }}
               <Tag v-if="record.dataNature === 'collected'" color="green">
-官网实采
-</Tag>
+                官网实采
+              </Tag>
             </div>
 </template><template v-if="column.key === 'market'">
-<Tag>{{ marketName(record.market) }}</Tag>
+            <Tag>{{ marketName(record.market) }}</Tag>
 </template><template v-if="column.key === 'mainProducts'">
-<div class="hci-compact-tags">
+            <div class="hci-compact-tags">
               <Tag v-for="item in record.mainProducts" :key="item">
-{{
-                item
-              }}
-</Tag>
+                {{ item }}
+              </Tag>
             </div>
 </template><template v-if="column.key === 'ownership'">
-<Tag
+            <Tag
               :color="
                 record.ownershipBackground.includes('待') ? 'orange' : 'blue'
               "
             >
               {{ record.ownershipBackground }}
             </Tag>
-            <div class="hci-subtle">{{ record.ownershipSource }}</div>
+            <div class="hci-subtle">
+              {{ record.ownershipSource }}
+            </div>
 </template><template v-if="column.key === 'products'">
-{{
-            state.products.filter((p) => p.siteId === record.id).length
-          }}
+            {{
+              state.products.filter((p) => p.siteId === record.id).length
+            }}
 </template><template v-if="column.key === 'actions'">
-<button
+            <button
               class="hci-link"
               @click="selected = state.sites.find((s) => s.id === record.id)"
             >
               查看档案 →
             </button>
-</template>
-</template>
-</Table>
+          </template>
+        </template>
+      </Table>
     </section>
     <Drawer
       :open="!!selected"
       :width="560"
       title="品牌与站点档案"
       @close="selected = undefined"
-      >
-<template v-if="selected">
-<h2 style="font-size: 25px">{{ selected.brand }}</h2>
+    >
+      <template v-if="selected">
+        <h2 style="font-size: 25px">{{ selected.brand }}</h2>
         <p class="hci-subtle">
           {{ selected.domain }} ·
           {{
@@ -282,10 +291,10 @@ const columns = [
           @click="
             router.push({ path: '/products', query: { site: selected.id } })
           "
-          >
-查看该站商品
-</Button>
-</template>
-</Drawer>
+        >
+          查看该站商品
+        </Button>
+      </template>
+    </Drawer>
   </main>
 </template>

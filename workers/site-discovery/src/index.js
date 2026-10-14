@@ -176,7 +176,145 @@ function firstOffer(product) {
   return product?.offers || {};
 }
 
-function productFromJsonLd(product, pageUrl, market, fallbackBrand) {
+function readableText(html = '') {
+  return String(html)
+    .replaceAll(/<(?:br|hr)\s*\/?>/gi, '\n')
+    .replaceAll(/<\/(?:div|h[1-6]|li|p|section|tr)>/gi, '\n')
+    .replaceAll(/<[^>]+>/g, ' ')
+    .replaceAll(/&nbsp;|&#160;/gi, ' ')
+    .replaceAll(/&amp;/gi, '&')
+    .replaceAll(/&quot;|&#34;/gi, '"')
+    .replaceAll(/&#39;|&apos;/gi, "'")
+    .replaceAll(/[ \t]+/g, ' ')
+    .replaceAll(/\s*\n\s*/g, '\n')
+    .trim();
+}
+
+function additionalProperty(product, names) {
+  const wanted = names.map((item) => item.toLowerCase());
+  let properties = [];
+  if (Array.isArray(product?.additionalProperty))
+    properties = product.additionalProperty;
+  else if (product?.additionalProperty)
+    properties = [product.additionalProperty];
+  const match = properties.find((item) =>
+    wanted.some((name) => cleanText(item?.name).toLowerCase().includes(name)),
+  );
+  return cleanText(match?.value || match?.description || '');
+}
+
+function labeledText(text, labels) {
+  const lines = String(text)
+    .split(/\n+/)
+    .map((line) => cleanText(line))
+    .filter(Boolean);
+  for (const [lineIndex, line] of lines.entries()) {
+    const normalized = line.toLowerCase();
+    for (const label of labels) {
+      const index = normalized.indexOf(label.toLowerCase());
+      if (index === -1) continue;
+      const value = cleanText(
+        line.slice(index + label.length).replace(/^\s*[:：\-–—]\s*/, ''),
+      );
+      if (value.length >= 2 && value.length <= 1000) return value;
+      const nextLine = cleanText(lines[lineIndex + 1] || '');
+      if (nextLine.length >= 2 && nextLine.length <= 1000) return nextLine;
+    }
+  }
+  return '';
+}
+
+function inferForm(value) {
+  const text = String(value).toLowerCase();
+  if (/capsule|capsules|cápsula|viên nang/.test(text)) return '胶囊';
+  if (/tablet|tablets|tableta|comprimido|viên nén/.test(text)) return '片剂';
+  if (/gumm|gomita|kẹo dẻo/.test(text)) return '软糖';
+  if (/powder|polvo|bột/.test(text)) return '粉剂';
+  if (/liquid|líquido|syrup|dung dịch|nước/.test(text)) return '液体';
+  if (/softgel|soft gel/.test(text)) return '软胶囊';
+  return '';
+}
+
+function benefitExcerpts(description) {
+  return cleanText(description)
+    .split(/(?<=[.!?。！？])\s+/)
+    .map((item) => cleanText(item))
+    .filter((item) => item.length >= 12)
+    .map((item) => item.slice(0, 120))
+    .slice(0, 4);
+}
+
+function inferSize(value) {
+  const text = cleanText(value);
+  return (
+    text.match(
+      /\b\d+(?:\.\d+)?\s*(?:capsules?|tablets?|softgels?|gummies?|servings?|sachets?|sticks?|count|ct|mcg|mg|kg|g|ml|oz|lb)\b/i,
+    )?.[0] || ''
+  );
+}
+
+function ingredientRole(name) {
+  const value = name.toLowerCase();
+  const roles = [
+    [
+      /lactobacillus|bifidobacter|probiotic|men vi sinh/,
+      '益生菌菌株；常见用于肠道菌群相关配方',
+    ],
+    [/inulin|psyllium|fiber|fibre|chất xơ/, '膳食纤维或益生元类成分'],
+    [/magnesium|magnesio|magiê/, '矿物质镁来源；具体盐型和剂量需结合标签判断'],
+    [/inositol/, '肌醇类成分；具体异构体比例需结合标签判断'],
+    [/collagen|colágeno/, '胶原蛋白或胶原肽来源'],
+    [/omega|dha|epa|fish oil/, 'Omega脂肪酸来源；需核验EPA、DHA具体含量'],
+    [/vitamin|vitamina|vitaminas/, '维生素类营养成分；需核验具体形式和剂量'],
+    [
+      /zinc|zinc oxide|zinc citrate|kẽm/,
+      '矿物质锌来源；需核验具体形式和元素量',
+    ],
+  ];
+  return (
+    roles.find(([pattern]) => pattern.test(value))?.[1] ||
+    '官网配方成分；具体作用和科学证据待人工审核'
+  );
+}
+
+function ingredientRecords(ingredients, pageUrl) {
+  return cleanText(ingredients)
+    .split(/[,;；•·|]/)
+    .map((item) => cleanText(item))
+    .filter((item) => item.length >= 2 && item.length <= 120)
+    .slice(0, 12)
+    .map((item) => {
+      const amount =
+        item.match(/\b\d+(?:\.\d+)?\s*(?:mcg|mg|g|ml|iu|cfu)\b/i)?.[0] ||
+        '官网未标注单项剂量';
+      const name = cleanText(
+        item.replace(amount, '').replaceAll(/[()（）]/g, ' '),
+      );
+      return {
+        name: name || item,
+        amount,
+        role: ingredientRole(name || item),
+        evidence: pageUrl,
+      };
+    });
+}
+
+function absoluteUrl(value, pageUrl) {
+  if (!value) return null;
+  try {
+    return new URL(value, pageUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function productFromJsonLd(
+  product,
+  pageUrl,
+  market,
+  fallbackBrand,
+  html = '',
+) {
   const offer = firstOffer(product);
   const brand =
     (typeof product.brand === 'string' ? product.brand : product.brand?.name) ||
@@ -184,10 +322,68 @@ function productFromJsonLd(product, pageUrl, market, fallbackBrand) {
   let image = product.image;
   if (Array.isArray(image)) image = image[0];
   else if (typeof image === 'object') image = image?.url;
+  const text = readableText(html || product.description || '');
+  const ingredients = cleanText(
+    product.ingredients ||
+      additionalProperty(product, [
+        'ingredient',
+        'ingrediente',
+        'thành phần',
+        'formula',
+      ]) ||
+      labeledText(text, ['ingredients', 'ingredientes', 'thành phần']),
+  );
+  const servingSize = cleanText(
+    product.servingSize ||
+      additionalProperty(product, [
+        'serving size',
+        'servings',
+        'porción',
+        'khẩu phần',
+      ]) ||
+      labeledText(text, ['serving size', 'tamaño de la porción', 'khẩu phần']),
+  );
+  const productSize = product.size;
+  const size = cleanText(
+    productSize ||
+      product.weight?.value ||
+      product.weight ||
+      additionalProperty(product, [
+        'size',
+        'count',
+        'net weight',
+        'contents',
+        'tamaño',
+        'khối lượng',
+      ]) ||
+      labeledText(text, [
+        'net weight',
+        'servings per container',
+        'contenido neto',
+        'khối lượng',
+      ]) ||
+      inferSize(`${product.name || ''} ${product.description || ''}`),
+  );
+  const description = cleanText(
+    product.description || meta(html, 'description'),
+  );
+  const benefits = benefitExcerpts(description);
+  const ingredientInsights = ingredientRecords(ingredients, pageUrl);
+  const collectionFields = [
+    ['图片', image],
+    ['规格', size],
+    ['剂型', inferForm(`${product.name} ${size} ${description}`)],
+    ['配方', ingredients],
+    ['每份用量', servingSize],
+    ['卖点', benefits.length > 0],
+    ['成分分析', ingredientInsights.length > 0],
+  ]
+    .filter(([, value]) => Boolean(value))
+    .map(([label]) => label);
   return {
     title: cleanText(product.name || ''),
     brand: cleanText(brand || ''),
-    description: cleanText(product.description || ''),
+    description,
     sku: cleanText(product.sku || product.mpn || product.gtin || ''),
     price:
       offer.price === undefined || offer.price === null
@@ -195,8 +391,15 @@ function productFromJsonLd(product, pageUrl, market, fallbackBrand) {
         : Number(offer.price),
     currency: offer.priceCurrency || MARKET_OPTIONS[market].currency,
     availability: offer.availability || null,
-    image: image || null,
+    image: absoluteUrl(image, pageUrl),
     url: product.url ? new URL(product.url, pageUrl).toString() : pageUrl,
+    size,
+    form: inferForm(`${product.name} ${size} ${description}`),
+    ingredients,
+    servingSize,
+    benefits,
+    ingredientInsights,
+    collectionFields,
   };
 }
 
@@ -229,6 +432,41 @@ async function fetchShopifyProduct(pageUrl) {
         : 'https://schema.org/OutOfStock',
     },
   };
+}
+
+async function fetchShopifyCatalog(pageUrl, limit) {
+  const page = new URL(pageUrl);
+  const endpoint = new URL('/products.json', page.origin);
+  endpoint.searchParams.set('limit', String(Math.min(50, limit)));
+  const response = await fetch(endpoint, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) return [];
+  const data = await response.json();
+  return (data.products || []).slice(0, limit).map((item) => {
+    const variant =
+      item.variants?.find((candidate) => candidate.available) ||
+      item.variants?.[0] ||
+      {};
+    const rawPrice = Number(variant.price);
+    return {
+      '@type': 'Product',
+      name: item.title,
+      brand: item.vendor,
+      description: item.body_html,
+      sku: variant.sku || variant.id || item.id,
+      image: item.images?.[0]?.src,
+      size: variant.title === 'Default Title' ? '' : variant.title,
+      url: new URL(`/products/${item.handle}`, page.origin).toString(),
+      offers: {
+        price: Number.isFinite(rawPrice) ? rawPrice : null,
+        availability: variant.available
+          ? 'https://schema.org/InStock'
+          : 'https://schema.org/OutOfStock',
+      },
+    };
+  });
 }
 
 export function hostnameRoot(hostname) {
@@ -324,25 +562,35 @@ export function classifyStore(html, pageUrl) {
   };
 }
 
-export function productPageUrl(html, pageUrl) {
+export function productPageUrls(html, pageUrl, limit = 1) {
   const links = [...html.matchAll(/<a[^>]+href=["']([^"'#]+)["'][^>]*>/gi)].map(
     (match) => match[1],
   );
   const pageRoot = hostnameRoot(new URL(pageUrl).hostname);
+  const found = [];
+  const seen = new Set();
   for (const href of links) {
     try {
       const url = new URL(href, pageUrl);
       if (
         hostnameRoot(url.hostname) === pageRoot &&
         /\/(?:products?|shop|tienda|san-pham)\//i.test(url.pathname) &&
-        isCandidateUrl(url.toString())
-      )
-        return url.toString();
+        isCandidateUrl(url.toString()) &&
+        !seen.has(url.toString())
+      ) {
+        seen.add(url.toString());
+        found.push(url.toString());
+        if (found.length >= limit) break;
+      }
     } catch {
       // Invalid links are ignored.
     }
   }
-  return null;
+  return found;
+}
+
+export function productPageUrl(html, pageUrl) {
+  return productPageUrls(html, pageUrl, 1)[0] || null;
 }
 
 async function fetchHtml(url) {
@@ -366,12 +614,19 @@ async function fetchHtml(url) {
   };
 }
 
-async function validateCandidate(candidate, keyword, market) {
+async function validateCandidate(candidate, keyword, market, productsPerSite) {
   try {
     let { html, url } = await fetchHtml(candidate);
     if (!isCandidateUrl(url)) return null;
     let classification = classifyStore(html, url);
-    const productUrl = productPageUrl(html, url);
+    const landingHtml = html;
+    const landingUrl = url;
+    const productLinks = productPageUrls(
+      html,
+      url,
+      Math.min(productsPerSite, 3),
+    );
+    const productUrl = productLinks[0];
     if (
       classification.products.length === 0 &&
       productUrl &&
@@ -393,23 +648,79 @@ async function validateCandidate(candidate, keyword, market) {
       }
     }
     if (!classification.isIndependentStore) return null;
-    if (
-      classification.products.length === 0 &&
-      classification.platform === 'Shopify'
-    ) {
+    let normalizedProducts = classification.products
+      .map((product) => productFromJsonLd(product, url, market, '', html))
+      .filter((product) => product.title);
+    if (classification.platform === 'Shopify') {
       try {
-        const shopifyProduct = await fetchShopifyProduct(url);
-        if (shopifyProduct) classification.products = [shopifyProduct];
+        const catalog = await fetchShopifyCatalog(landingUrl, productsPerSite);
+        if (catalog.length > 0) {
+          normalizedProducts = catalog
+            .map((product) =>
+              productFromJsonLd(
+                product,
+                product.url,
+                market,
+                product.brand,
+                product.description,
+              ),
+            )
+            .filter((product) => product.title);
+        } else if (normalizedProducts.length === 0) {
+          const shopifyProduct = await fetchShopifyProduct(url);
+          if (shopifyProduct)
+            normalizedProducts = [
+              productFromJsonLd(
+                shopifyProduct,
+                url,
+                market,
+                shopifyProduct.brand,
+                html,
+              ),
+            ];
+        }
       } catch {
         // The storefront evidence still validates the site when product JSON is unavailable.
       }
     }
+    if (
+      classification.platform !== 'Shopify' &&
+      normalizedProducts.length < productsPerSite
+    ) {
+      const remainingLinks = productLinks.filter((item) => item !== url);
+      const pages = await Promise.all(
+        remainingLinks.map(async (item) => {
+          try {
+            return await fetchHtml(item);
+          } catch {
+            return null;
+          }
+        }),
+      );
+      for (const page of pages.filter(Boolean)) {
+        const pageProducts = extractJsonLdProducts(page.html)
+          .map((product) =>
+            productFromJsonLd(product, page.url, market, '', page.html),
+          )
+          .filter((product) => product.title);
+        normalizedProducts.push(...pageProducts);
+      }
+    }
+    const seenProducts = new Set();
+    normalizedProducts = normalizedProducts
+      .filter((product) => {
+        const key =
+          `${product.url}|${product.sku}|${product.title}`.toLowerCase();
+        if (seenProducts.has(key)) return false;
+        seenProducts.add(key);
+        return true;
+      })
+      .slice(0, productsPerSite);
     const domain = hostnameRoot(new URL(url).hostname);
     const brand =
-      meta(html, 'og:site_name') ||
-      classification.products[0]?.brand?.name ||
-      classification.products[0]?.brand ||
-      cleanText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])
+      meta(landingHtml, 'og:site_name') ||
+      normalizedProducts[0]?.brand ||
+      cleanText(landingHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])
         .split(/[|–—-]/)[0]
         ?.trim() ||
       domain;
@@ -422,10 +733,10 @@ async function validateCandidate(candidate, keyword, market) {
       type: '搜索发现独立站',
       keyword,
       category: '待分类',
-      mainProducts: classification.products
-        .map((item) => cleanText(item.name || ''))
+      mainProducts: normalizedProducts
+        .map((item) => item.title)
         .filter(Boolean)
-        .slice(0, 5),
+        .slice(0, 10),
       ownershipBackground: '待从官网核验',
       ownershipOperations: '待从官网核验',
       ownershipEvidence: '当前仅确认官网具有独立销售能力。',
@@ -435,12 +746,10 @@ async function validateCandidate(candidate, keyword, market) {
       evidenceUrl: url,
       confidence: classification.confidence,
       signals: classification.signals,
-      products: classification.products
-        .slice(0, 5)
-        .map((product) =>
-          productFromJsonLd(product, url, market, cleanText(brand)),
-        )
-        .filter((product) => product.title),
+      products: normalizedProducts.map((product) => ({
+        ...product,
+        brand: product.brand || cleanText(brand),
+      })),
     };
   } catch {
     return null;
@@ -691,8 +1000,12 @@ async function runResearch(input, env) {
     1,
     Math.min(100, Number(input.limit) || 100),
   );
-  const maxSites = Math.max(1, Math.min(6, Number(input.maxSites) || 6));
-  const candidateLimit = Math.min(12, Math.max(6, maxSites * 2));
+  const maxSites = Math.max(1, Math.min(10, Number(input.maxSites) || 6));
+  const productsPerSite = Math.max(
+    1,
+    Math.min(20, Number(input.productsPerSite) || 10),
+  );
+  const candidateLimit = Math.min(12, Math.max(8, maxSites + 2));
   if (keywords.length === 0 || keywords.length > 3)
     throw new Error('每次请输入1至3个关键词');
   if (markets.length === 0 || markets.some((market) => !MARKET_OPTIONS[market]))
@@ -734,7 +1047,9 @@ async function runResearch(input, env) {
           if (unique.length >= candidateLimit) break;
         }
         const candidates = await Promise.all(
-          unique.map((url) => validateCandidate(url, keyword, market)),
+          unique.map((url) =>
+            validateCandidate(url, keyword, market, productsPerSite),
+          ),
         );
         const validated = candidates
           .filter(Boolean)

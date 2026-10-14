@@ -32,9 +32,13 @@ function addMonitor() {
     :width="620"
     title="商品情报详情"
     @close="emit('close')"
-    >
-<template v-if="product">
-<ProductArt :color="product.color" :brand="product.brand" />
+  >
+    <template v-if="product">
+      <ProductArt
+        :color="product.color"
+        :brand="product.brand"
+        :image-url="product.imageUrl"
+      />
       <div style="margin-top: 20px">
         <p class="hci-product-brand">
           {{ product.brand }} · {{ marketName(product.market) }}
@@ -42,19 +46,19 @@ function addMonitor() {
         <h2 style="font-size: 23px; font-weight: 600">{{ product.title }}</h2>
         <div style="display: flex; gap: 12px; margin: 14px 0">
           <Tag :color="product.reviewed ? 'green' : 'orange'">
-{{
-            product.reviewed
-              ? '审核已确认'
-              : product.dataNature === 'collected'
-                ? '官网实采 · 待核验'
-                : '演示 · 待核验'
-          }}
+            {{
+              product.reviewed
+                ? '审核已确认'
+                : product.dataNature === 'collected'
+                  ? '官网实采 · 待核验'
+                  : '演示 · 待核验'
+            }}
 </Tag><Tag>{{ product.category }}</Tag>
         </div>
       </div>
       <Tabs>
-<Tabs.TabPane key="details" tab="配方与规格">
-<dl class="hci-detail-grid">
+        <Tabs.TabPane key="details" tab="配方与规格">
+          <dl class="hci-detail-grid">
             <dt>包装规格</dt>
             <dd>{{ product.size }}</dd>
             <dt>剂型</dt>
@@ -76,11 +80,15 @@ function addMonitor() {
               {{ product.claim }}
               <div class="hci-subtle">营销宣称示例，不代表科学验证的功效</div>
             </dd>
+            <dt>采集完整度</dt>
+            <dd>
+              {{ product.collectionFields?.join('、') || '等待补采' }}
+            </dd>
             <dt>科学证据状态</dt>
             <dd>未知 / 未核验</dd>
           </dl>
 </Tabs.TabPane><Tabs.TabPane key="analysis" tab="卖点与成分分析">
-<h3 class="hci-section-heading">官网功效卖点提取</h3>
+          <h3 class="hci-section-heading">官网功效卖点提取</h3>
           <div class="hci-compact-tags" style="margin: 12px 0">
             <Tag
               v-for="benefit in product.benefits"
@@ -110,7 +118,7 @@ function addMonitor() {
             <small>依据：{{ item.evidence }}</small>
           </div>
 </Tabs.TabPane><Tabs.TabPane key="evidence" tab="来源与证据">
-<div class="hci-evidence">
+          <div class="hci-evidence">
             <template v-if="product.dataNature === 'collected'">
               <b>官网采集证据</b><br />{{ product.title }}<br />
               {{ product.claim }}<br /><br />
@@ -139,11 +147,11 @@ function addMonitor() {
               router.push({ path: '/sites', query: { site: productSite.id } });
               emit('close');
             "
-            >
-查看关联独立站：{{ productSite.brand }} →
-</Button>
+          >
+            查看关联独立站：{{ productSite.brand }} →
+          </Button>
 </Tabs.TabPane><Tabs.TabPane key="history" tab="历史记录">
-<div class="hci-market-row">
+          <div class="hci-market-row">
             <span>首次观察</span><span>{{ product.firstSeenAt || '2026-10-13' }}</span>
           </div>
           <div
@@ -158,22 +166,20 @@ function addMonitor() {
           <p class="hci-subtle" style="margin-top: 18px">
             价格历史从第一次官网实采后开始积累。
           </p>
-</Tabs.TabPane>
-</Tabs>
+        </Tabs.TabPane>
+      </Tabs>
       <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px">
         <Button type="primary" @click="addMonitor">加入监控</Button><Button @click="toggleFavorite(product)">
-{{
-          product.favorite ? '取消收藏' : '收藏商品'
-        }}
+          {{ product.favorite ? '取消收藏' : '收藏商品' }}
 </Button><Button
           @click="
             router.push('/reviews');
             emit('close');
           "
-          >
-前往审核
-</Button>
+        >
+          前往审核
+        </Button>
       </div>
-</template>
-</Drawer>
+    </template>
+  </Drawer>
 </template>

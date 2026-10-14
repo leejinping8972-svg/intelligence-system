@@ -96,7 +96,10 @@ watch(
 const rows = computed(() =>
   filteredProducts.value.filter(
     (p) =>
-      `${p.title} ${p.brand} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')}`
+      `${p.title} ${p.brand} ${p.size} ${p.form} ${p.claim} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')} ${state.sites.find((site) => site.id === p.siteId)?.domain || ''} ${state.keywords
+        .filter((keyword) => keyword.productIds.includes(p.id))
+        .map((keyword) => keyword.term)
+        .join(' ')}`
         .toLowerCase()
         .includes(search.value.toLowerCase()) &&
       (category.value === 'ALL' || p.category === category.value) &&
@@ -126,8 +129,8 @@ function toggleCompare(id: string) {
     <PageHeader
       title="商品情报库"
       description="从配方、规格到市场定位，建立可追溯的商品认知。"
-      >
-<Button
+    >
+      <Button
         :disabled="!rows.length"
         @click="
           exportCsv(
@@ -146,6 +149,8 @@ function toggleCompare(id: string) {
               成分分析: p.ingredientInsights
                 .map((item) => `${item.name}｜${item.amount}｜${item.role}`)
                 .join('；'),
+              商品图片: p.imageUrl || '',
+              已采集字段: p.collectionFields?.join('、') || '',
               独立站品牌:
                 state.sites.find((site) => site.id === p.siteId)?.brand || '',
               独立站域名:
@@ -155,16 +160,16 @@ function toggleCompare(id: string) {
             })),
           )
         "
-        >
-导出商品
+      >
+        导出商品
 </Button><Button
         type="primary"
         :disabled="comparison.length < 2"
         @click="compareOpen = true"
-        >
-对比商品（{{ comparison.length }}/3）
-</Button>
-</PageHeader>
+      >
+        对比商品（{{ comparison.length }}/3）
+      </Button>
+    </PageHeader>
     <div v-if="linkedKeyword" class="hci-demo-note">
       <b>关键词关联筛选</b>{{ linkedKeyword.term }} · 当前显示
       {{ linkedKeyword.productIds.length }} 个已关联商品。
@@ -180,7 +185,7 @@ function toggleCompare(id: string) {
       <div class="hci-toolbar" style="margin-bottom: 0">
         <Input.Search
           v-model:value="search"
-          placeholder="搜索商品、品牌、成分或卖点"
+          placeholder="搜索关键词、商品、站点、配方、规格或卖点"
           allow-clear
         /><Select
           v-model:value="category"
@@ -222,6 +227,7 @@ function toggleCompare(id: string) {
           <ProductArt
             :color="product.color"
             :brand="product.brand"
+            :image-url="product.imageUrl"
             :label="
               product.form === '粉剂'
                 ? 'FIBER\nBLEND'
@@ -241,14 +247,17 @@ function toggleCompare(id: string) {
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
           <div class="hci-product-meta">
             <Tag>{{ product.category }}</Tag><Tag :color="product.reviewed ? 'green' : 'orange'">
-{{
-              product.reviewed
-                ? '已核验示例'
-                : product.dataNature === 'collected'
-                  ? '官网实采 · 待审核'
-                  : '待审核'
-            }}
-</Tag>
+              {{
+                product.reviewed
+                  ? '已核验示例'
+                  : product.dataNature === 'collected'
+                    ? '官网实采 · 待审核'
+                    : '待审核'
+              }}
+            </Tag>
+            <Tag v-if="product.collectionFields?.length" color="blue">
+              已采集 {{ product.collectionFields.length }}/7 项
+            </Tag>
           </div>
           <div class="hci-product-insights">
             <div>
@@ -289,7 +298,8 @@ function toggleCompare(id: string) {
                 ? money(product.price, product.currency)
                 : '价格待获取'
             }}</span><button
-              class="hci-favorite" :class="[{ active: product.favorite }]"
+              class="hci-favorite"
+              :class="[{ active: product.favorite }]"
               :aria-label="`${product.favorite ? '取消收藏' : '收藏'}${product.title}`"
               @click="toggleFavorite(product)"
             >
@@ -300,9 +310,9 @@ function toggleCompare(id: string) {
             <Checkbox
               :checked="compareIds.includes(product.id)"
               @change="toggleCompare(product.id)"
-              >
-加入对比
-</Checkbox>
+            >
+              加入对比
+            </Checkbox>
           </div>
         </div>
       </article>
@@ -315,8 +325,8 @@ function toggleCompare(id: string) {
       title="商品对比"
       :width="980"
       :footer="null"
-      >
-<div class="hci-demo-note">
+    >
+      <div class="hci-demo-note">
         保留原币种与规格；未接入汇率，不计算跨币种价格高低。
       </div>
       <div class="hci-comparison">
@@ -333,6 +343,6 @@ function toggleCompare(id: string) {
           <Button size="small" @click="toggleCompare(p.id)">移除对比</Button>
         </div>
       </div>
-</Modal>
+    </Modal>
   </main>
 </template>
