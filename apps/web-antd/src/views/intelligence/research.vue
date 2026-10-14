@@ -1,34 +1,38 @@
 <script setup lang="ts">
+import type { Keyword, Market, Task } from './data';
+
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+
+import { IconifyIcon } from '@vben/icons';
+
 import {
+  Alert,
   Button,
+  Checkbox,
+  Form,
   Input,
+  InputNumber,
+  message,
+  Modal,
+  Radio,
   Select,
   Table,
   Tag,
-  Modal,
-  Form,
-  InputNumber,
-  Checkbox,
-  Radio,
-  Alert,
   Tooltip,
-  message,
 } from 'ant-design-vue';
-import { IconifyIcon } from '@vben/icons';
+
 import PageHeader from './components/PageHeader.vue';
 import {
-  state,
-  markets,
+  audit,
   categories,
+  exportCsv,
   filteredKeywords,
   marketName,
-  exportCsv,
+  markets,
   stamp,
-  audit,
+  state,
 } from './data';
-import type { Keyword, Market, Task } from './data';
 import { discoverSites, productRecords, siteRecord } from './site-discovery';
 
 const DISCOVERY_SOURCE = '独立站发现（Brave Search + 官网验证）';
@@ -374,7 +378,8 @@ async function createResearch() {
     <PageHeader
       title="关键词研究"
       description="从用户的搜索表达出发，发现需求与产品概念。"
-      ><Button
+      >
+<Button
         @click="
           exportCsv(
             '关键词研究.csv',
@@ -390,11 +395,12 @@ async function createResearch() {
           )
         "
         :disabled="!rows.length"
-        >导出结果</Button
-      ><Button type="primary" @click="open = true"
-        >＋ 新建研究</Button
-      ></PageHeader
-    >
+        >
+导出结果
+</Button><Button type="primary" @click="open = true">
+＋ 新建研究
+</Button>
+</PageHeader>
     <section class="hci-panel">
       <div class="hci-toolbar">
         <Input.Search
@@ -407,10 +413,7 @@ async function createResearch() {
             { label: '全部品类', value: 'ALL' },
             ...categories.map((c) => ({ label: c, value: c })),
           ]"
-        /><Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox
-        ><span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span
-        >
+        /><Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span>
       </div>
       <Table
         :data-source="rows"
@@ -418,17 +421,15 @@ async function createResearch() {
         row-key="id"
         :pagination="{ pageSize: 8, showSizeChanger: false }"
         :scroll="{ x: 1200 }"
-        ><template #headerCell="{ column }"
-          ><span v-if="column.key === 'source'" class="hci-field-title"
-            >来源
+        >
+<template #headerCell="{ column }">
+<span v-if="column.key === 'source'" class="hci-field-title">来源
             <Tooltip
               title="关键词的发现渠道。同一关键词可以有多个独立来源；“演示”表示当前记录来自虚构样本，并非真实接口返回。"
               ><button class="hci-help-button" aria-label="查看来源字段说明">
                 <IconifyIcon
                   icon="lucide:circle-help"
-                /></button></Tooltip></span
-          ><span v-else-if="column.key === 'growth'" class="hci-field-title"
-            >28天变化
+                /></button></Tooltip></span><span v-else-if="column.key === 'growth'" class="hci-field-title">28天变化
             <Tooltip
               title="同一市场、同一查询批次内，最近28天相对热度与此前28天相比的变化率：(最近28天－此前28天)÷此前28天。它不是搜索量；基期为0或数据不足时不计算。"
               ><button
@@ -437,8 +438,7 @@ async function createResearch() {
               >
                 <IconifyIcon
                   icon="lucide:circle-help"
-                /></button></Tooltip></span
-          ><span
+                /></button></Tooltip></span><span
             v-else-if="column.key === 'productLinks'"
             class="hci-field-title"
             >关联商品
@@ -447,45 +447,40 @@ async function createResearch() {
             >
               <button class="hci-help-button" aria-label="查看关联商品字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
-              </button> </Tooltip></span
-          ><span v-else-if="column.key === 'siteLinks'" class="hci-field-title"
-            >关联站点
+              </button> </Tooltip></span><span v-else-if="column.key === 'siteLinks'" class="hci-field-title">关联站点
             <Tooltip
               title="由关联商品去重得到的独立站数量；点击数量可进入站点库查看。"
             >
               <button class="hci-help-button" aria-label="查看关联站点字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
-              </button> </Tooltip></span
-        ></template>
-        <template #bodyCell="{ column, record }"
-          ><template v-if="column.key === 'term'"
-            ><button
+              </button> </Tooltip></span>
+</template>
+        <template #bodyCell="{ column, record }">
+<template v-if="column.key === 'term'">
+<button
               class="hci-link"
               @click="
                 router.push({ path: '/trends', query: { keyword: record.id } })
               "
             >
               {{ record.term }}
-            </button></template
-          ><template v-if="column.key === 'market'"
-            ><Tag>{{ marketName(record.market) }}</Tag></template
-          ><template v-if="column.key === 'source'"
-            ><div class="hci-source-tags">
+            </button>
+</template><template v-if="column.key === 'market'">
+<Tag>{{ marketName(record.market) }}</Tag>
+</template><template v-if="column.key === 'source'">
+<div class="hci-source-tags">
               <Tag v-for="source in sourceLabels(record.source)" :key="source">
                 {{ source }}
               </Tag>
-              <span v-if="record.source.includes('演示')" class="hci-subtle"
-                >演示样本</span
-              >
-            </div></template
-          ><template v-if="column.key === 'growth'"
-            ><span
+              <span v-if="record.source.includes('演示')" class="hci-subtle">演示样本</span>
+            </div>
+</template><template v-if="column.key === 'growth'">
+<span
               v-if="record.growth !== null"
               :class="record.growth > 0 ? 'hci-positive' : 'hci-negative'"
-              >{{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%</span
-            ><Tag v-else>数据不足</Tag></template
-          ><template v-if="column.key === 'productLinks'"
-            ><button
+              >{{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%</span><Tag v-else>数据不足</Tag>
+</template><template v-if="column.key === 'productLinks'">
+<button
               class="hci-count-link"
               :disabled="!record.productIds.length"
               :aria-label="`查看${record.term}关联商品`"
@@ -496,11 +491,10 @@ async function createResearch() {
                 })
               "
             >
-              <b>{{ record.productIds.length }}</b
-              ><span>件商品</span>
-            </button></template
-          ><template v-if="column.key === 'siteLinks'"
-            ><button
+              <b>{{ record.productIds.length }}</b><span>件商品</span>
+            </button>
+</template><template v-if="column.key === 'siteLinks'">
+<button
               class="hci-count-link"
               :disabled="!record.siteIds.length"
               :aria-label="`查看${record.term}关联站点`"
@@ -508,16 +502,15 @@ async function createResearch() {
                 router.push({ path: '/sites', query: { keywordId: record.id } })
               "
             >
-              <b>{{ record.siteIds.length }}</b
-              ><span>家站点</span>
-            </button></template
-          ><template v-if="column.key === 'actions'"
-            ><button
+              <b>{{ record.siteIds.length }}</b><span>家站点</span>
+            </button>
+</template><template v-if="column.key === 'actions'">
+<button
               class="hci-link"
               @click="record.favorite = !record.favorite"
             >
-              {{ record.favorite ? '★ 已收藏' : '☆ 收藏' }}</button
-            ><button
+              {{ record.favorite ? '★ 已收藏' : '☆ 收藏' }}
+</button><button
               class="hci-link"
               style="margin-left: 14px"
               @click="
@@ -525,10 +518,10 @@ async function createResearch() {
               "
             >
               找竞品
-            </button></template
-          ></template
-        ></Table
-      >
+            </button>
+</template>
+</template>
+</Table>
     </section>
     <div class="hci-field-notes">
       <div>
@@ -537,9 +530,7 @@ async function createResearch() {
       </div>
       <div>
         <b>28天变化</b>
-        <span
-          >最近28天与此前28天的同序列相对热度变化，不代表绝对搜索量，也不能跨批次比较。</span
-        >
+        <span>最近28天与此前28天的同序列相对热度变化，不代表绝对搜索量，也不能跨批次比较。</span>
       </div>
     </div>
     <div class="hci-demo-note">
@@ -557,7 +548,8 @@ async function createResearch() {
       cancel-text="取消"
       @ok="createResearch"
       @cancel="error = ''"
-      ><Alert
+      >
+<Alert
         :message="
           liveDiscoverySelected
             ? '将调用Cloudflare Worker完成搜索发现与官网验证，结果保存在当前浏览器。'
@@ -566,14 +558,13 @@ async function createResearch() {
         :type="liveDiscoverySelected ? 'success' : 'info'"
         show-icon
         style="margin: 16px 0"
-      /><Form layout="vertical"
-        ><div class="hci-form-grid">
-          <Form.Item label="研究入口" class="hci-full"
-            ><Radio.Group v-model:value="form.entry"
-              ><Radio.Button value="keyword">关键词研究</Radio.Button
-              ><Radio.Button value="asin">ASIN 反查</Radio.Button></Radio.Group
-            ></Form.Item
-          ><Form.Item
+      /><Form layout="vertical">
+<div class="hci-form-grid">
+          <Form.Item label="研究入口" class="hci-full">
+<Radio.Group v-model:value="form.entry">
+<Radio.Button value="keyword">关键词研究</Radio.Button><Radio.Button value="asin">ASIN 反查</Radio.Button>
+</Radio.Group>
+</Form.Item><Form.Item
             :label="
               form.entry === 'asin'
                 ? 'ASIN（每行一个）'
@@ -581,7 +572,8 @@ async function createResearch() {
             "
             class="hci-full"
             required
-            ><Input.TextArea
+            >
+<Input.TextArea
               v-model:value="form.seeds"
               :rows="3"
               :placeholder="
@@ -589,15 +581,17 @@ async function createResearch() {
                   ? '例如 B012345678'
                   : 'probiotic for women\ninositol'
               "
-              :maxlength="1000" /></Form.Item
-          ><Form.Item label="目标市场" class="hci-full" required
-            ><Checkbox.Group
+              :maxlength="1000"
+/>
+</Form.Item><Form.Item label="目标市场" class="hci-full" required>
+<Checkbox.Group
               v-model:value="form.markets"
               :options="
                 markets.map((m) => ({ label: m.name, value: m.code }))
-              " /></Form.Item
-          ><Form.Item label="数据来源" class="hci-full" required
-            ><Checkbox.Group
+              "
+/>
+</Form.Item><Form.Item label="数据来源" class="hci-full" required>
+<Checkbox.Group
               v-model:value="form.sources"
               :options="[
                 'Google 联想词',
@@ -607,27 +601,32 @@ async function createResearch() {
                 'Store Leads',
                 DISCOVERY_SOURCE,
                 '人工导入',
-              ]" /></Form.Item
-          ><Form.Item label="裂变深度"
-            ><Select
+              ]"
+/>
+</Form.Item><Form.Item label="裂变深度">
+<Select
               v-model:value="form.depth"
               :options="[
                 { label: '一级裂变（推荐）', value: 1 },
                 { label: '二级裂变', value: 2 },
-              ]" /></Form.Item
-          ><Form.Item label="趋势查询项上限（所有国家合计）"
-            ><InputNumber
+              ]"
+/>
+</Form.Item><Form.Item label="趋势查询项上限（所有国家合计）">
+<InputNumber
               v-model:value="form.limit"
               :min="1"
-              :max="100" /></Form.Item
-          ><Form.Item label="任务预算上限（USD，0代表禁止付费）"
-            ><InputNumber
+              :max="100"
+/>
+</Form.Item><Form.Item label="任务预算上限（USD，0代表禁止付费）">
+<InputNumber
               v-model:value="form.budget"
               :min="0"
               :max="10000"
               :precision="2"
-          /></Form.Item></div
-      ></Form>
+          />
+</Form.Item>
+</div>
+</Form>
       <section class="hci-cost-estimate">
         <div class="hci-cost-estimate-head">
           <div>
@@ -637,19 +636,15 @@ async function createResearch() {
           <Tag :color="budgetStatus.color">{{ budgetStatus.text }}</Tag>
         </div>
         <div class="hci-cost-metrics">
-          <span
-            >预计进入查询 {{ costEstimate.estimatedKeywords }} 个关键词</span
-          >
+          <span>预计进入查询 {{ costEstimate.estimatedKeywords }} 个关键词</span>
           <span>计费请求 {{ costEstimate.paidRequests }} 次</span>
           <span>预留 {{ state.settings.costBufferRate }}%</span>
         </div>
         <div v-if="costEstimate.lines.length" class="hci-cost-lines">
           <div v-for="line in costEstimate.lines" :key="line.key">
-            <span
-              >{{ line.label }} · {{ line.quantity }} × ${{
+            <span>{{ line.label }} · {{ line.quantity }} × ${{
                 formatCost(line.unit)
-              }}</span
-            >
+              }}</span>
             <b>${{ formatCost(line.total) }}</b>
           </div>
         </div>
@@ -660,8 +655,9 @@ async function createResearch() {
             size="small"
             :disabled="!costEstimate.recommended"
             @click="form.budget = costEstimate.recommended"
-            >采用建议预算</Button
-          >
+            >
+采用建议预算
+</Button>
         </div>
         <p
           v-if="
@@ -687,7 +683,7 @@ async function createResearch() {
             ? '单次最多3个“关键词 × 市场”组合。'
             : '当前选择将以演示任务记录。'
         }}
-      </p></Modal
-    >
+      </p>
+</Modal>
   </main>
 </template>

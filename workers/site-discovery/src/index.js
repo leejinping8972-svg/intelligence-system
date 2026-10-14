@@ -24,17 +24,26 @@ const EXCLUDED_DOMAINS = [
   'aliexpress.com',
   'amazon.com',
   'amazon.com.mx',
+  'costco.com',
+  'cvs.com',
   'ebay.com',
   'facebook.com',
   'instagram.com',
+  'iherb.com',
+  'kroger.com',
   'lazada.vn',
   'linkedin.com',
   'mercadolibre.com',
   'mercadolibre.com.mx',
   'pinterest.com',
   'reddit.com',
+  'riteaid.com',
+  'samsclub.com',
   'shopee.vn',
   'tiktok.com',
+  'target.com',
+  'vitacost.com',
+  'walgreens.com',
   'walmart.com',
   'walmart.com.mx',
   'youtube.com',
@@ -163,13 +172,44 @@ function productFromJsonLd(product, pageUrl, market, fallbackBrand) {
   };
 }
 
+async function fetchShopifyProduct(pageUrl) {
+  const page = new URL(pageUrl);
+  const match = page.pathname.match(/\/products\/([^/?#]+)/i);
+  if (!match) return null;
+  const endpoint = new URL(`/products/${match[1]}.js`, page.origin);
+  const response = await fetch(endpoint, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  const variant =
+    data.variants?.find((item) => item.available) || data.variants?.[0] || {};
+  const rawPrice = Number(variant.price ?? data.price);
+  return {
+    '@type': 'Product',
+    name: data.title,
+    brand: data.vendor,
+    description: data.description,
+    sku: variant.sku || variant.id || data.id,
+    image: data.featured_image || data.images?.[0],
+    url: pageUrl,
+    offers: {
+      price: Number.isFinite(rawPrice) ? rawPrice / 100 : null,
+      availability: variant.available
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/OutOfStock',
+    },
+  };
+}
+
 export function hostnameRoot(hostname) {
   const parts = hostname
     .toLowerCase()
     .replace(/^www\./, '')
     .split('.');
   if (parts.length <= 2) return parts.join('.');
-  const secondLevel = new Set(['co.uk', 'com.au', 'com.mx', 'com.vn', 'co.nz']);
+  const secondLevel = new Set(['co.nz', 'co.uk', 'com.au', 'com.mx', 'com.vn']);
   const suffix = parts.slice(-2).join('.');
   return secondLevel.has(suffix)
     ? parts.slice(-3).join('.')
@@ -325,6 +365,17 @@ async function validateCandidate(candidate, keyword, market) {
       }
     }
     if (!classification.isIndependentStore) return null;
+    if (
+      classification.products.length === 0 &&
+      classification.platform === 'Shopify'
+    ) {
+      try {
+        const shopifyProduct = await fetchShopifyProduct(url);
+        if (shopifyProduct) classification.products = [shopifyProduct];
+      } catch {
+        // The storefront evidence still validates the site when product JSON is unavailable.
+      }
+    }
     const domain = hostnameRoot(new URL(url).hostname);
     const brand =
       meta(html, 'og:site_name') ||
@@ -371,7 +422,7 @@ async function validateCandidate(candidate, keyword, market) {
 async function braveSearch(keyword, market, env, count) {
   const options = MARKET_OPTIONS[market];
   const params = new URLSearchParams({
-    q: `"${keyword}" ${options.intent}`,
+    q: `${keyword} ${options.intent}`,
     country: options.country,
     search_lang: options.language,
     count: String(Math.min(20, count)),
@@ -404,6 +455,7 @@ async function runResearch(input, env) {
   ].filter(Boolean);
   const markets = [...new Set(input.markets)];
   const maxSites = Math.max(1, Math.min(6, Number(input.maxSites) || 6));
+  const candidateLimit = Math.min(12, Math.max(6, maxSites * 2));
   if (keywords.length === 0 || keywords.length > 3)
     throw new Error('每次请输入1至3个关键词');
   if (markets.length === 0 || markets.some((market) => !MARKET_OPTIONS[market]))
@@ -414,7 +466,7 @@ async function runResearch(input, env) {
   const groups = [];
   for (const keyword of keywords) {
     for (const market of markets) {
-      const urls = await braveSearch(keyword, market, env, maxSites);
+      const urls = await braveSearch(keyword, market, env, 20);
       const unique = [];
       const domains = new Set();
       for (const url of urls) {
@@ -422,7 +474,7 @@ async function runResearch(input, env) {
         if (domains.has(domain)) continue;
         domains.add(domain);
         unique.push(url);
-        if (unique.length >= maxSites) break;
+        if (unique.length >= candidateLimit) break;
       }
       const candidates = await Promise.all(
         unique.map((url) => validateCandidate(url, keyword, market)),
