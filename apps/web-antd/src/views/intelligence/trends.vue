@@ -52,7 +52,15 @@ const trough = computed(() =>
 );
 const trendConclusion = computed(() => {
   if (!keyword.value?.series.length) return '尚未采集真实趋势序列';
-  if (keyword.value.growth === null) return '序列不足56天，暂不能计算28天变化';
+  if (keyword.value.series.length < 56)
+    return '有效日序列不足56天，暂不能计算28天变化';
+  if (keyword.value.series.every((value) => value === 0))
+    return '近90天相对热度均为0，Google Trends未观察到足够搜索样本';
+  if (keyword.value.growth === null && previous.value === 0 && recent.value > 0)
+    return '此前28天均值为0，最近28天已出现搜索信号，无法计算百分比变化';
+  if (keyword.value.growth === null && previous.value === 0)
+    return '此前28天基期为0，无法计算百分比变化';
+  if (keyword.value.growth === null) return '当前序列暂不能计算28天变化';
   if (keyword.value.growth >= 20)
     return '最近28天热度明显上升，建议优先核验供给与竞品动作';
   if (keyword.value.growth >= 5)

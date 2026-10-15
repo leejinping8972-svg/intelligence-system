@@ -18,6 +18,7 @@ import {
   productFromJsonLd,
   productPageUrl,
   productPageUrls,
+  trendSeriesMessage,
 } from './src/index.js';
 
 test('builds localized Google suggestion requests', () => {
@@ -135,10 +136,16 @@ test('classifies supplement categories from multilingual evidence', () => {
 });
 
 test('builds and calculates Google Trends series', () => {
-  const url = new URL(googleTrendsExploreUrl('sức khỏe phụ nữ', 'VN'));
+  const url = new URL(
+    googleTrendsExploreUrl(
+      ['sức khỏe phụ nữ', 'sức khỏe phụ nữ tuổi 30'],
+      'VN',
+    ),
+  );
   const request = JSON.parse(url.searchParams.get('req'));
   assert.equal(request.comparisonItem[0].geo, 'VN');
   assert.equal(request.comparisonItem[0].time, 'today 3-m');
+  assert.equal(request.comparisonItem[1].keyword, 'sức khỏe phụ nữ tuổi 30');
   assert.deepEqual(parseGoogleTrendsPayload(`)]}',\n{"ok":true}`), {
     ok: true,
   });
@@ -152,6 +159,13 @@ test('builds and calculates Google Trends series', () => {
   assert.equal(
     calculate28DayGrowth(Array.from({ length: 20 }, () => 10)),
     null,
+  );
+  assert.equal(
+    trendSeriesMessage([
+      ...Array.from({ length: 28 }, () => 0),
+      ...Array.from({ length: 28 }, () => 4),
+    ]),
+    '此前28天均值为0，最近28天已出现搜索信号，无法计算百分比变化',
   );
 });
 

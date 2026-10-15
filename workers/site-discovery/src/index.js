@@ -1105,7 +1105,24 @@ export function calculate28DayGrowth(series) {
   return Math.round(((recent - previous) / previous) * 1000) / 10;
 }
 
-export function googleTrendsExploreUrl(keyword, market) {
+export function trendSeriesMessage(series) {
+  if (!Array.isArray(series) || series.length < 56)
+    return '有效日序列不足56天，暂不计算28天变化';
+  const average = (values) =>
+    values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
+  const previous = average(series.slice(-56, -28));
+  const recent = average(series.slice(-28));
+  if (series.every((value) => Number(value || 0) === 0))
+    return '近90天相对热度均为0，Google Trends样本不足';
+  if (previous <= 0 && recent > 0)
+    return '此前28天均值为0，最近28天已出现搜索信号，无法计算百分比变化';
+  if (previous <= 0)
+    return '此前28天基期为0，无法计算百分比变化';
+  return '';
+}
+
+export function googleTrendsExploreUrl(keywords, market) {
+  const terms = (Array.isArray(keywords) ? keywords : [keywords]).filter(Boolean);
   const options = MARKET_OPTIONS[market];
   const url = new URL('https://trends.google.com/trends/api/explore');
   url.searchParams.set('hl', options.language);
@@ -1114,7 +1131,11 @@ export function googleTrendsExploreUrl(keyword, market) {
     'req',
     JSON.stringify({
       category: 0,
-      comparisonItem: [{ geo: market, keyword, time: 'today 3-m' }],
+      comparisonItem: terms.map((keyword) => ({
+        geo: market,
+        keyword,
+        time: 'today 3-m',
+      })),
       property: '',
     }),
   );
@@ -1179,10 +1200,10 @@ async function fetchGoogleTrendsEndpoint(url, market, cookie) {
   return new Response('', { status: lastStatus || 503 });
 }
 
-async function fetchGoogleTrends(keyword, market) {
+async function fetchGoogleTrendsBatch(keywords, market) {
   const cookie = await googleTrendsSession(market).catch(() => '');
   const exploreResponse = await fetchGoogleTrendsEndpoint(
-    googleTrendsExploreUrl(keyword, market),
+    googleTrendsExploreUrl(keywords, market),
     market,
     cookie,
   );
@@ -1212,30 +1233,36 @@ async function fetchGoogleTrends(keyword, market) {
       `Google Trends时间序列接口返回HTTP ${timelineResponse.status}`,
     );
   const timeline = parseGoogleTrendsPayload(await timelineResponse.text());
-  const points = (timeline.default?.timelineData || [])
-    .map((item) => ({
-      date: item.formattedTime || item.time || '',
-      value: Number(item.value?.[0]),
-    }))
-    .filter((item) => Number.isFinite(item.value));
-  const series = points.map((item) => item.value);
-  return {
-    growth: calculate28DayGrowth(series),
-    keyword,
-    market,
-    message: series.length < 56 ? '有效日序列不足56天，暂不计算28天变化' : '',
-    points,
-    series,
-    source: 'Google Trends',
-    status: series.length > 0 ? 'success' : 'empty',
-  };
+  const timelineData = timeline.default?.timelineData || [];
+  return keywords.map((keyword, keywordIndex) => {
+    const points = timelineData
+      .map((item) => ({
+        date: item.formattedTime || item.time || '',
+        value: Number(item.value?.[keywordIndex]),
+      }))
+      .filter((item) => Number.isFinite(item.value));
+    const series = points.map((item) => item.value);
+    return {
+      growth: calculate28DayGrowth(series),
+      keyword,
+      market,
+      message: trendSeriesMessage(series),
+      points,
+      series,
+      source: 'Google Trends',
+      status:
+        series.length > 0 && series.some((value) => value > 0)
+          ? 'success'
+          : 'empty',
+    };
+  });
 }
 
-async function collectGoogleTrends(keyword, market) {
+async function collectGoogleTrendsBatch(keywords, market) {
   try {
-    return await fetchGoogleTrends(keyword, market);
+    return await fetchGoogleTrendsBatch(keywords, market);
   } catch (error) {
-    return {
+    return keywords.map((keyword) => ({
       growth: null,
       keyword,
       market,
@@ -1244,7 +1271,7 @@ async function collectGoogleTrends(keyword, market) {
       series: [],
       source: 'Google Trends',
       status: 'error',
-    };
+    }));
   }
 }
 
@@ -1284,10 +1311,12 @@ async function runResearch(input, env) {
   const suggestions = [];
   const trends = [];
   const suggestionRequestBudget = { remaining: 20 };
+  if (sources.includes('google_trends')) {
+    for (const market of markets)
+      trends.push(...(await collectGoogleTrendsBatch(keywords, market)));
+  }
   for (const keyword of keywords) {
     for (const market of markets) {
-      if (sources.includes('google_trends'))
-        trends.push(await collectGoogleTrends(keyword, market));
       if (
         sources.includes('google_autocomplete') ||
         sources.includes('amazon_autocomplete')

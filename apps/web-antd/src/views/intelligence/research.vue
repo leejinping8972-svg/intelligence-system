@@ -342,19 +342,28 @@ async function collectKeywordTrends(records: Keyword[]) {
             completed += 1;
             audit(
               '完成Google Trends采集',
-              `${original.term} / ${marketName(market)} / ${trend.series.length}个时点 / 28天变化${trend.growth ?? '数据不足'}`,
+              `${original.term} / ${marketName(market)} / ${trend.series.length}个时点 / ${trend.message || `28天变化${trend.growth}%`}`,
               market,
             );
           } else {
-            failures.push(
-              `${original.term}：${trend.message || '未返回趋势序列'}`,
+            const failure = trend.message || '未返回趋势序列';
+            failures.push(`${original.term}：${failure}`);
+            audit(
+              'Google Trends采集未完成',
+              `${original.term} / ${marketName(market)} / ${failure}`,
+              market,
             );
           }
         }
       } catch (error) {
-        failures.push(
-          `${marketName(market)}：${error instanceof Error ? error.message : '趋势采集失败'}`,
-        );
+        const failure = error instanceof Error ? error.message : '趋势采集失败';
+        failures.push(`${marketName(market)}：${failure}`);
+        for (const record of marketRecords)
+          audit(
+            'Google Trends采集未完成',
+            `${record.term} / ${marketName(market)} / ${failure}`,
+            market,
+          );
       }
     }
     if (completed > 0)
