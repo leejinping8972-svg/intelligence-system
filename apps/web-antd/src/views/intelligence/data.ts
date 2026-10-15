@@ -1,5 +1,7 @@
 import { computed, reactive, watch } from 'vue';
 
+import officialTrendSnapshots from '../../../../../workers/site-discovery/data/trends-snapshots.json';
+
 export type Market = 'MX' | 'US' | 'VN';
 export type MarketFilter = 'ALL' | Market;
 export const markets = [
@@ -49,6 +51,17 @@ export interface Keyword {
   source: string;
   growth: null | number;
   series: number[];
+  trendPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
+  trendDailyPoints?: Array<{
+    date: string;
+    isPartial?: boolean;
+    value: number;
+  }>;
+  trendResolution?: 'day' | 'month' | 'unknown' | 'week';
+  trendPeriod?: string;
+  trendSourceUrl?: string;
+  trendCollectedAt?: string;
+  trendDailyMessage?: string;
   trendStatus?: 'collected' | 'failed' | 'pending';
   trendMessage?: string;
   discoveryStatus?: 'collected' | 'failed' | 'pending';
@@ -249,6 +262,39 @@ function initial(): DemoState {
 // Keep table changes consistent with the 90-day chart displayed in the detail view.
 function normalizeGrowth(data: DemoState) {
   for (const k of data.keywords) {
+    // Apply verified official-page captures only to an existing matching record.
+    // Never create seed records or replace a newer annual collection.
+    const snapshot = officialTrendSnapshots.find(
+      (item) =>
+        item.keyword.toLowerCase() === k.term.toLowerCase() &&
+        item.market === k.market,
+    );
+    if (
+      snapshot &&
+      (!k.trendPoints?.length ||
+        Date.parse(k.trendCollectedAt || '') < Date.parse(snapshot.collectedAt))
+    ) {
+      k.series = snapshot.points.map((point) => point.value);
+      k.trendPoints = snapshot.points;
+      k.trendResolution = 'week';
+      k.trendPeriod = snapshot.period;
+      k.trendSourceUrl = snapshot.sourceUrl;
+      k.trendCollectedAt = snapshot.collectedAt;
+      k.trendStatus = 'collected';
+      k.dataNature = 'collected';
+      if (!k.source.includes('Google Trends'))
+        k.source = `${k.source} / Google Trends官网实采`;
+      k.trendMessage = `Google官网页面真实采集快照，采集于${snapshot.collectedAt.slice(
+        0,
+        10,
+      )}`;
+      if (!k.trendDailyPoints?.length) {
+        k.growth = null;
+        k.trendDailyMessage =
+          '一年周曲线已采集；28天变化需要另取日数据，不能把周时点当成天计算';
+      }
+    }
+    if (k.trendResolution && k.trendResolution !== 'day') continue;
     if (k.growth === null || k.series.length < 56) continue;
     const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
     const previous = sum(k.series.slice(-56, -28));

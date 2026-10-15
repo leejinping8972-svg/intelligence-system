@@ -1,4 +1,4 @@
-import type { Market, Product, Site } from './data';
+import type { Keyword, Market, Product, Site } from './data';
 
 export interface DiscoveredProduct {
   availability: null | string;
@@ -63,11 +63,17 @@ export interface ProductEnrichmentResponse {
 }
 
 export interface TrendGroup {
+  collectedAt?: string;
+  dailyMessage?: string;
+  dailyPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
   growth: null | number;
   keyword: string;
   market: Market;
   message: string;
-  points: Array<{ date: string; value: number }>;
+  points: Array<{ date: string; isPartial?: boolean; value: number }>;
+  period?: string;
+  resolution?: 'day' | 'month' | 'unknown' | 'week';
+  sourceUrl?: string;
   series: number[];
   source: string;
   status: 'empty' | 'error' | 'success';
@@ -87,6 +93,22 @@ export interface SuggestionGroup {
     source: string;
     status: 'empty' | 'error' | 'partial' | 'success' | 'unsupported';
   }>;
+}
+
+export function trendRecordFields(trend: TrendGroup) {
+  return {
+    growth: trend.growth,
+    series: trend.series,
+    trendPoints: trend.points,
+    trendDailyPoints: trend.dailyPoints || [],
+    trendResolution: trend.resolution || 'unknown',
+    trendPeriod: trend.period,
+    trendSourceUrl: trend.sourceUrl,
+    trendCollectedAt: trend.collectedAt,
+    trendDailyMessage: trend.dailyMessage,
+    trendStatus: trend.series.length > 0 ? 'collected' : 'failed',
+    trendMessage: trend.message || trend.dailyMessage || '已采集一年趋势',
+  } satisfies Partial<Keyword>;
 }
 
 /**

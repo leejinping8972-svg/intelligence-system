@@ -41,6 +41,7 @@ import {
   enrichProducts,
   productRecords,
   siteRecord,
+  trendRecordFields,
 } from './site-discovery';
 
 const DISCOVERY_SOURCE = '独立站发现（Brave Search + 官网验证）';
@@ -329,6 +330,13 @@ function mergeCollectedKeyword(record: Keyword) {
   if (record.series.length > 0) {
     current.series = record.series;
     current.growth = record.growth;
+    current.trendPoints = record.trendPoints;
+    current.trendDailyPoints = record.trendDailyPoints;
+    current.trendResolution = record.trendResolution;
+    current.trendPeriod = record.trendPeriod;
+    current.trendSourceUrl = record.trendSourceUrl;
+    current.trendCollectedAt = record.trendCollectedAt;
+    current.trendDailyMessage = record.trendDailyMessage;
   }
   if (record.trendStatus) current.trendStatus = record.trendStatus;
   if (record.trendMessage !== undefined)
@@ -349,14 +357,7 @@ function applyTrend(trend: TrendGroup, generatedAt: string) {
     market: trend.market,
     category: classifyKeyword(trend.keyword),
     source: 'Google Trends · 实采',
-    growth: trend.growth,
-    series: trend.series,
-    trendStatus: trend.series.length > 0 ? 'collected' : 'failed',
-    trendMessage:
-      trend.message ||
-      (trend.series.length > 0
-        ? `${trend.series.length}个时点`
-        : '未返回趋势序列'),
+    ...trendRecordFields(trend),
     favorite: false,
     productIds: [],
     siteIds: [],
@@ -451,11 +452,8 @@ async function collectKeywordTrends(records: Keyword[]) {
           if (trend.series.length > 0) {
             mergeCollectedKeyword({
               ...original,
-              growth: trend.growth,
-              series: trend.series,
               source: 'Google Trends · 实采',
-              trendStatus: 'collected',
-              trendMessage: trend.message || '已采集趋势序列',
+              ...trendRecordFields(trend),
               updatedAt: result.generatedAt,
             });
             completed += 1;
@@ -1299,14 +1297,23 @@ async function createResearch() {
             <span
               v-if="record.growth !== null"
               :class="record.growth > 0 ? 'hci-positive' : 'hci-negative'"
-              >{{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%</span><Tooltip v-else :title="record.trendMessage || '尚未执行趋势采集'">
+              >{{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%</span><Tooltip
+              v-else
+              :title="
+                [record.trendMessage, record.trendDailyMessage]
+                  .filter(Boolean)
+                  .join('；') || '尚未执行趋势采集'
+              "
+            >
               <Tag
                 :color="
                   record.trendStatus === 'failed'
                     ? 'orange'
                     : record.trendStatus === 'pending'
                       ? 'blue'
-                      : 'default'
+                      : record.series.length > 0
+                        ? 'green'
+                        : 'default'
                 "
               >
                 {{
@@ -1314,7 +1321,9 @@ async function createResearch() {
                     ? '趋势未返回'
                     : record.trendStatus === 'pending'
                       ? '趋势采集中'
-                      : '尚未采集'
+                      : record.series.length > 0
+                        ? '趋势已采集'
+                        : '尚未采集'
                 }}
               </Tag>
             </Tooltip>
@@ -1379,7 +1388,7 @@ async function createResearch() {
       <b>免费真实采集</b>
       Google 联想词支持美国、墨西哥和越南；Amazon
       联想词支持美国和墨西哥；独立站发现使用 Brave Search 和官网直接验证；Google
-      Trends用于补齐近90天相对趋势与28天变化。完整研究会处理总量限制内的全部关键词；低量词或接口限流会显示具体状态，并在任务详情保留原因。
+      Trends按关键词独立采集过去一年曲线，并另取日数据计算28天变化。完整研究会处理总量限制内的全部关键词；低量词或接口限流会显示具体状态，并在任务详情保留原因。
     </div>
     <Modal
       v-model:open="open"

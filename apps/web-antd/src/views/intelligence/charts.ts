@@ -1,6 +1,17 @@
 import type { Keyword } from './data';
-export function trendOption(keyword: Keyword, days = 90) {
-  const series = keyword.series.slice(-days);
+export function trendOption(keyword: Keyword, days = 365) {
+  const storedPoints = keyword.trendPoints || [];
+  const cutoff =
+    storedPoints.length > 0
+      ? Date.parse(storedPoints.at(-1)?.date || '') - (days - 1) * 86_400_000
+      : 0;
+  const points = storedPoints.filter(
+    (point) => Date.parse(point.date) >= cutoff,
+  );
+  const series =
+    points.length > 0
+      ? points.map((point) => point.value)
+      : keyword.series.slice(-days);
   const observedAt = keyword.updatedAt
     ? new Date(keyword.updatedAt)
     : new Date();
@@ -17,13 +28,14 @@ export function trendOption(keyword: Keyword, days = 90) {
       type: 'category',
       boundaryGap: false,
       data: series.map((_, i) => {
+        if (points[i]) return points[i].date;
         const d = new Date(observedAt);
         d.setUTCDate(d.getUTCDate() - series.length + i + 1);
         return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
       }),
       axisLabel: {
         color: '#87939c',
-        interval: Math.max(1, Math.floor(days / 6)),
+        interval: Math.max(1, Math.floor(series.length / 6)),
       },
       axisLine: { lineStyle: { color: '#e6ebee' } },
     },

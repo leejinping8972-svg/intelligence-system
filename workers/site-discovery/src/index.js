@@ -1,3 +1,5 @@
+import trendSnapshots from '../data/trends-snapshots.json' with { type: 'json' };
+
 const MARKET_OPTIONS = {
   US: {
     country: 'us',
@@ -1150,7 +1152,11 @@ export function trendSeriesMessage(series) {
   return '';
 }
 
-export function googleTrendsExploreUrl(keywords, market) {
+export function googleTrendsExploreUrl(
+  keywords,
+  market,
+  period = 'today 12-m',
+) {
   const terms = (Array.isArray(keywords) ? keywords : [keywords]).filter(
     Boolean,
   );
@@ -1165,7 +1171,7 @@ export function googleTrendsExploreUrl(keywords, market) {
       comparisonItem: terms.map((keyword) => ({
         geo: market,
         keyword,
-        time: 'today 3-m',
+        time: period,
       })),
       property: '',
     }),
@@ -1231,10 +1237,14 @@ async function fetchGoogleTrendsEndpoint(url, market, cookie) {
   return new Response('', { status: lastStatus || 503 });
 }
 
-async function fetchGoogleTrendsBatch(keywords, market) {
+export async function fetchGoogleTrendsBatch(
+  keywords,
+  market,
+  period = 'today 12-m',
+) {
   const cookie = await googleTrendsSession(market).catch(() => '');
   const exploreResponse = await fetchGoogleTrendsEndpoint(
-    googleTrendsExploreUrl(keywords, market),
+    googleTrendsExploreUrl(keywords, market, period),
     market,
     cookie,
   );
@@ -1268,16 +1278,21 @@ async function fetchGoogleTrendsBatch(keywords, market) {
   return keywords.map((keyword, keywordIndex) => {
     const points = timelineData
       .map((item) => ({
-        date: item.formattedTime || item.time || '',
+        date: new Date(Number(item.time) * 1000).toISOString().slice(0, 10),
+        isPartial: Boolean(item.isPartial),
         value: Number(item.value?.[keywordIndex]),
       }))
       .filter((item) => Number.isFinite(item.value));
     const series = points.map((item) => item.value);
     return {
-      growth: calculate28DayGrowth(series),
+      growth: null,
       keyword,
       market,
-      message: trendSeriesMessage(series),
+      message: '',
+      period,
+      resolution: inferTrendResolution(points),
+      collectedAt: new Date().toISOString(),
+      sourceUrl: trendSourceUrl(keyword, market),
       points,
       series,
       source: 'Google Trends',
@@ -1286,21 +1301,97 @@ async function fetchGoogleTrendsBatch(keywords, market) {
   });
 }
 
-async function collectGoogleTrendsBatch(keywords, market) {
-  try {
-    return await fetchGoogleTrendsBatch(keywords, market);
-  } catch (error) {
-    return keywords.map((keyword) => ({
-      growth: null,
-      keyword,
-      market,
-      message: error instanceof Error ? error.message : 'Google Trends采集失败',
-      points: [],
-      series: [],
-      source: 'Google Trends',
-      status: 'error',
-    }));
+export function inferTrendResolution(points) {
+  if (points.length < 2) return 'unknown';
+  const interval =
+    (Date.parse(points[1].date) - Date.parse(points[0].date)) / 86_400_000;
+  if (interval <= 2) return 'day';
+  if (interval <= 8) return 'week';
+  return 'month';
+}
+
+function trendSourceUrl(keyword, market) {
+  const url = new URL('https://trends.google.com/trends/explore');
+  url.searchParams.set('date', 'today 12-m');
+  url.searchParams.set('geo', market);
+  url.searchParams.set('q', keyword);
+  return url.toString();
+}
+
+export async function collectGoogleTrendsBatch(keywords, market) {
+  const results = [];
+  // Each keyword has its own 0–100 scale, matching a single-term official chart.
+  for (const keyword of keywords) {
+    let annual;
+    let annualError = '';
+    try {
+      [annual] = await fetchGoogleTrendsBatch([keyword], market);
+    } catch (error) {
+      annualError =
+        error instanceof Error ? error.message : 'Google Trends采集失败';
+    }
+    if (!annual?.series.length) {
+      const snapshot = trendSnapshots.find(
+        (item) =>
+          item.keyword.toLowerCase() === keyword.toLowerCase() &&
+          item.market === market,
+      );
+      if (snapshot) {
+        annual = {
+          ...snapshot,
+          series: snapshot.points.map((point) => point.value),
+          source: 'Google Trends',
+          status: 'success',
+          growth: null,
+          message: `使用Google官网页面实采快照（${snapshot.collectedAt.slice(
+            0,
+            10,
+          )}）；实时接口：${annualError || '未返回序列'}`,
+        };
+      }
+    }
+    if (!annual?.series.length) {
+      results.push({
+        growth: null,
+        keyword,
+        market,
+        message: annualError || 'Google Trends未返回一年时间序列',
+        points: [],
+        series: [],
+        dailyPoints: [],
+        period: 'today 12-m',
+        resolution: 'unknown',
+        source: 'Google Trends',
+        sourceUrl: trendSourceUrl(keyword, market),
+        status: 'error',
+      });
+      continue;
+    }
+    // Annual results are normally weekly. Query daily data separately for 28-day metrics.
+    try {
+      const [daily] = await fetchGoogleTrendsBatch(
+        [keyword],
+        market,
+        'today 3-m',
+      );
+      const dailyPoints =
+        daily.resolution === 'day'
+          ? daily.points.filter((point) => !point.isPartial)
+          : [];
+      annual.dailyPoints = dailyPoints;
+      const dailySeries = dailyPoints.map((point) => point.value);
+      annual.growth = calculate28DayGrowth(dailySeries);
+      annual.dailyMessage = trendSeriesMessage(dailySeries);
+    } catch (error) {
+      annual.dailyPoints = [];
+      annual.growth = null;
+      annual.dailyMessage = `一年曲线已保存；28天日数据查询失败：${
+        error instanceof Error ? error.message : '接口异常'
+      }`;
+    }
+    results.push(annual);
   }
+  return results;
 }
 
 async function enrichProduct(input) {

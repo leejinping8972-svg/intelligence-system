@@ -7,12 +7,15 @@ import {
   braveSearchRequest,
   calculate28DayGrowth,
   classifyStore,
+  collectGoogleTrendsBatch,
   extractJsonLdProducts,
+  fetchGoogleTrendsBatch,
   googleCookieHeader,
   googleSuggestUrl,
   googleTrendsExploreUrl,
   hostnameRoot,
   inferCategory,
+  inferTrendResolution,
   isCandidateUrl,
   mergeSuggestionItems,
   parseGoogleTrendsPayload,
@@ -213,7 +216,7 @@ test('builds and calculates Google Trends series', () => {
   );
   const request = JSON.parse(url.searchParams.get('req'));
   assert.equal(request.comparisonItem[0].geo, 'VN');
-  assert.equal(request.comparisonItem[0].time, 'today 3-m');
+  assert.equal(request.comparisonItem[0].time, 'today 12-m');
   assert.equal(request.comparisonItem[1].keyword, 'sức khỏe phụ nữ tuổi 30');
   assert.deepEqual(parseGoogleTrendsPayload(`)]}',\n{"ok":true}`), {
     ok: true,
@@ -283,4 +286,78 @@ test('finds an on-site product page without following external links', () => {
     ),
     ['https://brand.com/products/a', 'https://brand.com/products/b'],
   );
+});
+
+test('annual time series keeps real weekly dates and never calculates 28 daily windows from weeks', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/api/explore')) {
+      return Response.json({
+        widgets: [
+          {
+            id: 'TIMESERIES',
+            token: 'token',
+            request: { time: '2025-10-12 2026-10-11' },
+          },
+        ],
+      });
+    }
+    if (String(url).includes('/widgetdata/multiline')) {
+      return Response.json({
+        default: {
+          timelineData: [
+            { time: '1760227200', value: [20] },
+            { time: '1760832000', value: [30] },
+          ],
+        },
+      });
+    }
+    return new Response('session');
+  };
+  try {
+    const [annual] = await fetchGoogleTrendsBatch(
+      ["women's health gummies"],
+      'US',
+    );
+    assert.equal(annual.points[0].date, '2025-10-12');
+    assert.equal(annual.resolution, 'week');
+    assert.equal(annual.period, 'today 12-m');
+    assert.equal(annual.growth, null);
+    assert.equal(
+      inferTrendResolution([{ date: '2026-10-01' }, { date: '2026-10-02' }]),
+      'day',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('an annual curve survives daily request failure and an official capture survives upstream failure', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('', { status: 403 });
+  try {
+    const [annual] = await collectGoogleTrendsBatch(
+      ["women's health gummies"],
+      'US',
+    );
+    assert.equal(annual.series.length, 53);
+    assert.equal(annual.resolution, 'week');
+    assert.equal(Math.max(...annual.series), 100);
+    assert.equal(
+      annual.points.find((point) => point.value === 100).date,
+      '2026-04-12',
+    );
+    assert.match(annual.message, /官网页面实采快照/);
+    assert.match(annual.dailyMessage, /日数据查询失败/);
+    assert.equal(annual.growth, null);
+    assert.equal(annual.dailyPoints.length, 0);
+    const [missing] = await collectGoogleTrendsBatch(
+      ['term-without-snapshot'],
+      'US',
+    );
+    assert.equal(missing.status, 'error');
+    assert.equal(missing.series.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
