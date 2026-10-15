@@ -1303,6 +1303,79 @@ async function collectGoogleTrendsBatch(keywords, market) {
   }
 }
 
+async function enrichProduct(input) {
+  try {
+    const page = await fetchHtml(input.url);
+    const rawProducts = extractJsonLdProducts(page.html);
+    try {
+      const shopifyProduct = await fetchShopifyProduct(page.url);
+      if (shopifyProduct) rawProducts.unshift(shopifyProduct);
+    } catch {
+      // JSON-LD and visible page fields can still be used on non-Shopify pages.
+    }
+    const candidates = rawProducts
+      .map((product) =>
+        productFromJsonLd(
+          product,
+          page.url,
+          input.market,
+          input.brand || '',
+          page.html,
+        ),
+      )
+      .filter((product) => product.title);
+    const expectedTitle = cleanText(input.title || '').toLowerCase();
+    const product =
+      candidates.find((candidate) => {
+        const title = candidate.title.toLowerCase();
+        return (
+          expectedTitle &&
+          (title.includes(expectedTitle) || expectedTitle.includes(title))
+        );
+      }) || candidates[0];
+    if (!product) {
+      return {
+        id: input.id,
+        message: '商品页未返回可识别的结构化商品信息',
+        status: 'failed',
+      };
+    }
+    return {
+      id: input.id,
+      message: `已补齐${product.collectionFields.length}项商品字段`,
+      product,
+      status: 'success',
+    };
+  } catch (error) {
+    return {
+      id: input.id,
+      message: error instanceof Error ? error.message : '商品页面抓取失败',
+      status: 'failed',
+    };
+  }
+}
+
+export async function runProductEnrichment(input) {
+  const products = Array.isArray(input.products) ? input.products : [];
+  if (products.length === 0 || products.length > 10)
+    throw new Error('单次请输入1至10件商品');
+  for (const product of products) {
+    if (!product?.id || !product?.url)
+      throw new Error('商品补齐请求缺少商品ID或官网地址');
+    if (!MARKET_OPTIONS[product.market])
+      throw new Error('市场仅支持US、MX、VN');
+    const url = new URL(product.url);
+    if (!['http:', 'https:'].includes(url.protocol))
+      throw new Error('商品官网地址无效');
+  }
+  return {
+    generatedAt: new Date().toISOString(),
+    products: await Promise.all(
+      products.map((product) => enrichProduct(product)),
+    ),
+  };
+}
+
 async function runResearch(input, env) {
   const keywords = [
     ...new Set(input.keywords.map((item) => item.trim())),
@@ -1441,7 +1514,10 @@ export default {
       return json({ error: '研究访问码无效' }, 401, originState.origin);
     try {
       const input = await request.json();
-      const result = await runResearch(input, env);
+      const result =
+        input.action === 'enrich_products'
+          ? await runProductEnrichment(input)
+          : await runResearch(input, env);
       return json(result, 200, originState.origin);
     } catch (error) {
       return json(

@@ -37,6 +37,8 @@ import {
 import {
   classifyKeyword,
   discoverSites,
+  enrichedProductRecord,
+  enrichProducts,
   productRecords,
   siteRecord,
 } from './site-discovery';
@@ -44,6 +46,10 @@ import {
 const DISCOVERY_SOURCE = '独立站发现（Brave Search + 官网验证）';
 const GOOGLE_SUGGEST_SOURCE = 'Google 联想词';
 const AMAZON_SUGGEST_SOURCE = 'Amazon 联想词';
+const BULK_KEYWORD_LIMIT = 100;
+const PRODUCT_ENRICHMENT_LIMIT = 500;
+const WORKER_KEYWORD_BATCH_SIZE = 3;
+const WORKER_PRODUCT_BATCH_SIZE = 10;
 const LIVE_SOURCE_IDS: Record<string, string> = {
   [AMAZON_SUGGEST_SOURCE]: 'amazon_autocomplete',
   [DISCOVERY_SOURCE]: 'site_discovery',
@@ -208,6 +214,14 @@ const selectedKeywordIds = ref<string[]>([]);
 const selectedKeywords = computed(() =>
   rows.value.filter((item) => selectedKeywordIds.value.includes(item.id)),
 );
+const selectedProducts = computed(() => {
+  const productIds = new Set(
+    selectedKeywords.value.flatMap((keyword) => keyword.productIds),
+  );
+  return state.products.filter(
+    (product) => productIds.has(product.id) && Boolean(product.evidenceUrl),
+  );
+});
 const rowSelection = computed(() => ({
   getCheckboxProps: (record: Keyword) => ({
     disabled: record.dataNature !== 'collected',
@@ -279,6 +293,13 @@ function mergeById<T extends { id: string }>(target: T[], records: T[]) {
     if (current) Object.assign(current, record);
     else target.unshift(record);
   }
+}
+
+function chunkRecords<T>(records: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < records.length; index += size)
+    chunks.push(records.slice(index, index + size));
+  return chunks;
 }
 
 function mergeCollectedKeyword(record: Keyword) {
@@ -378,8 +399,8 @@ async function collectKeywordTrends(records: Keyword[]) {
     message.warning('请先勾选要补齐趋势的关键词');
     return;
   }
-  if (records.length > 3) {
-    message.warning('Google Trends每批最多查询3个关键词');
+  if (records.length > BULK_KEYWORD_LIMIT) {
+    message.warning(`一次最多选择${BULK_KEYWORD_LIMIT}个关键词`);
     return;
   }
   if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
@@ -395,12 +416,18 @@ async function collectKeywordTrends(records: Keyword[]) {
     marketRecords.push(record);
     groups.set(record.market, marketRecords);
   }
+  const requestGroups = [...groups.entries()].flatMap(
+    ([market, marketRecords]) =>
+      chunkRecords(marketRecords, WORKER_KEYWORD_BATCH_SIZE).map(
+        (batch) => [market, batch] as const,
+      ),
+  );
   researching.value = true;
   researchError.value = '';
   let completed = 0;
   const failures: string[] = [];
   try {
-    for (const [market, marketRecords] of groups) {
+    for (const [market, marketRecords] of requestGroups) {
       try {
         const result = await discoverSites({
           accessKey: state.settings.researchAccessKey,
@@ -473,8 +500,8 @@ async function discoverKeywordRecords(records: Keyword[]) {
     message.warning('请先勾选要查找独立站的关键词');
     return;
   }
-  if (records.length > 3) {
-    message.warning('为控制免费搜索额度，每次最多选择3个关键词');
+  if (records.length > BULK_KEYWORD_LIMIT) {
+    message.warning(`一次最多选择${BULK_KEYWORD_LIMIT}个关键词`);
     return;
   }
   if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
@@ -490,6 +517,12 @@ async function discoverKeywordRecords(records: Keyword[]) {
     marketRecords.push(record);
     groups.set(record.market, marketRecords);
   }
+  const requestGroups = [...groups.entries()].flatMap(
+    ([market, marketRecords]) =>
+      chunkRecords(marketRecords, WORKER_KEYWORD_BATCH_SIZE).map(
+        (batch) => [market, batch] as const,
+      ),
+  );
 
   const tasks = new Map<string, Task>();
   for (const record of records) {
@@ -512,7 +545,7 @@ async function discoverKeywordRecords(records: Keyword[]) {
   let totalProducts = 0;
   const failures: string[] = [];
   try {
-    for (const [market, marketRecords] of groups) {
+    for (const [market, marketRecords] of requestGroups) {
       try {
         const result = await discoverSites({
           accessKey: state.settings.researchAccessKey,
@@ -619,6 +652,119 @@ function discoverSelectedKeywords() {
 
 function discoverKeywordRecord(record: Record<string, unknown>) {
   return discoverKeywordRecords([record as unknown as Keyword]);
+}
+
+async function enrichSelectedProducts() {
+  const products = selectedProducts.value;
+  if (products.length === 0) {
+    message.warning('所选关键词暂时没有带官网地址的关联商品');
+    return;
+  }
+  if (products.length > PRODUCT_ENRICHMENT_LIMIT) {
+    message.warning(`一次最多补齐${PRODUCT_ENRICHMENT_LIMIT}件商品`);
+    return;
+  }
+  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
+    researchError.value =
+      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
+    message.error(researchError.value);
+    return;
+  }
+
+  const tasks = new Map<Market, Task>();
+  for (const market of [
+    ...new Set(products.map((product) => product.market)),
+  ]) {
+    const count = products.filter(
+      (product) => product.market === market,
+    ).length;
+    const task: Task = {
+      id: crypto.randomUUID(),
+      title: `批量商品信息补齐 · ${marketName(market)}`,
+      market,
+      mode: 'live',
+      status: 'running',
+      created: stamp(),
+      steps: [`目标商品 ${count} 件`, '补齐：图片、规格、配方、卖点、成分分析'],
+    };
+    tasks.set(market, task);
+    state.tasks.unshift(task);
+  }
+
+  researching.value = true;
+  researchError.value = '';
+  const succeeded = new Map<Market, number>();
+  const failed = new Map<Market, number>();
+  const failures: string[] = [];
+  try {
+    for (const batch of chunkRecords(products, WORKER_PRODUCT_BATCH_SIZE)) {
+      try {
+        const response = await enrichProducts({
+          accessKey: state.settings.researchAccessKey,
+          apiUrl: state.settings.researchApiUrl,
+          products: batch.map((product) => ({
+            brand: product.brand,
+            id: product.id,
+            market: product.market,
+            title: product.title,
+            url: product.evidenceUrl || '',
+          })),
+        });
+        for (const result of response.products) {
+          const current = state.products.find(
+            (product) => product.id === result.id,
+          );
+          if (current && result.status === 'success' && result.product) {
+            Object.assign(
+              current,
+              enrichedProductRecord(
+                current,
+                result.product,
+                response.generatedAt,
+              ),
+            );
+            succeeded.set(
+              current.market,
+              (succeeded.get(current.market) || 0) + 1,
+            );
+          } else if (current) {
+            failed.set(current.market, (failed.get(current.market) || 0) + 1);
+            failures.push(`${current.title}：${result.message}`);
+          }
+        }
+      } catch (error) {
+        const detail =
+          error instanceof Error ? error.message : '商品信息补齐失败';
+        for (const product of batch) {
+          failed.set(product.market, (failed.get(product.market) || 0) + 1);
+          failures.push(`${product.title}：${detail}`);
+        }
+      }
+    }
+
+    for (const [market, task] of tasks) {
+      const successCount = succeeded.get(market) || 0;
+      const failureCount = failed.get(market) || 0;
+      task.status = failureCount === 0 ? 'completed' : 'partial';
+      task.steps.push(`成功 ${successCount} 件 / 未完成 ${failureCount} 件`);
+      audit(
+        '完成商品信息补齐',
+        `${marketName(market)} / 成功${successCount}件 / 未完成${failureCount}件`,
+        market,
+      );
+    }
+    const successCount = [...succeeded.values()].reduce(
+      (total, count) => total + count,
+      0,
+    );
+    if (successCount > 0) message.success(`已补齐 ${successCount} 件商品信息`);
+    if (failures.length > 0) {
+      researchError.value = failures.join('；');
+      message.warning(`有 ${failures.length} 件商品未完成补齐`);
+    }
+  } finally {
+    researching.value = false;
+  }
 }
 
 async function createResearch() {
@@ -1014,13 +1160,25 @@ async function createResearch() {
           :loading="researching"
           @click="discoverSelectedKeywords"
         >
-          批量查找独立站（{{ selectedKeywords.length }}/3）
+          批量查找独立站（{{ selectedKeywords.length }}/{{
+            BULK_KEYWORD_LIMIT
+          }}）
 </Button><Button
           :disabled="selectedKeywords.length === 0 || researching"
           :loading="researching"
           @click="collectSelectedKeywordTrends"
         >
-          补齐28天趋势（{{ selectedKeywords.length }}/3）
+          补齐28天趋势（{{ selectedKeywords.length }}/{{
+            BULK_KEYWORD_LIMIT
+          }}）
+</Button><Button
+          :disabled="selectedProducts.length === 0 || researching"
+          :loading="researching"
+          @click="enrichSelectedProducts"
+        >
+          补齐商品信息（{{ selectedProducts.length }}件/{{
+            PRODUCT_ENRICHMENT_LIMIT
+          }}）
 </Button><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span>
       </div>
       <Table

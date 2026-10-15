@@ -50,6 +50,18 @@ export interface DiscoveryResponse {
   trends: TrendGroup[];
 }
 
+export interface ProductEnrichmentResult {
+  id: string;
+  message: string;
+  product?: DiscoveredProduct;
+  status: 'failed' | 'success';
+}
+
+export interface ProductEnrichmentResponse {
+  generatedAt: string;
+  products: ProductEnrichmentResult[];
+}
+
 export interface TrendGroup {
   growth: null | number;
   keyword: string;
@@ -157,6 +169,79 @@ export async function discoverSites(input: {
         : `研究服务返回HTTP ${response.status}`,
     );
   return payload as DiscoveryResponse;
+}
+
+export async function enrichProducts(input: {
+  accessKey: string;
+  apiUrl: string;
+  products: Array<{
+    brand: string;
+    id: string;
+    market: Market;
+    title: string;
+    url: string;
+  }>;
+}) {
+  const response = await fetch(input.apiUrl.replace(/\/$/, ''), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-research-key': input.accessKey,
+    },
+    body: JSON.stringify({
+      action: 'enrich_products',
+      products: input.products,
+    }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as
+    | ProductEnrichmentResponse
+    | { error?: string };
+  if (!response.ok)
+    throw new Error(
+      'error' in payload && payload.error
+        ? payload.error
+        : `商品补齐服务返回HTTP ${response.status}`,
+    );
+  return payload as ProductEnrichmentResponse;
+}
+
+export function enrichedProductRecord(
+  current: Product,
+  product: DiscoveredProduct,
+  generatedAt: string,
+): Product {
+  return {
+    ...current,
+    title: product.title || current.title,
+    brand: product.brand || current.brand,
+    form: product.form || current.form,
+    size: product.size.length > 0 ? product.size : current.size,
+    price: Number.isFinite(product.price)
+      ? Number(product.price)
+      : current.price,
+    currency: product.currency || current.currency,
+    ingredient: product.ingredients || current.ingredient,
+    dose: product.servingSize || current.dose,
+    claim: product.description || current.claim,
+    benefits: product.benefits.length > 0 ? product.benefits : current.benefits,
+    benefitEvidence: product.description
+      ? `官网商品页描述：${product.description}`
+      : current.benefitEvidence,
+    ingredientInsights:
+      product.ingredientInsights.length > 0
+        ? product.ingredientInsights
+        : current.ingredientInsights,
+    imageUrl: product.image || current.imageUrl,
+    collectionFields: [
+      ...new Set([
+        ...(current.collectionFields || []),
+        ...product.collectionFields,
+      ]),
+    ],
+    firstSeenAt: current.firstSeenAt || generatedAt,
+    evidenceUrl: product.url || current.evidenceUrl,
+    dataNature: 'collected',
+  };
 }
 
 export function siteRecord(site: DiscoveredSite): Site {

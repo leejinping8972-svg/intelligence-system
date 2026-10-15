@@ -19,6 +19,7 @@ import {
   productFromJsonLd,
   productPageUrl,
   productPageUrls,
+  runProductEnrichment,
   trendSeriesMessage,
 } from './src/index.js';
 
@@ -154,6 +155,45 @@ test('extracts image, formula, size, benefits and ingredient records', () => {
   assert.equal(marketingCopy.ingredients, '');
   assert.deepEqual(marketingCopy.ingredientInsights, []);
   assert.ok(!marketingCopy.collectionFields.includes('配方'));
+});
+
+test('enriches an existing product from its official product page', async () => {
+  const originalFetch = globalThis.fetch;
+  const enrichmentPage = productPage.replace(
+    '"offers"',
+    '"image":"https://natura.example/daily.webp","ingredients":"Lactobacillus acidophilus 10 mg","offers"',
+  );
+  globalThis.fetch = async () => {
+    const response = new Response(enrichmentPage, {
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      status: 200,
+    });
+    Object.defineProperty(response, 'url', {
+      value: 'https://natura.example/item/daily-probiotic',
+    });
+    return response;
+  };
+  try {
+    const result = await runProductEnrichment({
+      products: [
+        {
+          brand: 'Natura Lab',
+          id: 'product-1',
+          market: 'US',
+          title: 'Daily Probiotic',
+          url: 'https://natura.example/item/daily-probiotic',
+        },
+      ],
+    });
+    assert.equal(result.products[0].status, 'success');
+    assert.equal(
+      result.products[0].product.image,
+      'https://natura.example/daily.webp',
+    );
+    assert.match(result.products[0].product.ingredients, /Lactobacillus/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('classifies supplement categories from multilingual evidence', () => {
