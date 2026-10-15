@@ -82,7 +82,6 @@ const form = reactive({
   maxSites: Math.min(10, state.settings.researchMaxSites),
   productsPerSite: Math.min(20, state.settings.productsPerSite),
   completePipeline: true,
-  autoResearchLimit: 3,
   budget: state.settings.taskBudget,
 });
 const seedValues = computed(() =>
@@ -221,6 +220,16 @@ const rowSelection = computed(() => ({
 const collectedCount = computed(
   () => rows.value.filter((item) => item.dataNature === 'collected').length,
 );
+const keywordPageSize = ref(10);
+const keywordPagination = computed(() => ({
+  pageSize: keywordPageSize.value,
+  pageSizeOptions: ['10', '20', '50', '100'],
+  showSizeChanger: true,
+  showTotal: (total: number) => `共 ${total} 条`,
+  onShowSizeChange: (_current: number, size: number) => {
+    keywordPageSize.value = size;
+  },
+}));
 const columns = [
   { title: '关键词', key: 'term', width: 250 },
   { title: '市场', key: 'market', width: 100 },
@@ -299,6 +308,12 @@ function mergeCollectedKeyword(record: Keyword) {
     current.series = record.series;
     current.growth = record.growth;
   }
+  if (record.trendStatus) current.trendStatus = record.trendStatus;
+  if (record.trendMessage !== undefined)
+    current.trendMessage = record.trendMessage;
+  if (record.discoveryStatus) current.discoveryStatus = record.discoveryStatus;
+  if (record.discoveryMessage !== undefined)
+    current.discoveryMessage = record.discoveryMessage;
   if (current.category === '待分类' && record.category !== '待分类')
     current.category = record.category;
   current.updatedAt = record.updatedAt;
@@ -306,7 +321,6 @@ function mergeCollectedKeyword(record: Keyword) {
 }
 
 function applyTrend(trend: TrendGroup, generatedAt: string) {
-  if (trend.series.length === 0) return false;
   mergeCollectedKeyword({
     id: crypto.randomUUID(),
     term: trend.keyword,
@@ -315,13 +329,19 @@ function applyTrend(trend: TrendGroup, generatedAt: string) {
     source: 'Google Trends · 实采',
     growth: trend.growth,
     series: trend.series,
+    trendStatus: trend.series.length > 0 ? 'collected' : 'failed',
+    trendMessage:
+      trend.message ||
+      (trend.series.length > 0
+        ? `${trend.series.length}个时点`
+        : '未返回趋势序列'),
     favorite: false,
     productIds: [],
     siteIds: [],
     updatedAt: generatedAt,
     dataNature: 'collected',
   });
-  return true;
+  return trend.series.length > 0;
 }
 
 function applyDiscoveryGroup(group: DiscoveryGroup, generatedAt: string) {
@@ -342,6 +362,11 @@ function applyDiscoveryGroup(group: DiscoveryGroup, generatedAt: string) {
     favorite: false,
     productIds: products.map((product) => product.id),
     siteIds: sites.map((site) => site.id),
+    discoveryStatus: sites.length > 0 ? 'collected' : 'failed',
+    discoveryMessage:
+      sites.length > 0
+        ? `验证 ${sites.length} 家站点，提取 ${products.length} 件商品`
+        : '搜索已执行，未找到通过官网验证的独立站',
     updatedAt: generatedAt,
     dataNature: 'collected',
   });
@@ -625,12 +650,10 @@ async function createResearch() {
     form.maxSites > 10 ||
     form.productsPerSite < 1 ||
     form.productsPerSite > 20 ||
-    form.autoResearchLimit < 1 ||
-    form.autoResearchLimit > 6 ||
     form.budget < 0
   ) {
     researchError.value =
-      '趋势查询项应为1～100，自动深入关键词应为1～6，站点应为1～10，每站商品应为1～20，预算不能为负数。';
+      '关键词总数应为1～100，站点应为1～10，每站商品应为1～20，预算不能为负数。';
     return;
   }
   if (!liveSourceSelected.value) {
@@ -662,6 +685,7 @@ async function createResearch() {
         status: 'queued',
         created: stamp(),
         steps: [
+          `目标：最多 ${form.maxSites} 家站点，每站最多 ${form.productsPerSite} 件商品`,
           ...form.sources
             .filter((source) => LIVE_SOURCE_IDS[source])
             .map((source) => `计划采集：${source}`),
@@ -675,8 +699,17 @@ async function createResearch() {
     }
   }
 
-  researching.value = true;
+  for (const task of tasks.values()) {
+    task.status = 'running';
+    task.steps.push('任务已提交，正在后台执行');
+  }
+  state.market = form.markets.length === 1 ? (form.markets[0] ?? 'US') : 'ALL';
+  open.value = false;
   researchError.value = '';
+  router.push('/monitor?tab=tasks');
+  message.success('研究任务已提交，可在“监控与任务”查看实时进度');
+
+  researching.value = true;
   try {
     const result = await discoverSites({
       accessKey: state.settings.researchAccessKey,
@@ -739,6 +772,16 @@ async function createResearch() {
           source: `${item.source} · 实采`,
           growth: null,
           series: [],
+          trendStatus: form.sources.includes('Google Trends')
+            ? 'pending'
+            : undefined,
+          trendMessage: form.sources.includes('Google Trends')
+            ? '等待趋势采集'
+            : undefined,
+          discoveryStatus: form.completePipeline ? 'pending' : undefined,
+          discoveryMessage: form.completePipeline
+            ? '等待独立站与商品采集'
+            : undefined,
           favorite: false,
           productIds: [],
           siteIds: [],
@@ -753,7 +796,6 @@ async function createResearch() {
         ) {
           const candidates = followUpKeywords.get(group.market) ?? [];
           if (
-            candidates.length < form.autoResearchLimit &&
             !candidates.some(
               (term) =>
                 term.toLocaleLowerCase() === item.term.toLocaleLowerCase(),
@@ -816,12 +858,13 @@ async function createResearch() {
               title: `${keyword} · ${marketName(market)} · 自动关联站点和商品`,
               market,
               mode: 'live',
-              status: 'queued',
+              status: 'running',
               created: stamp(),
               steps: [
                 `自动分类：${classifyKeyword(keyword)}`,
                 '独立站发现：Brave Search + 官网验证',
                 `商品提取：每站最多 ${form.productsPerSite} 件`,
+                '任务已提交，正在后台执行',
               ],
             };
             batchTasks.set(keyword.toLocaleLowerCase(), task);
@@ -896,13 +939,16 @@ async function createResearch() {
       }
     }
     for (const task of tasks.values()) {
-      if (task.status === 'queued') task.status = 'partial';
-      if (form.sources.some((source) => !LIVE_SOURCE_IDS[source]))
+      const hasGap = task.steps.some((step) =>
+        /执行失败|未找到|未返回|限流|验证通过 0|提取(?:结构化)?商品 0|Google Trends：0个时点/.test(
+          step,
+        ),
+      );
+      if (hasGap || form.sources.some((source) => !LIVE_SOURCE_IDS[source]))
         task.status = 'partial';
+      else if (task.status === 'queued' || task.status === 'running')
+        task.status = 'completed';
     }
-    state.market =
-      form.markets.length === 1 ? (form.markets[0] ?? 'US') : 'ALL';
-    open.value = false;
     if (totalSites || totalSuggestions || totalTrends) {
       message.success(
         `已采集 ${totalSuggestions} 条联想词并自动分类，深入研究 ${totalAutoResearched} 个联想词，验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
@@ -982,7 +1028,7 @@ async function createResearch() {
         :columns="columns"
         :row-selection="rowSelection"
         row-key="id"
-        :pagination="{ pageSize: 8, showSizeChanger: false }"
+        :pagination="keywordPagination"
         :scroll="{ x: 1200 }"
       >
         <template #headerCell="{ column }">
@@ -1012,13 +1058,13 @@ async function createResearch() {
             class="hci-field-title"
             >关联商品
             <Tooltip
-              title="当前关键词已建立关联的商品记录数。启用完整研究链路后，系统会自动深入研究指定数量的联想词并回填商品；其余关键词也可手动批量补采。"
+              title="当前关键词已建立关联的商品记录数。启用完整研究链路后，总量限制内的每个联想词都会自动执行站点、商品和商品详情采集。"
             >
               <button class="hci-help-button" aria-label="查看关联商品字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
               </button> </Tooltip></span><span v-else-if="column.key === 'siteLinks'" class="hci-field-title">关联站点
             <Tooltip
-              title="当前关键词通过搜索和官网验证后关联的独立站数量。完整研究链路会自动处理指定数量的联想词，未进入深入研究的词暂时显示0。"
+              title="当前关键词通过搜索和官网验证后关联的独立站数量。完整研究链路会处理列表中的全部实采关键词；0表示已执行但没有站点通过官网验证，具体原因可在任务详情查看。"
             >
               <button class="hci-help-button" aria-label="查看关联站点字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
@@ -1047,7 +1093,25 @@ async function createResearch() {
             <span
               v-if="record.growth !== null"
               :class="record.growth > 0 ? 'hci-positive' : 'hci-negative'"
-              >{{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%</span><Tag v-else>数据不足</Tag>
+              >{{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%</span><Tooltip v-else :title="record.trendMessage || '尚未执行趋势采集'">
+              <Tag
+                :color="
+                  record.trendStatus === 'failed'
+                    ? 'orange'
+                    : record.trendStatus === 'pending'
+                      ? 'blue'
+                      : 'default'
+                "
+              >
+                {{
+                  record.trendStatus === 'failed'
+                    ? '趋势未返回'
+                    : record.trendStatus === 'pending'
+                      ? '趋势采集中'
+                      : '尚未采集'
+                }}
+              </Tag>
+            </Tooltip>
 </template><template v-if="column.key === 'productLinks'">
             <button
               class="hci-count-link"
@@ -1105,14 +1169,13 @@ async function createResearch() {
       <b>免费真实采集</b>
       Google 联想词支持美国、墨西哥和越南；Amazon
       联想词支持美国和墨西哥；独立站发现使用 Brave Search 和官网直接验证；Google
-      Trends用于补齐近90天相对趋势与28天变化。低量词或接口限流时仍会显示“数据不足”。
+      Trends用于补齐近90天相对趋势与28天变化。完整研究会处理总量限制内的全部关键词；低量词或接口限流会显示具体状态，并在任务详情保留原因。
     </div>
     <Modal
       v-model:open="open"
       title="新建市场研究"
       :width="760"
       :ok-text="liveSourceSelected ? '开始真实研究' : '创建演示任务'"
-      :confirm-loading="researching"
       cancel-text="取消"
       @ok="createResearch"
       @cancel="researchError = ''"
@@ -1181,16 +1244,7 @@ async function createResearch() {
             <Checkbox v-model:checked="form.completePipeline">
               联想词生成后，自动继续关联独立站、商品及商品详情
             </Checkbox>
-</Form.Item><Form.Item
-            v-if="form.completePipeline"
-            label="每个市场自动深入研究联想词数（1～6）"
-          >
-            <InputNumber
-              v-model:value="form.autoResearchLimit"
-              :min="1"
-              :max="6"
-            />
-</Form.Item><Form.Item label="趋势查询项上限（所有国家合计）">
+</Form.Item><Form.Item label="关键词研究总数上限（所有种子词和国家合计）">
             <InputNumber
               v-model:value="form.limit"
               :min="1"
@@ -1271,7 +1325,7 @@ async function createResearch() {
         show-icon
       />
       <p class="hci-subtle">
-        数量为采集目标上限；实际结果取决于搜索命中、官网可访问性和网页公开字段。
+        系统会对总数限制内的每个关键词执行趋势、独立站、商品和商品详情采集。站点与商品数量是目标上限；实际结果取决于搜索命中、官网可访问性和网页公开字段。
         Shopify 站点优先使用公开商品目录，其他站点逐页读取公开商品信息。
       </p>
       <p class="hci-subtle">

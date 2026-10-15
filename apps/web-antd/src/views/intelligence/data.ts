@@ -49,6 +49,10 @@ export interface Keyword {
   source: string;
   growth: null | number;
   series: number[];
+  trendStatus?: 'collected' | 'failed' | 'pending';
+  trendMessage?: string;
+  discoveryStatus?: 'collected' | 'failed' | 'pending';
+  discoveryMessage?: string;
   favorite: boolean;
   productIds: string[];
   siteIds: string[];
@@ -139,7 +143,7 @@ export interface Task {
   title: string;
   market: Market;
   mode?: 'demo' | 'live';
-  status: 'cancelled' | 'completed' | 'partial' | 'queued';
+  status: 'cancelled' | 'completed' | 'partial' | 'queued' | 'running';
   created: string;
   steps: string[];
 }

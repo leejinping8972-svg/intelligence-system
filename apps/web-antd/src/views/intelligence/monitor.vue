@@ -72,6 +72,7 @@ const auditRows = computed(() =>
 );
 const statuses = {
   queued: '待执行',
+  running: '执行中',
   completed: '已完成',
   partial: '部分完成',
   cancelled: '已取消',
@@ -82,18 +83,18 @@ const statuses = {
     <PageHeader
       title="监控与任务"
       description="让重点对象持续可见，让每个研究步骤都有明确状态。"
-      >
-<Button type="primary" @click="router.push('/research?new=1')">
-＋ 新建研究
-</Button>
-</PageHeader>
+    >
+      <Button type="primary" @click="router.push('/research?new=1')">
+        ＋ 新建研究
+      </Button>
+    </PageHeader>
     <div class="hci-demo-note">
-      监控配置和任务记录保存在当前浏览器。真实研究会立即调用已配置的采集服务；定时监控尚未接入后台调度。
+      研究提交后会在后台继续执行，可以离开创建弹窗并在这里查看进度。当前任务记录和结果保存在本浏览器，请在任务完成前保持系统页面打开。
     </div>
     <section class="hci-panel">
       <Tabs v-model:active-key="tab">
-<Tabs.TabPane key="monitors" :tab="`重点监控（${monitors.length}）`">
-<Table
+        <Tabs.TabPane key="monitors" :tab="`重点监控（${monitors.length}）`">
+          <Table
             :data-source="monitors"
             row-key="id"
             :pagination="false"
@@ -104,10 +105,10 @@ const statuses = {
               { title: '监控字段', key: 'fields' },
               { title: '状态', key: 'status' },
             ]"
-            >
-<template #bodyCell="{ column, record }">
-<template v-if="column.key === 'product'">
-<b>{{
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'product'">
+                <b>{{
                   state.products.find((p) => p.id === record.productId)?.title
                 }}</b>
                 <p class="hci-subtle">
@@ -116,7 +117,7 @@ const statuses = {
                   }}
                 </p>
 </template><template v-if="column.key === 'frequency'">
-<Select
+                <Select
                   v-model:value="record.frequency"
                   :options="
                     ['每天', '每两天', '每周'].map((v) => ({
@@ -133,11 +134,11 @@ const statuses = {
                         ?.market,
                     )
                   "
-/>
+                />
 </template><template v-if="column.key === 'fields'">
-价格 / 库存状态 / 配方
+                价格 / 库存状态 / 配方
 </template><template v-if="column.key === 'status'">
-<Switch
+                <Switch
                   v-model:checked="record.enabled"
                   checked-children="开启"
                   un-checked-children="暂停"
@@ -149,12 +150,12 @@ const statuses = {
                         ?.market,
                     )
                   "
-/>
-</template>
-</template>
-</Table>
+                />
+              </template>
+            </template>
+          </Table>
 </Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
-<Empty v-if="!tasks.length" description="暂无任务" />
+          <Empty v-if="!tasks.length" description="暂无任务" />
           <div v-for="task in tasks" :key="task.id" class="hci-source-card">
             <div class="hci-source-info">
               <h3>{{ task.title }}</h3>
@@ -166,25 +167,27 @@ const statuses = {
               :color="
                 task.status === 'partial'
                   ? 'orange'
-                  : task.status === 'completed'
-                    ? 'green'
-                    : 'default'
+                  : task.status === 'running'
+                    ? 'blue'
+                    : task.status === 'completed'
+                      ? 'green'
+                      : 'default'
               "
-              >
-{{ statuses[task.status] }}
+            >
+              {{ statuses[task.status] }}
 </Tag><Button size="small" @click="selected = task">详情</Button><Button
               v-if="task.status === 'queued' && !isLiveTask(task)"
               size="small"
               type="primary"
               @click="run(task)"
-              >
-模拟执行
+            >
+              模拟执行
 </Button><Button
               v-if="task.status === 'queued'"
               size="small"
               @click="cancel(task)"
-              >
-取消
+            >
+              取消
 </Button><Button
               v-if="
                 (task.status === 'cancelled' || task.status === 'partial') &&
@@ -195,8 +198,8 @@ const statuses = {
                 task.status = 'queued';
                 audit('重试演示任务', task.title, task.market);
               "
-              >
-重试
+            >
+              重试
 </Button><Button
               v-if="
                 (task.status === 'cancelled' || task.status === 'partial') &&
@@ -204,12 +207,12 @@ const statuses = {
               "
               size="small"
               @click="router.push('/research?new=1')"
-              >
-重新研究
-</Button>
+            >
+              重新研究
+            </Button>
           </div>
 </Tabs.TabPane><Tabs.TabPane key="audit" :tab="`操作记录（${auditRows.length}）`">
-<Empty
+          <Empty
             v-if="!auditRows.length"
             description="收藏、审核或修改监控后，会在这里留下记录"
           />
@@ -224,17 +227,17 @@ const statuses = {
             </div>
             <span class="hci-subtle">{{ event.at }}</span>
           </div>
-</Tabs.TabPane>
-</Tabs>
+        </Tabs.TabPane>
+      </Tabs>
     </section>
     <Drawer
       :open="!!selected"
       title="研究任务详情"
       :width="560"
       @close="selected = undefined"
-      >
-<template v-if="selected">
-<h2 style="font-size: 22px">{{ selected.title }}</h2>
+    >
+      <template v-if="selected">
+        <h2 style="font-size: 22px">{{ selected.title }}</h2>
         <p class="hci-subtle" style="margin: 12px 0">
           {{ selected.created }} · {{ statuses[selected.status] }}
         </p>
@@ -251,10 +254,8 @@ const statuses = {
         <div v-else class="hci-evidence">
           本任务仅模拟工作流，没有向第三方平台发出请求，也没有产生真实研究结果或费用。
         </div>
-        <Button @click="router.push('/research')">
-返回关键词研究
-</Button>
-</template>
-</Drawer>
+        <Button @click="router.push('/research')"> 返回关键词研究 </Button>
+      </template>
+    </Drawer>
   </main>
 </template>

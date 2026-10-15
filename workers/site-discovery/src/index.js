@@ -1079,14 +1079,26 @@ export function braveSearchRequest(keyword, market, count) {
 
 async function braveSearch(keyword, market, env, count) {
   const request = braveSearchRequest(keyword, market, count);
-  const response = await fetch(request.url, {
-    headers: {
-      accept: 'application/json',
-      'x-subscription-token': env.BRAVE_SEARCH_API_KEY,
-      'x-loc-country': request.locationCountry,
-    },
-    signal: AbortSignal.timeout(12_000),
-  });
+  let response;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    response = await fetch(request.url, {
+      headers: {
+        accept: 'application/json',
+        'x-subscription-token': env.BRAVE_SEARCH_API_KEY,
+        'x-loc-country': request.locationCountry,
+      },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (response.status !== 429 || attempt === 2) break;
+    const retryAfter = Math.min(
+      3000,
+      Math.max(
+        1000,
+        Number(response.headers.get('retry-after')) * 1000 || 1000,
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, retryAfter));
+  }
   if (!response.ok) {
     if (response.status === 429)
       throw new Error('Brave Search免费额度或速率已达上限');
@@ -1313,7 +1325,7 @@ async function runResearch(input, env) {
     1,
     Math.min(20, Number(input.productsPerSite) || 10),
   );
-  const candidateLimit = Math.min(12, Math.max(8, maxSites + 2));
+  const candidateLimit = Math.min(20, Math.max(10, maxSites * 2));
   if (keywords.length === 0 || keywords.length > 3)
     throw new Error('每次请输入1至3个关键词');
   if (markets.length === 0 || markets.some((market) => !MARKET_OPTIONS[market]))
@@ -1327,6 +1339,9 @@ async function runResearch(input, env) {
   const suggestions = [];
   const trends = [];
   const suggestionRequestBudget = { remaining: 20 };
+  const totalCombinations = keywords.length * markets.length;
+  let processedCombinations = 0;
+  let remainingSuggestions = suggestionLimit;
   if (sources.includes('google_trends')) {
     for (const market of markets)
       trends.push(...(await collectGoogleTrendsBatch(keywords, market)));
@@ -1334,18 +1349,27 @@ async function runResearch(input, env) {
   for (const keyword of keywords) {
     for (const market of markets) {
       if (
-        sources.includes('google_autocomplete') ||
-        sources.includes('amazon_autocomplete')
+        remainingSuggestions > 0 &&
+        (sources.includes('google_autocomplete') ||
+          sources.includes('amazon_autocomplete'))
       ) {
-        suggestions.push(
-          await collectSuggestions(
-            keyword,
-            market,
-            sources,
-            depth,
-            suggestionLimit,
-            suggestionRequestBudget,
-          ),
+        const combinationsLeft = totalCombinations - processedCombinations;
+        const groupLimit = Math.max(
+          1,
+          Math.ceil(remainingSuggestions / combinationsLeft),
+        );
+        const suggestionGroup = await collectSuggestions(
+          keyword,
+          market,
+          sources,
+          depth,
+          groupLimit,
+          suggestionRequestBudget,
+        );
+        suggestions.push(suggestionGroup);
+        remainingSuggestions = Math.max(
+          0,
+          remainingSuggestions - suggestionGroup.items.length,
         );
       }
       if (sources.includes('site_discovery')) {
@@ -1380,6 +1404,7 @@ async function runResearch(input, env) {
           sites: validated,
         });
       }
+      processedCombinations += 1;
     }
   }
   return {
