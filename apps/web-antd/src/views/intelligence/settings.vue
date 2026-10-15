@@ -14,10 +14,10 @@ import {
 import PageHeader from './components/PageHeader.vue';
 import {
   audit,
+  clearWorkspaceResults,
   defaultBranding,
   marketName,
   markets,
-  resetDemo,
   state,
 } from './data';
 
@@ -151,7 +151,7 @@ function save() {
   }
   Object.assign(state.settings, draft);
   audit(
-    '保存演示配额',
+    '保存研究配额',
     `任务预算$${draft.taskBudget} / 单站商品${draft.productsPerSite}`,
   );
   message.success('配置已保存；研究访问码只保存在当前浏览器');
@@ -479,29 +479,29 @@ function handleLogo(event: Event) {
     <section class="hci-panel">
       <div class="hci-panel-head">
         <div>
-          <h2>演示数据管理</h2>
+          <h2>工作区结果管理</h2>
           <p>
             收藏、审核、导入及监控设置保存在当前浏览器。正式权限与审计由后端实现。
           </p>
         </div>
-        <Button danger @click="resetOpen = true">重置演示数据</Button>
+        <Button danger @click="resetOpen = true">清空全部结果数据</Button>
       </div>
     </section>
     <Modal
       v-model:open="resetOpen"
-      title="重置此浏览器的演示工作区？"
-      ok-text="确认重置"
+      title="清空此浏览器的全部结果数据？"
+      ok-text="确认清空"
       cancel-text="保留数据"
       @ok="
-        resetDemo();
+        clearWorkspaceResults();
         Object.assign(draft, state.settings);
         Object.assign(brandingDraft, state.branding);
         resetOpen = false;
-        message.success('演示数据已恢复');
+        message.success('结果数据已清空，基础配置已保留');
       "
     >
       <p>
-        这会清除本地导入、收藏、审核和任务，恢复初始样本。电脑上的原始文件不会受到影响。
+        这会清除关键词、趋势、独立站、商品、广告、审核、任务、监控、导入历史和操作记录。后台名称、Worker地址、研究访问码、预算和采集参数会保留，电脑上的原始文件不会受到影响。
       </p>
 </Modal><Modal
       :open="!!selected"

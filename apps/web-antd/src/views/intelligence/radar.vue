@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { PublicCollectorData, RadarFinding } from './radar-engine';
 import type { FreeSourceData } from './public-sources';
+import type { PublicCollectorData, RadarFinding } from './radar-engine';
 
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -34,7 +34,7 @@ import {
 const router = useRouter();
 const windowDays = ref(7);
 const findingType = ref('all');
-const includeDemo = ref(true);
+const includeDemo = ref(false);
 const selected = ref<RadarFinding>();
 const reportOpen = ref(false);
 const sourceOpen = ref(false);
@@ -448,14 +448,8 @@ function openRelated(item: RadarFinding) {
             <p>{{ selected.subtitle }}</p>
           </div>
           <div class="hci-radar-dual-score">
-            <span
-              ><b>{{ selected.confidenceScore }}</b
-              >新鲜度可信度</span
-            >
-            <span
-              ><b>{{ selected.businessScore ?? '—' }}</b
-              >商业机会</span
-            >
+            <span><b>{{ selected.confidenceScore }}</b>新鲜度可信度</span>
+            <span><b>{{ selected.businessScore ?? '—' }}</b>商业机会</span>
           </div>
         </div>
 
@@ -480,8 +474,7 @@ function openRelated(item: RadarFinding) {
               :href="evidence.url"
               target="_blank"
               rel="noreferrer"
-              >打开来源 ↗</a
-            >
+              >打开来源 ↗</a>
             <span v-else class="hci-subtle">演示来源，不提供外链</span>
           </article>
         </div>

@@ -208,290 +208,19 @@ export interface DemoState {
     researchMaxSites: number;
   };
 }
-const seedTerms = [
-  ['probiotic for women', '益生菌', '女性健康', 42],
-  ['gut health supplement', '肠道', '肠道与益生菌', 28],
-  ['magnesium glycinate', '镁', '功能性营养', 35],
-  ['inositol supplement', '肌醇', '女性健康', 51],
-  ['fiber supplement', '纤维', '体重管理', 18],
-  ['collagen peptides', '胶原', '功能性营养', -8],
-];
-const localized = {
-  US: seedTerms.map((t) => String(t[0])),
-  MX: [
-    'probióticos para mujer',
-    'salud intestinal',
-    'glicinato de magnesio',
-    'suplemento de inositol',
-    'suplemento de fibra',
-    'péptidos de colágeno',
-  ],
-  VN: [
-    'men vi sinh cho nữ',
-    'sức khỏe đường ruột',
-    'magie glycinate',
-    'bổ sung inositol',
-    'chất xơ hòa tan',
-    'collagen peptide',
-  ],
-};
-
-function at<T>(values: readonly T[], index: number): T {
-  const value = values[index];
-  if (value === undefined) throw new Error(`演示数据索引越界：${index}`);
-  return value;
-}
+const STATE_VERSION = 2;
 
 function initial(): DemoState {
-  const sites: Site[] = markets.flatMap((m, i) => [
-    {
-      id: `s${i * 2 + 1}`,
-      brand: at(['Natura Lab', 'Vida Clara', 'An Nhiên'], i),
-      domain: at(
-        ['natura-lab.example', 'vidaclara.example', 'annhien.example'],
-        i,
-      ),
-      market: m.code,
-      platform: 'Shopify',
-      type: '品牌直营',
-      keyword: at(localized[m.code], 0),
-      category: '肠道与女性健康',
-      mainProducts: ['女性益生菌', '膳食纤维'],
-      ownershipBackground: '独立品牌（官网自述）',
-      ownershipOperations: '创始团队运营',
-      ownershipEvidence: '官网 About 页面披露品牌与团队，未披露母公司信息。',
-      ownershipSource: '官网 About / 品牌故事页',
-      collectorMode: 'manual',
-      lastCollectedAt: '2026-10-13',
-    },
-    {
-      id: `s${i * 2 + 2}`,
-      brand: at(['Daily Form', 'Raíz Vital', 'Lành Studio'], i),
-      domain: at(
-        ['daily-form.example', 'raizvital.example', 'lanh-studio.example'],
-        i,
-      ),
-      market: m.code,
-      platform: 'WooCommerce',
-      type: '品牌直营',
-      keyword: at(localized[m.code], 2),
-      category: '功能性营养',
-      mainProducts: ['甘氨酸镁', '日常矿物质配方'],
-      ownershipBackground: '集团品牌（官网自述）',
-      ownershipOperations: '营养健康团队运营',
-      ownershipEvidence: '官网页脚与隐私政策展示集团运营主体；当前为演示摘录。',
-      ownershipSource: '官网页脚 / Privacy Policy',
-      collectorMode: 'manual',
-      lastCollectedAt: '2026-10-12',
-    },
-  ]);
-  const products: Product[] = markets.flatMap((m, i) => [
-    {
-      id: `p${i * 3 + 1}`,
-      title: at(
-        ['Women’s Daily Probiotic', 'Probióticos Mujer', 'Men vi sinh nữ'],
-        i,
-      ),
-      brand: at(sites, i * 2).brand,
-      market: m.code,
-      category: '女性健康',
-      form: '胶囊',
-      size: '30粒 / 30份',
-      price: at([32, 549, 385_000], i),
-      currency: m.currency,
-      ingredient: 'Lactobacillus acidophilus',
-      dose: '10 billion CFU / 份',
-      claim: '支持日常肠道健康',
-      benefits: ['肠道健康', '女性日常养护'],
-      benefitEvidence: '官网商品页标题与卖点区提及 daily gut health support。',
-      ingredientInsights: [
-        {
-          name: 'Lactobacillus acidophilus',
-          amount: '10 billion CFU / 份',
-          role: '益生菌菌株；用于配方归类，功效仍需核验',
-          evidence: 'Supplement Facts / 商品页成分区',
-        },
-      ],
-      siteId: at(sites, i * 2).id,
-      color: 'sage',
-      reviewed: i === 0,
-      favorite: i === 0,
-      firstSeenAt: `2026-10-${String(12 - i).padStart(2, '0')}`,
-      publishedAt: i === 0 ? '2026-10-10' : undefined,
-      evidenceUrl: `https://${at(sites, i * 2).domain}/products/daily-probiotic`,
-      dataNature: 'demo',
-    },
-    {
-      id: `p${i * 3 + 2}`,
-      title: at(['Magnesium Complex', 'Magnesio Esencial', 'Magie Balance'], i),
-      brand: at(sites, i * 2 + 1).brand,
-      market: m.code,
-      category: '功能性营养',
-      form: '胶囊',
-      size: '60粒 / 30份',
-      price: at([26, 429, 295_000], i),
-      currency: m.currency,
-      ingredient: 'Magnesium glycinate',
-      dose: '200 mg / 份',
-      claim: '支持放松与日常营养补充',
-      benefits: ['放松支持', '矿物质补充'],
-      benefitEvidence: '官网商品描述提及 relaxation 与 daily mineral support。',
-      ingredientInsights: [
-        {
-          name: 'Magnesium glycinate',
-          amount: '200 mg / 份',
-          role: '镁来源；剂量按每份记录',
-          evidence: 'Supplement Facts / 商品页配方区',
-        },
-      ],
-      siteId: at(sites, i * 2 + 1).id,
-      color: 'lavender',
-      reviewed: false,
-      favorite: false,
-      firstSeenAt: `2026-10-${String(9 - i).padStart(2, '0')}`,
-      evidenceUrl: `https://${at(sites, i * 2 + 1).domain}/products/magnesium`,
-      dataNature: 'demo',
-    },
-    {
-      id: `p${i * 3 + 3}`,
-      title: at(['Daily Fiber Blend', 'Fibra Prebiótica', 'Chất Xơ Daily'], i),
-      brand: at(sites, i * 2).brand,
-      market: m.code,
-      category: '肠道与益生菌',
-      form: '粉剂',
-      size: '180g / 30份',
-      price: at([29, 479, 325_000], i),
-      currency: m.currency,
-      ingredient: 'Inulin · Psyllium husk',
-      dose: '6 g / 份',
-      claim: '补充膳食纤维',
-      benefits: ['膳食纤维补充', '肠道规律支持'],
-      benefitEvidence:
-        '官网商品页卖点区提及 fiber intake 与 regularity support。',
-      ingredientInsights: [
-        {
-          name: 'Inulin',
-          amount: '配方组成，单项剂量未披露',
-          role: '可溶性膳食纤维 / 益生元来源',
-          evidence: '商品页成分表',
-        },
-        {
-          name: 'Psyllium husk',
-          amount: '合计 6 g / 份',
-          role: '膳食纤维来源',
-          evidence: 'Supplement Facts',
-        },
-      ],
-      siteId: at(sites, i * 2).id,
-      color: 'sand',
-      reviewed: true,
-      favorite: false,
-      firstSeenAt: `2026-10-${String(6 - i).padStart(2, '0')}`,
-      evidenceUrl: `https://${at(sites, i * 2).domain}/products/daily-fiber`,
-      dataNature: 'demo',
-    },
-  ]);
   return {
-    version: 1,
+    version: STATE_VERSION,
     market: 'ALL',
-    sites,
-    products,
-    keywords: markets.flatMap((m, mi) =>
-      seedTerms.map((t, i) => {
-        const relatedProducts = products.filter(
-          (product) =>
-            product.market === m.code && product.category === String(t[2]),
-        );
-        return {
-          id: `k${mi * 6 + i + 1}`,
-          term: at(localized[m.code], i),
-          market: m.code,
-          category: String(t[2]),
-          source: mi === 2 ? 'Google 联想词 · 演示' : 'Google / Amazon · 演示',
-          growth: mi === 2 && i === 5 ? null : Number(t[3]) - mi * 5,
-          series: Array.from({ length: 90 }, (_, j) =>
-            Math.max(
-              2,
-              Math.min(
-                100,
-                Math.round(
-                  22 +
-                    i * 4 +
-                    (j * (Number(t[3]) - mi * 5)) / 100 +
-                    Math.sin(j / 6 + i) * 6,
-                ),
-              ),
-            ),
-          ),
-          favorite: i === 0,
-          productIds: relatedProducts.map((product) => product.id),
-          siteIds: [
-            ...new Set(relatedProducts.map((product) => product.siteId)),
-          ],
-          updatedAt: `2026-10-${String(13 - (i % 4)).padStart(2, '0')}`,
-          dataNature: 'demo' as const,
-        };
-      }),
-    ),
-    ads: products
-      .filter((_, i) => i % 3 !== 2)
-      .map((p, i) => ({
-        id: `ad${i + 1}`,
-        brand: p.brand,
-        market: p.market,
-        platform: i % 2 ? 'TikTok' : 'Meta',
-        headline:
-          i % 2
-            ? 'Make room for your daily ritual.'
-            : 'A little care. Every day.',
-        copy:
-          i % 2
-            ? '日常营养补充，围绕生活方式展开沟通。'
-            : '女性日常肠道支持，强调简单、持续的习惯。',
-        format: i % 2 ? '短视频' : '图片',
-        productId: p.id,
-        status: '观察到活跃',
-        color: p.color,
-        firstSeenAt: `2026-10-${String(13 - (i % 5)).padStart(2, '0')}`,
-        evidenceUrl: `https://ads.example/${i + 1}`,
-        dataNature: 'demo' as const,
-      })),
-    reviews: products
-      .filter((p) => !p.reviewed)
-      .map((p, i) => ({
-        id: `r${i + 1}`,
-        productId: p.id,
-        field: 'dose',
-        current: p.dose,
-        proposed: i % 2 ? '10 billion CFU / 份' : '100 mg / 份',
-        quote:
-          i % 2
-            ? 'Serving size: 1 capsule. Probiotic blend: 10 billion CFU.'
-            : 'Serving size: 2 capsules. Magnesium: 100 mg per serving.',
-        status: 'pending',
-        reason: '',
-      })),
-    tasks: [
-      {
-        id: 'task-demo-1',
-        title: '女性益生菌 · 首轮研究',
-        market: 'US',
-        mode: 'demo',
-        status: 'partial',
-        created: '2026-10-13 09:30',
-        steps: [
-          '关键词整理',
-          '90天趋势',
-          '独立站发现',
-          '商品提取',
-          '广告未授权',
-        ],
-      },
-    ],
-    monitors: [
-      { id: 'm1', productId: 'p1', frequency: '每天', enabled: true },
-      { id: 'm2', productId: 'p5', frequency: '每周', enabled: true },
-    ],
+    sites: [],
+    products: [],
+    keywords: [],
+    ads: [],
+    reviews: [],
+    tasks: [],
+    monitors: [],
     imports: [],
     audit: [],
     savedOpportunities: [],
@@ -530,12 +259,37 @@ const storageKey = 'hci-demo-state-v1';
 function restore(): DemoState {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+    const defaults = initial();
+    if (saved && saved.version !== STATE_VERSION) {
+      return {
+        ...defaults,
+        market: ['ALL', 'MX', 'US', 'VN'].includes(saved.market)
+          ? saved.market
+          : defaults.market,
+        branding: { ...defaults.branding, ...saved.branding },
+        settings: {
+          ...defaults.settings,
+          ...saved.settings,
+          productsPerSite: Math.min(
+            20,
+            Number(saved.settings?.productsPerSite) ||
+              defaults.settings.productsPerSite,
+          ),
+          researchMaxSites: Math.min(
+            10,
+            Number(saved.settings?.researchMaxSites) ||
+              defaults.settings.researchMaxSites,
+          ),
+          researchApiUrl:
+            saved.settings?.researchApiUrl || defaults.settings.researchApiUrl,
+        },
+      } as DemoState;
+    }
     if (
-      saved?.version === 1 &&
+      saved?.version === STATE_VERSION &&
       Array.isArray(saved.products) &&
       Array.isArray(saved.audit)
     ) {
-      const defaults = initial();
       const products: Product[] = saved.products.map((product: Product) => {
         const fallback = defaults.products.find(
           (item) => item.id === product.id,
@@ -678,7 +432,7 @@ watch(
       storageError.value = '浏览器存储不可用，本次操作仅在当前页面会话保留。';
     }
   },
-  { deep: true },
+  { deep: true, immediate: true },
 );
 export const inMarket = (market: Market) =>
   state.market === 'ALL' || state.market === market;
@@ -748,9 +502,15 @@ export function monitorProduct(productId: string) {
     state.products.find((p) => p.id === productId)?.market || state.market,
   );
 }
-export function resetDemo() {
+export function clearWorkspaceResults() {
   const branding = { ...state.branding };
-  Object.assign(state, normalizeGrowth(initial()), { branding });
+  const settings = { ...state.settings };
+  const market = state.market;
+  Object.assign(state, normalizeGrowth(initial()), {
+    branding,
+    market,
+    settings,
+  });
 }
 export function download(
   name: string,

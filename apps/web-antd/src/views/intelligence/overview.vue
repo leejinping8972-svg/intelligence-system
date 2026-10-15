@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Button, Tag, Select } from 'ant-design-vue';
-import PageHeader from './components/PageHeader.vue';
-import Chart from './components/Chart.vue';
-import {
-  state,
-  markets,
-  filteredProducts,
-  filteredKeywords,
-  filteredSites,
-  pendingReviews,
-  marketName,
-} from './data';
+
+import { Button, Select, Tag } from 'ant-design-vue';
+
 import { trendOption } from './charts';
+import Chart from './components/Chart.vue';
+import PageHeader from './components/PageHeader.vue';
+import {
+  filteredKeywords,
+  filteredProducts,
+  filteredSites,
+  marketName,
+  markets,
+  pendingReviews,
+  state,
+} from './data';
 const router = useRouter();
 const selectedTerm = ref('k1');
 const keyword = computed(
@@ -57,7 +59,7 @@ const mapOptions = computed(() => ({
     formatter: (p: any) => {
       const m = markets.find((m) => m.english === p.name);
       return m
-        ? `${m.name}：${state.products.filter((x) => x.market === m.code).length} 个演示商品`
+        ? `${m.name}：${state.products.filter((x) => x.market === m.code).length} 个商品`
         : '后续开放市场';
     },
   },
@@ -112,14 +114,13 @@ function selectMarket(name: string) {
     <PageHeader
       title="把市场信号，变成下一步行动"
       description="从需求变化到竞品动态，在一处完成你的选品研究。"
-      ><Button @click="router.push('/imports')">导入数据</Button
-      ><Button type="primary" @click="router.push('/research?new=1')"
-        >＋ 新建研究</Button
-      ></PageHeader
     >
+      <Button @click="router.push('/imports')">导入数据</Button><Button type="primary" @click="router.push('/research?new=1')">
+        ＋ 新建研究
+      </Button>
+    </PageHeader>
     <div class="hci-demo-note">
-      <b>演示工作区</b
-      >以下品牌、商品、趋势与指标均为虚构样本，用于体验交互；尚未接入真实数据源。
+      <b>空白工作区</b>系统不再预置样本。请从关键词研究、公开数据采集或数据导入开始建立真实结果。
     </div>
     <div class="hci-stats">
       <button
@@ -135,13 +136,12 @@ function selectMarket(name: string) {
           {{ s.value
           }}<span
             style="
+              margin-left: 8px;
               font-size: 12px;
               font-weight: 400;
-              margin-left: 8px;
               color: var(--hci-muted);
             "
-            >项</span
-          >
+            >项</span>
         </div>
         <div class="hci-stat-foot">{{ s.note }}</div>
       </button>
@@ -159,19 +159,16 @@ function selectMarket(name: string) {
         </div>
         <Chart :options="mapOptions" map @select="selectMarket" />
         <div class="hci-map-legend">
-          <span v-for="m in markets" :key="m.code"
-            ><i class="hci-market-dot" :style="{ background: m.color }"></i
-            >{{ m.name }}</span
-          ><span>其他市场暂未开放</span>
+          <span v-for="m in markets" :key="m.code"><i class="hci-market-dot" :style="{ background: m.color }"></i>{{ m.name }}</span><span>其他市场暂未开放</span>
         </div>
       </section>
       <section class="hci-panel">
         <div class="hci-panel-head">
           <div>
             <h2>市场研究概况</h2>
-            <p>商品样本分布，不代表市场规模</p>
+            <p>当前工作区的商品记录分布，不代表市场规模</p>
           </div>
-          <Tag>演示</Tag>
+          <Tag>工作区数据</Tag>
         </div>
         <button
           v-for="m in markets"
@@ -186,14 +183,13 @@ function selectMarket(name: string) {
             <div class="hci-subtle">{{ m.language }} · {{ m.currency }}</div>
           </div>
           <div>
-            <b>{{ state.products.filter((p) => p.market === m.code).length }}</b
-            ><span class="hci-subtle"> 个商品 →</span>
+            <b>{{ state.products.filter((p) => p.market === m.code).length }}</b><span class="hci-subtle"> 个商品 →</span>
           </div>
         </button>
         <div
           style="
-            margin-top: 22px;
             padding: 17px;
+            margin-top: 22px;
             background: var(--hci-green-soft);
             border-radius: 8px;
           "
@@ -228,7 +224,7 @@ function selectMarket(name: string) {
           />
         </div>
         <Chart v-if="keyword" :options="trendOption(keyword)" />
-        <p class="hci-subtle">演示曲线 · 不跨国家或批次比较绝对需求</p>
+        <p class="hci-subtle">相对趋势 · 不跨国家或批次比较绝对需求</p>
       </section>
       <section class="hci-panel">
         <div class="hci-panel-head">
@@ -266,8 +262,7 @@ function selectMarket(name: string) {
       </section>
     </div>
     <div class="hci-demo-footer">
-      <span>知衡情报 · 用证据连接关键词、品牌与商品</span
-      ><span>演示样本日期：2026-10-13</span>
+      <span>知衡情报 · 用证据连接关键词、品牌与商品</span><span>工作区结果从真实采集或人工导入开始累计</span>
     </div>
   </main>
 </template>

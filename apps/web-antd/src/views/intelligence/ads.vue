@@ -1,20 +1,23 @@
 <script setup lang="ts">
+import type { Ad } from './data';
+
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+
 import {
   Button,
+  Empty,
+  Form,
   Input,
+  message,
+  Modal,
   Select,
   Tag,
-  Modal,
-  Form,
-  Empty,
-  message,
 } from 'ant-design-vue';
+
 import PageHeader from './components/PageHeader.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
-import { state, inMarket, marketName, audit } from './data';
-import type { Ad } from './data';
+import { audit, inMarket, marketName, state } from './data';
 const router = useRouter();
 const search = ref('');
 const platform = ref('ALL');
@@ -52,7 +55,7 @@ function save() {
   selected.value.productId = p.id;
   audit('修改广告关联', `${selected.value.brand} → ${p.title}`, p.market);
   selected.value = undefined;
-  message.success('关联已保存到演示工作区');
+  message.success('关联已保存到当前工作区');
 }
 </script>
 <template>
@@ -60,13 +63,14 @@ function save() {
     <PageHeader
       title="广告观察"
       description="观察竞品如何表达卖点，将素材线索关联到具体商品。"
-      ><Button type="primary" @click="router.push('/imports')"
-        >导入广告资料</Button
-      ></PageHeader
     >
+      <Button type="primary" @click="router.push('/imports')">
+        导入广告资料
+      </Button>
+    </PageHeader>
     <div class="hci-demo-note">
       <b>导入优先</b>Meta / TikTok
-      自动接口尚未接入。以下为虚构素材示例，广告数量不代表真实消耗或销量。
+      自动接口尚未接入。当前不预置广告样本，可通过数据导入建立真实广告记录。
     </div>
     <section class="hci-panel">
       <div class="hci-toolbar" style="margin: 0">
@@ -81,15 +85,13 @@ function save() {
             { label: 'Meta', value: 'Meta' },
             { label: 'TikTok', value: 'TikTok' },
           ]"
-        /><span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 条广告观察</span
-        >
+        /><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 条广告观察</span>
       </div>
     </section>
     <Empty v-if="!rows.length" description="没有符合条件的广告" />
     <div class="hci-product-grid">
       <article v-for="ad in rows" :key="ad.id" class="hci-product-card">
-        <div :class="['hci-ad-creative', ad.color]">
+        <div class="hci-ad-creative" :class="[ad.color]">
           <small>{{ ad.brand.toUpperCase() }}</small>
           <h3>{{ ad.headline }}</h3>
           <span class="hci-subtle">{{ ad.format }}素材示意 · DEMO</span>
@@ -100,7 +102,7 @@ function save() {
             <Tag>{{ ad.platform }}</Tag>
           </div>
           <p class="hci-subtle">
-            {{ marketName(ad.market) }} · {{ ad.status }} · 演示
+            {{ marketName(ad.market) }} · {{ ad.status }}
           </p>
           <p style="margin: 15px 0">{{ ad.copy }}</p>
           <div class="hci-product-bottom">
@@ -108,8 +110,8 @@ function save() {
               {{
                 state.products.find((p) => p.id === ad.productId)?.title ||
                 '未关联商品'
-              }}</button
-            ><button class="hci-link" @click="editLink(ad)">关联</button>
+              }}
+</button><button class="hci-link" @click="editLink(ad)">关联</button>
           </div>
         </div>
       </article>
@@ -121,9 +123,10 @@ function save() {
       cancel-text="取消"
       @cancel="selected = undefined"
       @ok="save"
-      ><Form layout="vertical"
-        ><Form.Item label="关联商品"
-          ><Select
+    >
+      <Form layout="vertical">
+        <Form.Item label="关联商品">
+          <Select
             v-model:value="linkId"
             show-search
             option-filter-prop="label"
@@ -131,11 +134,13 @@ function save() {
               state.products
                 .filter((p) => p.market === selected?.market)
                 .map((p) => ({ label: `${p.brand} · ${p.title}`, value: p.id }))
-            " /></Form.Item
-      ></Form>
+            "
+          />
+        </Form.Item>
+      </Form>
       <p class="hci-subtle">
-        当前仅展示同市场商品。关联操作将留在演示工作区记录中。
-      </p></Modal
-    >
+        当前仅展示同市场商品。关联操作将保存到当前工作区。
+      </p>
+    </Modal>
   </main>
 </template>

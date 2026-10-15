@@ -36,11 +36,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Collect public website observations
+        if: ${{ vars.HCI_AUTOMATED_COLLECTION == 'true' }}
         env:
           HCI_COLLECTOR_PREVIOUS_URL: https://leejinping8972-svg.github.io/intelligence-system/data/public-site-observations.json
         run: pnpm --filter @vben/web-antd run collect:public
 
       - name: Collect zero-cost public sources
+        if: ${{ vars.HCI_AUTOMATED_COLLECTION == 'true' }}
         env:
           HCI_FREE_SOURCES_PREVIOUS_URL: https://leejinping8972-svg.github.io/intelligence-system/data/free-source-observations.json
           NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}

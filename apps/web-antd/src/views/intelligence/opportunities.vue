@@ -1,23 +1,25 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+
 import {
   Button,
-  Tabs,
-  Tag,
-  Modal,
   Checkbox,
   Empty,
   message,
+  Modal,
+  Tabs,
+  Tag,
 } from 'ant-design-vue';
+
 import PageHeader from './components/PageHeader.vue';
 import {
-  state,
-  filteredProducts,
-  filteredKeywords,
-  filteredSites,
   download,
+  filteredKeywords,
+  filteredProducts,
+  filteredSites,
   marketName,
+  state,
 } from './data';
 const router = useRouter();
 const tab = ref('concept');
@@ -38,7 +40,7 @@ const tabs = [
   { key: 'new', label: '新发现商品' },
 ];
 const rows = computed(() => {
-  let output: { title: string; count: number; description: string }[] = [];
+  let output: { title: string; count: number; description: string }[];
   if (tab.value === 'keyword')
     output = filteredKeywords.value
       .filter((k) => (k.growth || 0) > 20)
@@ -62,12 +64,9 @@ const rows = computed(() => {
   else {
     const grouped = new Map<string, number>();
     for (const p of filteredProducts.value) {
-      const key =
-        tab.value === 'ingredient'
-          ? p.ingredient
-          : tab.value === 'claim'
-            ? p.claim
-            : p.category;
+      let key = p.category;
+      if (tab.value === 'ingredient') key = p.ingredient;
+      if (tab.value === 'claim') key = p.claim;
       grouped.set(key, (grouped.get(key) || 0) + 1);
     }
     output = [...grouped].map(([title, count]) => ({
@@ -85,16 +84,16 @@ const rows = computed(() => {
 });
 function save(title: string) {
   const index = state.savedOpportunities.indexOf(title);
-  if (index >= 0) state.savedOpportunities.splice(index, 1);
-  else state.savedOpportunities.push(title);
+  if (index === -1) state.savedOpportunities.push(title);
+  else state.savedOpportunities.splice(index, 1);
 }
 function report() {
   if (!selected.value) return;
   download(
-    `研究摘要-${tab.value}-演示.txt`,
-    `知衡情报 · 演示研究摘要\n研究方向：${selected.value.title}\n市场：${marketName(state.market)}\n样本：${selected.value.count}项演示记录\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未通过真实数据验证。\n反向证据：目前未接入真实趋势、广告和销售数据，不能确认需求增长。\n数据缺口：独立来源、真实配方、持续观察历史和来源许可。\n后续动作：补充资料，审核字段，再开展真实研究。\n\n全部内容来自虚构演示样本，不构成市场事实。`,
+    `研究摘要-${tab.value}.txt`,
+    `知衡情报 · 研究摘要\n研究方向：${selected.value.title}\n市场：${marketName(state.market)}\n关联记录：${selected.value.count}项\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未达到自动确认门槛。\n数据缺口：独立来源、真实配方、持续观察历史、广告或销售证据。\n后续动作：补充资料并完成人工审核。`,
   );
-  message.success('演示摘要已导出');
+  message.success('研究摘要已导出');
 }
 </script>
 <template>
@@ -102,36 +101,35 @@ function report() {
     <PageHeader
       title="机会研究"
       description="把零散信号整理成可讨论、可验证的研究方向。"
-      ><Checkbox v-model:checked="savedOnly">仅看收藏</Checkbox></PageHeader
     >
+      <Checkbox v-model:checked="savedOnly">仅看收藏</Checkbox>
+    </PageHeader>
     <div class="hci-demo-note">
-      <b>先看证据，再看结论</b
-      >当前全部为演示样本，未达到真实评分门槛，统一显示“待验证”。
+      <b>先看证据，再看结论</b>当前不预置机会结论。只有真实采集或人工导入的数据达到证据门槛后，才会形成候选方向。
     </div>
     <section class="hci-panel">
-      <Tabs v-model:active-key="tab"
-        ><Tabs.TabPane
+      <Tabs v-model:active-key="tab">
+        <Tabs.TabPane
           v-for="item in tabs"
           :key="item.key"
-          :tab="item.label" /></Tabs
-      ><Empty v-if="!rows.length" description="暂无符合条件的研究方向" />
+          :tab="item.label"
+        />
+</Tabs><Empty v-if="!rows.length" description="暂无符合条件的研究方向" />
       <article
         v-for="(row, i) in rows"
         :key="row.title"
         class="hci-opportunity"
       >
         <div>
-          <div style="display: flex; align-items: center; gap: 12px">
+          <div style="display: flex; gap: 12px; align-items: center">
             <span class="hci-subtle">{{ String(i + 1).padStart(2, '0') }}</span>
             <h3>{{ row.title }}</h3>
             <Tag color="orange">待验证</Tag>
           </div>
           <p class="hci-subtle" style="margin: 12px 0">{{ row.description }}</p>
-          <span class="hci-subtle"
-            >{{ row.count }} 项关联样本 · 真实来源尚未接入</span
-          >
+          <span class="hci-subtle">{{ row.count }} 项关联样本 · 真实来源尚未接入</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 12px">
+        <div style="display: flex; gap: 12px; align-items: center">
           <button
             class="hci-favorite"
             :aria-label="`收藏${row.title}`"
@@ -139,8 +137,8 @@ function report() {
           >
             {{
               state.savedOpportunities.includes(row.title) ? '★' : '☆'
-            }}</button
-          ><Button @click="selected = row">研究详情</Button>
+            }}
+</button><Button @click="selected = row">研究详情</Button>
         </div>
       </article>
     </section>
@@ -150,12 +148,13 @@ function report() {
       :width="720"
       :footer="null"
       @cancel="selected = undefined"
-      ><template v-if="selected"
-        ><h2 style="font-size: 22px; margin: 16px 0">{{ selected.title }}</h2>
+    >
+      <template v-if="selected">
+        <h2 style="margin: 16px 0; font-size: 22px">{{ selected.title }}</h2>
         <Tag color="orange">待验证 · 未参与机会排名</Tag>
         <div class="hci-evidence">
           <b>已整理的观察</b><br />{{ selected.description }}<br />关联
-          {{ selected.count }} 项虚构样本，不能作为真实市场事实。
+          {{ selected.count }} 项关联记录，仍需核对来源覆盖和反向证据。
         </div>
         <h3>研究假设</h3>
         <p style="margin: 10px 0 20px">
@@ -172,10 +171,11 @@ function report() {
               router.push('/research?new=1');
               selected = undefined;
             "
-            >继续研究</Button
-          ><Button @click="report">导出演示摘要</Button>
-        </div></template
-      ></Modal
-    >
+          >
+            继续研究
+</Button><Button @click="report">导出研究摘要</Button>
+        </div>
+      </template>
+    </Modal>
   </main>
 </template>
