@@ -15,7 +15,14 @@ import {
 import { trendOption } from './charts';
 import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
-import { audit, exportCsv, filteredKeywords, marketName, state } from './data';
+import {
+  audit,
+  exportCsv,
+  filteredKeywords,
+  marketName,
+  openCapturedTrend,
+  state,
+} from './data';
 import { discoverSites, trendRecordFields } from './site-discovery';
 const route = useRoute();
 const router = useRouter();
@@ -23,9 +30,13 @@ const selected = ref('');
 const days = ref(365);
 const refreshing = ref(false);
 watch(
-  () => route.query.keyword,
-  (value) => {
-    const k = state.keywords.find((k) => k.id === value);
+  () => [route.query.keyword, route.query.term, route.query.market],
+  ([value, term, market]) => {
+    const k =
+      state.keywords.find((k) => k.id === value) ||
+      (typeof term === 'string' && typeof market === 'string'
+        ? openCapturedTrend(term, market)
+        : undefined);
     if (k) {
       selected.value = k.id;
       state.market = k.market;
@@ -178,7 +189,7 @@ async function refreshTrend() {
       description="识别持续变化，保留每条曲线的国家、来源和查询尺度。"
     >
       <Button :disabled="!keyword" :loading="refreshing" @click="refreshTrend">
-更新一年趋势
+        更新一年趋势
 </Button><Button @click="exportTrend">导出时序</Button>
       <a
         v-if="keyword?.trendSourceUrl"

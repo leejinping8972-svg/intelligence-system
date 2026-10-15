@@ -471,6 +471,38 @@ function restore(): DemoState {
   return initial();
 }
 export const state = reactive<DemoState>(normalizeGrowth(restore()));
+
+export function openCapturedTrend(term: string, market: string) {
+  const existing = state.keywords.find(
+    (record) =>
+      record.term.toLowerCase() === term.toLowerCase() &&
+      record.market === market,
+  );
+  if (existing) return existing;
+  const capture = officialTrendSnapshots.find(
+    (record) =>
+      record.keyword.toLowerCase() === term.toLowerCase() &&
+      record.market === market,
+  );
+  if (!capture) return;
+  const record: Keyword = {
+    id: crypto.randomUUID(),
+    term: capture.keyword,
+    market: capture.market as Market,
+    category: '女性健康',
+    source: 'Google Trends官网实采',
+    growth: null,
+    series: [],
+    favorite: false,
+    productIds: [],
+    siteIds: [],
+    dataNature: 'collected',
+    updatedAt: capture.collectedAt,
+  };
+  state.keywords.unshift(record);
+  normalizeGrowth(state);
+  return record;
+}
 export const storageError = reactive({ value: '' });
 watch(
   state,
