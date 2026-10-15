@@ -60,6 +60,7 @@ const route = useRoute();
 const router = useRouter();
 const open = ref(false);
 const researching = ref(false);
+const completingAll = ref(false);
 const search = ref('');
 const category = ref('ALL');
 const favoritesOnly = ref(false);
@@ -438,6 +439,7 @@ async function collectKeywordTrends(records: Keyword[]) {
           productsPerSite: 1,
           sources: ['google_trends'],
         });
+        const returnedKeywordIds = new Set<string>();
         for (const trend of result.trends || []) {
           const original = marketRecords.find(
             (item) =>
@@ -445,12 +447,15 @@ async function collectKeywordTrends(records: Keyword[]) {
               trend.keyword.toLocaleLowerCase(),
           );
           if (!original) continue;
+          returnedKeywordIds.add(original.id);
           if (trend.series.length > 0) {
             mergeCollectedKeyword({
               ...original,
               growth: trend.growth,
               series: trend.series,
               source: 'Google Trends · 实采',
+              trendStatus: 'collected',
+              trendMessage: trend.message || '已采集趋势序列',
               updatedAt: result.generatedAt,
             });
             completed += 1;
@@ -461,6 +466,14 @@ async function collectKeywordTrends(records: Keyword[]) {
             );
           } else {
             const failure = trend.message || '未返回趋势序列';
+            mergeCollectedKeyword({
+              ...original,
+              growth: null,
+              series: [],
+              trendStatus: 'failed',
+              trendMessage: failure,
+              updatedAt: result.generatedAt,
+            });
             failures.push(`${original.term}：${failure}`);
             audit(
               'Google Trends采集未完成',
@@ -469,15 +482,37 @@ async function collectKeywordTrends(records: Keyword[]) {
             );
           }
         }
+        for (const record of marketRecords) {
+          if (returnedKeywordIds.has(record.id)) continue;
+          const failure = '趋势服务未返回该关键词结果';
+          mergeCollectedKeyword({
+            ...record,
+            growth: null,
+            series: [],
+            trendStatus: 'failed',
+            trendMessage: failure,
+            updatedAt: result.generatedAt,
+          });
+          failures.push(`${record.term}：${failure}`);
+        }
       } catch (error) {
         const failure = error instanceof Error ? error.message : '趋势采集失败';
         failures.push(`${marketName(market)}：${failure}`);
-        for (const record of marketRecords)
+        for (const record of marketRecords) {
+          mergeCollectedKeyword({
+            ...record,
+            growth: null,
+            series: [],
+            trendStatus: 'failed',
+            trendMessage: failure,
+            updatedAt: stamp(),
+          });
           audit(
             'Google Trends采集未完成',
             `${record.term} / ${marketName(market)} / ${failure}`,
             market,
           );
+        }
       }
     }
     if (completed > 0)
@@ -491,11 +526,10 @@ async function collectKeywordTrends(records: Keyword[]) {
   }
 }
 
-function collectSelectedKeywordTrends() {
-  return collectKeywordTrends(selectedKeywords.value);
-}
-
-async function discoverKeywordRecords(records: Keyword[]) {
+async function discoverKeywordRecords(
+  records: Keyword[],
+  clearSelection = true,
+) {
   if (records.length === 0) {
     message.warning('请先勾选要查找独立站的关键词');
     return;
@@ -624,9 +658,10 @@ async function discoverKeywordRecords(records: Keyword[]) {
       }
     }
 
-    selectedKeywordIds.value = selectedKeywordIds.value.filter(
-      (id) => !records.some((record) => record.id === id),
-    );
+    if (clearSelection)
+      selectedKeywordIds.value = selectedKeywordIds.value.filter(
+        (id) => !records.some((record) => record.id === id),
+      );
     if (failures.length > 0) {
       researchError.value = failures.join('；');
       message.warning(
@@ -644,10 +679,6 @@ async function discoverKeywordRecords(records: Keyword[]) {
   } finally {
     researching.value = false;
   }
-}
-
-function discoverSelectedKeywords() {
-  return discoverKeywordRecords(selectedKeywords.value);
 }
 
 function discoverKeywordRecord(record: Record<string, unknown>) {
@@ -764,6 +795,36 @@ async function enrichSelectedProducts() {
     }
   } finally {
     researching.value = false;
+  }
+}
+
+async function completeSelectedKeywordInfo() {
+  const records = [...selectedKeywords.value];
+  if (records.length === 0) {
+    message.warning('请先勾选要补齐信息的关键词');
+    return;
+  }
+  if (records.length > BULK_KEYWORD_LIMIT) {
+    message.warning(`一次最多选择${BULK_KEYWORD_LIMIT}个关键词`);
+    return;
+  }
+  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
+    researchError.value =
+      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
+    message.error(researchError.value);
+    return;
+  }
+  completingAll.value = true;
+  try {
+    await discoverKeywordRecords(records, false);
+    await collectKeywordTrends(records);
+    await enrichSelectedProducts();
+    selectedKeywordIds.value = selectedKeywordIds.value.filter(
+      (id) => !records.some((record) => record.id === id),
+    );
+    message.success('一键补齐流程已执行完成，可查看关键词、独立站和商品库结果');
+  } finally {
+    completingAll.value = false;
   }
 }
 
@@ -1156,28 +1217,15 @@ async function createResearch() {
             ...categories.map((c) => ({ label: c, value: c })),
           ]"
         /><Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox><Button
-          :disabled="selectedKeywords.length === 0 || researching"
-          :loading="researching"
-          @click="discoverSelectedKeywords"
+          type="primary"
+          :disabled="
+            selectedKeywords.length === 0 || researching || completingAll
+          "
+          :loading="researching || completingAll"
+          @click="completeSelectedKeywordInfo"
         >
-          批量查找独立站（{{ selectedKeywords.length }}/{{
+          一键补齐信息（{{ selectedKeywords.length }}/{{
             BULK_KEYWORD_LIMIT
-          }}）
-</Button><Button
-          :disabled="selectedKeywords.length === 0 || researching"
-          :loading="researching"
-          @click="collectSelectedKeywordTrends"
-        >
-          补齐28天趋势（{{ selectedKeywords.length }}/{{
-            BULK_KEYWORD_LIMIT
-          }}）
-</Button><Button
-          :disabled="selectedProducts.length === 0 || researching"
-          :loading="researching"
-          @click="enrichSelectedProducts"
-        >
-          补齐商品信息（{{ selectedProducts.length }}件/{{
-            PRODUCT_ENRICHMENT_LIMIT
           }}）
 </Button><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span>
       </div>
@@ -1304,7 +1352,11 @@ async function createResearch() {
 </button><button
               class="hci-link"
               style="margin-left: 14px"
-              :disabled="researching || record.dataNature !== 'collected'"
+              :disabled="
+                researching ||
+                completingAll ||
+                record.dataNature !== 'collected'
+              "
               @click="discoverKeywordRecord(record)"
             >
               查找独立站
