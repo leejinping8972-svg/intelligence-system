@@ -1021,18 +1021,7 @@ async function collectSuggestions(
       ),
     );
   }
-  const items = [];
-  const seen = new Set();
-  for (const result of sourceResults) {
-    for (const item of result.items) {
-      const key = `${item.source}|${item.term.toLocaleLowerCase()}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      items.push(item);
-      if (items.length >= limit) break;
-    }
-    if (items.length >= limit) break;
-  }
+  const items = mergeSuggestionItems(sourceResults, limit);
   return {
     items,
     keyword,
@@ -1042,6 +1031,35 @@ async function collectSuggestions(
       count: values.length,
     })),
   };
+}
+
+export function mergeSuggestionItems(sourceResults, limit) {
+  const items = [];
+  const byTerm = new Map();
+  const longestSource = Math.max(
+    0,
+    ...sourceResults.map((result) => result.items.length),
+  );
+  for (let index = 0; index < longestSource; index += 1) {
+    for (const result of sourceResults) {
+      const item = result.items[index];
+      if (!item) continue;
+      const key = item.term.toLocaleLowerCase();
+      const existing = byTerm.get(key);
+      if (existing) {
+        const sources = new Set(existing.source.split(' / '));
+        sources.add(item.source);
+        existing.source = [...sources].join(' / ');
+        continue;
+      }
+      const record = { ...item, category: inferCategory(item.term) };
+      byTerm.set(key, record);
+      items.push(record);
+      if (items.length >= limit) break;
+    }
+    if (items.length >= limit) break;
+  }
+  return items;
 }
 
 export function braveSearchRequest(keyword, market, count) {
@@ -1116,13 +1134,14 @@ export function trendSeriesMessage(series) {
     return '近90天相对热度均为0，Google Trends样本不足';
   if (previous <= 0 && recent > 0)
     return '此前28天均值为0，最近28天已出现搜索信号，无法计算百分比变化';
-  if (previous <= 0)
-    return '此前28天基期为0，无法计算百分比变化';
+  if (previous <= 0) return '此前28天基期为0，无法计算百分比变化';
   return '';
 }
 
 export function googleTrendsExploreUrl(keywords, market) {
-  const terms = (Array.isArray(keywords) ? keywords : [keywords]).filter(Boolean);
+  const terms = (Array.isArray(keywords) ? keywords : [keywords]).filter(
+    Boolean,
+  );
   const options = MARKET_OPTIONS[market];
   const url = new URL('https://trends.google.com/trends/api/explore');
   url.searchParams.set('hl', options.language);
@@ -1250,10 +1269,7 @@ async function fetchGoogleTrendsBatch(keywords, market) {
       points,
       series,
       source: 'Google Trends',
-      status:
-        series.length > 0 && series.some((value) => value > 0)
-          ? 'success'
-          : 'empty',
+      status: series.some((value) => value > 0) ? 'success' : 'empty',
     };
   });
 }

@@ -14,6 +14,7 @@ import {
   hostnameRoot,
   inferCategory,
   isCandidateUrl,
+  mergeSuggestionItems,
   parseGoogleTrendsPayload,
   productFromJsonLd,
   productPageUrl,
@@ -34,6 +35,32 @@ test('builds Amazon requests only for local marketplaces', () => {
   assert.equal(us.hostname, 'completion.amazon.com');
   assert.equal(mx.hostname, 'completion.amazon.com.mx');
   assert.equal(amazonSuggestUrl('men vi sinh', 'VN'), null);
+});
+
+test('keeps Google and Amazon suggestions in the same result', () => {
+  const items = mergeSuggestionItems(
+    [
+      {
+        items: [
+          { source: 'Google 联想词', term: 'women probiotic' },
+          { source: 'Google 联想词', term: 'gut probiotic' },
+        ],
+      },
+      {
+        items: [
+          { source: 'Amazon 联想词', term: 'women probiotic' },
+          { source: 'Amazon 联想词', term: 'probiotic capsules' },
+        ],
+      },
+    ],
+    3,
+  );
+  assert.deepEqual(
+    items.map((item) => item.term),
+    ['women probiotic', 'gut probiotic', 'probiotic capsules'],
+  );
+  assert.equal(items[0].source, 'Google 联想词 / Amazon 联想词');
+  assert.equal(items[0].category, '肠道与益生菌');
 });
 
 test('uses Brave-compatible targeting for Vietnam', () => {
@@ -131,6 +158,8 @@ test('extracts image, formula, size, benefits and ingredient records', () => {
 
 test('classifies supplement categories from multilingual evidence', () => {
   assert.equal(inferCategory('men vi sinh cho nữ'), '肠道与益生菌');
+  assert.equal(inferCategory('sức khỏe phụ nữ tuổi 30'), '女性健康');
+  assert.equal(inferCategory('probióticos para mujer'), '肠道与益生菌');
   assert.equal(inferCategory('multi collagen beauty powder'), '美容与抗衰');
   assert.equal(inferCategory('creatine sport nutrition'), '运动营养');
 });

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Keyword, Market, Task } from './data';
+import type { DiscoveryGroup, TrendGroup } from './site-discovery';
 
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -33,7 +34,12 @@ import {
   stamp,
   state,
 } from './data';
-import { discoverSites, productRecords, siteRecord } from './site-discovery';
+import {
+  classifyKeyword,
+  discoverSites,
+  productRecords,
+  siteRecord,
+} from './site-discovery';
 
 const DISCOVERY_SOURCE = '独立站发现（Brave Search + 官网验证）';
 const GOOGLE_SUGGEST_SOURCE = 'Google 联想词';
@@ -65,11 +71,18 @@ const form = reactive({
   markets: (state.market === 'ALL'
     ? ['US', 'MX', 'VN']
     : [state.market]) as Market[],
-  sources: [DISCOVERY_SOURCE],
+  sources: [
+    GOOGLE_SUGGEST_SOURCE,
+    AMAZON_SUGGEST_SOURCE,
+    'Google Trends',
+    DISCOVERY_SOURCE,
+  ],
   depth: 1,
   limit: state.settings.trendLimit,
   maxSites: Math.min(10, state.settings.researchMaxSites),
   productsPerSite: Math.min(20, state.settings.productsPerSite),
+  completePipeline: true,
+  autoResearchLimit: 3,
   budget: state.settings.taskBudget,
 });
 const seedValues = computed(() =>
@@ -162,6 +175,12 @@ const budgetStatus = computed(() => {
     return { color: 'gold', text: '可覆盖估算，尚未覆盖全部预留' };
   return { color: 'green', text: '预算覆盖建议金额' };
 });
+
+for (const keyword of state.keywords) {
+  if (!keyword.category || keyword.category === '待分类')
+    keyword.category = classifyKeyword(keyword.term);
+}
+
 function formatCost(value: number) {
   return value > 0 && value < 0.1 ? value.toFixed(4) : value.toFixed(2);
 }
@@ -205,7 +224,7 @@ const collectedCount = computed(
 const columns = [
   { title: '关键词', key: 'term', width: 250 },
   { title: '市场', key: 'market', width: 100 },
-  { title: '研究品类', dataIndex: 'category' },
+  { title: '研究品类', key: 'category', dataIndex: 'category' },
   { title: '来源', key: 'source', dataIndex: 'source' },
   { title: '关联商品', key: 'productLinks', width: 110 },
   { title: '关联站点', key: 'siteLinks', width: 110 },
@@ -284,6 +303,49 @@ function mergeCollectedKeyword(record: Keyword) {
     current.category = record.category;
   current.updatedAt = record.updatedAt;
   return current;
+}
+
+function applyTrend(trend: TrendGroup, generatedAt: string) {
+  if (trend.series.length === 0) return false;
+  mergeCollectedKeyword({
+    id: crypto.randomUUID(),
+    term: trend.keyword,
+    market: trend.market,
+    category: classifyKeyword(trend.keyword),
+    source: 'Google Trends · 实采',
+    growth: trend.growth,
+    series: trend.series,
+    favorite: false,
+    productIds: [],
+    siteIds: [],
+    updatedAt: generatedAt,
+    dataNature: 'collected',
+  });
+  return true;
+}
+
+function applyDiscoveryGroup(group: DiscoveryGroup, generatedAt: string) {
+  const sites = group.sites.map(siteRecord);
+  const products = group.sites.flatMap(productRecords);
+  mergeById(state.sites, sites);
+  mergeById(state.products, products);
+  mergeCollectedKeyword({
+    id: crypto.randomUUID(),
+    term: group.keyword,
+    market: group.market,
+    category:
+      sites.find((site) => site.category !== '待分类')?.category ||
+      classifyKeyword(group.keyword),
+    source: 'Brave Search / 官网验证 · 实采',
+    growth: null,
+    series: [],
+    favorite: false,
+    productIds: products.map((product) => product.id),
+    siteIds: sites.map((site) => site.id),
+    updatedAt: generatedAt,
+    dataNature: 'collected',
+  });
+  return { products, sites };
 }
 
 async function collectKeywordTrends(records: Keyword[]) {
@@ -456,7 +518,9 @@ async function discoverKeywordRecords(records: Keyword[]) {
             ...original,
             category:
               sites.find((site) => site.category !== '待分类')?.category ||
-              original.category,
+              (original.category === '待分类'
+                ? classifyKeyword(original.term)
+                : original.category),
             source: 'Brave Search / 官网验证 · 实采',
             productIds: products.map((product) => product.id),
             siteIds: sites.map((site) => site.id),
@@ -561,10 +625,12 @@ async function createResearch() {
     form.maxSites > 10 ||
     form.productsPerSite < 1 ||
     form.productsPerSite > 20 ||
+    form.autoResearchLimit < 1 ||
+    form.autoResearchLimit > 6 ||
     form.budget < 0
   ) {
     researchError.value =
-      '趋势查询项应为1～100，站点应为1～10，每站商品应为1～20，预算不能为负数。';
+      '趋势查询项应为1～100，自动深入关键词应为1～6，站点应为1～10，每站商品应为1～20，预算不能为负数。';
     return;
   }
   if (!liveSourceSelected.value) {
@@ -621,34 +687,32 @@ async function createResearch() {
       markets: form.markets,
       maxSites: form.maxSites,
       productsPerSite: form.productsPerSite,
-      sources: form.sources
-        .map((source) => LIVE_SOURCE_IDS[source])
-        .filter((source): source is string => Boolean(source)),
+      sources: [
+        ...new Set([
+          ...form.sources
+            .map((source) => LIVE_SOURCE_IDS[source])
+            .filter((source): source is string => Boolean(source)),
+          ...(form.completePipeline ? ['site_discovery'] : []),
+        ]),
+      ],
     });
     let totalSites = 0;
     let totalProducts = 0;
     let totalSuggestions = 0;
     let totalTrends = 0;
+    let totalAutoResearched = 0;
+    const followUpKeywords = new Map<Market, string[]>();
+    const initialGroupKeys = new Set(
+      result.groups.map(
+        (group) => `${group.market}|${group.keyword.toLocaleLowerCase()}`,
+      ),
+    );
     for (const trend of result.trends || []) {
       const task = tasks.get(`${trend.keyword}|${trend.market}`);
       task?.steps.push(
         `Google Trends：${trend.series.length}个时点${trend.message ? `（${trend.message}）` : ''}`,
       );
-      if (trend.series.length === 0) continue;
-      mergeCollectedKeyword({
-        id: crypto.randomUUID(),
-        term: trend.keyword,
-        market: trend.market,
-        category: '待分类',
-        source: 'Google Trends · 实采',
-        growth: trend.growth,
-        series: trend.series,
-        favorite: false,
-        productIds: [],
-        siteIds: [],
-        updatedAt: result.generatedAt,
-        dataNature: 'collected',
-      });
+      if (!applyTrend(trend, result.generatedAt)) continue;
       totalTrends += 1;
       if (task) task.status = 'completed';
       audit(
@@ -671,7 +735,7 @@ async function createResearch() {
           id: crypto.randomUUID(),
           term: item.term,
           market: group.market,
-          category: '待分类',
+          category: item.category || classifyKeyword(item.term),
           source: `${item.source} · 实采`,
           growth: null,
           series: [],
@@ -681,6 +745,24 @@ async function createResearch() {
           updatedAt: result.generatedAt,
           dataNature: 'collected',
         });
+        if (
+          form.completePipeline &&
+          !initialGroupKeys.has(
+            `${group.market}|${item.term.toLocaleLowerCase()}`,
+          )
+        ) {
+          const candidates = followUpKeywords.get(group.market) ?? [];
+          if (
+            candidates.length < form.autoResearchLimit &&
+            !candidates.some(
+              (term) =>
+                term.toLocaleLowerCase() === item.term.toLocaleLowerCase(),
+            )
+          ) {
+            candidates.push(item.term);
+            followUpKeywords.set(group.market, candidates);
+          }
+        }
       }
       totalSuggestions += group.items.length;
       if (task && group.items.length > 0) task.status = 'completed';
@@ -691,32 +773,12 @@ async function createResearch() {
       );
     }
     for (const group of result.groups) {
-      const sites = group.sites.map(siteRecord);
-      const products = group.sites.flatMap(productRecords);
-      mergeById(state.sites, sites);
-      mergeById(state.products, products);
+      const { products, sites } = applyDiscoveryGroup(
+        group,
+        result.generatedAt,
+      );
       totalSites += sites.length;
       totalProducts += products.length;
-
-      const siteIds = sites.map((site) => site.id);
-      const productIds = products.map((product) => product.id);
-      const record: Keyword = {
-        id: crypto.randomUUID(),
-        term: group.keyword,
-        market: group.market,
-        category:
-          sites.find((site) => site.category !== '待分类')?.category ||
-          '待分类',
-        source: 'Brave Search / 官网验证 · 实采',
-        growth: null,
-        series: [],
-        favorite: false,
-        productIds,
-        siteIds,
-        updatedAt: result.generatedAt,
-        dataNature: 'collected',
-      };
-      mergeCollectedKeyword(record);
 
       const task = tasks.get(`${group.keyword}|${group.market}`);
       if (task) {
@@ -734,6 +796,105 @@ async function createResearch() {
         group.market,
       );
     }
+
+    if (form.completePipeline) {
+      for (const [market, keywords] of followUpKeywords) {
+        const marketParents = [...tasks.values()].filter(
+          (task) => task.market === market,
+        );
+        for (const parent of marketParents)
+          parent.steps.push(
+            `自动深入：将继续验证 ${keywords.length} 个联想词的独立站与商品`,
+          );
+
+        for (let offset = 0; offset < keywords.length; offset += 3) {
+          const batch = keywords.slice(offset, offset + 3);
+          const batchTasks = new Map<string, Task>();
+          for (const keyword of batch) {
+            const task: Task = {
+              id: crypto.randomUUID(),
+              title: `${keyword} · ${marketName(market)} · 自动关联站点和商品`,
+              market,
+              mode: 'live',
+              status: 'queued',
+              created: stamp(),
+              steps: [
+                `自动分类：${classifyKeyword(keyword)}`,
+                '独立站发现：Brave Search + 官网验证',
+                `商品提取：每站最多 ${form.productsPerSite} 件`,
+              ],
+            };
+            batchTasks.set(keyword.toLocaleLowerCase(), task);
+            tasks.set(`${keyword}|${market}`, task);
+            state.tasks.unshift(task);
+          }
+
+          try {
+            const followUp = await discoverSites({
+              accessKey: state.settings.researchAccessKey,
+              apiUrl: state.settings.researchApiUrl,
+              depth: 1,
+              keywords: batch,
+              limit: batch.length,
+              markets: [market],
+              maxSites: form.maxSites,
+              productsPerSite: form.productsPerSite,
+              sources: [
+                'site_discovery',
+                ...(form.sources.includes('Google Trends')
+                  ? ['google_trends']
+                  : []),
+              ],
+            });
+
+            for (const trend of followUp.trends || []) {
+              const task = batchTasks.get(trend.keyword.toLocaleLowerCase());
+              task?.steps.push(
+                `Google Trends：${trend.series.length}个时点${trend.message ? `（${trend.message}）` : ''}`,
+              );
+              if (applyTrend(trend, followUp.generatedAt)) totalTrends += 1;
+            }
+            for (const group of followUp.groups) {
+              const { products, sites } = applyDiscoveryGroup(
+                group,
+                followUp.generatedAt,
+              );
+              totalSites += sites.length;
+              totalProducts += products.length;
+              totalAutoResearched += 1;
+              const task = batchTasks.get(group.keyword.toLocaleLowerCase());
+              if (task) {
+                task.status = sites.length > 0 ? 'completed' : 'partial';
+                task.steps.push(
+                  `搜索结果 ${group.coverage.searchResults} 条 / 候选域名 ${group.coverage.candidateDomains} 个`,
+                  `官网验证通过 ${sites.length} 家 / 提取商品 ${products.length} 件`,
+                  sites.length > 0
+                    ? '关联结果已写入关键词、独立站和商品库'
+                    : '未找到通过官网验证的独立站',
+                );
+              }
+              audit(
+                '完成联想词自动深入研究',
+                `${group.keyword} / ${marketName(market)} / ${sites.length}家站点 / ${products.length}件商品`,
+                market,
+              );
+            }
+          } catch (error) {
+            const detail =
+              error instanceof Error ? error.message : '自动深入研究失败';
+            for (const task of batchTasks.values()) {
+              task.status = 'partial';
+              task.steps.push(`执行失败：${detail}`);
+            }
+            audit(
+              '联想词自动深入研究未完成',
+              `${batch.join('、')} / ${marketName(market)} / ${detail}`,
+              market,
+            );
+          }
+        }
+      }
+    }
     for (const task of tasks.values()) {
       if (task.status === 'queued') task.status = 'partial';
       if (form.sources.some((source) => !LIVE_SOURCE_IDS[source]))
@@ -744,7 +905,7 @@ async function createResearch() {
     open.value = false;
     if (totalSites || totalSuggestions || totalTrends) {
       message.success(
-        `已采集 ${totalSuggestions} 条联想词、${totalTrends} 条趋势序列，验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
+        `已采集 ${totalSuggestions} 条联想词并自动分类，深入研究 ${totalAutoResearched} 个联想词，验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
       );
     } else {
       message.warning(
@@ -825,7 +986,13 @@ async function createResearch() {
         :scroll="{ x: 1200 }"
       >
         <template #headerCell="{ column }">
-          <span v-if="column.key === 'source'" class="hci-field-title">来源
+          <span v-if="column.key === 'category'" class="hci-field-title">研究品类
+            <Tooltip
+              title="系统根据英文、西班牙文和越南文关键词自动识别品类；完成官网商品采集后，会结合站点与商品内容再次校正。"
+              ><button class="hci-help-button" aria-label="查看自动分类说明">
+                <IconifyIcon
+                  icon="lucide:circle-help"
+                /></button></Tooltip></span><span v-else-if="column.key === 'source'" class="hci-field-title">来源
             <Tooltip
               title="关键词的发现渠道。同一关键词可以有多个独立来源；“演示”表示当前记录来自虚构样本，并非真实接口返回。"
               ><button class="hci-help-button" aria-label="查看来源字段说明">
@@ -845,13 +1012,13 @@ async function createResearch() {
             class="hci-field-title"
             >关联商品
             <Tooltip
-              title="当前关键词已建立关联的商品记录数。联想词首次采集只记录关键词；勾选并执行“查找独立站”后，系统才会验证官网并回填关联。"
+              title="当前关键词已建立关联的商品记录数。启用完整研究链路后，系统会自动深入研究指定数量的联想词并回填商品；其余关键词也可手动批量补采。"
             >
               <button class="hci-help-button" aria-label="查看关联商品字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
               </button> </Tooltip></span><span v-else-if="column.key === 'siteLinks'" class="hci-field-title">关联站点
             <Tooltip
-              title="当前关键词通过搜索和官网验证后关联的独立站数量。联想词未执行独立站发现前会显示0。"
+              title="当前关键词通过搜索和官网验证后关联的独立站数量。完整研究链路会自动处理指定数量的联想词，未进入深入研究的词暂时显示0。"
             >
               <button class="hci-help-button" aria-label="查看关联站点字段说明">
                 <IconifyIcon icon="lucide:circle-help" />
@@ -953,7 +1120,7 @@ async function createResearch() {
       <Alert
         :message="
           liveSourceSelected
-            ? '将调用Cloudflare Worker采集免费联想词，并按选择执行独立站发现；结果保存在当前浏览器。'
+            ? '完整研究会自动执行关键词发现与分类、独立站验证、官网商品页采集，并把图片、规格、配方、卖点和成分写入商品库。'
             : '所选来源尚未接入，将只创建演示任务。'
         "
         :type="liveSourceSelected ? 'success' : 'info'"
@@ -1009,6 +1176,19 @@ async function createResearch() {
                 { label: '一级裂变（推荐）', value: 1 },
                 { label: '二级裂变', value: 2 },
               ]"
+            />
+</Form.Item><Form.Item label="完整研究链路" class="hci-full">
+            <Checkbox v-model:checked="form.completePipeline">
+              联想词生成后，自动继续关联独立站、商品及商品详情
+            </Checkbox>
+</Form.Item><Form.Item
+            v-if="form.completePipeline"
+            label="每个市场自动深入研究联想词数（1～6）"
+          >
+            <InputNumber
+              v-model:value="form.autoResearchLimit"
+              :min="1"
+              :max="6"
             />
 </Form.Item><Form.Item label="趋势查询项上限（所有国家合计）">
             <InputNumber

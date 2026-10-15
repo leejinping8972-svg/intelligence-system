@@ -63,6 +63,7 @@ export interface TrendGroup {
 
 export interface SuggestionGroup {
   items: Array<{
+    category?: string;
     source: string;
     term: string;
   }>;
@@ -74,6 +75,40 @@ export interface SuggestionGroup {
     source: string;
     status: 'empty' | 'error' | 'partial' | 'success' | 'unsupported';
   }>;
+}
+
+/**
+ * Classify a search expression before a site or product has been collected.
+ * The same multilingual rules are also applied in the Worker response so the
+ * keyword list never has to wait for a later product crawl to become useful.
+ */
+export function classifyKeyword(...values: string[]) {
+  const text = values.join(' ').toLocaleLowerCase();
+  const rules: Array<[RegExp, string]> = [
+    [
+      /probiotic|prebiotic|gut|digest|inulin|psyllium|fiber|fibre|men vi sinh|đường ruột|chất xơ|probiótico|digestiv/,
+      '肠道与益生菌',
+    ],
+    [
+      /women|woman|female|menopause|prenatal|fertility|inositol|phụ nữ|nội tiết|mujer|femenin/,
+      '女性健康',
+    ],
+    [
+      /collagen|skin|beauty|hair|nail|anti-aging|anti aging|làm đẹp|da tóc|belleza/,
+      '美容与抗衰',
+    ],
+    [
+      /weight|slim|metabolism|fat burn|keto|giảm cân|control de peso/,
+      '体重管理',
+    ],
+    [/sleep|stress|calm|melatonin|ashwagandha|ngủ|estrés|sueño/, '睡眠与压力'],
+    [/protein|creatine|bcaa|workout|sport|gym|thể thao|deport/, '运动营养'],
+    [
+      /multivitamin|vitamin|mineral|magnesium|omega|zinc|supplement|thực phẩm bổ sung|vitamina|suplemento/,
+      '功能性营养',
+    ],
+  ];
+  return rules.find(([pattern]) => pattern.test(text))?.[1] || '待分类';
 }
 
 function stableId(value: string) {
