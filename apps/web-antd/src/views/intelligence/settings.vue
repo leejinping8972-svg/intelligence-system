@@ -243,6 +243,7 @@ function resetBranding() {
 }
 
 function sourceStatus(source: (typeof sources)[number]) {
+  if (source.name === 'Sorftime Amazon 关键词') return sorftimeState.value;
   if (source.name !== 'Brave Search 独立站发现') return source.status;
   return state.settings.researchApiUrl && state.settings.researchAccessKey
     ? '已配置'

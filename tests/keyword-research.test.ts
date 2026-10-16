@@ -387,4 +387,41 @@ describe('stage one collection boundary', () => {
       ),
     ).toBe(true);
   });
+  it('reserves uncertain calls after a network failure instead of reusing the same quota', async () => {
+    const caps: Array<number | undefined> = [];
+    const result = await runKeywordResearch(
+      {
+        accessKey: 'test',
+        apiUrl: 'https://worker.example',
+        seeds: ['magnesium'],
+        markets: ['US', 'MX'],
+        sources: ['sorftime'],
+        depth: 1,
+        limit: 10,
+        sorftimeRequestLimit: 1,
+      },
+      { onKeyword: () => {}, onTrend: () => {}, onProgress: () => {} },
+      async (input) => {
+        if (input.sources?.includes('google_trends'))
+          return {
+            generatedAt: today,
+            groups: [],
+            suggestions: [],
+            trends: [],
+          };
+        caps.push(input.sorftimeRequestLimit);
+        if (caps.length === 1) throw new Error('network disconnected');
+        return {
+          generatedAt: today,
+          groups: [],
+          suggestions: [],
+          trends: [],
+          usage: { sorftimeCalls: 0 },
+        };
+      },
+    );
+    expect(caps).toEqual([1, 0]);
+    expect(result.sorftimeUnconfirmedCalls).toBe(1);
+    expect(result.sorftimeCalls).toBe(0);
+  });
 });
