@@ -1,4 +1,6 @@
 import trendSnapshots from '../data/trends-snapshots.json' with { type: 'json' };
+import { readSorftimeToken, saveSorftimeToken } from './provider-config.js';
+import { sorftimeStatus, sorftimeSuggestions } from './sorftime.js';
 
 const MARKET_OPTIONS = {
   US: {
@@ -48,6 +50,7 @@ const LIVE_SOURCES = new Set([
   'google_autocomplete',
   'google_trends',
   'site_discovery',
+  'sorftime',
 ]);
 
 const EXCLUDED_DOMAINS = [
@@ -1007,9 +1010,24 @@ async function collectSuggestions(
   depth,
   limit,
   requestBudget,
+  sorftimeBudget,
+  env,
 ) {
   const sourceResults = [];
   for (const source of sources) {
+    if (source === 'sorftime') {
+      sourceResults.push(
+        await sorftimeSuggestions(
+          keyword,
+          market,
+          depth,
+          limit,
+          sorftimeBudget,
+          env,
+        ),
+      );
+      continue;
+    }
     if (!['amazon_autocomplete', 'google_autocomplete'].includes(source))
       continue;
     sourceResults.push(
@@ -1503,6 +1521,13 @@ async function runResearch(input, env) {
   const suggestions = [];
   const trends = [];
   const suggestionRequestBudget = { remaining: 20 };
+  const sorftimeBudget = {
+    remaining: Math.max(
+      0,
+      Math.min(6, Math.floor(Number(input.sorftimeRequestLimit) || 0)),
+    ),
+    used: 0,
+  };
   const totalCombinations = keywords.length * markets.length;
   let processedCombinations = 0;
   let remainingSuggestions = suggestionLimit;
@@ -1515,7 +1540,8 @@ async function runResearch(input, env) {
       if (
         remainingSuggestions > 0 &&
         (sources.includes('google_autocomplete') ||
-          sources.includes('amazon_autocomplete'))
+          sources.includes('amazon_autocomplete') ||
+          sources.includes('sorftime'))
       ) {
         const combinationsLeft = totalCombinations - processedCombinations;
         const groupLimit = Math.max(
@@ -1529,6 +1555,8 @@ async function runResearch(input, env) {
           depth,
           groupLimit,
           suggestionRequestBudget,
+          sorftimeBudget,
+          env,
         );
         suggestions.push(suggestionGroup);
         remainingSuggestions = Math.max(
@@ -1573,6 +1601,7 @@ async function runResearch(input, env) {
   }
   return {
     generatedAt: new Date().toISOString(),
+    usage: { sorftimeCalls: sorftimeBudget.used },
     groups,
     suggestions,
     trends,
@@ -1605,11 +1634,29 @@ export default {
       return json({ error: '研究访问码无效' }, 401, originState.origin);
     try {
       const input = await request.json();
+      if (input.action === 'keyword_sources_config')
+        return json(
+          await saveSorftimeToken(input, env),
+          200,
+          originState.origin,
+        );
+      if (input.action === 'keyword_sources_status')
+        return json(
+          {
+            sorftime: await sorftimeStatus(
+              { ...env, SORFTIME_MCP_TOKEN: await readSorftimeToken(env) },
+              input.verify === true,
+            ),
+          },
+          200,
+          originState.origin,
+        );
       if (input.action === 'keyword_research') {
         const allowed = new Set([
           'amazon_autocomplete',
           'google_autocomplete',
           'google_trends',
+          'sorftime',
         ]);
         if (
           !Array.isArray(input.sources) ||
@@ -1628,7 +1675,12 @@ export default {
       const result =
         input.action === 'enrich_products'
           ? await runProductEnrichment(input)
-          : await runResearch(input, env);
+          : await runResearch(
+              input,
+              input.sources?.includes('sorftime')
+                ? { ...env, SORFTIME_MCP_TOKEN: await readSorftimeToken(env) }
+                : env,
+            );
       return json(result, 200, originState.origin);
     } catch (error) {
       return json(

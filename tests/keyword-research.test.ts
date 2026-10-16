@@ -142,6 +142,14 @@ describe('keyword research decision model', () => {
     }));
     expect(assessKeyword(record).grade).toBeNull();
   });
+  it('keeps Amazon discovery evidence separate from Google search volume', () => {
+    const result = assessKeyword(sample({ source: 'Sorftime · Amazon' }));
+    expect(result.tags).toContain('Amazon站内来源');
+    expect(result.coverage).toBe(65);
+    expect(
+      result.dimensions.find((item) => item.key === 'demand')?.score,
+    ).toBeNull();
+  });
   it('marks one-off spikes and off-topic service terms', () => {
     const record = sample();
     record.series = record.series.map((_, index) => (index === 25 ? 100 : 0));
@@ -324,5 +332,59 @@ describe('stage one collection boundary', () => {
     );
     expect(result.trendFailures).toBe(1);
     expect(errors).toEqual(['HTTP 429']);
+  });
+  it('shares the Sorftime call cap across all markets and preserves source labels', async () => {
+    const caps: Array<number | undefined> = [];
+    const result = await runKeywordResearch(
+      {
+        accessKey: 'test',
+        apiUrl: 'https://worker.example',
+        seeds: ['magnesium'],
+        markets: ['US', 'MX'],
+        sources: ['sorftime'],
+        depth: 1,
+        limit: 10,
+        sorftimeRequestLimit: 1,
+      },
+      { onKeyword: () => {}, onTrend: () => {}, onProgress: () => {} },
+      async (input) => {
+        if (input.sources?.includes('google_trends'))
+          return {
+            generatedAt: today,
+            groups: [],
+            suggestions: [],
+            trends: [],
+          };
+        caps.push(input.sorftimeRequestLimit);
+        return {
+          generatedAt: today,
+          groups: [],
+          trends: [],
+          usage: { sorftimeCalls: input.sorftimeRequestLimit ? 1 : 0 },
+          suggestions: [
+            {
+              keyword: 'magnesium',
+              market: input.markets[0] || 'US',
+              items: input.sorftimeRequestLimit
+                ? [{ term: 'magnesium gummies', source: 'Sorftime · Amazon' }]
+                : [],
+              sources: [],
+            },
+          ],
+        };
+      },
+    );
+    expect(caps).toEqual([1, 0]);
+    expect(result.sorftimeCalls).toBe(1);
+    expect(
+      result.keywords.find((record) => record.term === 'magnesium gummies')
+        ?.source,
+    ).toBe('Sorftime · Amazon');
+    expect(
+      result.keywords.every(
+        (record) =>
+          record.siteIds.length === 0 && record.productIds.length === 0,
+      ),
+    ).toBe(true);
   });
 });

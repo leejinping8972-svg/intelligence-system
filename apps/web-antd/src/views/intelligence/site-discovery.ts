@@ -48,6 +48,57 @@ export interface DiscoveryResponse {
   groups: DiscoveryGroup[];
   suggestions: SuggestionGroup[];
   trends: TrendGroup[];
+  usage?: { sorftimeCalls: number };
+}
+
+export interface KeywordSourceStatus {
+  sorftime: {
+    configured: boolean;
+    ready: boolean;
+    markets: string[];
+    message: string;
+  };
+}
+
+export async function keywordSourceStatus(
+  apiUrl: string,
+  accessKey: string,
+  verify = false,
+): Promise<KeywordSourceStatus> {
+  const response = await fetch(apiUrl.replace(/\/$/, ''), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-research-key': accessKey,
+    },
+    body: JSON.stringify({ action: 'keyword_sources_status', verify }),
+  });
+  if (!response.ok) throw new Error(`研究服务返回HTTP ${response.status}`);
+  return response.json();
+}
+
+export async function saveSorftimeConfiguration(
+  apiUrl: string,
+  accessKey: string,
+  token: string,
+): Promise<{ configured: boolean; message: string }> {
+  if (new URL(apiUrl).protocol !== 'https:')
+    throw new Error('密钥只允许提交到HTTPS研究服务');
+  const response = await fetch(apiUrl.replace(/\/$/, ''), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-research-key': accessKey,
+    },
+    body: JSON.stringify({
+      action: 'keyword_sources_config',
+      sorftimeToken: token,
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok)
+    throw new Error(payload.error || `保存失败HTTP ${response.status}`);
+  return payload;
 }
 
 export interface ProductEnrichmentResult {
@@ -166,6 +217,7 @@ export async function discoverSites(input: {
   productsPerSite?: number;
   sources?: string[];
   signal?: AbortSignal;
+  sorftimeRequestLimit?: number;
 }) {
   const response = await fetch(input.apiUrl.replace(/\/$/, ''), {
     method: 'POST',
@@ -181,6 +233,7 @@ export async function discoverSites(input: {
       productsPerSite: input.productsPerSite,
       depth: input.depth,
       limit: input.limit,
+      sorftimeRequestLimit: input.sorftimeRequestLimit,
       sources: input.sources,
     }),
     signal: input.signal,

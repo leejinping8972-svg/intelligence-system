@@ -8,5 +8,11 @@
   },
   "vars": {
     "ALLOWED_ORIGINS": "https://leejinping8972-svg.github.io,http://127.0.0.1:5666,http://localhost:5666"
-  }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "PROVIDER_CONFIG",
+      "id": "2a5ab69527d747878a368c5336067881"
+    }
+  ]
 }

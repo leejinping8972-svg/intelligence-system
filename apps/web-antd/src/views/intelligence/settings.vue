@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onDeactivated, reactive, ref } from 'vue';
 
 import {
   Button,
@@ -20,13 +20,75 @@ import {
   markets,
   state,
 } from './data';
+import {
+  keywordSourceStatus,
+  saveSorftimeConfiguration,
+} from './site-discovery';
 
 const draft = reactive({ ...state.settings });
 const brandingDraft = reactive({ ...state.branding });
 const logoInput = ref<HTMLInputElement>();
 const resetOpen = ref(false);
+const sorftimeToken = ref('');
+const providerBusy = ref(false);
+const sorftimeState = ref('尚未检测');
+const providerMessage = ref(
+  '填写 MCP ACCESS TOKEN 后保存到云端，再检测连接。连接检测不会执行关键词数据查询。',
+);
+onDeactivated(() => {
+  sorftimeToken.value = '';
+});
+async function configureSorftime(saveToken = false) {
+  if (!draft.researchApiUrl || !draft.researchAccessKey) {
+    message.warning('请先填写下方研究服务地址与访问码');
+    return;
+  }
+  if (saveToken && !sorftimeToken.value.trim()) {
+    message.warning('请输入 MCP ACCESS TOKEN；留空不会覆盖云端已有密钥');
+    return;
+  }
+  providerBusy.value = true;
+  try {
+    if (saveToken) {
+      const result = await saveSorftimeConfiguration(
+        draft.researchApiUrl,
+        draft.researchAccessKey,
+        sorftimeToken.value,
+      );
+      sorftimeToken.value = '';
+      sorftimeState.value = '已配置 · 待检测';
+      providerMessage.value = result.message;
+      audit('配置 Sorftime MCP', '密钥已加密保存到云端，不记录密钥内容', 'ALL');
+      message.success('Token 已保存，可点击检测连接');
+    } else {
+      const result = await keywordSourceStatus(
+        draft.researchApiUrl,
+        draft.researchAccessKey,
+        true,
+      );
+      sorftimeState.value = '未配置';
+      if (result.sorftime.configured)
+        sorftimeState.value = '已配置 · 连接未通过';
+      if (result.sorftime.ready) sorftimeState.value = '连接正常';
+      providerMessage.value = result.sorftime.message;
+    }
+  } catch (error) {
+    providerMessage.value =
+      error instanceof Error ? error.message : '配置或检测失败';
+    message.error(providerMessage.value);
+  } finally {
+    providerBusy.value = false;
+  }
+}
 const selected = ref<{ name: string; status: string; detail: string }>();
 const sources = [
+  {
+    mark: 'SF',
+    name: 'Sorftime Amazon 关键词',
+    status: 'MCP 接入 · 待配置',
+    detail:
+      '使用 MCP ACCESS TOKEN 获取美国、墨西哥 Amazon 延伸关键词。第一步不调用产品工具；站内数据不替代 Google 搜索量。密钥在本页云端配置区保存。',
+  },
   {
     mark: 'DS',
     name: 'NIH DSLD 商品标签',
@@ -221,6 +283,54 @@ function handleLogo(event: Event) {
       title="数据源与设置"
       description="明确每个市场的覆盖边界，控制研究规模与成本。"
     />
+    <section class="hci-panel" id="keyword-providers">
+      <div class="hci-panel-head">
+        <h2>关键词数据源 · Sorftime MCP</h2>
+        <Tag>{{ sorftimeState }}</Tag>
+      </div>
+      <p class="hci-subtle">
+        使用你已有的 MCP ACCESS TOKEN。保存到当前工作区的云端加密存储，不写入
+        GitHub，不保存在浏览器长期存储，也不会回显完整密钥。
+      </p>
+      <Form layout="vertical">
+        <Form.Item label="Sorftime MCP ACCESS TOKEN">
+          <Input.Password
+            v-model:value="sorftimeToken"
+            autocomplete="new-password"
+            :maxlength="4096"
+            placeholder="粘贴 Token 本身；已有配置时留空即可"
+          />
+        </Form.Item>
+        <div class="hci-toolbar">
+          <Button
+            type="primary"
+            :loading="providerBusy"
+            :disabled="providerBusy || !sorftimeToken.trim()"
+            @click="configureSorftime(true)"
+          >
+            加密保存到云端
+          </Button>
+          <Button
+            :loading="providerBusy"
+            :disabled="providerBusy"
+            @click="configureSorftime(false)"
+          >
+            检测连接
+          </Button>
+          <a
+            class="hci-link"
+            href="https://open.sorftime.com/mcp"
+            target="_blank"
+            rel="noopener noreferrer"
+            >打开 Sorftime MCP</a>
+        </div>
+      </Form>
+      <p class="hci-evidence">{{ providerMessage }}</p>
+      <p class="hci-subtle">
+        美国、墨西哥：Amazon
+        延伸词；越南不跨国替代。研究时需主动勾选此来源，默认最多调用3次，可在新建任务中调整。调用使用你的平台额度，系统不会自动购买。此配置由持有研究访问码的当前工作区用户管理。
+      </p>
+    </section>
     <section class="hci-panel">
       <div class="hci-panel-head">
         <div>

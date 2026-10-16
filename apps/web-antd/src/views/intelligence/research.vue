@@ -36,12 +36,14 @@ import {
   KEYWORD_MODEL_VERSION,
   KEYWORD_MODEL_WEIGHTS,
 } from './keyword-scoring';
+import { keywordSourceStatus } from './site-discovery';
 
 const route = useRoute();
 const router = useRouter();
 const open = ref(false);
 const modelOpen = ref(false);
-const error = ref('');
+const researchError = ref('');
+const checkingSource = ref(false);
 const search = ref('');
 const category = ref('ALL');
 const rating = ref('ALL');
@@ -66,6 +68,7 @@ const form = reactive({
   sources: ['google_autocomplete', 'amazon_autocomplete'],
   depth: 1,
   limit: Math.min(100, state.settings.trendLimit),
+  sorftimeRequestLimit: 3,
 });
 watch(
   () => route.query.new,
@@ -77,7 +80,7 @@ watch(
 watch(open, (value) => {
   if (value) {
     form.markets = state.market === 'ALL' ? ['US'] : [state.market];
-    error.value = '';
+    researchError.value = '';
   }
 });
 const allRows = computed(() =>
@@ -244,6 +247,7 @@ function toggleFavorite(record: Record<string, unknown>) {
   if (current) current.favorite = !current.favorite;
 }
 async function createResearch() {
+  if (checkingSource.value || keywordJob.running) return;
   const seeds = [
     ...new Set(
       form.seeds
@@ -257,7 +261,7 @@ async function createResearch() {
     form.markets.length === 0 ||
     form.sources.length === 0
   ) {
-    error.value = '请填写种子词，至少选择一个市场和找词渠道。';
+    researchError.value = '请填写种子词，至少选择一个市场和找词渠道。';
     return;
   }
   if (
@@ -266,12 +270,45 @@ async function createResearch() {
     form.limit > 100 ||
     seeds.length * form.markets.length > form.limit
   ) {
-    error.value = '结果上限为1～100，不能少于种子词与市场的组合数。';
+    researchError.value = '结果上限为1～100，不能少于种子词与市场的组合数。';
     return;
   }
   if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
-    error.value = '请先到数据源与设置填写研究服务地址和访问码。';
+    researchError.value = '请先到数据源与设置填写研究服务地址和访问码。';
     return;
+  }
+  if (form.sources.includes('sorftime')) {
+    if (
+      !Number.isInteger(form.sorftimeRequestLimit) ||
+      form.sorftimeRequestLimit < 1 ||
+      form.sorftimeRequestLimit > 20
+    ) {
+      researchError.value = 'Sorftime 数据调用上限应为1～20次';
+      return;
+    }
+    if (!form.markets.some((market) => market === 'US' || market === 'MX')) {
+      researchError.value =
+        'Sorftime 当前接入 Amazon 美国、墨西哥；越南请使用其他渠道。';
+      return;
+    }
+    checkingSource.value = true;
+    try {
+      const status = await keywordSourceStatus(
+        state.settings.researchApiUrl,
+        state.settings.researchAccessKey,
+        true,
+      );
+      if (!status.sorftime.ready) {
+        researchError.value = `${status.sorftime.message}。请前往数据源与设置配置。`;
+        return;
+      }
+    } catch (error) {
+      researchError.value =
+        error instanceof Error ? error.message : 'Sorftime 连接检测失败';
+      return;
+    } finally {
+      checkingSource.value = false;
+    }
   }
   const config = {
     apiUrl: state.settings.researchApiUrl,
@@ -279,11 +316,16 @@ async function createResearch() {
     seeds,
     markets: [...form.markets],
     sources: form.sources.filter(
-      (source): source is 'amazon_autocomplete' | 'google_autocomplete' =>
-        source === 'google_autocomplete' || source === 'amazon_autocomplete',
+      (
+        source,
+      ): source is 'amazon_autocomplete' | 'google_autocomplete' | 'sorftime' =>
+        ['amazon_autocomplete', 'google_autocomplete', 'sorftime'].includes(
+          source,
+        ),
     ),
     depth: form.depth,
     limit: form.limit,
+    sorftimeRequestLimit: form.sorftimeRequestLimit,
   };
   open.value = false;
   state.market =
@@ -711,7 +753,7 @@ function saveMetrics() {
       :width="720"
       ok-text="开始找词与评级"
       cancel-text="取消"
-      :confirm-loading="keywordJob.running"
+      :confirm-loading="keywordJob.running || checkingSource"
       @ok="createResearch"
     >
       <Alert
@@ -746,12 +788,40 @@ function saveMetrics() {
             :options="[
               { label: 'Google 联想词', value: 'google_autocomplete' },
               { label: 'Amazon 联想词', value: 'amazon_autocomplete' },
+              {
+                label: 'Sorftime Amazon 延伸词（使用账户额度）',
+                value: 'sorftime',
+              },
             ]"
           />
           <p class="hci-subtle">
-            Amazon 联想支持美国和墨西哥。Similarweb、Semrush、Sorftime
-            尚未配置为自动数据源，暂不发起这些平台的调用。
+            Amazon 联想与 Sorftime 当前支持美国和墨西哥。Sorftime
+            需先在数据源与设置中填写 MCP Token；其站内关键词不代表 Google
+            搜索量。Semrush、Similarweb 尚未配置为自动数据源。
           </p>
+        </Form.Item>
+        <Form.Item
+          v-if="form.sources.includes('sorftime')"
+          label="本任务 Sorftime 数据调用上限（所有种子词和市场合计）"
+        >
+          <InputNumber
+            v-model:value="form.sorftimeRequestLimit"
+            :min="1"
+            :max="20"
+            :precision="0"
+          />
+          <p class="hci-subtle">
+            默认3次；每次查询一个词的延伸词，二级扩词可能额外调用。达到上限即停止该来源，免费渠道继续；连接检测不计入此处数据调用次数。
+          </p>
+          <Button
+            type="link"
+            @click="
+              open = false;
+              router.push('/settings');
+            "
+          >
+            前往填写或检测 MCP Token
+          </Button>
         </Form.Item>
         <div class="hci-form-grid">
           <Form.Item label="扩词深度">
@@ -779,9 +849,15 @@ function saveMetrics() {
           </p>
         </Form.Item>
       </Form>
-      <Alert v-if="error" :message="error" type="error" show-icon />
+      <Alert
+        v-if="researchError"
+        :message="researchError"
+        type="error"
+        show-icon
+      />
       <p class="hci-subtle">
-        本阶段使用现有免费公开接口，可能限流。搜索量和竞争指标可在评分详情中补充，来源与日期会保留。任务记录和结果仍保存在本浏览器，请在完成前保持系统页面打开。
+        Google／Amazon 联想和 Google Trends 为公开接口，可能限流；Sorftime
+        使用你的账户额度。搜索量和竞争指标可在评分详情中补充，来源与日期会保留。任务记录和结果仍保存在本浏览器，请在完成前保持系统页面打开。
       </p>
     </Modal>
 

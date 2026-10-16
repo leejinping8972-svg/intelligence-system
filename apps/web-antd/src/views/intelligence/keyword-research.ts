@@ -8,10 +8,11 @@ export interface KeywordResearchInput {
   apiUrl: string;
   seeds: string[];
   markets: Market[];
-  sources: Array<'amazon_autocomplete' | 'google_autocomplete'>;
+  sources: Array<'amazon_autocomplete' | 'google_autocomplete' | 'sorftime'>;
   depth: number;
   limit: number;
   signal?: AbortSignal;
+  sorftimeRequestLimit?: number;
 }
 export interface KeywordResearchCallbacks {
   onKeyword: (keyword: Keyword) => void;
@@ -39,10 +40,19 @@ export async function runKeywordResearch(
     input.sources.length === 0 ||
     input.sources.some(
       (source) =>
-        !['amazon_autocomplete', 'google_autocomplete'].includes(source),
+        !['amazon_autocomplete', 'google_autocomplete', 'sorftime'].includes(
+          source,
+        ),
     )
   )
     throw new Error('第一步仅接受关键词发现渠道');
+  if (
+    input.sources.includes('sorftime') &&
+    (!Number.isInteger(input.sorftimeRequestLimit) ||
+      (input.sorftimeRequestLimit ?? 0) < 1 ||
+      (input.sorftimeRequestLimit ?? 0) > 20)
+  )
+    throw new Error('请设置1～20次 Sorftime 数据调用上限');
   const candidates = new Map<string, Keyword>();
   const add = (
     term: string,
@@ -89,6 +99,8 @@ export async function runKeywordResearch(
     for (const seed of seeds)
       add(seed, market, seed, '用户种子词', generatedAt);
   let discoveryFailures = 0;
+  let sorftimeCalls = 0;
+  let sorftimeUnconfirmedCalls = 0;
   let combinationsLeft = seeds.length * markets.length;
   for (const market of markets) {
     for (const seed of seeds) {
@@ -97,6 +109,15 @@ export async function runKeywordResearch(
       if (remaining <= 0) break;
       const allowance = Math.ceil(remaining / Math.max(1, combinationsLeft));
       combinationsLeft -= 1;
+      const sorftimeRequestLimit = Math.min(
+        6,
+        Math.max(
+          0,
+          (input.sorftimeRequestLimit || 0) -
+            sorftimeCalls -
+            sorftimeUnconfirmedCalls,
+        ),
+      );
       try {
         const result = await transport({
           accessKey: input.accessKey,
@@ -110,7 +131,9 @@ export async function runKeywordResearch(
           productsPerSite: 1,
           sources: input.sources,
           signal: input.signal,
+          sorftimeRequestLimit,
         });
+        sorftimeCalls += result.usage?.sorftimeCalls || 0;
         const startSize = candidates.size;
         for (const group of result.suggestions || []) {
           if (group.market !== market) continue;
@@ -135,6 +158,13 @@ export async function runKeywordResearch(
         }
       } catch (error) {
         input.signal?.throwIfAborted();
+        if (input.sources.includes('sorftime') && sorftimeRequestLimit > 0) {
+          sorftimeUnconfirmedCalls += sorftimeRequestLimit;
+          callbacks.onProgress(
+            market,
+            `Sorftime 请求结果未确认，按${sorftimeRequestLimit}次预留额度，避免重复消耗`,
+          );
+        }
         discoveryFailures += 1;
         callbacks.onProgress(
           market,
@@ -151,7 +181,12 @@ export async function runKeywordResearch(
     callbacks,
     transport,
   );
-  return { ...trendResult, discoveryFailures };
+  return {
+    ...trendResult,
+    discoveryFailures,
+    sorftimeCalls,
+    sorftimeUnconfirmedCalls,
+  };
 }
 
 export async function runKeywordTrendResearch(
@@ -226,5 +261,11 @@ export async function runKeywordTrendResearch(
       }
     }
   }
-  return { keywords, discoveryFailures: 0, trendFailures };
+  return {
+    keywords,
+    discoveryFailures: 0,
+    trendFailures,
+    sorftimeCalls: 0,
+    sorftimeUnconfirmedCalls: 0,
+  };
 }

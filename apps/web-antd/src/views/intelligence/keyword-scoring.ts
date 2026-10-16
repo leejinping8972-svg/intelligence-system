@@ -45,6 +45,7 @@ export function gradeForScore(score: number): KeywordGrade {
 export function assessKeyword(keyword: Keyword): KeywordAssessment {
   const text = keyword.term.toLocaleLowerCase();
   const tags = new Set<string>();
+  if (keyword.source.includes('Sorftime')) tags.add('Amazon站内来源');
   const offTopic =
     /\b(hospital|clinic|doctor|jobs?|salary|magazine|badge reel|services?|partners|specialists?)\b|bệnh viện|tuyển dụng|招聘|医院/.test(
       text,

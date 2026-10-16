@@ -144,6 +144,7 @@ export async function startKeywordJob(
           failed
         }个`,
         '关键词列表已更新，等待人工筛选；入选后再进入独立站研究',
+        `本任务 Sorftime 已确认数据调用共${result.sorftimeCalls}次；另有${result.sorftimeUnconfirmedCalls}次结果未知并预留额度（所有市场合计），未调用产品工具`,
       );
     }
     keywordJob.phase = '待人工筛选';
