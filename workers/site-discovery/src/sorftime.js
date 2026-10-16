@@ -35,11 +35,35 @@ export function parseMcpResponse(text, id) {
   throw new Error('Sorftime MCP 未返回可识别的响应');
 }
 
+export async function readMcpResult(response, id) {
+  if (!response.body) throw new Error('Sorftime MCP 返回空响应');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) return parseMcpResponse(text, id);
+      text += decoder.decode(chunk.value, { stream: true });
+      if (text.length > 4_000_000)
+        throw new Error('Sorftime 返回数据过大，请减少结果数量');
+      try {
+        return parseMcpResponse(text, id);
+      } catch (error) {
+        if (error.message !== 'Sorftime MCP 未返回可识别的响应') throw error;
+      }
+    }
+  } finally {
+    await reader.cancel();
+  }
+}
+
 async function connect(token, fetcher = fetch) {
   if (!token) throw new Error('请先在数据源与设置保存 Sorftime MCP Token');
   const url = new URL(MCP_URL);
   url.searchParams.set('key', token);
   let session;
+  let protocol;
   let sequence = 0;
   const rpc = async (method, params, notify = false) => {
     const id = ++sequence;
@@ -49,6 +73,7 @@ async function connect(token, fetcher = fetch) {
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
         ...(session ? { 'mcp-session-id': session } : {}),
+        ...(protocol ? { 'mcp-protocol-version': protocol } : {}),
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -66,13 +91,10 @@ async function connect(token, fetcher = fetch) {
       await response.body?.cancel();
       return;
     }
-    const text = await response.text();
-    if (text.length > 4_000_000)
-      throw new Error('Sorftime 返回数据过大，请减少结果数量');
-    return parseMcpResponse(text, id);
+    return readMcpResult(response, id);
   };
   try {
-    await rpc('initialize', {
+    const initialized = await rpc('initialize', {
       protocolVersion: '2025-03-26',
       capabilities: {},
       clientInfo: {
@@ -80,6 +102,7 @@ async function connect(token, fetcher = fetch) {
         version: '1.0.0',
       },
     });
+    protocol = initialized.protocolVersion || '2025-03-26';
     await rpc('notifications/initialized', {}, true);
     const listed = await rpc('tools/list', {});
     const tool = listed.tools?.find((item) => item.name === TOOL);

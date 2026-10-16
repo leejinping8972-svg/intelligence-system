@@ -7,6 +7,7 @@ import { readSorftimeToken, saveSorftimeToken } from './src/provider-config.js';
 import {
   parseMcpResponse,
   parseSorftimeKeywords,
+  readMcpResult,
   sorftimeStatus,
   sorftimeSuggestions,
 } from './src/sorftime.js';
@@ -140,6 +141,24 @@ test('only extracts explicit keyword records, not product names or descriptive p
     () => parseSorftimeKeywords({ isError: true }, 10),
     /工具返回错误/,
   );
+});
+
+test('reads matching results from a long-lived SSE stream without waiting for disconnect', async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: message\ndata: {"id":4,"result":{"tools":[]}}\n\n',
+        ),
+      );
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  assert.deepEqual(await readMcpResult(new Response(body), 4), { tools: [] });
+  assert.equal(cancelled, true);
 });
 
 function mcpMock(calls, error = false) {
