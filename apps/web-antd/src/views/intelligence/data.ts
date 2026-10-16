@@ -1,3 +1,5 @@
+import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
+
 import { computed, reactive, watch } from 'vue';
 
 import officialTrendSnapshots from '../../../../../workers/site-discovery/data/trends-snapshots.json';
@@ -51,6 +53,12 @@ export interface Keyword {
   source: string;
   growth: null | number;
   series: number[];
+  seedTerm?: string;
+  collectedAt?: string;
+  metrics?: KeywordMetrics;
+  assessment?: KeywordAssessment;
+  reviewStatus?: 'excluded' | 'pending' | 'selected';
+  reviewNote?: string;
   trendPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
   trendDailyPoints?: Array<{
     date: string;
@@ -156,7 +164,14 @@ export interface Task {
   title: string;
   market: Market;
   mode?: 'demo' | 'live';
-  status: 'cancelled' | 'completed' | 'partial' | 'queued' | 'running';
+  stage?: 'keywords' | 'products' | 'sites';
+  status:
+    | 'awaiting_review'
+    | 'cancelled'
+    | 'completed'
+    | 'partial'
+    | 'queued'
+    | 'running';
   created: string;
   steps: string[];
 }

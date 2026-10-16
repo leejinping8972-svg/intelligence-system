@@ -1,22 +1,19 @@
 <script setup lang="ts">
-import type { Keyword, Market, Task } from './data';
-import type { DiscoveryGroup, TrendGroup } from './site-discovery';
+import type { Keyword, Market } from './data';
 
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-
-import { IconifyIcon } from '@vben/icons';
 
 import {
   Alert,
   Button,
   Checkbox,
+  Drawer,
   Form,
   Input,
   InputNumber,
   message,
   Modal,
-  Radio,
   Select,
   Table,
   Tag,
@@ -31,1531 +28,989 @@ import {
   filteredKeywords,
   marketName,
   markets,
-  stamp,
   state,
 } from './data';
+import { keywordJob, startKeywordJob, stopKeywordJob } from './keyword-jobs';
 import {
-  classifyKeyword,
-  discoverSites,
-  enrichedProductRecord,
-  enrichProducts,
-  productRecords,
-  siteRecord,
-  trendRecordFields,
-} from './site-discovery';
+  assessKeyword,
+  KEYWORD_MODEL_VERSION,
+  KEYWORD_MODEL_WEIGHTS,
+} from './keyword-scoring';
 
-const DISCOVERY_SOURCE = '独立站发现（Brave Search + 官网验证）';
-const GOOGLE_SUGGEST_SOURCE = 'Google 联想词';
-const AMAZON_SUGGEST_SOURCE = 'Amazon 联想词';
-const BULK_KEYWORD_LIMIT = 100;
-const PRODUCT_ENRICHMENT_LIMIT = 500;
-const WORKER_KEYWORD_BATCH_SIZE = 3;
-const WORKER_PRODUCT_BATCH_SIZE = 10;
-const LIVE_SOURCE_IDS: Record<string, string> = {
-  [AMAZON_SUGGEST_SOURCE]: 'amazon_autocomplete',
-  [DISCOVERY_SOURCE]: 'site_discovery',
-  [GOOGLE_SUGGEST_SOURCE]: 'google_autocomplete',
-  'Google Trends': 'google_trends',
-};
 const route = useRoute();
 const router = useRouter();
 const open = ref(false);
-const researching = ref(false);
-const completingAll = ref(false);
+const modelOpen = ref(false);
+const error = ref('');
 const search = ref('');
 const category = ref('ALL');
+const rating = ref('ALL');
+const ratingStatus = ref('ALL');
+const tagFilter = ref('ALL');
+const timeRange = ref('ALL');
+const reviewFilter = ref('ALL');
 const favoritesOnly = ref(false);
-const researchError = ref('');
+const selectedIds = ref<string[]>([]);
+const detailId = ref('');
+const pageSize = ref(10);
+const currentPage = ref(1);
+const gradeColors: Record<string, string> = {
+  A: 'green',
+  B: 'blue',
+  C: 'gold',
+  D: 'default',
+};
+const form = reactive({
+  seeds: '',
+  markets: (state.market === 'ALL' ? ['US'] : [state.market]) as Market[],
+  sources: ['google_autocomplete', 'amazon_autocomplete'],
+  depth: 1,
+  limit: Math.min(100, state.settings.trendLimit),
+});
 watch(
   () => route.query.new,
-  (v) => {
-    if (v === '1') open.value = true;
+  (value) => {
+    if (value === '1') open.value = true;
   },
   { immediate: true },
 );
-const form = reactive({
-  entry: 'keyword',
-  seeds: '',
-  markets: (state.market === 'ALL'
-    ? ['US', 'MX', 'VN']
-    : [state.market]) as Market[],
-  sources: [
-    GOOGLE_SUGGEST_SOURCE,
-    AMAZON_SUGGEST_SOURCE,
-    'Google Trends',
-    DISCOVERY_SOURCE,
-  ],
-  depth: 1,
-  limit: state.settings.trendLimit,
-  maxSites: Math.min(10, state.settings.researchMaxSites),
-  productsPerSite: Math.min(20, state.settings.productsPerSite),
-  completePipeline: true,
-  budget: state.settings.taskBudget,
-});
-const seedValues = computed(() =>
-  form.seeds
-    .split(/[\n,，]/)
-    .map((value) => value.trim())
-    .filter(Boolean),
-);
-const liveSourceSelected = computed(() =>
-  form.sources.some((source) => LIVE_SOURCE_IDS[source]),
-);
-const costEstimate = computed(() => {
-  const marketCount = form.markets.length;
-  const baseQueries = seedValues.value.length * marketCount;
-  const firstLevelCandidates = Math.min(form.limit, baseQueries * 20);
-  const estimatedKeywords = Math.min(
-    form.limit,
-    baseQueries * (form.depth === 2 ? 400 : 20),
-  );
-  const expansionQueries =
-    form.depth === 2 ? baseQueries + firstLevelCandidates : baseQueries;
-  const lines: Array<{
-    key: string;
-    label: string;
-    quantity: number;
-    total: number;
-    unit: number;
-  }> = [];
-  const add = (key: string, label: string, quantity: number, unit: number) =>
-    lines.push({ key, label, quantity, unit, total: quantity * unit });
-
-  if (form.sources.includes('Google 联想词'))
-    add(
-      'google-autocomplete',
-      'Google 联想词（免费公开接口）',
-      expansionQueries,
-      0,
-    );
-  if (form.sources.includes('Amazon 联想词'))
-    add(
-      'amazon-autocomplete',
-      'Amazon 联想词（免费公开接口）',
-      expansionQueries,
-      0,
-    );
-  if (form.sources.includes('Google Trends'))
-    add(
-      'trends',
-      'Google Trends公开网页接口（免费，可能限流）',
-      Math.ceil(estimatedKeywords / state.settings.trendsKeywordsPerTask),
-      0,
-    );
-  if (form.sources.includes('Google SERP'))
-    add(
-      'serp',
-      'Google SERP',
-      estimatedKeywords,
-      state.settings.serpSearchCost,
-    );
-  if (form.sources.includes('Store Leads'))
-    add(
-      'store-leads',
-      'Store Leads',
-      marketCount,
-      state.settings.storeLeadsMarketCost,
-    );
-
-  const total = lines.reduce((sum, line) => sum + line.total, 0);
-  const recommended =
-    Math.ceil(total * (1 + state.settings.costBufferRate / 100) * 100) / 100;
-  return {
-    estimatedKeywords,
-    lines,
-    paidRequests: lines.reduce(
-      (sum, line) => sum + (line.unit > 0 ? line.quantity : 0),
-      0,
-    ),
-    recommended,
-    total,
-  };
-});
-const budgetStatus = computed(() => {
-  if (!costEstimate.value.total)
-    return { color: 'default', text: '暂无可计费用' };
-  if (form.budget === 0)
-    return { color: 'orange', text: '禁止付费，付费步骤将暂停' };
-  if (form.budget < costEstimate.value.total)
-    return { color: 'red', text: '预算低于预计成本' };
-  if (form.budget < costEstimate.value.recommended)
-    return { color: 'gold', text: '可覆盖估算，尚未覆盖全部预留' };
-  return { color: 'green', text: '预算覆盖建议金额' };
-});
-
-for (const keyword of state.keywords) {
-  if (!keyword.category || keyword.category === '待分类')
-    keyword.category = classifyKeyword(keyword.term);
-}
-
-function formatCost(value: number) {
-  return value > 0 && value < 0.1 ? value.toFixed(4) : value.toFixed(2);
-}
-function sourceLabels(source: string) {
-  const [labels = ''] = source.split(' · ');
-  return labels.split(' / ');
-}
 watch(open, (value) => {
   if (value) {
-    form.markets = state.market === 'ALL' ? ['US', 'MX', 'VN'] : [state.market];
-    form.limit = state.settings.trendLimit;
-    form.maxSites = Math.min(10, state.settings.researchMaxSites);
-    form.productsPerSite = Math.min(20, state.settings.productsPerSite);
-    form.budget = state.settings.taskBudget;
+    form.markets = state.market === 'ALL' ? ['US'] : [state.market];
+    error.value = '';
   }
 });
+const allRows = computed(() =>
+  filteredKeywords.value.map((record) => ({
+    ...record,
+    assessment: assessKeyword(record),
+  })),
+);
+const tagOptions = computed(() => [
+  { label: '全部标签', value: 'ALL' },
+  ...[...new Set(allRows.value.flatMap((record) => record.assessment.tags))]
+    .toSorted()
+    .map((value) => ({ label: value, value })),
+]);
 const rows = computed(() =>
-  filteredKeywords.value.filter(
-    (k) =>
-      k.term.toLowerCase().includes(search.value.toLowerCase()) &&
-      (category.value === 'ALL' || k.category === category.value) &&
-      (!favoritesOnly.value || k.favorite),
-  ),
-);
-const selectedKeywordIds = ref<string[]>([]);
-const selectedKeywords = computed(() =>
-  rows.value.filter((item) => selectedKeywordIds.value.includes(item.id)),
-);
-const selectedProducts = computed(() => {
-  const productIds = new Set(
-    selectedKeywords.value.flatMap((keyword) => keyword.productIds),
-  );
-  return state.products.filter(
-    (product) => productIds.has(product.id) && Boolean(product.evidenceUrl),
-  );
-});
-const rowSelection = computed(() => ({
-  getCheckboxProps: (record: Keyword) => ({
-    disabled: record.dataNature !== 'collected',
+  allRows.value.filter((record) => {
+    const collectedAt = record.collectedAt;
+    const age = collectedAt
+      ? (Date.now() - Date.parse(collectedAt)) / 86_400_000
+      : Infinity;
+    return (
+      `${record.term} ${record.seedTerm || ''} ${record.assessment.tags.join(
+        ' ',
+      )}`
+        .toLocaleLowerCase()
+        .includes(search.value.toLocaleLowerCase()) &&
+      (category.value === 'ALL' || record.category === category.value) &&
+      (rating.value === 'ALL' ||
+        (rating.value === 'UNRATED'
+          ? !record.assessment.grade
+          : record.assessment.grade === rating.value)) &&
+      (ratingStatus.value === 'ALL' ||
+        record.assessment.status === ratingStatus.value) &&
+      (tagFilter.value === 'ALL' ||
+        record.assessment.tags.includes(tagFilter.value)) &&
+      (timeRange.value === 'ALL' ||
+        (age >= 0 && age <= Number(timeRange.value))) &&
+      (reviewFilter.value === 'ALL' ||
+        (record.reviewStatus || 'pending') === reviewFilter.value) &&
+      (!favoritesOnly.value || record.favorite)
+    );
   }),
-  onChange: (keys: (number | string)[]) => {
-    selectedKeywordIds.value = keys.map(String);
-  },
-  selectedRowKeys: selectedKeywordIds.value,
-}));
-const collectedCount = computed(
-  () => rows.value.filter((item) => item.dataNature === 'collected').length,
 );
-const keywordPageSize = ref(10);
-const keywordPagination = computed(() => ({
-  pageSize: keywordPageSize.value,
+const selected = computed(() =>
+  state.keywords.filter((record) => selectedIds.value.includes(record.id)),
+);
+const detail = computed(() =>
+  state.keywords.find((record) => record.id === detailId.value),
+);
+const assessment = computed(() =>
+  detail.value ? assessKeyword(detail.value) : undefined,
+);
+const summary = computed(() => ({
+  total: allRows.value.length,
+  priority: allRows.value.filter((record) =>
+    ['A', 'B'].includes(record.assessment.grade || ''),
+  ).length,
+  pending: allRows.value.filter((record) => !record.assessment.grade).length,
+  selected: allRows.value.filter((record) => record.reviewStatus === 'selected')
+    .length,
+}));
+watch(
+  [
+    search,
+    category,
+    rating,
+    ratingStatus,
+    tagFilter,
+    timeRange,
+    reviewFilter,
+    favoritesOnly,
+    () => state.market,
+  ],
+  () => {
+    currentPage.value = 1;
+    selectedIds.value = [];
+  },
+);
+const rowSelection = computed(() => ({
+  selectedRowKeys: selectedIds.value,
+  onChange: (keys: (number | string)[]) => {
+    selectedIds.value = keys.map(String);
+  },
+  getCheckboxProps: (record: Keyword) => ({
+    disabled: record.dataNature === 'demo',
+  }),
+}));
+const pagination = computed(() => ({
+  current: currentPage.value,
+  pageSize: pageSize.value,
   pageSizeOptions: ['10', '20', '50', '100'],
   showSizeChanger: true,
   showTotal: (total: number) => `共 ${total} 条`,
-  onShowSizeChange: (_current: number, size: number) => {
-    keywordPageSize.value = size;
+  onChange: (page: number, size: number) => {
+    currentPage.value = page;
+    pageSize.value = size;
   },
 }));
 const columns = [
-  { title: '关键词', key: 'term', width: 250 },
-  { title: '市场', key: 'market', width: 100 },
-  { title: '研究品类', key: 'category', dataIndex: 'category' },
-  { title: '来源', key: 'source', dataIndex: 'source' },
-  { title: '关联商品', key: 'productLinks', width: 110 },
-  { title: '关联站点', key: 'siteLinks', width: 110 },
-  { title: '28天变化', key: 'growth' },
-  { title: '操作', key: 'actions', width: 150 },
+  { title: '关键词 / 种子词', key: 'term', width: 250, fixed: 'left' as const },
+  { title: '市场 / 品类', key: 'market', width: 150 },
+  { title: '研究评级', key: 'grade', width: 110 },
+  {
+    title: '研究评分',
+    key: 'score',
+    width: 130,
+    sorter: (a: Keyword, b: Keyword) =>
+      (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
+  },
+  { title: '分析标签', key: 'tags', width: 240 },
+  { title: '一年趋势 / 28天变化', key: 'trend', width: 170 },
+  { title: '来源', key: 'source', width: 180 },
+  {
+    title: '抓取时间',
+    key: 'collectedAt',
+    width: 170,
+    sorter: (a: Keyword, b: Keyword) =>
+      (Date.parse(a.collectedAt || '') || 0) -
+      (Date.parse(b.collectedAt || '') || 0),
+  },
+  { title: '人工筛选', key: 'review', width: 120 },
+  { title: '操作', key: 'actions', width: 145, fixed: 'right' as const },
 ];
-function createDemoResearch(seeds: string[]) {
-  for (const market of form.markets) {
-    state.tasks.unshift({
-      id: crypto.randomUUID(),
-      title: `${form.entry === 'asin' ? 'ASIN ' : ''}${seeds.join('、')} · ${marketName(market)}`,
-      market,
-      mode: 'demo',
-      status: 'queued',
-      created: stamp(),
-      steps: [
-        `入口：${form.entry}`,
-        `来源：${form.sources.join(' / ')}`,
-        `裂变：${form.depth}层`,
-        `总查询上限：${form.limit}`,
-        `预计外部成本：$${formatCost(costEstimate.value.total)}`,
-        `预算：$${form.budget}`,
-        `预算状态：${budgetStatus.value.text}`,
-        '等待演示执行',
-      ],
-    });
-    audit(
-      '创建演示研究',
-      `${seeds.join('、')} / ${marketName(market)}`,
-      market,
-    );
-  }
-  state.market = form.markets.length === 1 ? (form.markets[0] ?? 'US') : 'ALL';
-  open.value = false;
-  researchError.value = '';
-  router.push('/monitor?tab=tasks');
-  message.success('已创建演示任务，可在任务中心模拟运行');
+function formatTime(value?: string) {
+  if (!value) return '未记录';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString('zh-CN', { hour12: false });
 }
-
-function mergeById<T extends { id: string }>(target: T[], records: T[]) {
-  for (const record of records) {
-    const current = target.find((item) => item.id === record.id);
-    if (current) Object.assign(current, record);
-    else target.unshift(record);
-  }
-}
-
-function chunkRecords<T>(records: T[], size: number) {
-  const chunks: T[][] = [];
-  for (let index = 0; index < records.length; index += size)
-    chunks.push(records.slice(index, index + size));
-  return chunks;
-}
-
-function mergeCollectedKeyword(record: Keyword) {
-  const current = state.keywords.find(
-    (item) =>
-      item.term.toLocaleLowerCase() === record.term.toLocaleLowerCase() &&
-      item.market === record.market &&
-      item.dataNature === 'collected',
-  );
-  if (!current) {
-    state.keywords.unshift(record);
-    return record;
-  }
-  const sourceNames = new Set(
-    `${current.source} / ${record.source}`
-      .replaceAll(' · 实采', '')
-      .split(' / ')
-      .map((item) => item.trim())
-      .filter(Boolean),
-  );
-  current.source = `${[...sourceNames].join(' / ')} · 实采`;
-  current.productIds = [
-    ...new Set([...current.productIds, ...record.productIds]),
+function sourceLabels(value: string) {
+  return [
+    ...new Set(
+      value
+        .replaceAll(' · 实采', '')
+        .split(' / ')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
   ];
-  current.siteIds = [...new Set([...current.siteIds, ...record.siteIds])];
-  if (record.series.length > 0) {
-    current.series = record.series;
-    current.growth = record.growth;
-    current.trendPoints = record.trendPoints;
-    current.trendDailyPoints = record.trendDailyPoints;
-    current.trendResolution = record.trendResolution;
-    current.trendPeriod = record.trendPeriod;
-    current.trendSourceUrl = record.trendSourceUrl;
-    current.trendCollectedAt = record.trendCollectedAt;
-    current.trendDailyMessage = record.trendDailyMessage;
-  }
-  if (record.trendStatus) current.trendStatus = record.trendStatus;
-  if (record.trendMessage !== undefined)
-    current.trendMessage = record.trendMessage;
-  if (record.discoveryStatus) current.discoveryStatus = record.discoveryStatus;
-  if (record.discoveryMessage !== undefined)
-    current.discoveryMessage = record.discoveryMessage;
-  if (current.category === '待分类' && record.category !== '待分类')
-    current.category = record.category;
-  current.updatedAt = record.updatedAt;
-  return current;
 }
-
-function applyTrend(trend: TrendGroup, generatedAt: string) {
-  mergeCollectedKeyword({
-    id: crypto.randomUUID(),
-    term: trend.keyword,
-    market: trend.market,
-    category: classifyKeyword(trend.keyword),
-    source: 'Google Trends · 实采',
-    ...trendRecordFields(trend),
-    favorite: false,
-    productIds: [],
-    siteIds: [],
-    updatedAt: generatedAt,
-    dataNature: 'collected',
-  });
-  return trend.series.length > 0;
+function reviewLabel(value?: string) {
+  if (value === 'selected') return '已入选';
+  if (value === 'excluded') return '已排除';
+  return '待人工筛选';
 }
-
-function applyDiscoveryGroup(group: DiscoveryGroup, generatedAt: string) {
-  const sites = group.sites.map(siteRecord);
-  const products = group.sites.flatMap(productRecords);
-  mergeById(state.sites, sites);
-  mergeById(state.products, products);
-  mergeCollectedKeyword({
-    id: crypto.randomUUID(),
-    term: group.keyword,
-    market: group.market,
-    category:
-      sites.find((site) => site.category !== '待分类')?.category ||
-      classifyKeyword(group.keyword),
-    source: 'Brave Search / 官网验证 · 实采',
-    growth: null,
-    series: [],
-    favorite: false,
-    productIds: products.map((product) => product.id),
-    siteIds: sites.map((site) => site.id),
-    discoveryStatus: sites.length > 0 ? 'collected' : 'failed',
-    discoveryMessage:
-      sites.length > 0
-        ? `验证 ${sites.length} 家站点，提取 ${products.length} 件商品`
-        : '搜索已执行，未找到通过官网验证的独立站',
-    updatedAt: generatedAt,
-    dataNature: 'collected',
-  });
-  return { products, sites };
-}
-
-async function collectKeywordTrends(records: Keyword[]) {
-  if (records.length === 0) {
-    message.warning('请先勾选要补齐趋势的关键词');
-    return;
-  }
-  if (records.length > BULK_KEYWORD_LIMIT) {
-    message.warning(`一次最多选择${BULK_KEYWORD_LIMIT}个关键词`);
-    return;
-  }
-  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
-    researchError.value =
-      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
-    message.error(researchError.value);
-    return;
-  }
-
-  const groups = new Map<Market, Keyword[]>();
-  for (const record of records) {
-    const marketRecords = groups.get(record.market) ?? [];
-    marketRecords.push(record);
-    groups.set(record.market, marketRecords);
-  }
-  const requestGroups = [...groups.entries()].flatMap(
-    ([market, marketRecords]) =>
-      chunkRecords(marketRecords, WORKER_KEYWORD_BATCH_SIZE).map(
-        (batch) => [market, batch] as const,
-      ),
-  );
-  researching.value = true;
-  researchError.value = '';
-  let completed = 0;
-  const failures: string[] = [];
-  try {
-    for (const [market, marketRecords] of requestGroups) {
-      try {
-        const result = await discoverSites({
-          accessKey: state.settings.researchAccessKey,
-          apiUrl: state.settings.researchApiUrl,
-          keywords: marketRecords.map((item) => item.term),
-          markets: [market],
-          maxSites: 1,
-          productsPerSite: 1,
-          sources: ['google_trends'],
-        });
-        const returnedKeywordIds = new Set<string>();
-        for (const trend of result.trends || []) {
-          const original = marketRecords.find(
-            (item) =>
-              item.term.toLocaleLowerCase() ===
-              trend.keyword.toLocaleLowerCase(),
-          );
-          if (!original) continue;
-          returnedKeywordIds.add(original.id);
-          if (trend.series.length > 0) {
-            mergeCollectedKeyword({
-              ...original,
-              source: 'Google Trends · 实采',
-              ...trendRecordFields(trend),
-              updatedAt: result.generatedAt,
-            });
-            completed += 1;
-            audit(
-              '完成Google Trends采集',
-              `${original.term} / ${marketName(market)} / ${trend.series.length}个时点 / ${trend.message || `28天变化${trend.growth}%`}`,
-              market,
-            );
-          } else {
-            const failure = trend.message || '未返回趋势序列';
-            mergeCollectedKeyword({
-              ...original,
-              growth: null,
-              series: [],
-              trendStatus: 'failed',
-              trendMessage: failure,
-              updatedAt: result.generatedAt,
-            });
-            failures.push(`${original.term}：${failure}`);
-            audit(
-              'Google Trends采集未完成',
-              `${original.term} / ${marketName(market)} / ${failure}`,
-              market,
-            );
-          }
-        }
-        for (const record of marketRecords) {
-          if (returnedKeywordIds.has(record.id)) continue;
-          const failure = '趋势服务未返回该关键词结果';
-          mergeCollectedKeyword({
-            ...record,
-            growth: null,
-            series: [],
-            trendStatus: 'failed',
-            trendMessage: failure,
-            updatedAt: result.generatedAt,
-          });
-          failures.push(`${record.term}：${failure}`);
-        }
-      } catch (error) {
-        const failure = error instanceof Error ? error.message : '趋势采集失败';
-        failures.push(`${marketName(market)}：${failure}`);
-        for (const record of marketRecords) {
-          mergeCollectedKeyword({
-            ...record,
-            growth: null,
-            series: [],
-            trendStatus: 'failed',
-            trendMessage: failure,
-            updatedAt: stamp(),
-          });
-          audit(
-            'Google Trends采集未完成',
-            `${record.term} / ${marketName(market)} / ${failure}`,
-            market,
-          );
-        }
-      }
-    }
-    if (completed > 0)
-      message.success(`已补齐 ${completed} 个关键词的趋势和28天变化`);
-    if (failures.length > 0) {
-      researchError.value = failures.join('；');
-      message.warning(`有 ${failures.length} 个趋势查询未完成`);
-    }
-  } finally {
-    researching.value = false;
-  }
-}
-
-async function discoverKeywordRecords(
+function markRecords(
   records: Keyword[],
-  clearSelection = true,
+  status: 'excluded' | 'pending' | 'selected',
 ) {
-  if (records.length === 0) {
-    message.warning('请先勾选要查找独立站的关键词');
-    return;
-  }
-  if (records.length > BULK_KEYWORD_LIMIT) {
-    message.warning(`一次最多选择${BULK_KEYWORD_LIMIT}个关键词`);
-    return;
-  }
-  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
-    researchError.value =
-      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
-    message.error(researchError.value);
-    return;
-  }
-
-  const groups = new Map<Market, Keyword[]>();
   for (const record of records) {
-    const marketRecords = groups.get(record.market) ?? [];
-    marketRecords.push(record);
-    groups.set(record.market, marketRecords);
-  }
-  const requestGroups = [...groups.entries()].flatMap(
-    ([market, marketRecords]) =>
-      chunkRecords(marketRecords, WORKER_KEYWORD_BATCH_SIZE).map(
-        (batch) => [market, batch] as const,
-      ),
-  );
-
-  const tasks = new Map<string, Task>();
-  for (const record of records) {
-    const task: Task = {
-      id: crypto.randomUUID(),
-      title: `${record.term} · ${marketName(record.market)} · 独立站发现`,
-      market: record.market,
-      mode: 'live',
-      status: 'queued',
-      created: stamp(),
-      steps: ['来源：Brave Search', '验证：官网可访问性与商品结构化数据'],
-    };
-    tasks.set(record.id, task);
-    state.tasks.unshift(task);
-  }
-
-  researching.value = true;
-  researchError.value = '';
-  let totalSites = 0;
-  let totalProducts = 0;
-  const failures: string[] = [];
-  try {
-    for (const [market, marketRecords] of requestGroups) {
-      try {
-        const result = await discoverSites({
-          accessKey: state.settings.researchAccessKey,
-          apiUrl: state.settings.researchApiUrl,
-          depth: 1,
-          keywords: marketRecords.map((item) => item.term),
-          limit: 1,
-          markets: [market],
-          maxSites: state.settings.researchMaxSites,
-          productsPerSite: state.settings.productsPerSite,
-          sources: ['site_discovery'],
-        });
-        const returnedKeys = new Set<string>();
-        for (const group of result.groups) {
-          const original = marketRecords.find(
-            (item) =>
-              item.term.toLocaleLowerCase() ===
-              group.keyword.toLocaleLowerCase(),
-          );
-          if (!original) continue;
-          returnedKeys.add(original.id);
-
-          const sites = group.sites.map(siteRecord);
-          const products = group.sites.flatMap(productRecords);
-          mergeById(state.sites, sites);
-          mergeById(state.products, products);
-          mergeCollectedKeyword({
-            ...original,
-            category:
-              sites.find((site) => site.category !== '待分类')?.category ||
-              (original.category === '待分类'
-                ? classifyKeyword(original.term)
-                : original.category),
-            source: 'Brave Search / 官网验证 · 实采',
-            productIds: products.map((product) => product.id),
-            siteIds: sites.map((site) => site.id),
-            updatedAt: result.generatedAt,
-          });
-
-          totalSites += sites.length;
-          totalProducts += products.length;
-          const task = tasks.get(original.id);
-          if (task) {
-            task.status = sites.length > 0 ? 'completed' : 'partial';
-            task.steps.push(
-              `搜索结果 ${group.coverage.searchResults} 条 / 候选域名 ${group.coverage.candidateDomains} 个`,
-              `官网验证通过 ${group.coverage.validatedSites} 家 / 未通过或不可达 ${group.coverage.rejectedOrUnreachable} 家`,
-              `提取结构化商品 ${products.length} 件`,
-            );
-          }
-          audit(
-            '完成关键词独立站发现',
-            `${original.term} / ${marketName(market)} / ${sites.length}家站点 / ${products.length}件商品`,
-            market,
-          );
-        }
-        for (const record of marketRecords) {
-          if (returnedKeys.has(record.id)) continue;
-          const task = tasks.get(record.id);
-          if (task) {
-            task.status = 'partial';
-            task.steps.push('服务未返回该关键词的独立站结果');
-          }
-        }
-      } catch (error) {
-        const detail =
-          error instanceof Error ? error.message : '独立站发现失败';
-        failures.push(`${marketName(market)}：${detail}`);
-        for (const record of marketRecords) {
-          const task = tasks.get(record.id);
-          if (task) {
-            task.status = 'partial';
-            task.steps.push(`执行失败：${detail}`);
-          }
-        }
-      }
-    }
-
-    if (clearSelection)
-      selectedKeywordIds.value = selectedKeywordIds.value.filter(
-        (id) => !records.some((record) => record.id === id),
-      );
-    if (failures.length > 0) {
-      researchError.value = failures.join('；');
-      message.warning(
-        `部分查询未完成；已验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
-      );
-    } else if (totalSites > 0) {
-      message.success(
-        `已为 ${records.length} 个关键词验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
-      );
-    } else {
-      message.warning(
-        '本次没有找到通过官网验证的独立站，可尝试更明确的产品或成分关键词',
-      );
-    }
-  } finally {
-    researching.value = false;
-  }
-}
-
-function discoverKeywordRecord(record: Record<string, unknown>) {
-  return discoverKeywordRecords([record as unknown as Keyword]);
-}
-
-async function enrichSelectedProducts() {
-  const products = selectedProducts.value;
-  if (products.length === 0) {
-    message.warning('所选关键词暂时没有带官网地址的关联商品');
-    return;
-  }
-  if (products.length > PRODUCT_ENRICHMENT_LIMIT) {
-    message.warning(`一次最多补齐${PRODUCT_ENRICHMENT_LIMIT}件商品`);
-    return;
-  }
-  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
-    researchError.value =
-      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
-    message.error(researchError.value);
-    return;
-  }
-
-  const tasks = new Map<Market, Task>();
-  for (const market of [
-    ...new Set(products.map((product) => product.market)),
-  ]) {
-    const count = products.filter(
-      (product) => product.market === market,
-    ).length;
-    const task: Task = {
-      id: crypto.randomUUID(),
-      title: `批量商品信息补齐 · ${marketName(market)}`,
-      market,
-      mode: 'live',
-      status: 'running',
-      created: stamp(),
-      steps: [`目标商品 ${count} 件`, '补齐：图片、规格、配方、卖点、成分分析'],
-    };
-    tasks.set(market, task);
-    state.tasks.unshift(task);
-  }
-
-  researching.value = true;
-  researchError.value = '';
-  const succeeded = new Map<Market, number>();
-  const failed = new Map<Market, number>();
-  const failures: string[] = [];
-  try {
-    for (const batch of chunkRecords(products, WORKER_PRODUCT_BATCH_SIZE)) {
-      try {
-        const response = await enrichProducts({
-          accessKey: state.settings.researchAccessKey,
-          apiUrl: state.settings.researchApiUrl,
-          products: batch.map((product) => ({
-            brand: product.brand,
-            id: product.id,
-            market: product.market,
-            title: product.title,
-            url: product.evidenceUrl || '',
-          })),
-        });
-        for (const result of response.products) {
-          const current = state.products.find(
-            (product) => product.id === result.id,
-          );
-          if (current && result.status === 'success' && result.product) {
-            Object.assign(
-              current,
-              enrichedProductRecord(
-                current,
-                result.product,
-                response.generatedAt,
-              ),
-            );
-            succeeded.set(
-              current.market,
-              (succeeded.get(current.market) || 0) + 1,
-            );
-          } else if (current) {
-            failed.set(current.market, (failed.get(current.market) || 0) + 1);
-            failures.push(`${current.title}：${result.message}`);
-          }
-        }
-      } catch (error) {
-        const detail =
-          error instanceof Error ? error.message : '商品信息补齐失败';
-        for (const product of batch) {
-          failed.set(product.market, (failed.get(product.market) || 0) + 1);
-          failures.push(`${product.title}：${detail}`);
-        }
-      }
-    }
-
-    for (const [market, task] of tasks) {
-      const successCount = succeeded.get(market) || 0;
-      const failureCount = failed.get(market) || 0;
-      task.status = failureCount === 0 ? 'completed' : 'partial';
-      task.steps.push(`成功 ${successCount} 件 / 未完成 ${failureCount} 件`);
-      audit(
-        '完成商品信息补齐',
-        `${marketName(market)} / 成功${successCount}件 / 未完成${failureCount}件`,
-        market,
-      );
-    }
-    const successCount = [...succeeded.values()].reduce(
-      (total, count) => total + count,
-      0,
+    record.reviewStatus = status;
+    record.assessment = assessKeyword(record);
+    audit(
+      '关键词人工筛选',
+      `${record.term} / ${reviewLabel(status)}`,
+      record.market,
     );
-    if (successCount > 0) message.success(`已补齐 ${successCount} 件商品信息`);
-    if (failures.length > 0) {
-      researchError.value = failures.join('；');
-      message.warning(`有 ${failures.length} 件商品未完成补齐`);
-    }
-  } finally {
-    researching.value = false;
   }
+  message.success(`已将${records.length}个词标为${reviewLabel(status)}`);
 }
-
-async function completeSelectedKeywordInfo() {
-  const records = [...selectedKeywords.value];
-  if (records.length === 0) {
-    message.warning('请先勾选要补齐信息的关键词');
-    return;
-  }
-  if (records.length > BULK_KEYWORD_LIMIT) {
-    message.warning(`一次最多选择${BULK_KEYWORD_LIMIT}个关键词`);
-    return;
-  }
-  if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
-    researchError.value =
-      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
-    message.error(researchError.value);
-    return;
-  }
-  completingAll.value = true;
-  try {
-    await discoverKeywordRecords(records, false);
-    await collectKeywordTrends(records);
-    await enrichSelectedProducts();
-    selectedKeywordIds.value = selectedKeywordIds.value.filter(
-      (id) => !records.some((record) => record.id === id),
-    );
-    message.success('一键补齐流程已执行完成，可查看关键词、独立站和商品库结果');
-  } finally {
-    completingAll.value = false;
-  }
+function toggleFavorite(record: Record<string, unknown>) {
+  const current = state.keywords.find((item) => item.id === record.id);
+  if (current) current.favorite = !current.favorite;
 }
-
 async function createResearch() {
-  const seeds = form.seeds
-    .split(/[\n,，]/)
-    .map((v) => v.trim())
-    .filter(Boolean);
+  const seeds = [
+    ...new Set(
+      form.seeds
+        .split(/[\n,，]/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
   if (
     seeds.length === 0 ||
     form.markets.length === 0 ||
     form.sources.length === 0
   ) {
-    researchError.value = '请填写种子词，并至少选择一个市场和数据源。';
-    return;
-  }
-  if (form.entry === 'asin' && seeds.some((s) => !/^[A-Z0-9]{10}$/i.test(s))) {
-    researchError.value = 'ASIN 应为10位字母或数字。';
-    return;
-  }
-  if (form.entry === 'asin' && form.markets.includes('VN')) {
-    researchError.value =
-      '越南不支持本地 Amazon ASIN 入口，请选择美国或墨西哥，或改用关键词。';
+    error.value = '请填写种子词，至少选择一个市场和找词渠道。';
     return;
   }
   if (
+    !Number.isInteger(form.limit) ||
     form.limit < 1 ||
     form.limit > 100 ||
-    form.maxSites < 1 ||
-    form.maxSites > 10 ||
-    form.productsPerSite < 1 ||
-    form.productsPerSite > 20 ||
-    form.budget < 0
+    seeds.length * form.markets.length > form.limit
   ) {
-    researchError.value =
-      '关键词总数应为1～100，站点应为1～10，每站商品应为1～20，预算不能为负数。';
-    return;
-  }
-  if (!liveSourceSelected.value) {
-    createDemoResearch(seeds);
-    return;
-  }
-  if (form.entry !== 'keyword') {
-    researchError.value = '免费真实采集目前仅支持关键词入口。';
+    error.value = '结果上限为1～100，不能少于种子词与市场的组合数。';
     return;
   }
   if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
-    researchError.value =
-      '请先到“数据源与设置”填写 Worker API 地址和研究访问码。';
+    error.value = '请先到数据源与设置填写研究服务地址和访问码。';
     return;
   }
-  if (seeds.length > 3 || seeds.length * form.markets.length > 3) {
-    researchError.value = '真实研究单次最多执行3个“关键词 × 市场”组合。';
-    return;
-  }
-
-  const tasks = new Map<string, Task>();
-  for (const keyword of seeds) {
-    for (const market of form.markets) {
-      const task: Task = {
-        id: crypto.randomUUID(),
-        title: `${keyword} · ${marketName(market)} · 真实研究`,
-        market,
-        mode: 'live',
-        status: 'queued',
-        created: stamp(),
-        steps: [
-          `目标：最多 ${form.maxSites} 家站点，每站最多 ${form.productsPerSite} 件商品`,
-          ...form.sources
-            .filter((source) => LIVE_SOURCE_IDS[source])
-            .map((source) => `计划采集：${source}`),
-          ...form.sources
-            .filter((source) => !LIVE_SOURCE_IDS[source])
-            .map((source) => `暂未接入自动采集：${source}`),
-        ],
-      };
-      tasks.set(`${keyword}|${market}`, task);
-      state.tasks.unshift(task);
-    }
-  }
-
-  for (const task of tasks.values()) {
-    task.status = 'running';
-    task.steps.push('任务已提交，正在后台执行');
-  }
-  state.market = form.markets.length === 1 ? (form.markets[0] ?? 'US') : 'ALL';
+  const config = {
+    apiUrl: state.settings.researchApiUrl,
+    accessKey: state.settings.researchAccessKey,
+    seeds,
+    markets: [...form.markets],
+    sources: form.sources.filter(
+      (source): source is 'amazon_autocomplete' | 'google_autocomplete' =>
+        source === 'google_autocomplete' || source === 'amazon_autocomplete',
+    ),
+    depth: form.depth,
+    limit: form.limit,
+  };
   open.value = false;
-  researchError.value = '';
-  router.push('/monitor?tab=tasks');
-  message.success('研究任务已提交，可在“监控与任务”查看实时进度');
-
-  researching.value = true;
+  state.market =
+    config.markets.length === 1 ? config.markets[0] || 'US' : 'ALL';
+  const job = startKeywordJob(config);
+  message.success('关键词任务已提交，可在任务中心查看进度');
+  await router.push('/monitor?tab=tasks');
   try {
-    const result = await discoverSites({
-      accessKey: state.settings.researchAccessKey,
-      apiUrl: state.settings.researchApiUrl,
-      depth: form.depth,
-      keywords: seeds,
-      limit: form.limit,
-      markets: form.markets,
-      maxSites: form.maxSites,
-      productsPerSite: form.productsPerSite,
-      sources: [
-        ...new Set([
-          ...form.sources
-            .map((source) => LIVE_SOURCE_IDS[source])
-            .filter((source): source is string => Boolean(source)),
-          ...(form.completePipeline ? ['site_discovery'] : []),
-        ]),
-      ],
-    });
-    let totalSites = 0;
-    let totalProducts = 0;
-    let totalSuggestions = 0;
-    let totalTrends = 0;
-    let totalAutoResearched = 0;
-    const followUpKeywords = new Map<Market, string[]>();
-    const initialGroupKeys = new Set(
-      result.groups.map(
-        (group) => `${group.market}|${group.keyword.toLocaleLowerCase()}`,
-      ),
-    );
-    for (const trend of result.trends || []) {
-      const task = tasks.get(`${trend.keyword}|${trend.market}`);
-      task?.steps.push(
-        `Google Trends：${trend.series.length}个时点${trend.message ? `（${trend.message}）` : ''}`,
-      );
-      if (!applyTrend(trend, result.generatedAt)) continue;
-      totalTrends += 1;
-      if (task) task.status = 'completed';
-      audit(
-        '完成Google Trends采集',
-        `${trend.keyword} / ${marketName(trend.market)} / ${trend.series.length}个时点`,
-        trend.market,
-      );
-    }
-    for (const group of result.suggestions || []) {
-      const task = tasks.get(`${group.keyword}|${group.market}`);
-      for (const source of group.sources) {
-        task?.steps.push(
-          `${source.source}：${source.count}个${
-            source.message ? `（${source.message}）` : ''
-          }`,
-        );
-      }
-      for (const item of group.items) {
-        mergeCollectedKeyword({
-          id: crypto.randomUUID(),
-          term: item.term,
-          market: group.market,
-          category: item.category || classifyKeyword(item.term),
-          source: `${item.source} · 实采`,
-          growth: null,
-          series: [],
-          trendStatus: form.sources.includes('Google Trends')
-            ? 'pending'
-            : undefined,
-          trendMessage: form.sources.includes('Google Trends')
-            ? '等待趋势采集'
-            : undefined,
-          discoveryStatus: form.completePipeline ? 'pending' : undefined,
-          discoveryMessage: form.completePipeline
-            ? '等待独立站与商品采集'
-            : undefined,
-          favorite: false,
-          productIds: [],
-          siteIds: [],
-          updatedAt: result.generatedAt,
-          dataNature: 'collected',
-        });
-        if (
-          form.completePipeline &&
-          !initialGroupKeys.has(
-            `${group.market}|${item.term.toLocaleLowerCase()}`,
-          )
-        ) {
-          const candidates = followUpKeywords.get(group.market) ?? [];
-          if (
-            !candidates.some(
-              (term) =>
-                term.toLocaleLowerCase() === item.term.toLocaleLowerCase(),
-            )
-          ) {
-            candidates.push(item.term);
-            followUpKeywords.set(group.market, candidates);
-          }
-        }
-      }
-      totalSuggestions += group.items.length;
-      if (task && group.items.length > 0) task.status = 'completed';
-      audit(
-        '完成免费联想词采集',
-        `${group.keyword} / ${marketName(group.market)} / ${group.items.length}条`,
-        group.market,
-      );
-    }
-    for (const group of result.groups) {
-      const { products, sites } = applyDiscoveryGroup(
-        group,
-        result.generatedAt,
-      );
-      totalSites += sites.length;
-      totalProducts += products.length;
-
-      const task = tasks.get(`${group.keyword}|${group.market}`);
-      if (task) {
-        if (sites.length > 0) task.status = 'completed';
-        else if (task.status !== 'completed') task.status = 'partial';
-        task.steps.push(
-          `搜索结果 ${group.coverage.searchResults} 条 / 候选域名 ${group.coverage.candidateDomains} 个`,
-          `官网验证通过 ${group.coverage.validatedSites} 家 / 未通过或不可达 ${group.coverage.rejectedOrUnreachable} 家`,
-          `提取结构化商品 ${products.length} 件`,
-        );
-      }
-      audit(
-        '完成独立站发现',
-        `${group.keyword} / ${marketName(group.market)} / ${sites.length}家站点 / ${products.length}件商品`,
-        group.market,
-      );
-    }
-
-    if (form.completePipeline) {
-      for (const [market, keywords] of followUpKeywords) {
-        const marketParents = [...tasks.values()].filter(
-          (task) => task.market === market,
-        );
-        for (const parent of marketParents)
-          parent.steps.push(
-            `自动深入：将继续验证 ${keywords.length} 个联想词的独立站与商品`,
-          );
-
-        for (let offset = 0; offset < keywords.length; offset += 3) {
-          const batch = keywords.slice(offset, offset + 3);
-          const batchTasks = new Map<string, Task>();
-          for (const keyword of batch) {
-            const task: Task = {
-              id: crypto.randomUUID(),
-              title: `${keyword} · ${marketName(market)} · 自动关联站点和商品`,
-              market,
-              mode: 'live',
-              status: 'running',
-              created: stamp(),
-              steps: [
-                `自动分类：${classifyKeyword(keyword)}`,
-                '独立站发现：Brave Search + 官网验证',
-                `商品提取：每站最多 ${form.productsPerSite} 件`,
-                '任务已提交，正在后台执行',
-              ],
-            };
-            batchTasks.set(keyword.toLocaleLowerCase(), task);
-            tasks.set(`${keyword}|${market}`, task);
-            state.tasks.unshift(task);
-          }
-
-          try {
-            const followUp = await discoverSites({
-              accessKey: state.settings.researchAccessKey,
-              apiUrl: state.settings.researchApiUrl,
-              depth: 1,
-              keywords: batch,
-              limit: batch.length,
-              markets: [market],
-              maxSites: form.maxSites,
-              productsPerSite: form.productsPerSite,
-              sources: [
-                'site_discovery',
-                ...(form.sources.includes('Google Trends')
-                  ? ['google_trends']
-                  : []),
-              ],
-            });
-
-            for (const trend of followUp.trends || []) {
-              const task = batchTasks.get(trend.keyword.toLocaleLowerCase());
-              task?.steps.push(
-                `Google Trends：${trend.series.length}个时点${trend.message ? `（${trend.message}）` : ''}`,
-              );
-              if (applyTrend(trend, followUp.generatedAt)) totalTrends += 1;
-            }
-            for (const group of followUp.groups) {
-              const { products, sites } = applyDiscoveryGroup(
-                group,
-                followUp.generatedAt,
-              );
-              totalSites += sites.length;
-              totalProducts += products.length;
-              totalAutoResearched += 1;
-              const task = batchTasks.get(group.keyword.toLocaleLowerCase());
-              if (task) {
-                task.status = sites.length > 0 ? 'completed' : 'partial';
-                task.steps.push(
-                  `搜索结果 ${group.coverage.searchResults} 条 / 候选域名 ${group.coverage.candidateDomains} 个`,
-                  `官网验证通过 ${sites.length} 家 / 提取商品 ${products.length} 件`,
-                  sites.length > 0
-                    ? '关联结果已写入关键词、独立站和商品库'
-                    : '未找到通过官网验证的独立站',
-                );
-              }
-              audit(
-                '完成联想词自动深入研究',
-                `${group.keyword} / ${marketName(market)} / ${sites.length}家站点 / ${products.length}件商品`,
-                market,
-              );
-            }
-          } catch (error) {
-            const detail =
-              error instanceof Error ? error.message : '自动深入研究失败';
-            for (const task of batchTasks.values()) {
-              task.status = 'partial';
-              task.steps.push(`执行失败：${detail}`);
-            }
-            audit(
-              '联想词自动深入研究未完成',
-              `${batch.join('、')} / ${marketName(market)} / ${detail}`,
-              market,
-            );
-          }
-        }
-      }
-    }
-    for (const task of tasks.values()) {
-      const hasGap = task.steps.some((step) =>
-        /执行失败|未找到|未返回|限流|验证通过 0|提取(?:结构化)?商品 0|Google Trends：0个时点/.test(
-          step,
-        ),
-      );
-      if (hasGap || form.sources.some((source) => !LIVE_SOURCE_IDS[source]))
-        task.status = 'partial';
-      else if (task.status === 'queued' || task.status === 'running')
-        task.status = 'completed';
-    }
-    if (totalSites || totalSuggestions || totalTrends) {
-      message.success(
-        `已采集 ${totalSuggestions} 条联想词并自动分类，深入研究 ${totalAutoResearched} 个联想词，验证 ${totalSites} 家独立站，提取 ${totalProducts} 件商品`,
-      );
-    } else {
-      message.warning(
-        '本次未采集到联想词或通过官网验证的独立站，可更换关键词重试',
-      );
-    }
+    await job;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : '真实研究执行失败';
-    for (const task of tasks.values()) {
-      task.status = 'partial';
-      task.steps.push(`执行失败：${detail}`);
-    }
-    researchError.value = detail;
-    message.error(detail);
-  } finally {
-    researching.value = false;
+    message.error(error instanceof Error ? error.message : '关键词研究未完成');
   }
 }
+async function refreshSelected() {
+  if (selected.value.length === 0 || selected.value.length > 100) {
+    message.warning('请勾选1～100个关键词');
+    return;
+  }
+  if (!state.settings.researchAccessKey || !state.settings.researchApiUrl) {
+    message.warning('请先在数据源与设置配置研究服务');
+    return;
+  }
+  const records = [...selected.value];
+  try {
+    await startKeywordJob(
+      {
+        apiUrl: state.settings.researchApiUrl,
+        accessKey: state.settings.researchAccessKey,
+        seeds: [],
+        markets: [...new Set(records.map((record) => record.market))],
+        sources: ['google_autocomplete'],
+        depth: 1,
+        limit: records.length,
+      },
+      records,
+    );
+    message.success('趋势与评分已更新，缺失证据会在评分详情中说明');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '趋势更新失败');
+  }
+}
+function exportKeywords() {
+  exportCsv(
+    '关键词研究与评级.csv',
+    rows.value.map((record) => ({
+      关键词: record.term,
+      种子词: record.seedTerm || '',
+      市场: record.market,
+      品类: record.category,
+      评级: record.assessment.grade || '待评级',
+      评级状态: { rated: '正式评级', provisional: '暂评', pending: '待评级' }[
+        record.assessment.status
+      ],
+      评分: record.assessment.score ?? '',
+      数据覆盖率: `${record.assessment.coverage}%`,
+      标签: record.assessment.tags.join('、'),
+      决策建议: record.assessment.recommendation,
+      来源: record.source,
+      抓取时间: record.collectedAt || '',
+      趋势抓取时间: record.trendCollectedAt || '',
+      评分模型: record.assessment.version,
+      人工筛选: reviewLabel(record.reviewStatus),
+      备注: record.reviewNote || '',
+    })),
+  );
+}
+const metricsForm = reactive({
+  monthlySearchVolume: undefined as number | undefined,
+  difficulty: undefined as number | undefined,
+  top3Share: undefined as number | undefined,
+  source: '',
+  date: '',
+  note: '',
+});
+function openDetail(value: Record<string, unknown>) {
+  const record = state.keywords.find((item) => item.id === value.id);
+  if (!record) return;
+  detailId.value = record.id;
+  metricsForm.monthlySearchVolume =
+    record.metrics?.monthlySearchVolume ?? undefined;
+  metricsForm.difficulty = record.metrics?.difficulty ?? undefined;
+  metricsForm.top3Share = record.metrics?.top3Share ?? undefined;
+  metricsForm.source = record.metrics?.source || '';
+  metricsForm.date =
+    record.metrics?.collectedAt.slice(0, 10) ||
+    new Date().toISOString().slice(0, 10);
+  metricsForm.note = record.reviewNote || '';
+}
+function saveMetrics() {
+  const record = detail.value;
+  if (!record) return;
+  const anyMetric = [
+    metricsForm.monthlySearchVolume,
+    metricsForm.difficulty,
+    metricsForm.top3Share,
+  ].some((value) => typeof value === 'number');
+  if (
+    anyMetric &&
+    (!metricsForm.source.trim() ||
+      !Number.isFinite(Date.parse(metricsForm.date)))
+  ) {
+    message.warning('补充指标时，请填写平台来源和数据日期');
+    return;
+  }
+  if (
+    (typeof metricsForm.monthlySearchVolume === 'number' &&
+      metricsForm.monthlySearchVolume < 0) ||
+    [metricsForm.difficulty, metricsForm.top3Share].some(
+      (value) => typeof value === 'number' && (value < 0 || value > 100),
+    )
+  ) {
+    message.warning('搜索量不能为负数，难度和份额应为0～100');
+    return;
+  }
+  record.metrics = anyMetric
+    ? {
+        market: record.market,
+        source: metricsForm.source.trim(),
+        collectedAt: metricsForm.date,
+        monthlySearchVolume: metricsForm.monthlySearchVolume ?? undefined,
+        difficulty: metricsForm.difficulty ?? undefined,
+        top3Share: metricsForm.top3Share ?? undefined,
+      }
+    : undefined;
+  record.reviewNote = metricsForm.note.trim();
+  record.assessment = assessKeyword(record);
+  audit(
+    '补充关键词评分依据',
+    `${record.term} / ${metricsForm.source || '清空补充指标'}`,
+    record.market,
+  );
+  message.success('评分依据已保存并重新评级');
+}
 </script>
+
 <template>
   <main class="hci-page">
     <PageHeader
       title="关键词研究"
-      description="从用户的搜索表达出发，发现需求与产品概念。"
+      description="第一步：发现需求、核验趋势、评级打标，人工决定哪些词值得深入研究。"
     >
+      <Button @click="modelOpen = true">评分模型</Button>
+      <Button :disabled="!rows.length" @click="exportKeywords">导出结果</Button>
       <Button
-        @click="
-          exportCsv(
-            '关键词研究.csv',
-            rows.map((k) => ({
-              关键词: k.term,
-              市场: k.market,
-              品类: k.category,
-              来源: k.source,
-              关联商品数: k.productIds.length,
-              关联站点数: k.siteIds.length,
-              数据性质: k.dataNature === 'collected' ? '官网实采' : '演示',
-            })),
-          )
-        "
-        :disabled="!rows.length"
+        type="primary"
+        :disabled="keywordJob.running"
+        @click="open = true"
       >
-        导出结果
-</Button><Button type="primary" @click="open = true"> ＋ 新建研究 </Button>
+        ＋ 新建关键词研究
+      </Button>
     </PageHeader>
+    <div class="hci-demo-note keyword-stage-note">
+      <b>1 关键词研究与评级</b><span>→ 人工选词</span><span>2 独立站研究</span><span>→ 人工选站</span><span>3 商品研究</span>
+    </div>
+    <Alert
+      v-if="keywordJob.running"
+      type="info"
+      show-icon
+      class="keyword-job-note"
+    >
+      <template #message>
+        {{ keywordJob.phase }} · 已发现 {{ keywordJob.discovered }} 个词 ·
+        已查询趋势 {{ keywordJob.trended }} 个词
+      </template>
+      <template #description>
+        {{ keywordJob.message }}。任务完成前请保持系统页面打开。
+        <Button type="link" @click="router.push('/monitor?tab=tasks')">
+          查看进度
+        </Button>
+        <Button type="link" @click="stopKeywordJob">停止后续请求</Button>
+      </template>
+    </Alert>
+    <div class="keyword-summary">
+      <div>
+        <span>当前市场关键词</span><b>{{ summary.total }}</b>
+      </div>
+      <div>
+        <span>A / B 研究候选（含暂评）</span><b>{{ summary.priority }}</b>
+      </div>
+      <div>
+        <span>证据不足 · 待评级</span><b>{{ summary.pending }}</b>
+      </div>
+      <div>
+        <span>人工已入选</span><b>{{ summary.selected }}</b>
+      </div>
+    </div>
     <section class="hci-panel">
-      <div class="hci-toolbar">
+      <div class="hci-toolbar keyword-filters">
         <Input.Search
           v-model:value="search"
-          placeholder="搜索关键词 / 原语言表达"
+          placeholder="搜索关键词、种子词或标签"
           allow-clear
-        /><Select
+          aria-label="搜索关键词"
+        />
+        <Select
           v-model:value="category"
+          aria-label="按研究品类筛选"
           :options="[
             { label: '全部品类', value: 'ALL' },
-            ...categories.map((c) => ({ label: c, value: c })),
+            ...categories.map((value) => ({ label: value, value })),
           ]"
-        /><Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox><Button
-          type="primary"
-          :disabled="
-            selectedKeywords.length === 0 || researching || completingAll
+        />
+        <Select
+          v-model:value="rating"
+          aria-label="按评级筛选"
+          :options="[
+            { label: '全部评级', value: 'ALL' },
+            ...['A', 'B', 'C', 'D'].map((value) => ({
+              label: `${value} 类（含暂评）`,
+              value,
+            })),
+            { label: '待评级', value: 'UNRATED' },
+          ]"
+        />
+        <Select
+          v-model:value="ratingStatus"
+          aria-label="按评级状态筛选"
+          :options="[
+            { label: '全部评级状态', value: 'ALL' },
+            { label: '正式评级', value: 'rated' },
+            { label: '暂评（证据不完整）', value: 'provisional' },
+            { label: '待评级', value: 'pending' },
+          ]"
+        />
+        <Select
+          v-model:value="tagFilter"
+          :options="tagOptions"
+          aria-label="按分析标签筛选"
+          show-search
+          option-filter-prop="label"
+        />
+        <Select
+          v-model:value="timeRange"
+          aria-label="按抓取时间筛选"
+          :options="[
+            { label: '全部抓取时间', value: 'ALL' },
+            { label: '最近24小时', value: '1' },
+            { label: '最近7天', value: '7' },
+            { label: '最近30天', value: '30' },
+          ]"
+        />
+        <Select
+          v-model:value="reviewFilter"
+          aria-label="按人工筛选状态筛选"
+          :options="[
+            { label: '全部人工状态', value: 'ALL' },
+            { label: '待人工筛选', value: 'pending' },
+            { label: '已入选', value: 'selected' },
+            { label: '已排除', value: 'excluded' },
+          ]"
+        />
+        <Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox>
+        <Button
+          @click="
+            search = '';
+            category = 'ALL';
+            rating = 'ALL';
+            ratingStatus = 'ALL';
+            tagFilter = 'ALL';
+            timeRange = 'ALL';
+            reviewFilter = 'ALL';
+            favoritesOnly = false;
           "
-          :loading="researching || completingAll"
-          @click="completeSelectedKeywordInfo"
         >
-          一键补齐信息（{{ selectedKeywords.length }}/{{
-            BULK_KEYWORD_LIMIT
-          }}）
-</Button><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个关键词 · {{ collectedCount }} 个实采</span>
+          重置筛选
+        </Button>
+      </div>
+      <div class="hci-toolbar">
+        <span class="hci-subtle">已选 {{ selected.length }} 个关键词</span>
+        <Button
+          :disabled="!selected.length || keywordJob.running"
+          :loading="keywordJob.running"
+          @click="refreshSelected"
+        >
+          补齐趋势与重评
+        </Button>
+        <Button
+          type="primary"
+          :disabled="!selected.length"
+          @click="markRecords(selected, 'selected')"
+        >
+          标为入选
+        </Button>
+        <Button
+          :disabled="!selected.length"
+          @click="markRecords(selected, 'excluded')"
+        >
+          标为排除
+        </Button>
+        <span class="hci-toolbar-end hci-subtle">{{ rows.length }} 条筛选结果</span>
       </div>
       <Table
         :data-source="rows"
         :columns="columns"
         :row-selection="rowSelection"
         row-key="id"
-        :pagination="keywordPagination"
-        :scroll="{ x: 1200 }"
+        :pagination="pagination"
+        :scroll="{ x: 1770 }"
       >
-        <template #headerCell="{ column }">
-          <span v-if="column.key === 'category'" class="hci-field-title">研究品类
-            <Tooltip
-              title="系统根据英文、西班牙文和越南文关键词自动识别品类；完成官网商品采集后，会结合站点与商品内容再次校正。"
-              ><button class="hci-help-button" aria-label="查看自动分类说明">
-                <IconifyIcon
-                  icon="lucide:circle-help"
-                /></button></Tooltip></span><span v-else-if="column.key === 'source'" class="hci-field-title">来源
-            <Tooltip
-              title="关键词的发现渠道。同一关键词可以有多个独立来源；“演示”表示当前记录来自虚构样本，并非真实接口返回。"
-              ><button class="hci-help-button" aria-label="查看来源字段说明">
-                <IconifyIcon
-                  icon="lucide:circle-help"
-                /></button></Tooltip></span><span v-else-if="column.key === 'growth'" class="hci-field-title">28天变化
-            <Tooltip
-              title="同一市场、同一查询批次内，最近28天相对热度与此前28天相比的变化率：(最近28天－此前28天)÷此前28天。它不是搜索量；基期为0或数据不足时不计算。"
-              ><button
-                class="hci-help-button"
-                aria-label="查看28天变化字段说明"
-              >
-                <IconifyIcon
-                  icon="lucide:circle-help"
-                /></button></Tooltip></span><span
-            v-else-if="column.key === 'productLinks'"
-            class="hci-field-title"
-            >关联商品
-            <Tooltip
-              title="当前关键词已建立关联的商品记录数。启用完整研究链路后，总量限制内的每个联想词都会自动执行站点、商品和商品详情采集。"
-            >
-              <button class="hci-help-button" aria-label="查看关联商品字段说明">
-                <IconifyIcon icon="lucide:circle-help" />
-              </button> </Tooltip></span><span v-else-if="column.key === 'siteLinks'" class="hci-field-title">关联站点
-            <Tooltip
-              title="当前关键词通过搜索和官网验证后关联的独立站数量。完整研究链路会处理列表中的全部实采关键词；0表示已执行但没有站点通过官网验证，具体原因可在任务详情查看。"
-            >
-              <button class="hci-help-button" aria-label="查看关联站点字段说明">
-                <IconifyIcon icon="lucide:circle-help" />
-              </button> </Tooltip></span>
-        </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'term'">
+            <button class="hci-link keyword-term" @click="openDetail(record)">
+              {{ record.term }}
+            </button>
+            <p class="hci-subtle">种子：{{ record.seedTerm || '历史记录' }}</p>
+          </template>
+          <template v-else-if="column.key === 'market'">
+            <Tag>{{ marketName(record.market) }}</Tag>
+            <p class="hci-subtle">{{ record.category }}</p>
+          </template>
+          <template v-else-if="column.key === 'grade'">
+            <Tag :color="gradeColors[record.assessment.grade] || 'default'">
+              {{ record.assessment.grade || '待评级' }}
+            </Tag>
+            <p class="hci-subtle">
+              {{
+                record.assessment.status === 'provisional'
+                  ? '暂评'
+                  : record.assessment.status === 'rated'
+                    ? '正式评级'
+                    : '证据不足'
+              }}
+            </p>
+          </template>
+          <template v-else-if="column.key === 'score'">
+            <button class="hci-link" @click="openDetail(record)">
+              {{ record.assessment.score ?? '—'
+              }}{{ record.assessment.score === null ? '' : ' / 100' }}
+            </button>
+            <p class="hci-subtle">覆盖 {{ record.assessment.coverage }}%</p>
+          </template>
+          <template v-else-if="column.key === 'tags'">
+            <div class="keyword-tags">
+              <Tag v-for="tag in record.assessment.tags" :key="tag">
+                {{ tag }}
+              </Tag>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'trend'">
             <button
+              v-if="record.series.length"
               class="hci-link"
               @click="
                 router.push({ path: '/trends', query: { keyword: record.id } })
               "
             >
-              {{ record.term }}
+              查看一年曲线
             </button>
-</template><template v-if="column.key === 'market'">
-            <Tag>{{ marketName(record.market) }}</Tag>
-</template><template v-if="column.key === 'source'">
-            <div class="hci-source-tags">
-              <Tag v-for="source in sourceLabels(record.source)" :key="source">
-                {{ source }}
-              </Tag>
-              <span v-if="record.source.includes('演示')" class="hci-subtle">演示样本</span>
-            </div>
-</template><template v-if="column.key === 'growth'">
-            <span
-              v-if="record.growth !== null"
-              :class="record.growth > 0 ? 'hci-positive' : 'hci-negative'"
-              >{{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%</span><Tooltip
-              v-else
-              :title="
-                [record.trendMessage, record.trendDailyMessage]
-                  .filter(Boolean)
-                  .join('；') || '尚未执行趋势采集'
-              "
-            >
+            <Tooltip v-else :title="record.trendMessage || '尚未采集趋势'">
               <Tag
-                :color="
-                  record.trendStatus === 'failed'
-                    ? 'orange'
-                    : record.trendStatus === 'pending'
-                      ? 'blue'
-                      : record.series.length > 0
-                        ? 'green'
-                        : 'default'
-                "
+                :color="record.trendStatus === 'failed' ? 'orange' : 'default'"
               >
                 {{
-                  record.trendStatus === 'failed'
-                    ? '趋势未返回'
-                    : record.trendStatus === 'pending'
-                      ? '趋势采集中'
-                      : record.series.length > 0
-                        ? '趋势已采集'
-                        : '尚未采集'
+                  record.trendStatus === 'pending'
+                    ? '等待趋势'
+                    : record.trendStatus === 'failed'
+                      ? '趋势请求失败'
+                      : '尚未采集'
                 }}
               </Tag>
             </Tooltip>
-</template><template v-if="column.key === 'productLinks'">
-            <button
-              class="hci-count-link"
-              :disabled="!record.productIds.length"
-              :aria-label="`查看${record.term}关联商品`"
-              @click="
-                router.push({
-                  path: '/products',
-                  query: { keyword: record.id },
-                })
+            <p
+              v-if="record.growth !== null"
+              :class="record.growth >= 0 ? 'hci-positive' : 'hci-negative'"
+            >
+              28天 {{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%
+            </p>
+            <Tooltip
+              v-else
+              :title="
+                record.trendDailyMessage || '缺少有效日数据或基期为0，暂不计算'
               "
             >
-              <b>{{ record.productIds.length }}</b><span>件商品</span>
-            </button>
-</template><template v-if="column.key === 'siteLinks'">
-            <button
-              class="hci-count-link"
-              :disabled="!record.siteIds.length"
-              :aria-label="`查看${record.term}关联站点`"
-              @click="
-                router.push({ path: '/sites', query: { keywordId: record.id } })
+              <p class="hci-subtle">28天变化待补证据</p>
+            </Tooltip>
+          </template>
+          <template v-else-if="column.key === 'source'">
+            <div class="keyword-tags">
+              <Tag v-for="source in sourceLabels(record.source)" :key="source">
+                {{ source }}
+              </Tag>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'collectedAt'">
+            <span>{{ formatTime(record.collectedAt) }}</span><Tooltip :title="formatTime(record.trendCollectedAt)">
+              <p class="hci-subtle">
+                趋势日期 {{ record.trendCollectedAt?.slice(0, 10) || '未记录' }}
+              </p>
+            </Tooltip>
+          </template>
+          <template v-else-if="column.key === 'review'">
+            <Tag
+              :color="
+                record.reviewStatus === 'selected'
+                  ? 'green'
+                  : record.reviewStatus === 'excluded'
+                    ? 'default'
+                    : 'blue'
               "
             >
-              <b>{{ record.siteIds.length }}</b><span>家站点</span>
-            </button>
-</template><template v-if="column.key === 'actions'">
-            <button
-              class="hci-link"
-              @click="record.favorite = !record.favorite"
-            >
-              {{ record.favorite ? '★ 已收藏' : '☆ 收藏' }}
-</button><button
-              class="hci-link"
-              style="margin-left: 14px"
-              :disabled="
-                researching ||
-                completingAll ||
-                record.dataNature !== 'collected'
-              "
-              @click="discoverKeywordRecord(record)"
-            >
-              查找独立站
-            </button>
+              {{ reviewLabel(record.reviewStatus) }}
+            </Tag>
+          </template>
+          <template v-else-if="column.key === 'actions'">
+            <Button type="link" @click="openDetail(record)">评分详情</Button><Button type="link" @click="toggleFavorite(record)">
+              {{ record.favorite ? '已收藏' : '收藏' }}
+            </Button>
           </template>
         </template>
       </Table>
     </section>
     <div class="hci-field-notes">
       <div>
-        <b>来源</b>
-        <span>记录关键词从哪个渠道被发现；多来源保留为独立观察。</span>
+        <b>分阶段决策</b><span>本页只发现关键词、补齐趋势和评分。标为入选仅记录人工决定，不会发起独立站或商品采集。</span>
       </div>
       <div>
-        <b>28天变化</b>
-        <span>最近28天与此前28天的同序列相对热度变化，不代表绝对搜索量，也不能跨批次比较。</span>
+        <b>评级与证据</b><span>A ≥80，B 65～79，C 50～64，D
+          &lt;50。关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span>
       </div>
     </div>
-    <div class="hci-demo-note">
-      <b>免费真实采集</b>
-      Google 联想词支持美国、墨西哥和越南；Amazon
-      联想词支持美国和墨西哥；独立站发现使用 Brave Search 和官网直接验证；Google
-      Trends按关键词独立采集过去一年曲线，并另取日数据计算28天变化。完整研究会处理总量限制内的全部关键词；低量词或接口限流会显示具体状态，并在任务详情保留原因。
-    </div>
+
     <Modal
       v-model:open="open"
-      title="新建市场研究"
-      :width="760"
-      :ok-text="liveSourceSelected ? '开始真实研究' : '创建演示任务'"
+      title="新建关键词研究 · 第一步"
+      :width="720"
+      ok-text="开始找词与评级"
       cancel-text="取消"
+      :confirm-loading="keywordJob.running"
       @ok="createResearch"
-      @cancel="researchError = ''"
     >
       <Alert
-        :message="
-          liveSourceSelected
-            ? '完整研究会自动执行关键词发现与分类、独立站验证、官网商品页采集，并把图片、规格、配方、卖点和成分写入商品库。'
-            : '所选来源尚未接入，将只创建演示任务。'
-        "
-        :type="liveSourceSelected ? 'success' : 'info'"
+        message="发现关键词 → 采集一年趋势 → 分类、评分与打标 → 等待人工筛选"
+        type="info"
         show-icon
         style="margin: 16px 0"
-      /><Form layout="vertical">
-        <div class="hci-form-grid">
-          <Form.Item label="研究入口" class="hci-full">
-            <Radio.Group v-model:value="form.entry">
-              <Radio.Button value="keyword">关键词研究</Radio.Button><Radio.Button value="asin">ASIN 反查</Radio.Button>
-            </Radio.Group>
-</Form.Item><Form.Item
-            :label="
-              form.entry === 'asin'
-                ? 'ASIN（每行一个）'
-                : '种子关键词（每行一个）'
+      />
+      <Form layout="vertical">
+        <Form.Item label="种子关键词（每行一个）" required>
+          <Input.TextArea
+            v-model:value="form.seeds"
+            :rows="3"
+            :maxlength="4000"
+            placeholder="magnesium glycinate&#10;probiotics for women"
+          />
+        </Form.Item>
+        <Form.Item label="目标市场" required>
+          <Checkbox.Group
+            v-model:value="form.markets"
+            :options="
+              markets.map((market) => ({
+                label: market.name,
+                value: market.code,
+              }))
             "
-            class="hci-full"
-            required
-          >
-            <Input.TextArea
-              v-model:value="form.seeds"
-              :rows="3"
-              :placeholder="
-                form.entry === 'asin'
-                  ? '例如 B012345678'
-                  : 'probiotic for women\ninositol'
-              "
-              :maxlength="1000"
-            />
-</Form.Item><Form.Item label="目标市场" class="hci-full" required>
-            <Checkbox.Group
-              v-model:value="form.markets"
-              :options="markets.map((m) => ({ label: m.name, value: m.code }))"
-            />
-</Form.Item><Form.Item label="数据来源" class="hci-full" required>
-            <Checkbox.Group
-              v-model:value="form.sources"
-              :options="[
-                'Google 联想词',
-                'Amazon 联想词',
-                'Google Trends',
-                'Google SERP',
-                'Store Leads',
-                DISCOVERY_SOURCE,
-                '人工导入',
-              ]"
-            />
-</Form.Item><Form.Item label="裂变深度">
+          />
+        </Form.Item>
+        <Form.Item label="关键词发现渠道" required>
+          <Checkbox.Group
+            v-model:value="form.sources"
+            :options="[
+              { label: 'Google 联想词', value: 'google_autocomplete' },
+              { label: 'Amazon 联想词', value: 'amazon_autocomplete' },
+            ]"
+          />
+          <p class="hci-subtle">
+            Amazon 联想支持美国和墨西哥。Similarweb、Semrush、Sorftime
+            尚未配置为自动数据源，暂不发起这些平台的调用。
+          </p>
+        </Form.Item>
+        <div class="hci-form-grid">
+          <Form.Item label="扩词深度">
             <Select
               v-model:value="form.depth"
               :options="[
-                { label: '一级裂变（推荐）', value: 1 },
-                { label: '二级裂变', value: 2 },
+                { label: '一级：从种子词获取联想（推荐）', value: 1 },
+                { label: '二级：对首轮联想继续扩词', value: 2 },
               ]"
             />
-</Form.Item><Form.Item label="完整研究链路" class="hci-full">
-            <Checkbox v-model:checked="form.completePipeline">
-              联想词生成后，自动继续关联独立站、商品及商品详情
-            </Checkbox>
-</Form.Item><Form.Item label="关键词研究总数上限（所有种子词和国家合计）">
+          </Form.Item>
+          <Form.Item label="结果总数上限（包含种子词，所有市场合计）">
             <InputNumber
               v-model:value="form.limit"
               :min="1"
               :max="100"
-            />
-</Form.Item><Form.Item label="每个关键词目标站点数（1～10）">
-            <InputNumber
-              v-model:value="form.maxSites"
-              :min="1"
-              :max="10"
-            />
-</Form.Item><Form.Item label="每站商品采集上限（1～20）">
-            <InputNumber
-              v-model:value="form.productsPerSite"
-              :min="1"
-              :max="20"
-            />
-</Form.Item><Form.Item label="任务预算上限（USD，0代表禁止付费）">
-            <InputNumber
-              v-model:value="form.budget"
-              :min="0"
-              :max="10000"
-              :precision="2"
+              :precision="0"
             />
           </Form.Item>
         </div>
+        <Form.Item label="趋势与评分">
+          <p>
+            每个入库关键词均单独查询过去一年 Google
+            Trends，并尝试补齐28天日数据；随后计算五维评分、评级和标签。
+          </p>
+        </Form.Item>
       </Form>
-      <section class="hci-cost-estimate">
-        <div class="hci-cost-estimate-head">
-          <div>
-            <span>预计外部调用成本</span>
-            <strong>${{ formatCost(costEstimate.total) }}</strong>
-          </div>
-          <Tag :color="budgetStatus.color">{{ budgetStatus.text }}</Tag>
-        </div>
-        <div class="hci-cost-metrics">
-          <span>预计进入查询 {{ costEstimate.estimatedKeywords }} 个关键词</span>
-          <span>计费请求 {{ costEstimate.paidRequests }} 次</span>
-          <span>预留 {{ state.settings.costBufferRate }}%</span>
-        </div>
-        <div v-if="costEstimate.lines.length" class="hci-cost-lines">
-          <div v-for="line in costEstimate.lines" :key="line.key">
-            <span>{{ line.label }} · {{ line.quantity }} × ${{
-                formatCost(line.unit)
-              }}</span>
-            <b>${{ formatCost(line.total) }}</b>
-          </div>
-        </div>
-        <div class="hci-cost-recommendation">
-          <span>建议预算（含预留）</span>
-          <b>${{ formatCost(costEstimate.recommended) }}</b>
-          <Button
-            size="small"
-            :disabled="!costEstimate.recommended"
-            @click="form.budget = costEstimate.recommended"
-          >
-            采用建议预算
-          </Button>
-        </div>
-        <p
-          v-if="
-            form.sources.includes('Store Leads') &&
-            state.settings.storeLeadsMarketCost === 0
-          "
-          class="hci-cost-warning"
-        >
-          Store Leads 为套餐制，当前未配置分摊成本，因此未计入金额。
-        </p>
-        <p class="hci-subtle" style="margin: 10px 0 0">
-          估算规则：Google和Amazon联想词、Google
-          Trends公开网页接口当前计为$0；SERP按预计关键词数计算。公开接口可能限流，税费、汇率和套餐基础费不在本次估算内。
-        </p>
-      </section>
-      <Alert
-        v-if="researchError"
-        :message="researchError"
-        type="error"
-        show-icon
-      />
+      <Alert v-if="error" :message="error" type="error" show-icon />
       <p class="hci-subtle">
-        系统会对总数限制内的每个关键词执行趋势、独立站、商品和商品详情采集。站点与商品数量是目标上限；实际结果取决于搜索命中、官网可访问性和网页公开字段。
-        Shopify 站点优先使用公开商品目录，其他站点逐页读取公开商品信息。
-      </p>
-      <p class="hci-subtle">
-        计划生成
-        {{ form.markets.length }}
-        个国家子任务。{{
-          liveSourceSelected
-            ? '单次最多3个“关键词 × 市场”组合。'
-            : '当前选择将以演示任务记录。'
-        }}
+        本阶段使用现有免费公开接口，可能限流。搜索量和竞争指标可在评分详情中补充，来源与日期会保留。任务记录和结果仍保存在本浏览器，请在完成前保持系统页面打开。
       </p>
     </Modal>
+
+    <Modal
+      v-model:open="modelOpen"
+      title="关键词研究评分模型"
+      :width="740"
+      :footer="null"
+    >
+      <p class="hci-subtle">
+        模型 {{ KEYWORD_MODEL_VERSION }} ·
+        评估是否值得深入研究，权重为初始业务规则，后续需用人工评审样本校准。
+      </p>
+      <div
+        v-for="dimension in KEYWORD_MODEL_WEIGHTS"
+        :key="dimension.key"
+        class="hci-market-row"
+      >
+        <b>{{ dimension.label }}</b><span>{{ dimension.weight }}%</span>
+      </div>
+      <div class="hci-evidence">
+        A ≥80，B 65～79，C 50～64，D
+        &lt;50。缺失维度不补0，按已覆盖权重归一化；有有效趋势且覆盖至少60%时允许暂评。全部维度齐备才显示正式评级；关键趋势缺失则待评级。
+      </div>
+      <p>
+        Google Trends
+        仅用于走势，不代替搜索量。需求规模按同市场固定参考上沿评分：美国10万/月，墨西哥与越南5万/月；当前批次增减不会改变该参考。竞争维度中，关键词难度与前三站点搜索份额各占一半。
+      </p>
+      <p class="hci-subtle">
+        只有一年数据不能确认年度季节性，因此不会自动下“季节性已证实”的结论。Semrush、Similarweb指标当前需手动录入，并注明来源、国家与日期；180天以前的数据不纳入当前评级。
+      </p>
+    </Modal>
+
+    <Drawer
+      :open="!!detail"
+      title="关键词评分与人工决策"
+      :width="720"
+      @close="detailId = ''"
+    >
+      <template v-if="detail && assessment">
+        <h2 class="keyword-detail-title">{{ detail.term }}</h2>
+        <p class="hci-subtle">
+          {{ marketName(detail.market) }} · {{ detail.category }} ·
+          {{ assessment.version }}
+        </p>
+        <div class="hci-toolbar">
+          <Tag :color="gradeColors[assessment.grade || '']">
+            {{ assessment.grade || '待评级'
+            }}{{ assessment.status === 'provisional' ? ' · 暂评' : '' }}
+          </Tag>
+          <b>{{ assessment.score ?? '—' }} / 100</b><span>数据覆盖 {{ assessment.coverage }}%</span>
+        </div>
+        <Alert
+          :message="assessment.recommendation"
+          :description="
+            assessment.status === 'provisional'
+              ? '当前仅为基于已覆盖维度的暂评，缺失证据请逐项补充。'
+              : assessment.status === 'pending'
+                ? '未将接口失败或缺失指标作为低分处理。'
+                : '当前五个维度的数据已齐备。'
+          "
+          type="info"
+          show-icon
+        />
+        <div class="keyword-tags" style="margin: 16px 0">
+          <Tag v-for="tag in assessment.tags" :key="tag">{{ tag }}</Tag>
+        </div>
+        <div
+          v-for="dimension in assessment.dimensions"
+          :key="dimension.key"
+          class="keyword-dimension"
+        >
+          <div>
+            <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b><strong>{{ dimension.score ?? '待补充'
+              }}{{ dimension.score === null ? '' : ' / 100' }}</strong>
+          </div>
+          <p class="hci-subtle">{{ dimension.evidence }}</p>
+          <span class="hci-subtle">已覆盖权重 {{ dimension.coveredWeight }} /
+            {{ dimension.weight }}</span>
+        </div>
+        <p class="hci-subtle">
+          关键词抓取：{{ formatTime(detail.collectedAt) }}<br />趋势抓取：{{
+            formatTime(detail.trendCollectedAt)
+          }}
+        </p>
+        <Button
+          @click="
+            router.push({ path: '/trends', query: { keyword: detail.id } })
+          "
+        >
+          查看一年趋势与原始来源
+        </Button>
+        <h3 style="margin-top: 24px">补充平台指标与审核备注</h3>
+        <p class="hci-subtle">
+          填入同国家、同时间口径的平台数据。留空表示未知；0表示平台明确返回0。
+        </p>
+        <Form layout="vertical">
+          <div class="hci-form-grid">
+            <Form.Item label="目标国家月搜索量">
+              <InputNumber
+                v-model:value="metricsForm.monthlySearchVolume"
+                :min="0"
+                :precision="0"
+              />
+            </Form.Item>
+            <Form.Item label="关键词难度（0～100）">
+              <InputNumber
+                v-model:value="metricsForm.difficulty"
+                :min="0"
+                :max="100"
+              />
+            </Form.Item>
+            <Form.Item label="前三站点搜索份额（%，可选）">
+              <InputNumber
+                v-model:value="metricsForm.top3Share"
+                :min="0"
+                :max="100"
+              />
+            </Form.Item>
+            <Form.Item label="指标日期">
+              <Input v-model:value="metricsForm.date" type="date" />
+            </Form.Item>
+          </div>
+          <Form.Item label="平台来源 / 报告依据">
+            <Input
+              v-model:value="metricsForm.source"
+              placeholder="例如 Semrush 导出报告 / Similarweb 报告链接"
+              :maxlength="500"
+            />
+          </Form.Item>
+          <Form.Item label="人工筛选备注">
+            <Input.TextArea
+              v-model:value="metricsForm.note"
+              :rows="3"
+              :maxlength="1000"
+              placeholder="记录入选、排除或需要补充核验的原因"
+            />
+          </Form.Item>
+        </Form>
+        <div class="hci-toolbar">
+          <Button type="primary" @click="saveMetrics">保存依据并重评</Button><Button @click="markRecords([detail], 'selected')">标为入选</Button><Button @click="markRecords([detail], 'excluded')">标为排除</Button><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
+        </div>
+      </template>
+    </Drawer>
   </main>
 </template>
+
+<style scoped>
+.keyword-stage-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.keyword-job-note {
+  margin-bottom: 20px;
+}
+
+.keyword-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.keyword-summary > div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  background: var(--hci-paper);
+  border: 1px solid var(--hci-border, #e6ebee);
+  border-radius: 12px;
+}
+
+.keyword-summary span {
+  color: var(--hci-muted, #64748b);
+}
+
+.keyword-summary b {
+  font-size: 25px;
+}
+
+.keyword-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.keyword-tags :deep(.ant-tag) {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.keyword-term {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.keyword-detail-title {
+  margin-bottom: 12px;
+  font-size: 22px;
+}
+
+.keyword-dimension {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--hci-border, #e6ebee);
+}
+
+.keyword-dimension > div {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.keyword-dimension p {
+  margin: 8px 0;
+}
+
+:global(.dark) .keyword-summary > div {
+  background: var(--hci-paper);
+}
+
+@media (max-width: 760px) {
+  .keyword-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>

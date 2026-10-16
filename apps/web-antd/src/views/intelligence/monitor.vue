@@ -71,6 +71,7 @@ const auditRows = computed(() =>
   ),
 );
 const statuses = {
+  awaiting_review: '待人工筛选',
   queued: '待执行',
   running: '执行中',
   completed: '已完成',

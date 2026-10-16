@@ -155,6 +155,7 @@ function stableId(value: string) {
 }
 
 export async function discoverSites(input: {
+  action?: 'keyword_research';
   accessKey: string;
   apiUrl: string;
   depth?: number;
@@ -164,6 +165,7 @@ export async function discoverSites(input: {
   maxSites: number;
   productsPerSite?: number;
   sources?: string[];
+  signal?: AbortSignal;
 }) {
   const response = await fetch(input.apiUrl.replace(/\/$/, ''), {
     method: 'POST',
@@ -172,6 +174,7 @@ export async function discoverSites(input: {
       'x-research-key': input.accessKey,
     },
     body: JSON.stringify({
+      action: input.action,
       keywords: input.keywords,
       markets: input.markets,
       maxSites: input.maxSites,
@@ -180,6 +183,7 @@ export async function discoverSites(input: {
       limit: input.limit,
       sources: input.sources,
     }),
+    signal: input.signal,
   });
   const payload = (await response.json().catch(() => ({}))) as
     | DiscoveryResponse

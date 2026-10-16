@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 // oxlint-disable-next-line vitest/no-import-node-test -- this Worker package uses Node's built-in test runner
 import test from 'node:test';
 
-import {
+import worker, {
   amazonSuggestUrl,
   braveSearchRequest,
   calculate28DayGrowth,
@@ -357,6 +357,44 @@ test('an annual curve survives daily request failure and an official capture sur
     );
     assert.equal(missing.status, 'error');
     assert.equal(missing.series.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('stage one refuses discovery sources and works without a Brave credential', async () => {
+  const env = {
+    RESEARCH_ACCESS_KEY: 'test-access',
+    ALLOWED_ORIGINS: 'https://app.example',
+  };
+  const request = (sources) =>
+    new Request('https://worker.example', {
+      method: 'POST',
+      headers: {
+        origin: 'https://app.example',
+        'content-type': 'application/json',
+        'x-research-key': 'test-access',
+      },
+      body: JSON.stringify({
+        action: 'keyword_research',
+        keywords: ['magnesium'],
+        markets: ['US'],
+        sources,
+      }),
+    });
+  const blocked = await worker.fetch(request(['site_discovery']), env);
+  assert.equal(blocked.status, 400);
+  const blockedBody = await blocked.json();
+  assert.match(blockedBody.error, /不接受站点或商品/);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json(['magnesium', ['magnesium gummies']]);
+  try {
+    const response = await worker.fetch(request(['google_autocomplete']), env);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.groups, []);
+    assert.equal(body.suggestions[0].items[0].term, 'magnesium gummies');
   } finally {
     globalThis.fetch = originalFetch;
   }

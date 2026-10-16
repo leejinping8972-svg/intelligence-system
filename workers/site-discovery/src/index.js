@@ -1595,7 +1595,7 @@ export default {
       );
     if (!originState.allowed)
       return json({ error: '来源未授权' }, 403, originState.origin || 'null');
-    if (!env.BRAVE_SEARCH_API_KEY || !env.RESEARCH_ACCESS_KEY)
+    if (!env.RESEARCH_ACCESS_KEY)
       return json(
         { error: '研究服务尚未完成密钥配置' },
         503,
@@ -1605,6 +1605,26 @@ export default {
       return json({ error: '研究访问码无效' }, 401, originState.origin);
     try {
       const input = await request.json();
+      if (input.action === 'keyword_research') {
+        const allowed = new Set([
+          'amazon_autocomplete',
+          'google_autocomplete',
+          'google_trends',
+        ]);
+        if (
+          !Array.isArray(input.sources) ||
+          input.sources.length === 0 ||
+          input.sources.some((source) => !allowed.has(source))
+        )
+          throw new Error(
+            '关键词研究仅允许找词与趋势数据源，不接受站点或商品采集',
+          );
+      }
+      const needsSiteDiscovery =
+        input.action !== 'enrich_products' &&
+        (!input.sources?.length || input.sources.includes('site_discovery'));
+      if (needsSiteDiscovery && !env.BRAVE_SEARCH_API_KEY)
+        throw new Error('独立站研究服务尚未配置搜索密钥');
       const result =
         input.action === 'enrich_products'
           ? await runProductEnrichment(input)
