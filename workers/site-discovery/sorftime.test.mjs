@@ -163,6 +163,7 @@ test('reads matching results from a long-lived SSE stream without waiting for di
 
 function mcpMock(calls, error = false) {
   return async (_url, options) => {
+    assert.equal(options.redirect, 'manual');
     const request = JSON.parse(options.body);
     calls.push(request);
     if (!request.id) return new Response(null, { status: 202 });
@@ -216,6 +217,26 @@ test('connection checks only discover tools and never consume keyword calls', as
     calls.some((item) => item.method === 'tools/call'),
     false,
   );
+});
+
+test('redirects stop on Workers-compatible manual mode without forwarding the token', async () => {
+  let calls = 0;
+  const result = await sorftimeStatus(
+    { SORFTIME_MCP_TOKEN: 'private-test-token' },
+    true,
+    async (_url, options) => {
+      assert.equal(options.redirect, 'manual');
+      calls += 1;
+      return new Response(null, {
+        status: 302,
+        headers: { location: 'https://untrusted.example' },
+      });
+    },
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.ready, false);
+  assert.match(result.message, /重定向/);
+  assert.equal(JSON.stringify(result).includes('private-test-token'), false);
 });
 
 test('Sorftime respects its call budget and never invokes product tools', async () => {

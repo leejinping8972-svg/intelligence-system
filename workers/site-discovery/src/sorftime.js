@@ -81,9 +81,15 @@ async function connect(token, fetcher = fetch) {
         method,
         params,
       }),
-      redirect: 'error',
+      redirect: 'manual',
       signal: AbortSignal.timeout(25_000),
     });
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      throw new Error(
+        'Sorftime MCP 返回重定向，已停止转发以保护 Token，请检查服务地址',
+      );
+    }
     session = response.headers.get('mcp-session-id') || session;
     if (!response.ok)
       throw new Error(`Sorftime MCP 返回HTTP ${response.status}`);
