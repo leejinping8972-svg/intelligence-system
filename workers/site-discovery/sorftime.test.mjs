@@ -161,6 +161,23 @@ test('reads matching results from a long-lived SSE stream without waiting for di
   assert.equal(cancelled, true);
 });
 
+test('normalizes Sorftime nonbreaking spaces before keyword deduplication and trend lookup', () => {
+  const items = parseSorftimeKeywords(
+    {
+      structuredContent: {
+        data: [
+          { keyword: 'magnesium\u202Fglycinate' },
+          { keyword: ' magnesium  glycinate ' },
+        ],
+      },
+    },
+    10,
+  );
+  assert.deepEqual(items, [
+    { term: 'magnesium glycinate', source: 'Sorftime · Amazon' },
+  ]);
+});
+
 function mcpMock(calls, error = false) {
   return async (_url, options) => {
     assert.equal(options.redirect, 'manual');
@@ -261,6 +278,69 @@ test('Sorftime respects its call budget and never invokes product tools', async 
     amzSite: 'US',
     searchKeyword: 'magnesium',
   });
+});
+
+test('adapts the current keyword_extends schema and stateless metadata gateway', async () => {
+  const calls = [];
+  const budget = { remaining: 1, used: 0 };
+  const result = await sorftimeSuggestions(
+    'collagen',
+    'MX',
+    1,
+    10,
+    budget,
+    { SORFTIME_MCP_TOKEN: 'private' },
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      calls.push(request);
+      if (request.method === 'initialize')
+        return new Response('request error', { status: 400 });
+      const response =
+        request.method === 'tools/list'
+          ? {
+              tools: [
+                {
+                  name: 'keyword_extends',
+                  inputSchema: {
+                    properties: {
+                      keyword: { type: 'string' },
+                      keyword_support_site: { enum: ['us', 'mx'] },
+                      page: { type: 'integer' },
+                    },
+                  },
+                },
+              ],
+            }
+          : {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    Data: [{ keyword: 'colageno hidrolizado' }],
+                  }),
+                },
+              ],
+            };
+      return Response.json({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: response,
+      });
+    },
+  );
+  assert.equal(result.status, 'success');
+  assert.equal(budget.used, 1);
+  assert.deepEqual(
+    calls
+      .filter((item) => item.method === 'tools/call')
+      .map((item) => item.params),
+    [
+      {
+        name: 'keyword_extends',
+        arguments: { keyword_support_site: 'mx', keyword: 'collagen', page: 1 },
+      },
+    ],
+  );
 });
 
 test('unsupported markets and exhausted budgets make no upstream calls', async () => {

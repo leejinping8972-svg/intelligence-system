@@ -1,6 +1,9 @@
 const MCP_URL = 'https://mcp.sorftime.com/';
 const SOURCE = 'Sorftime · Amazon';
-const TOOL = 'keyword_related_words';
+const TOOLS = {
+  keyword_extends: { keyword: 'keyword', market: 'keyword_support_site' },
+  keyword_related_words: { keyword: 'searchKeyword', market: 'amzSite' },
+};
 const MARKETS = new Set(['MX', 'US']);
 
 function safeError(message, token) {
@@ -72,6 +75,7 @@ async function connect(token, fetcher = fetch) {
       headers: {
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
+        'user-agent': 'intelligence-system/1.0 Sorftime-MCP-client',
         ...(session ? { 'mcp-session-id': session } : {}),
         ...(protocol ? { 'mcp-protocol-version': protocol } : {}),
       },
@@ -91,8 +95,12 @@ async function connect(token, fetcher = fetch) {
       );
     }
     session = response.headers.get('mcp-session-id') || session;
-    if (!response.ok)
-      throw new Error(`Sorftime MCP 返回HTTP ${response.status}`);
+    if (!response.ok) {
+      const detail = safeError(await response.text(), token).slice(0, 400);
+      throw new Error(
+        `Sorftime MCP ${method} 返回HTTP ${response.status}：${detail}`,
+      );
+    }
     if (notify) {
       await response.body?.cancel();
       return;
@@ -100,26 +108,54 @@ async function connect(token, fetcher = fetch) {
     return readMcpResult(response, id);
   };
   try {
-    const initialized = await rpc('initialize', {
-      protocolVersion: '2025-03-26',
-      capabilities: {},
-      clientInfo: {
-        name: 'intelligence-system-keyword-research',
-        version: '1.0.0',
-      },
-    });
-    protocol = initialized.protocolVersion || '2025-03-26';
-    await rpc('notifications/initialized', {}, true);
-    const listed = await rpc('tools/list', {});
-    const tool = listed.tools?.find((item) => item.name === TOOL);
-    if (!tool)
+    let listed;
+    try {
+      const initialized = await rpc('initialize', {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: {
+          name: 'intelligence-system-keyword-research',
+          version: '1.0.0',
+        },
+      });
+      protocol = initialized.protocolVersion || '2025-03-26';
+      await rpc('notifications/initialized', {}, true);
+    } catch (error) {
+      if (
+        !/Sorftime MCP (initialize|notifications\/initialized) 返回HTTP 400/.test(
+          error.message,
+        )
+      )
+        throw error;
+      session = undefined;
+      protocol = undefined;
+      // Sorftime also exposes stateless JSON-RPC; metadata discovery remains authenticated.
+      listed = await rpc('tools/list', {});
+    }
+    listed ||= await rpc('tools/list', {});
+    const tool = Object.keys(TOOLS)
+      .map((name) => listed.tools?.find((item) => item.name === name))
+      .find(Boolean);
+    if (!tool) {
+      const available = (listed.tools || [])
+        .filter((item) =>
+          /keyword|related|关键词|authorization/i.test(item.name),
+        )
+        .map(
+          (item) =>
+            `${item.name}(${Object.keys(item.inputSchema?.properties || {}).join(',')})`,
+        )
+        .slice(0, 12)
+        .join('；');
       throw new Error(
-        'Sorftime Token 未授权延伸关键词工具，请检查 MCP 权限与额度',
+        `Sorftime 返回的关键词工具需要适配：${available || '未返回关键词工具'}`,
       );
+    }
     const properties = tool.inputSchema?.properties || {};
-    if (!properties.amzSite || !properties.searchKeyword)
+    const fields = TOOLS[tool.name];
+    if (!properties[fields.market] || !properties[fields.keyword])
       throw new Error('Sorftime 关键词参数已变更，需更新接入后再调用');
-    return { rpc, tool };
+    return { rpc, tool, fields };
   } catch (error) {
     throw new Error(
       safeError(error instanceof Error ? error.message : '', token),
@@ -146,7 +182,8 @@ export async function sorftimeStatus(env, verify = false, fetcher = fetch) {
     };
   try {
     const client = await connect(token, fetcher);
-    const supported = client.tool.inputSchema.properties.amzSite.enum;
+    const supported =
+      client.tool.inputSchema.properties[client.fields.market].enum;
     return {
       configured: true,
       ready: true,
@@ -155,7 +192,7 @@ export async function sorftimeStatus(env, verify = false, fetcher = fetch) {
       ...(Array.isArray(supported)
         ? {
             markets: [...MARKETS].filter((market) =>
-              supported.includes(market),
+              supported.some((value) => String(value).toUpperCase() === market),
             ),
           }
         : {}),
@@ -174,6 +211,14 @@ export function parseSorftimeKeywords(result, limit) {
   if (result.isError)
     throw new Error('Sorftime 工具返回错误，请检查关键词、权限与剩余额度');
   const keywords = new Map();
+  const add = (term) => {
+    const normalized = term.normalize('NFKC').replaceAll(/\s+/g, ' ').trim();
+    if (normalized && normalized.length <= 255)
+      keywords.set(normalized.toLocaleLowerCase(), {
+        term: normalized,
+        source: SOURCE,
+      });
+  };
   const visit = (value, keywordArray = false, depth = 0) => {
     if (depth > 8 || value === null || value === undefined) return;
     if (typeof value === 'string') {
@@ -184,8 +229,7 @@ export function parseSorftimeKeywords(result, limit) {
         } catch {
           /* prose is not a keyword list */
         }
-      } else if (keywordArray && text.length > 0 && text.length <= 255)
-        keywords.set(text.toLocaleLowerCase(), { term: text, source: SOURCE });
+      } else if (keywordArray) add(text);
       return;
     }
     if (Array.isArray(value)) {
@@ -198,11 +242,7 @@ export function parseSorftimeKeywords(result, limit) {
       value.Keyword ??
       value.searchKeyword ??
       value.SearchKeyword;
-    if (typeof term === 'string' && term.trim() && term.length <= 255)
-      keywords.set(term.trim().toLocaleLowerCase(), {
-        term: term.trim(),
-        source: SOURCE,
-      });
+    if (typeof term === 'string') add(term);
     for (const key of [
       'Data',
       'data',
@@ -252,8 +292,12 @@ export async function sorftimeSuggestions(
   let message = '';
   try {
     const client = await connect(env.SORFTIME_MCP_TOKEN, fetcher);
-    const supported = client.tool.inputSchema.properties.amzSite.enum;
-    if (Array.isArray(supported) && !supported.includes(market))
+    const properties = client.tool.inputSchema.properties;
+    const supported = properties[client.fields.market].enum;
+    const siteValue = Array.isArray(supported)
+      ? supported.find((value) => String(value).toUpperCase() === market)
+      : market;
+    if (!siteValue)
       return {
         source: SOURCE,
         items: [],
@@ -265,8 +309,14 @@ export async function sorftimeSuggestions(
       budget.remaining -= 1;
       budget.used += 1;
       const response = await client.rpc('tools/call', {
-        name: TOOL,
-        arguments: { amzSite: market, searchKeyword: term },
+        name: client.tool.name,
+        arguments: {
+          [client.fields.market]: siteValue,
+          [client.fields.keyword]: term,
+          ...(properties.page
+            ? { page: properties.page.type === 'string' ? '1' : 1 }
+            : {}),
+        },
       });
       for (const item of parseSorftimeKeywords(response, limit))
         items.set(item.term.toLocaleLowerCase(), item);
