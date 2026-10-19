@@ -1,21 +1,36 @@
 {
-  "title": "关键词分析标签支持多选筛选",
+  "id": "20261019110019-platform-content",
+  "title": "平台商品采集、决策标签与公共内容搜索",
+  "builtAt": "2026-10-19T11:00:19.583093Z",
+  "operator": "Codex",
+  "includedCommits": [
+    "063a8503b5b00547ba54cc0e2e20225ceed839cf",
+    "7121f10618af5aa71af993bf6bfbdafd5d72007f",
+    "9a1fac103eac4de44f1a0ec16e8dfcf61fa7f594"
+  ],
   "files": [
-    "apps/web-antd/src/views/intelligence/research.vue"
+    "server/platform-products-jobs.mjs",
+    "server/platform-products-provider.mjs",
+    "server/platform-product-data.mjs",
+    "server/public-content-store.mjs",
+    "server/public-content-engine.mjs",
+    "server/index.mjs",
+    "server/runner.mjs",
+    "server/store.mjs",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
+    "apps/web-antd/src/views/intelligence/signals.vue",
+    "AGENTS.md",
+    "TESTING.md"
   ],
   "changes": [
-    "分析标签改为可搜索的多选筛选，匹配任意已选标签，同一关键词不重复显示。",
-    "支持移除单个标签、清空全部及重置筛选；变更标签后返回第一页并清空勾选。",
-    "继续与关键词搜索、品类、评级、时间和人工状态等筛选条件组合。"
+    "按关键词从Sorftime Amazon及Semrush PLA获取商品，分别保存来源、商品标识和采集时间。",
+    "后台按预算补图片、属性与当前ASIN历史；缺失指标不猜填，提供可追溯决策标签及筛选。",
+    "公共内容搜索整合社媒、健康资讯和学术来源，支持收藏、关键词/商品关联及已有字幕队列。",
+    "普通任务、趋势与公共内容队列保留检查点；功能开发与集成发布分会话协作。"
   ],
   "validation": [
-    "Vue TypeScript 类型检查通过。",
-    "服务器模式前端生产构建通过。",
-    "浏览器以16条隔离测试数据验证：单标签4条、两标签并集12条、移除标签8条、清空16条；组合搜索1条，重置16条。",
-    "验证标签搜索、从第二页筛选自动回到第一页；未触发任何付费采集或模型调用。"
-  ],
-  "id": "20261019070500-9534f960",
-  "builtAt": "2026-10-19T07:05:00.573Z",
-  "sourceDigest": "9534f960461bb93033c8f417bc9931f5415d9016b5885eb60cc840b6c99e865a",
-  "operator": "Codex"
+    "发布前执行本批99项相关单测、类型检查、前后端构建和隔离MySQL接口/关联测试。",
+    "准确候选提交的GitHub CI须成功后才切换正式；不额外调用真实收费来源。"
+  ]
 }
