@@ -1,0 +1,72 @@
+name: Test integration source
+
+on:
+  push:
+    branches: [testing]
+  pull_request:
+    branches: [testing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install server dependencies
+        run: npm ci --ignore-scripts --prefix server
+      - name: Product and existing collection tests (mocked providers)
+        run: |
+          node --test server/platform-products.test.mjs server/semrush.test.mjs server/product-queue.test.mjs server/job-progress.test.mjs workers/site-discovery/sorftime.test.mjs
+          pnpm exec vitest run tests/product-decisions.test.ts
+      - name: Frontend type check
+        run: pnpm --filter @vben/web-antd run typecheck
+      - name: Build server frontend
+        env:
+          VITE_HCI_SERVER: 'true'
+          VITE_HCI_DEMO: 'false'
+        run: pnpm --filter @vben/web-antd exec vite build --mode production --base=/admin/
+      - name: Build API image
+        run: docker build -t intelligence-platform-products-qa -f server/Dockerfile .
+      - name: Isolated MySQL integration (no production network or provider keys)
+        run: |
+          docker network create --internal platform-products-qa-net
+          docker run -d --name platform-products-qa-db --network platform-products-qa-net \
+            --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
+            -e MYSQL_DATABASE=platform_products_qa -e MYSQL_USER=qa \
+            -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
+            --innodb-buffer-pool-size=64M --performance-schema=OFF
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec platform-products-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+          docker run --rm --network platform-products-qa-net --memory=256m \
+            -e PLATFORM_PRODUCTS_QA=disposable-only -e QA_MYSQL_HOST=platform-products-qa-db \
+            --entrypoint node intelligence-platform-products-qa platform-products.integration.mjs
+      - name: Clean disposable database
+        if: always()
+        run: |
+          docker rm -f platform-products-qa-db || true
+          docker network rm platform-products-qa-net || true
+      - name: Upload test frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-testing-${{ github.sha }}
+          path: apps/web-antd/dist
+          retention-days: 7

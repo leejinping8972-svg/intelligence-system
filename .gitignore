@@ -79,6 +79,7 @@ README.zh-CN.md
 !.github/workflows/
 .github/workflows/*
 !.github/workflows/pages.yml
+!.github/workflows/testing.yml
 base.tar
 
 # Server credentials stay on the server or in the local SSH directory.
