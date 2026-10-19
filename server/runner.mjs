@@ -14,6 +14,7 @@ import { runInsightJob } from './insight-jobs.mjs';
 import { runProductsJob } from './product-jobs.mjs';
 import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
 import { productProgress } from './product-queue.mjs';
+import { runPlatformProducts } from './platform-products-jobs.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   if (
@@ -22,6 +23,7 @@ export function jobTasks(job) {
       'ad_analysis',
       'evidence_analysis',
       'products',
+      'platform_products',
     ].includes(job.input.kind)
   ) {
     const names = {
@@ -29,13 +31,16 @@ export function jobTasks(job) {
       ad_analysis: '广告拆解与分析',
       evidence_analysis: '需求语义分析',
       products: '站点商品采集',
+      platform_products: '平台商品发现与趋势补全',
     };
     return job.input.markets.map((market) => ({
       id: `${job.id}:${market}`,
       cloudJobId: job.id,
       market,
       mode: 'live',
-      stage: job.input.kind === 'products' ? 'products' : 'sites',
+      stage: ['products', 'platform_products'].includes(job.input.kind)
+        ? 'products'
+        : 'sites',
       title: `云端 · ${names[job.input.kind]} · ${label[market]}`,
       status: job.cancelled ? 'cancelled' : job.status,
       created:
@@ -47,14 +52,28 @@ export function jobTasks(job) {
       researchProgress: {
         kind: job.input.kind,
         done: job.checkpoint.index || 0,
-        total: job.input.records?.length || job.input.urls?.length || 1,
+        total:
+          job.checkpoint.work?.length ||
+          job.input.records?.length ||
+          job.input.urls?.length ||
+          1,
         evidence: job.checkpoint.evidenceIds?.length || 0,
         products: job.checkpoint.products || 0,
         requests: job.checkpoint.requests || 0,
         requestLimit: job.input.maxRequests,
         credits: job.checkpoint.creditsCharged,
         unknownCharges: job.checkpoint.unknownCharges || 0,
-        reportId: job.input.kind === 'products' ? '' : job.id,
+        reportId: ['products', 'platform_products'].includes(job.input.kind)
+          ? ''
+          : job.id,
+        ...(job.input.kind === 'platform_products'
+          ? {
+              semrushUnits: job.checkpoint.semrushUnits || 0,
+              semrushReserved: job.checkpoint.semrushReserved || 0,
+              semrushUnitLimit: job.input.semrushUnitLimit,
+              current: job.checkpoint.currentTerm || '',
+            }
+          : {}),
         transcriptSummary: job.checkpoint.transcriptSummary,
         ...(job.input.kind === 'products' &&
         job.checkpoint.productQueueVersion === 2
@@ -445,6 +464,8 @@ async function runLane(signal, trends = false) {
           )
             await runInsightJob(next);
           else if (next.input.kind === 'products') await runProductsJob(next);
+          else if (next.input.kind === 'platform_products')
+            await runPlatformProducts(next);
           else if (['ads', 'site_metrics'].includes(next.input.kind))
             await runMarketJob(next);
           else if (['sites', 'metrics'].includes(next.input.kind))

@@ -36,6 +36,8 @@ import {
   reviewInsight,
 } from './insight-jobs.mjs';
 import { submitProducts } from './product-jobs.mjs';
+import { submitPlatformProducts } from './platform-products-jobs.mjs';
+import { protectPlatformClientEdit } from './platform-product-data.mjs';
 import { registerRelease, releaseHistory } from './release-history.mjs';
 import { serveAdMedia } from './ad-media.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -68,6 +70,10 @@ async function api(input, user) {
     }
     case 'server_submit_products': {
       const job = await submitProducts(input);
+      return { jobId: job.id, tasks: jobTasks(job) };
+    }
+    case 'server_submit_platform_products': {
+      const job = await submitPlatformProducts(input);
       return { jobId: job.id, tasks: jobTasks(job) };
     }
     case 'server_release_history':
@@ -124,7 +130,16 @@ async function api(input, user) {
                 'DELETE FROM workspace_documents WHERE name=$1',
                 [`business:${entry.key}`],
               );
-          } else
+          } else {
+            if (entry.key.startsWith('products:') && !input.importOnly) {
+              const old = (
+                await connection.query(
+                  'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
+                  [`business:${entry.key}`],
+                )
+              ).rows[0]?.value;
+              entry.value = protectPlatformClientEdit(old, entry.value);
+            }
             await putDocument(
               'workspace_documents',
               `business:${entry.key}`,
@@ -132,6 +147,7 @@ async function api(input, user) {
               Boolean(input.importOnly),
               connection,
             );
+          }
         }
         await connection.query('COMMIT');
         return { saved: true };

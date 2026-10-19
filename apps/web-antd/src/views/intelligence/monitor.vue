@@ -126,7 +126,7 @@ const statuses = {
       </Button>
     </PageHeader>
     <div class="hci-demo-note">
-      关键词研究、趋势补齐由腾讯云后台执行并保存，可关闭浏览器，回来后自动恢复任务进度。历史本机任务及站点、商品功能仍按原方式运行。
+      关键词研究、趋势补齐、平台商品与站点采集由服务器后台执行并保存。关闭浏览器后继续，回来后可查看进度与结果；历史本机任务保留原记录。
       <Button
         size="small"
         :loading="cloudWorkspace.syncing"

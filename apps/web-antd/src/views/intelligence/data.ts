@@ -1,4 +1,5 @@
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
+import type { ProductDecisionData } from './product-decisions';
 
 import { computed, reactive, watch } from 'vue';
 
@@ -117,6 +118,36 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  sourceMetrics?: {
+    collectedAt?: string;
+    rating?: number;
+    reviewCount?: number;
+    monthlySales?: number;
+    reportedSales?: number;
+    salesRank?: number;
+    platformPotential?: number;
+    keywordsCount?: number;
+    position?: number;
+    keyword?: string;
+    shopName?: string;
+    timestamp?: number | string;
+    observedAt?: string;
+    urlKind?: string;
+  };
+  sourceContent?: {
+    collectedAt: string;
+    descriptions: string[];
+    attributes: Record<string, string>;
+    productInfo?: Record<string, string>;
+    aPlusImages?: string[];
+  };
+  imageUrls?: string[];
+  queryTerms?: string[];
+  decisionData?: ProductDecisionData;
+  sourceProvider?: string;
+  sourcePlatform?: string;
+  sourceProductId?: string;
+  sourceUrl?: string;
   id: string;
   title: string;
   brand: string;
@@ -248,6 +279,10 @@ export interface Review {
 }
 export interface Task {
   researchProgress?: {
+    semrushUnits?: number;
+    semrushReserved?: number;
+    semrushUnitLimit?: number;
+    current?: string;
     transcriptSummary?: {
       collected: number;
       unavailable: number;

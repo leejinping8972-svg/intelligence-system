@@ -61,7 +61,7 @@ export async function readMcpResult(response, id) {
   }
 }
 
-async function connect(token, fetcher = fetch) {
+export async function connect(token, fetcher = fetch, productTools = false) {
   if (!token) throw new Error('请先在数据源与设置保存 Sorftime MCP Token');
   const url = new URL(MCP_URL);
   url.searchParams.set('key', token);
@@ -133,6 +133,7 @@ async function connect(token, fetcher = fetch) {
       listed = await rpc('tools/list', {});
     }
     listed ||= await rpc('tools/list', {});
+    if (productTools) return { rpc, tools: listed.tools || [] };
     const tool = Object.keys(TOOLS)
       .map((name) => listed.tools?.find((item) => item.name === name))
       .find(Boolean);

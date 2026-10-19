@@ -25,6 +25,7 @@ import {
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import AdsCollectDialog from './components/AdsCollectDialog.vue';
+import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
 import { audit, filteredKeywords, marketName, state } from './data';
 import { assessKeyword } from './keyword-scoring';
 
@@ -183,6 +184,15 @@ const time = (r: Keyword) =>
         >
       </div>
       <div class="selected-toolbar">
+        <PlatformProductsDialog
+          :terms="adSelectable.map((k) => k.term)"
+          :disabled="
+            !cloudWorkspace.ready ||
+            state.market === 'ALL' ||
+            !adSelectable.length
+          "
+          label="获取平台商品与趋势"
+        />
         <AdsCollectDialog
           :keyword-ids="adSelectable.map((k) => k.id)"
           :disabled="!cloudWorkspace.ready"

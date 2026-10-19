@@ -20,6 +20,8 @@ dev-dist
 .stylelintcache
 yarn.lock
 package-lock.json
+!server/package-lock.json
+.artifacts/
 .VSCodeCounter
 **/backend-mock/data
 .omx

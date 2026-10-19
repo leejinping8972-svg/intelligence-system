@@ -6,6 +6,7 @@ const props = defineProps<{
   color: string;
   imageUrl?: string;
   label?: string;
+  sourceLabel?: string;
 }>();
 const imageFailed = ref(false);
 watch(
@@ -20,14 +21,14 @@ watch(
     v-if="imageUrl && !imageFailed"
     class="hci-product-art hci-product-photo"
     :class="[color]"
-    :aria-label="`${brand}商品官网图片`"
+    :aria-label="`${brand}商品图片`"
   >
     <img
       :src="imageUrl"
       :alt="`${brand}商品图片`"
       @error="imageFailed = true"
     />
-    <span class="hci-art-caption">官网商品图</span>
+    <span class="hci-art-caption">{{ sourceLabel || '官网商品图' }}</span>
   </div>
   <div
     v-else

@@ -111,7 +111,10 @@ const visibleRows = computed(() =>
       <span
         >对象 {{ task.researchProgress.done }} /
         {{ task.researchProgress.total }}</span
-      ><span v-if="task.researchProgress.kind === 'products'"
+      ><span
+        v-if="
+          ['products', 'platform_products'].includes(task.researchProgress.kind)
+        "
         >商品 {{ task.researchProgress.products }} 件</span
       ><span v-else>原文 {{ task.researchProgress.evidence }} 条</span
       ><span
@@ -121,15 +124,24 @@ const visibleRows = computed(() =>
         >确认扣除 {{ task.researchProgress.credits }} credits</span
       >
     </div>
+    <p
+      v-if="task.researchProgress.kind === 'platform_products'"
+      class="hci-subtle"
+    >
+      当前：{{ task.researchProgress.current || '等待处理' }}。Semrush 已确认
+      {{ task.researchProgress.semrushUnits || 0 }} API units，保守预留
+      {{ task.researchProgress.semrushReserved || 0 }} /
+      {{
+        task.researchProgress.semrushUnitLimit || 0
+      }}；报告返回未知时不自动重放收费请求。结果到商品情报库按数据来源查看。
+    </p>
     <p v-if="task.researchProgress.transcriptSummary" class="hci-subtle">
       视频转录：成功 {{ task.researchProgress.transcriptSummary.collected }} 条
       · 暂无文本 {{ task.researchProgress.transcriptSummary.unavailable }} 条 ·
       超出默认时长 {{ task.researchProgress.transcriptSummary.limited }} 条 ·
       接口失败 {{ task.researchProgress.transcriptSummary.failed }} 条 · 无视频
       {{ task.researchProgress.transcriptSummary.notVideo }} 条 · 未请求
-      {{
-        task.researchProgress.transcriptSummary.skipped
-      }}
+      {{ task.researchProgress.transcriptSummary.skipped }}
       条。广告文案与视频素材分别保留。
     </p>
     <template

@@ -1,4 +1,4 @@
-// workers/site-discovery/data/trends-snapshots.json
+// ../workers/site-discovery/data/trends-snapshots.json
 var trends_snapshots_default = [
   {
     keyword: "women's health gummies",
@@ -278,7 +278,7 @@ var trends_snapshots_default = [
   }
 ];
 
-// workers/site-discovery/src/provider-config.js
+// ../workers/site-discovery/src/provider-config.js
 var STORAGE_KEY = "provider:sorftime:mcp:v1";
 var encode = (value) => btoa(String.fromCodePoint(...value));
 var decode = (value) => Uint8Array.from(atob(value), (letter) => letter.codePointAt(0));
@@ -349,7 +349,7 @@ async function readSorftimeToken(env) {
   return env.SORFTIME_MCP_TOKEN || "";
 }
 
-// workers/site-discovery/src/server-relay.js
+// ../workers/site-discovery/src/server-relay.js
 var SERVER_ACTIONS = /* @__PURE__ */ new Set([
   "server_cancel",
   "server_clear_keywords",
@@ -382,7 +382,7 @@ async function serverRelay(input, env, fetcher = fetch) {
   return payload;
 }
 
-// workers/site-discovery/src/sorftime.js
+// ../workers/site-discovery/src/sorftime.js
 var MCP_URL = "https://mcp.sorftime.com/";
 var SOURCE = "Sorftime \xB7 Amazon";
 var TOOLS = {
@@ -434,7 +434,7 @@ async function readMcpResult(response, id) {
     await reader.cancel();
   }
 }
-async function connect(token, fetcher = fetch) {
+async function connect(token, fetcher = fetch, productTools = false) {
   if (!token) throw new Error("\u8BF7\u5148\u5728\u6570\u636E\u6E90\u4E0E\u8BBE\u7F6E\u4FDD\u5B58 Sorftime MCP Token");
   const url = new URL(MCP_URL);
   url.searchParams.set("key", token);
@@ -503,6 +503,7 @@ async function connect(token, fetcher = fetch) {
       listed = await rpc("tools/list", {});
     }
     listed ||= await rpc("tools/list", {});
+    if (productTools) return { rpc, tools: listed.tools || [] };
     const tool = Object.keys(TOOLS).map((name) => listed.tools?.find((item) => item.name === name)).find(Boolean);
     if (!tool) {
       const available = (listed.tools || []).filter(
@@ -693,7 +694,7 @@ async function sorftimeSuggestions(keyword, market, depth, limit, budget, env, f
   }
 }
 
-// workers/site-discovery/src/index.js
+// ../workers/site-discovery/src/index.js
 var MARKET_OPTIONS = {
   US: {
     country: "us",
@@ -2109,6 +2110,7 @@ var src_default = {
 export {
   calculate28DayGrowth,
   classifyStore,
+  connect as connectSorftime,
   src_default as default,
   extractJsonLdProducts,
   fetchGoogleTrendsBatch,
@@ -2117,5 +2119,6 @@ export {
   isCandidateUrl,
   productFromJsonLd,
   productPageUrls,
+  readSorftimeToken,
   trendSeriesMessage
 };

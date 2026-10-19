@@ -19,6 +19,14 @@ import {
 import PageHeader from './components/PageHeader.vue';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import ProductDecisionTags from './components/ProductDecisionTags.vue';
+import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
+import {
+  productDecisions,
+  productDecisionFilters,
+  PRODUCT_DECISION_RULES,
+  productDataSource,
+} from './product-decisions';
 import type { Product } from './data';
 import {
   categories,
@@ -40,6 +48,15 @@ const category = ref('ALL');
 const favorites = ref(false);
 const benefitFilter = ref('ALL');
 const ingredientFilter = ref('ALL');
+const decisionFilter = ref('ALL');
+const decisionRulesOpen = ref(false);
+const sourceFilter = ref('ALL');
+const sourceOptions = computed(() => [
+  { label: '全部数据来源', value: 'ALL' },
+  ...[...new Set(filteredProducts.value.map(productDataSource))].map(
+    (value) => ({ label: value, value }),
+  ),
+]);
 const selected = ref<string>();
 const compareIds = ref<string[]>([]);
 const compareOpen = ref(false);
@@ -141,6 +158,10 @@ const rows = computed(() =>
           (item) => item.name === ingredientFilter.value,
         )) &&
       (!favorites.value || p.favorite) &&
+      (sourceFilter.value === 'ALL' ||
+        productDataSource(p) === sourceFilter.value) &&
+      (decisionFilter.value === 'ALL' ||
+        productDecisions(p).some((tag) => tag.key === decisionFilter.value)) &&
       (!siteFilter.value || p.siteId === siteFilter.value) &&
       (!keywordFilter.value ||
         state.keywords
@@ -162,6 +183,8 @@ watch(
     favorites,
     benefitFilter,
     ingredientFilter,
+    decisionFilter,
+    sourceFilter,
     siteFilter,
     keywordFilter,
     () => state.market,
@@ -203,6 +226,7 @@ function toggleCompare(id: string) {
       title="商品情报库"
       description="从配方、规格到市场定位，建立可追溯的商品认知。"
     >
+      <PlatformProductsDialog />
       <Button
         :disabled="!rows.length"
         @click="
@@ -223,13 +247,25 @@ function toggleCompare(id: string) {
                 .map((item) => `${item.name}｜${item.amount}｜${item.role}`)
                 .join('；'),
               商品图片: p.imageUrl || '',
+              数据来源: [p.sourceProvider, p.sourcePlatform]
+                .filter(Boolean)
+                .join(' · '),
+              决策标签: productDecisions(p)
+                .map((item) => item.label)
+                .join('、'),
+              决策依据: productDecisions(p)
+                .map(
+                  (item) =>
+                    `${item.label}：${item.reason} 来源：${item.source} 日期：${item.date}`,
+                )
+                .join('；'),
               已采集字段: p.collectionFields?.join('、') || '',
               独立站品牌:
                 state.sites.find((site) => site.id === p.siteId)?.brand || '',
               独立站域名:
                 state.sites.find((site) => site.id === p.siteId)?.domain || '',
               证据网址: p.evidenceUrl || '',
-              性质: p.dataNature === 'collected' ? '官网实采' : '演示',
+              性质: productDataSource(p),
             })),
           )
         "
@@ -288,10 +324,21 @@ function toggleCompare(id: string) {
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
+        /><Select
+          v-model:value="decisionFilter"
+          :options="productDecisionFilters"
+          aria-label="按商品决策标签筛选"
+          style="min-width: 200px"
+        /><Select
+          v-model:value="sourceFilter"
+          :options="sourceOptions"
+          aria-label="按商品数据来源筛选"
+          style="min-width: 210px"
         /><Checkbox v-model:checked="favorites">仅看收藏</Checkbox
         ><span class="hci-toolbar-end hci-subtle"
           >{{ rows.length }} 个商品 · 关联
-          {{ new Set(rows.map((p) => p.siteId)).size }} 家独立站</span
+          {{ new Set(rows.map((p) => p.siteId).filter(Boolean)).size }}
+          家独立站</span
         >
       </div>
     </section>
@@ -308,6 +355,7 @@ function toggleCompare(id: string) {
       <span class="hci-subtle"
         >{{ rows.length }} 个商品 · 当前第 {{ page }} 页</span
       >
+      <Button @click="decisionRulesOpen = true">决策标签规则</Button>
     </div>
     <div v-if="viewMode === 'cards'" class="hci-product-grid">
       <article
@@ -324,6 +372,7 @@ function toggleCompare(id: string) {
             :color="product.color"
             :brand="product.brand"
             :image-url="product.imageUrl"
+            :source-label="productDataSource(product)"
             :label="
               product.form === '粉剂'
                 ? 'FIBER\nBLEND'
@@ -341,6 +390,7 @@ function toggleCompare(id: string) {
             {{ product.title }}
           </button>
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
+          <ProductDecisionTags :product="product" />
           <div class="hci-product-meta">
             <Tag>{{ product.category }}</Tag
             ><Tag :color="product.reviewed ? 'green' : 'orange'">
@@ -348,7 +398,7 @@ function toggleCompare(id: string) {
                 product.reviewed
                   ? '已核验示例'
                   : product.dataNature === 'collected'
-                    ? '官网实采 · 待审核'
+                    ? `${productDataSource(product)} · 待审核`
                     : '待审核'
               }}
             </Tag>
@@ -377,10 +427,11 @@ function toggleCompare(id: string) {
               <b v-if="product.ingredientInsights.length">{{
                 product.ingredientInsights.map((item) => item.name).join(' · ')
               }}</b>
-              <span v-else class="hci-subtle">官网未提供明确配方，待识别</span>
+              <span v-else class="hci-subtle">来源未提供明确配方，待补充</span>
             </div>
           </div>
           <button
+            v-if="product.siteId"
             class="hci-product-site"
             @click="
               router.push({ path: '/sites', query: { site: product.siteId } })
@@ -392,6 +443,15 @@ function toggleCompare(id: string) {
             }}</b>
             <span>查看档案 →</span>
           </button>
+          <a
+            v-else-if="product.sourceUrl"
+            class="hci-product-site"
+            :href="product.sourceUrl"
+            target="_blank"
+            rel="noreferrer"
+            ><span>商品来源</span><b>{{ productDataSource(product) }}</b
+            ><span>原始商品 ↗</span></a
+          >
           <div class="hci-product-bottom">
             <span class="hci-price">{{
               product.price > 0
@@ -428,10 +488,11 @@ function toggleCompare(id: string) {
       :columns="[
         { title: '商品', key: 'product', width: 320, fixed: 'left' },
         { title: '市场 / 品类', key: 'category', width: 150 },
+        { title: '决策标签（点击看依据）', key: 'decisions', width: 280 },
         { title: '规格 / 剂型', key: 'spec', width: 170 },
         { title: '配方与成分', key: 'ingredient', width: 240 },
         { title: '价格', key: 'price', width: 130 },
-        { title: '独立站 / 采集字段', key: 'source', width: 190 },
+        { title: '数据来源 / 独立站', key: 'source', width: 220 },
         { title: '操作', key: 'actions', width: 210, fixed: 'right' },
       ]"
     >
@@ -463,6 +524,9 @@ function toggleCompare(id: string) {
             </div>
           </div></template
         >
+        <template v-else-if="column.key === 'decisions'">
+          <ProductDecisionTags :product="record as Product" />
+        </template>
         <template v-else-if="column.key === 'category'"
           >{{ marketName(record.market) }}
           <p>
@@ -483,7 +547,9 @@ function toggleCompare(id: string) {
           record.price > 0 ? money(record.price, record.currency) : '价格待获取'
         }}</template>
         <template v-else-if="column.key === 'source'"
+          ><Tag>{{ productDataSource(record) }}</Tag
           ><Button
+            v-if="record.siteId"
             type="link"
             @click="
               router.push({ path: '/sites', query: { site: record.siteId } })
@@ -523,8 +589,23 @@ function toggleCompare(id: string) {
     </div>
     <div class="hci-demo-footer">
       <span>原币种价格 · 不同包装与币种不直接排名</span
-      ><span>官网实采记录保留证据网址，演示记录继续标注为样本</span>
+      ><span
+        >平台与官网数据分别保留来源；首次发现不等于新品，缺历史不推测增长</span
+      >
     </div>
+    <Modal
+      v-model:open="decisionRulesOpen"
+      title="商品决策标签规则"
+      :footer="null"
+    >
+      <p>{{ PRODUCT_DECISION_RULES }}</p>
+      <p style="margin-top: 12px">
+        新品需要平台上架日期，首次发现不等于新品。销量、排名、关键词覆盖分别判断；不会用关键词搜索热度代替商品销量。历史不足或数据过旧时保留待补充状态。
+      </p>
+      <p style="margin-top: 12px">
+        偶发尖峰要求至少三个前期完整周期、一个明显峰值和两个后续回落周期。数据缺失不按0处理，未结束的周期不参与比较。
+      </p>
+    </Modal>
     <ProductDrawer :id="selected" @close="selected = undefined" /><Modal
       v-model:open="compareOpen"
       title="商品对比"

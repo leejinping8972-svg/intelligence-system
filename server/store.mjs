@@ -61,7 +61,7 @@ export async function saveKeyword(value, importOnly = false, client = pool) {
           ? {
               ...record,
               ...Object.fromEntries(
-                ['id', 'favorite', 'reviewStatus', 'reviewNote', 'metrics']
+                ['id', 'favorite', 'reviewStatus', 'reviewNote', 'metrics', 'productIds']
                   .filter((key) => old[key] !== undefined)
                   .map((key) => [key, old[key]]),
               ),
@@ -80,11 +80,12 @@ export async function saveKeyword(value, importOnly = false, client = pool) {
     'id', research_keywords.data->'id', 'favorite', research_keywords.data->'favorite',
     'reviewStatus', research_keywords.data->'reviewStatus', 'reviewNote', research_keywords.data->'reviewNote',
     'metrics', research_keywords.data->'metrics',
+    'productIds', COALESCE(research_keywords.data->'productIds', EXCLUDED.data->'productIds'),
     'siteIds', research_keywords.data->'siteIds', 'siteCollection', research_keywords.data->'siteCollection', 'semrushCollection', research_keywords.data->'semrushCollection', 'adCollection', research_keywords.data->'adCollection'), updated_at=now()`;
   await client.query(
     sql(
       `INSERT INTO research_keywords(natural_key,data) VALUES($1,$2) ON CONFLICT(natural_key) ${merge}`,
-      `INSERT ${importOnly ? 'IGNORE' : ''} INTO research_keywords(natural_key,data) VALUES($1,$2) ${importOnly ? '' : `ON DUPLICATE KEY UPDATE data=JSON_SET(VALUES(data), '$.id',JSON_EXTRACT(data,'$.id'),'$.favorite',JSON_EXTRACT(data,'$.favorite'),'$.reviewStatus',JSON_EXTRACT(data,'$.reviewStatus'),'$.reviewNote',JSON_EXTRACT(data,'$.reviewNote'),'$.metrics',JSON_EXTRACT(data,'$.metrics'),'$.siteIds',JSON_EXTRACT(data,'$.siteIds'),'$.siteCollection',JSON_EXTRACT(data,'$.siteCollection'),'$.semrushCollection',JSON_EXTRACT(data,'$.semrushCollection'),'$.adCollection',JSON_EXTRACT(data,'$.adCollection')),updated_at=now()`}`,
+      `INSERT ${importOnly ? 'IGNORE' : ''} INTO research_keywords(natural_key,data) VALUES($1,$2) ${importOnly ? '' : `ON DUPLICATE KEY UPDATE data=JSON_SET(VALUES(data), '$.id',JSON_EXTRACT(data,'$.id'),'$.favorite',JSON_EXTRACT(data,'$.favorite'),'$.reviewStatus',JSON_EXTRACT(data,'$.reviewStatus'),'$.reviewNote',JSON_EXTRACT(data,'$.reviewNote'),'$.metrics',JSON_EXTRACT(data,'$.metrics'),'$.productIds',COALESCE(JSON_EXTRACT(data,'$.productIds'),JSON_EXTRACT(VALUES(data),'$.productIds')),'$.siteIds',JSON_EXTRACT(data,'$.siteIds'),'$.siteCollection',JSON_EXTRACT(data,'$.siteCollection'),'$.semrushCollection',JSON_EXTRACT(data,'$.semrushCollection'),'$.adCollection',JSON_EXTRACT(data,'$.adCollection')),updated_at=now()`}`,
     ),
     [naturalKey(record), record],
   );
@@ -122,68 +123,74 @@ export async function collect(job, step, request) {
     const provider = process.env.COLLECTOR_URL
       ? null
       : await import('./local-provider.mjs');
-    const response = request.sources?.includes('google_trends_part')
+    const response = request.sources?.includes('platform_products')
       ? Response.json(
           await (
-            await import('./trend-provider.mjs')
-          ).collectTrendPart(request),
+            await import('./platform-products-provider.mjs')
+          ).platformProductRequest(request),
         )
-      : request.sources?.includes('semantic_analysis')
+      : request.sources?.includes('google_trends_part')
         ? Response.json(
             await (
-              await import('./model-provider.mjs')
-            ).analyzeRecords(request.records, request.kind, request.context),
+              await import('./trend-provider.mjs')
+            ).collectTrendPart(request),
           )
-        : request.sources?.includes('social_research')
+        : request.sources?.includes('semantic_analysis')
           ? Response.json(
               await (
-                await import('./insight-jobs.mjs')
-              ).collectSocialPage(request),
+                await import('./model-provider.mjs')
+              ).analyzeRecords(request.records, request.kind, request.context),
             )
-          : request.sources?.includes('ad_transcript')
+          : request.sources?.includes('social_research')
             ? Response.json(
                 await (
                   await import('./insight-jobs.mjs')
-                ).collectAdTranscript(request),
+                ).collectSocialPage(request),
               )
-            : request.sources?.includes('ads')
+            : request.sources?.includes('ad_transcript')
               ? Response.json(
                   await (
-                    await import('./ads-provider.mjs')
-                  ).collectAds(request),
+                    await import('./insight-jobs.mjs')
+                  ).collectAdTranscript(request),
                 )
-              : request.sources?.includes('site_metrics')
+              : request.sources?.includes('ads')
                 ? Response.json(
                     await (
-                      await import('./site-metrics.mjs')
-                    ).collectSiteMetrics(request),
+                      await import('./ads-provider.mjs')
+                    ).collectAds(request),
                   )
-                : request.sources?.includes('semrush')
+                : request.sources?.includes('site_metrics')
                   ? Response.json(
                       await (
-                        await import('./semrush-reports.mjs')
-                      ).collectSemrush(request),
+                        await import('./site-metrics.mjs')
+                      ).collectSiteMetrics(request),
                     )
-                  : process.env.COLLECTOR_URL
-                    ? await fetch(process.env.COLLECTOR_URL, {
-                        method: 'POST',
-                        redirect: 'error',
-                        headers: {
-                          'content-type': 'application/json',
-                          'x-server-key': process.env.SERVER_BRIDGE_KEY,
-                        },
-                        body: JSON.stringify({
+                  : request.sources?.includes('semrush')
+                    ? Response.json(
+                        await (
+                          await import('./semrush-reports.mjs')
+                        ).collectSemrush(request),
+                      )
+                    : process.env.COLLECTOR_URL
+                      ? await fetch(process.env.COLLECTOR_URL, {
+                          method: 'POST',
+                          redirect: 'error',
+                          headers: {
+                            'content-type': 'application/json',
+                            'x-server-key': process.env.SERVER_BRIDGE_KEY,
+                          },
+                          body: JSON.stringify({
+                            ...request,
+                            action: 'server_collect',
+                          }),
+                          signal: AbortSignal.timeout(240_000),
+                        })
+                      : await provider.localCollect({
                           ...request,
-                          action: 'server_collect',
-                        }),
-                        signal: AbortSignal.timeout(240_000),
-                      })
-                    : await provider.localCollect({
-                        ...request,
-                        action: request.sources?.includes('site_discovery')
-                          ? 'site_research'
-                          : 'keyword_research',
-                      });
+                          action: request.sources?.includes('site_discovery')
+                            ? 'site_research'
+                            : 'keyword_research',
+                        });
     const result = await response.json();
     if (!response.ok)
       throw new Error(result.error || `采集服务HTTP ${response.status}`);
