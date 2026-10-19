@@ -1,12 +1,21 @@
 <script setup lang="ts">
+import { watch, watchEffect } from 'vue';
+import { useMediaQuery } from '@vueuse/core';
+import { useRouter } from 'vue-router';
+
 import { BasicLayout } from '@vben/layouts';
 import { updatePreferences } from '@vben/preferences';
-import { watchEffect } from 'vue';
-import { useRouter } from 'vue-router';
+
 import { Tag } from 'ant-design-vue';
+
 import { state } from '#/views/intelligence/data';
+import { logout, serverMode, session } from '#/views/intelligence/session';
 
 const router = useRouter();
+const mobile = useMediaQuery('(max-width: 767px)');
+watch(mobile, (value) => updatePreferences({ app: { isMobile: value } }), {
+  immediate: true,
+});
 
 watchEffect(() => {
   updatePreferences({
@@ -28,9 +37,29 @@ watchEffect(() => {
         <button
           class="hci-workspace-button"
           type="button"
-          @click="router.push('/settings')"
+          @click="router.push(serverMode ? '/administration' : '/settings')"
         >
-          {{ state.branding.workspaceName }}
+          {{
+            serverMode
+              ? session.user?.displayName
+              : state.branding.workspaceName
+          }}
+        </button>
+        <button
+          v-if="serverMode"
+          class="hci-workspace-button"
+          type="button"
+          @click="router.push('/administration?account=me')"
+        >
+          修改账号密码
+        </button>
+        <button
+          v-if="serverMode"
+          class="hci-workspace-button"
+          type="button"
+          @click="logout"
+        >
+          退出登录
         </button>
       </div>
     </template>

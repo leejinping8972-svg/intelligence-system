@@ -20,6 +20,7 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
+import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import {
   audit,
@@ -36,23 +37,34 @@ import {
   KEYWORD_MODEL_VERSION,
   KEYWORD_MODEL_WEIGHTS,
 } from './keyword-scoring';
+import {
+  rememberSelection,
+  resolveSelection,
+  requireCompleteSelection,
+} from './keyword-selection';
 import { keywordSourceStatus } from './site-discovery';
 
 const route = useRoute();
 const router = useRouter();
 const open = ref(false);
 const modelOpen = ref(false);
+const supplementSubmitting = ref(false);
 const researchError = ref('');
 const checkingSource = ref(false);
 const search = ref('');
 const category = ref('ALL');
 const rating = ref('ALL');
 const ratingStatus = ref('ALL');
-const tagFilter = ref('ALL');
+const tagFilter = ref<string[]>([]);
 const timeRange = ref('ALL');
 const reviewFilter = ref('ALL');
 const favoritesOnly = ref(false);
 const selectedIds = ref<string[]>([]);
+const selectionSnapshots = ref<ReturnType<typeof rememberSelection>>(new Map());
+function clearSelection() {
+  selectedIds.value = [];
+  selectionSnapshots.value = new Map();
+}
 const detailId = ref('');
 const pageSize = ref(10);
 const currentPage = ref(1);
@@ -65,10 +77,25 @@ const gradeColors: Record<string, string> = {
 const form = reactive({
   seeds: '',
   markets: (state.market === 'ALL' ? ['US'] : [state.market]) as Market[],
-  sources: ['google_autocomplete', 'amazon_autocomplete'],
+  sources: ['google_autocomplete', 'amazon_autocomplete', 'semrush'],
   depth: 1,
   limit: Math.min(100, state.settings.trendLimit),
-  sorftimeRequestLimit: 3,
+});
+const automaticSorftimeCalls = computed(() => {
+  const seedCount = new Set(
+    form.seeds
+      .split(/[\n,，]/)
+      .map((seed) => seed.normalize('NFKC').replaceAll(/\s+/g, ' ').trim())
+      .filter(Boolean),
+  ).size;
+  const remaining = Number(form.limit) - seedCount * form.markets.length;
+  const supported =
+    seedCount *
+    form.markets.filter((market) => market === 'US' || market === 'MX').length;
+  if (!supported || remaining <= 0) return 0;
+  return form.depth === 2
+    ? Math.min(Number(form.limit), supported + remaining)
+    : supported;
 });
 watch(
   () => route.query.new,
@@ -89,12 +116,11 @@ const allRows = computed(() =>
     assessment: assessKeyword(record),
   })),
 );
-const tagOptions = computed(() => [
-  { label: '全部标签', value: 'ALL' },
-  ...[...new Set(allRows.value.flatMap((record) => record.assessment.tags))]
+const tagOptions = computed(() =>
+  [...new Set(allRows.value.flatMap((record) => record.assessment.tags))]
     .toSorted()
     .map((value) => ({ label: value, value })),
-]);
+);
 const rows = computed(() =>
   allRows.value.filter((record) => {
     const collectedAt = record.collectedAt;
@@ -114,8 +140,8 @@ const rows = computed(() =>
           : record.assessment.grade === rating.value)) &&
       (ratingStatus.value === 'ALL' ||
         record.assessment.status === ratingStatus.value) &&
-      (tagFilter.value === 'ALL' ||
-        record.assessment.tags.includes(tagFilter.value)) &&
+      (!tagFilter.value.length ||
+        tagFilter.value.some((tag) => record.assessment.tags.includes(tag))) &&
       (timeRange.value === 'ALL' ||
         (age >= 0 && age <= Number(timeRange.value))) &&
       (reviewFilter.value === 'ALL' ||
@@ -124,9 +150,19 @@ const rows = computed(() =>
     );
   }),
 );
-const selected = computed(() =>
-  state.keywords.filter((record) => selectedIds.value.includes(record.id)),
+const selection = computed(() =>
+  resolveSelection(selectedIds.value, selectionSnapshots.value, state.keywords),
 );
+const selected = computed(() => selection.value.records);
+function selectFiltered() {
+  const records = rows.value.filter((r) => r.dataNature !== 'demo');
+  if (records.length > 100) {
+    message.warning('当前筛选结果超过100个，请缩小筛选范围后再全选');
+    return;
+  }
+  selectedIds.value = records.map((r) => r.id);
+  selectionSnapshots.value = rememberSelection(selectedIds.value, records);
+}
 const detail = computed(() =>
   state.keywords.find((record) => record.id === detailId.value),
 );
@@ -156,16 +192,22 @@ watch(
   ],
   () => {
     currentPage.value = 1;
-    selectedIds.value = [];
+    clearSelection();
   },
 );
 const rowSelection = computed(() => ({
-  selectedRowKeys: selectedIds.value,
-  onChange: (keys: (number | string)[]) => {
+  preserveSelectedRowKeys: true,
+  selectedRowKeys: selection.value.tableKeys,
+  onChange: (keys: (number | string)[], records: Keyword[]) => {
     selectedIds.value = keys.map(String);
+    selectionSnapshots.value = rememberSelection(
+      selectedIds.value,
+      [...state.keywords, ...records.filter(Boolean)],
+      selectionSnapshots.value,
+    );
   },
   getCheckboxProps: (record: Keyword) => ({
-    disabled: record.dataNature === 'demo',
+    disabled: supplementSubmitting.value || record.dataNature === 'demo',
   }),
 }));
 const pagination = computed(() => ({
@@ -186,6 +228,7 @@ const columns = [
   {
     title: '研究评分',
     key: 'score',
+    defaultSortOrder: 'descend' as const,
     width: 130,
     sorter: (a: Keyword, b: Keyword) =>
       (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
@@ -278,14 +321,6 @@ async function createResearch() {
     return;
   }
   if (form.sources.includes('sorftime')) {
-    if (
-      !Number.isInteger(form.sorftimeRequestLimit) ||
-      form.sorftimeRequestLimit < 1 ||
-      form.sorftimeRequestLimit > 20
-    ) {
-      researchError.value = 'Sorftime 数据调用上限应为1～20次';
-      return;
-    }
     if (!form.markets.some((market) => market === 'US' || market === 'MX')) {
       researchError.value =
         'Sorftime 当前接入 Amazon 美国、墨西哥；越南请使用其他渠道。';
@@ -318,29 +353,36 @@ async function createResearch() {
     sources: form.sources.filter(
       (
         source,
-      ): source is 'amazon_autocomplete' | 'google_autocomplete' | 'sorftime' =>
-        ['amazon_autocomplete', 'google_autocomplete', 'sorftime'].includes(
-          source,
-        ),
+      ): source is
+        | 'amazon_autocomplete'
+        | 'google_autocomplete'
+        | 'semrush'
+        | 'sorftime' =>
+        [
+          'amazon_autocomplete',
+          'google_autocomplete',
+          'semrush',
+          'sorftime',
+        ].includes(source),
     ),
     depth: form.depth,
     limit: form.limit,
-    sorftimeRequestLimit: form.sorftimeRequestLimit,
   };
-  open.value = false;
-  state.market =
-    config.markets.length === 1 ? config.markets[0] || 'US' : 'ALL';
-  const job = startKeywordJob(config);
-  message.success('关键词任务已提交，可在任务中心查看进度');
-  await router.push('/monitor?tab=tasks');
   try {
-    await job;
+    await startKeywordJob(config);
+    open.value = false;
+    state.market =
+      config.markets.length === 1 ? config.markets[0] || 'US' : 'ALL';
+    message.success('已提交腾讯云后台，关闭浏览器后也会继续运行');
+    await router.push('/monitor?tab=tasks');
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '关键词研究未完成');
+    researchError.value =
+      error instanceof Error ? error.message : '任务未提交成功，请重试';
   }
 }
-async function refreshSelected() {
-  if (selected.value.length === 0 || selected.value.length > 100) {
+async function supplementSelected() {
+  if (supplementSubmitting.value) return;
+  if (selectedIds.value.length === 0 || selectedIds.value.length > 100) {
     message.warning('请勾选1～100个关键词');
     return;
   }
@@ -348,23 +390,41 @@ async function refreshSelected() {
     message.warning('请先在数据源与设置配置研究服务');
     return;
   }
-  const records = [...selected.value];
+  const submittedIds = [...selectedIds.value];
+  const snapshots = new Map(selectionSnapshots.value);
+  supplementSubmitting.value = true;
   try {
-    await startKeywordJob(
+    while (cloudWorkspace.syncing)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    await syncCloudWorkspace();
+    const records = requireCompleteSelection(
+      submittedIds,
+      snapshots,
+      state.keywords,
+    );
+    const result = await startKeywordJob(
       {
         apiUrl: state.settings.researchApiUrl,
         accessKey: state.settings.researchAccessKey,
         seeds: [],
         markets: [...new Set(records.map((record) => record.market))],
-        sources: ['google_autocomplete'],
+        sources: ['semrush'],
         depth: 1,
-        limit: records.length,
+        limit: submittedIds.length,
+        expectedKeywordCount: submittedIds.length,
       },
       records,
     );
-    message.success('趋势与评分已更新，缺失证据会在评分详情中说明');
+    message.success(
+      `已勾选${submittedIds.length}个词，后台已接收${result.acceptedKeywords ?? records.length}个；指标与趋势补齐后自动重评`,
+    );
+    await router.push('/monitor?tab=tasks');
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '趋势更新失败');
+    message.error(
+      error instanceof Error ? error.message : '数据补齐任务提交失败',
+    );
+  } finally {
+    supplementSubmitting.value = false;
   }
 }
 function exportKeywords() {
@@ -467,6 +527,9 @@ function saveMetrics() {
       title="关键词研究"
       description="第一步：发现需求、核验趋势、评级打标，人工决定哪些词值得深入研究。"
     >
+      <Button @click="router.push('/selected-keywords')">
+        已入选关键词（{{ summary.selected }}）
+      </Button>
       <Button @click="modelOpen = true">评分模型</Button>
       <Button :disabled="!rows.length" @click="exportKeywords">导出结果</Button>
       <Button
@@ -477,8 +540,32 @@ function saveMetrics() {
         ＋ 新建关键词研究
       </Button>
     </PageHeader>
+    <div class="hci-demo-note">
+      <b>{{
+        cloudWorkspace.ready
+          ? '腾讯云 · 关键词云端存储'
+          : '正在连接云端业务服务'
+      }}</b>
+      <span>
+        ·
+        提交成功后可关闭浏览器；本机已有关键词会自动迁移，收藏和人工筛选会同步保存。</span
+      >
+      <Button
+        size="small"
+        :loading="cloudWorkspace.syncing"
+        @click="
+          syncCloudWorkspace().catch((error) => message.error(error.message))
+        "
+      >
+        刷新云端数据
+      </Button>
+      <p v-if="cloudWorkspace.error" role="alert">
+        {{ cloudWorkspace.error }}。本机缓存保留，请检查连接后重试。
+      </p>
+    </div>
     <div class="hci-demo-note keyword-stage-note">
-      <b>1 关键词研究与评级</b><span>→ 人工选词</span><span>2 独立站研究</span><span>→ 人工选站</span><span>3 商品研究</span>
+      <b>1 关键词研究与评级</b><span>→ 人工选词</span><span>2 独立站研究</span
+      ><span>→ 人工选站</span><span>3 商品研究</span>
     </div>
     <Alert
       v-if="keywordJob.running"
@@ -491,11 +578,18 @@ function saveMetrics() {
         已查询趋势 {{ keywordJob.trended }} 个词
       </template>
       <template #description>
-        {{ keywordJob.message }}。任务完成前请保持系统页面打开。
+        任务由腾讯云后台执行，关闭浏览器后继续。{{ keywordJob.message }}
         <Button type="link" @click="router.push('/monitor?tab=tasks')">
           查看进度
         </Button>
-        <Button type="link" @click="stopKeywordJob">停止后续请求</Button>
+        <Button
+          type="link"
+          @click="
+            stopKeywordJob().catch((error) => message.error(error.message))
+          "
+        >
+          取消后台任务
+        </Button>
       </template>
     </Alert>
     <div class="keyword-summary">
@@ -554,6 +648,10 @@ function saveMetrics() {
           v-model:value="tagFilter"
           :options="tagOptions"
           aria-label="按分析标签筛选"
+          mode="multiple"
+          placeholder="全部标签（可多选，匹配任意标签）"
+          :max-tag-count="2"
+          allow-clear
           show-search
           option-filter-prop="label"
         />
@@ -584,7 +682,7 @@ function saveMetrics() {
             category = 'ALL';
             rating = 'ALL';
             ratingStatus = 'ALL';
-            tagFilter = 'ALL';
+            tagFilter = [];
             timeRange = 'ALL';
             reviewFilter = 'ALL';
             favoritesOnly = false;
@@ -594,29 +692,70 @@ function saveMetrics() {
         </Button>
       </div>
       <div class="hci-toolbar">
-        <span class="hci-subtle">已选 {{ selected.length }} 个关键词</span>
-        <Button
-          :disabled="!selected.length || keywordJob.running"
-          :loading="keywordJob.running"
-          @click="refreshSelected"
+        <span class="hci-subtle"
+          >已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span
         >
-          补齐趋势与重评
-        </Button>
+        <Button
+          :disabled="!rows.length || supplementSubmitting"
+          @click="selectFiltered"
+          >全选筛选结果</Button
+        >
+        <Button
+          :disabled="!selectedIds.length || supplementSubmitting"
+          @click="clearSelection"
+          >清空选择</Button
+        >
+        <Tooltip
+          title="依次补充 Semrush 搜索量、自然搜索KD与意图，采集一年趋势及28天变化，再统一重评。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
+        >
+          <span>
+            <Button
+              :disabled="
+                !selectedIds.length ||
+                selectedIds.length > 100 ||
+                selection.missing.length > 0 ||
+                keywordJob.running ||
+                supplementSubmitting
+              "
+              :loading="supplementSubmitting"
+              @click="supplementSelected"
+            >
+              一键补齐数据并重评
+            </Button>
+          </span>
+        </Tooltip>
         <Button
           type="primary"
-          :disabled="!selected.length"
+          :disabled="
+            !selected.length ||
+            selection.missing.length > 0 ||
+            supplementSubmitting
+          "
           @click="markRecords(selected, 'selected')"
         >
           标为入选
         </Button>
         <Button
-          :disabled="!selected.length"
+          :disabled="
+            !selected.length ||
+            selection.missing.length > 0 ||
+            supplementSubmitting
+          "
           @click="markRecords(selected, 'excluded')"
         >
           标为排除
         </Button>
-        <span class="hci-toolbar-end hci-subtle">{{ rows.length }} 条筛选结果</span>
+        <span class="hci-toolbar-end hci-subtle"
+          >{{ rows.length }} 条筛选结果</span
+        >
       </div>
+      <Alert
+        v-if="selection.missing.length"
+        type="warning"
+        show-icon
+        :message="`选中的${selection.missing.length}个词已无法匹配，请刷新并重新选择；不会仅提交其余部分。`"
+        style="margin-bottom: 16px"
+      />
       <Table
         :data-source="rows"
         :columns="columns"
@@ -710,7 +849,8 @@ function saveMetrics() {
             </div>
           </template>
           <template v-else-if="column.key === 'collectedAt'">
-            <span>{{ formatTime(record.collectedAt) }}</span><Tooltip :title="formatTime(record.trendCollectedAt)">
+            <span>{{ formatTime(record.collectedAt) }}</span
+            ><Tooltip :title="formatTime(record.trendCollectedAt)">
               <p class="hci-subtle">
                 趋势日期 {{ record.trendCollectedAt?.slice(0, 10) || '未记录' }}
               </p>
@@ -730,7 +870,8 @@ function saveMetrics() {
             </Tag>
           </template>
           <template v-else-if="column.key === 'actions'">
-            <Button type="link" @click="openDetail(record)">评分详情</Button><Button type="link" @click="toggleFavorite(record)">
+            <Button type="link" @click="openDetail(record)">评分详情</Button
+            ><Button type="link" @click="toggleFavorite(record)">
               {{ record.favorite ? '已收藏' : '收藏' }}
             </Button>
           </template>
@@ -739,11 +880,17 @@ function saveMetrics() {
     </section>
     <div class="hci-field-notes">
       <div>
-        <b>分阶段决策</b><span>本页只发现关键词、补齐趋势和评分。标为入选仅记录人工决定，不会发起独立站或商品采集。</span>
+        <b>分阶段决策</b
+        ><span
+          >本页扩词、补齐平台指标与趋势后评分。标为入选后，在「已入选关键词」中发起独立站采集。</span
+        >
       </div>
       <div>
-        <b>评级与证据</b><span>A ≥80，B 65～79，C 50～64，D
-          &lt;50。关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span>
+        <b>评级与证据</b
+        ><span
+          >A ≥80，B 65～79，C 50～64，D
+          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span
+        >
       </div>
     </div>
 
@@ -757,7 +904,7 @@ function saveMetrics() {
       @ok="createResearch"
     >
       <Alert
-        message="发现关键词 → 采集一年趋势 → 分类、评分与打标 → 等待人工筛选"
+        message="扩词与合并去重 → Semrush 指标（勾选时）→ 一年趋势 → 评级打标 → 人工入选"
         type="info"
         show-icon
         style="margin: 16px 0"
@@ -788,6 +935,7 @@ function saveMetrics() {
             :options="[
               { label: 'Google 联想词', value: 'google_autocomplete' },
               { label: 'Amazon 联想词', value: 'amazon_autocomplete' },
+              { label: 'Semrush 扩词与指标（使用账户额度）', value: 'semrush' },
               {
                 label: 'Sorftime Amazon 延伸词（使用账户额度）',
                 value: 'sorftime',
@@ -797,21 +945,21 @@ function saveMetrics() {
           <p class="hci-subtle">
             Amazon 联想与 Sorftime 当前支持美国和墨西哥。Sorftime
             需先在数据源与设置中填写 MCP Token；其站内关键词不代表 Google
-            搜索量。Semrush、Similarweb 尚未配置为自动数据源。
+            搜索量。勾选 Semrush 后，通过 MCP
+            获取相关词、长尾词、问题词，合并去重后补同市场搜索量、KD
+            与意图；每词指标使用30天缓存。不会自动购买额度。
           </p>
         </Form.Item>
         <Form.Item
           v-if="form.sources.includes('sorftime')"
-          label="本任务 Sorftime 数据调用上限（所有种子词和市场合计）"
+          label="Sorftime 按结果数量自动调用"
         >
-          <InputNumber
-            v-model:value="form.sorftimeRequestLimit"
-            :min="1"
-            :max="20"
-            :precision="0"
-          />
           <p class="hci-subtle">
-            默认3次；每次查询一个词的延伸词，二级扩词可能额外调用。达到上限即停止该来源，免费渠道继续；连接检测不计入此处数据调用次数。
+            以你设置的“结果总数上限”为准，按种子词、市场和扩词深度自动安排调用，不再单独填写次数。一次调用可能返回多个词，达到结果数量即停止；不保证来源一定返回足量关键词。账户额度不足或接口失败会保留原因，未知结果不自动重复调用。
+          </p>
+          <p>
+            按当前配置最多安排 {{ automaticSorftimeCalls }} 次 Sorftime
+            数据调用，实际按需执行；结果数量不等于调用次数。
           </p>
           <Button
             type="link"
@@ -845,7 +993,8 @@ function saveMetrics() {
         <Form.Item label="趋势与评分">
           <p>
             每个入库关键词均单独查询过去一年 Google
-            Trends，并尝试补齐28天日数据；随后计算五维评分、评级和标签。
+            Trends，并尝试补齐28天日数据；勾选 Semrush
+            后同步补搜索量、KD、意图，再计算五维评分、评级和标签。
           </p>
         </Form.Item>
       </Form>
@@ -857,7 +1006,8 @@ function saveMetrics() {
       />
       <p class="hci-subtle">
         Google／Amazon 联想和 Google Trends 为公开接口，可能限流；Sorftime
-        使用你的账户额度。搜索量和竞争指标可在评分详情中补充，来源与日期会保留。任务记录和结果仍保存在本浏览器，请在完成前保持系统页面打开。
+        使用你的账户额度。Semrush
+        勾选后自动补充搜索量与自然搜索KD，也可在评分详情中手动补充，来源与日期会保留。提交成功后由腾讯云后台执行，任务和关键词结果保存到数据库，关闭浏览器后继续运行。
       </p>
     </Modal>
 
@@ -876,18 +1026,24 @@ function saveMetrics() {
         :key="dimension.key"
         class="hci-market-row"
       >
-        <b>{{ dimension.label }}</b><span>{{ dimension.weight }}%</span>
+        <b>{{ dimension.label }}</b
+        ><span>{{ dimension.weight }}%</span>
       </div>
       <div class="hci-evidence">
         A ≥80，B 65～79，C 50～64，D
-        &lt;50。缺失维度不补0，按已覆盖权重归一化；有有效趋势且覆盖至少60%时允许暂评。全部维度齐备才显示正式评级；关键趋势缺失则待评级。
+        &lt;50。缺失维度不补0，按已覆盖权重归一化；同市场搜索量与有效趋势齐备、覆盖至少80%时才允许暂评；再补齐
+        KD
+        后正式评级。搜索量或关键趋势缺失则待评级。非商品词最高39分，已识别品牌导航词最高64分，搜索量明确为0最高49分。
       </div>
       <p>
         Google Trends
-        仅用于走势，不代替搜索量。需求规模按同市场固定参考上沿评分：美国10万/月，墨西哥与越南5万/月；当前批次增减不会改变该参考。竞争维度中，关键词难度与前三站点搜索份额各占一半。
+        仅用于走势，不代替搜索量。需求规模按同市场固定参考上沿评分：美国10万/月，墨西哥与越南5万/月；当前批次增减不会改变该参考。竞争维度按100−自然搜索KD计分；广告竞争度、CPC和前三站点份额仅作参考，不混为自然搜索难度。指标超过90天、趋势超过45天会提示补采。
       </p>
       <p class="hci-subtle">
-        只有一年数据不能确认年度季节性，因此不会自动下“季节性已证实”的结论。Semrush、Similarweb指标当前需手动录入，并注明来源、国家与日期；180天以前的数据不纳入当前评级。
+        只有一年数据不能确认年度季节性，因此不会自动下“季节性已证实”的结论。Semrush
+        勾选后自动扩词和补充指标；Similarweb
+        暂不参与自动评分。记录国家、来源与获取日期，90天以前的搜索指标不纳入当前评级。Semrush
+        商业／交易意图在商品研究价值维度加10分（该维度封顶100），导航意图关键词最高64分。
       </p>
     </Modal>
 
@@ -908,7 +1064,8 @@ function saveMetrics() {
             {{ assessment.grade || '待评级'
             }}{{ assessment.status === 'provisional' ? ' · 暂评' : '' }}
           </Tag>
-          <b>{{ assessment.score ?? '—' }} / 100</b><span>数据覆盖 {{ assessment.coverage }}%</span>
+          <b>{{ assessment.score ?? '—' }} / 100</b
+          ><span>数据覆盖 {{ assessment.coverage }}%</span>
         </div>
         <Alert
           :message="assessment.recommendation"
@@ -931,12 +1088,17 @@ function saveMetrics() {
           class="keyword-dimension"
         >
           <div>
-            <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b><strong>{{ dimension.score ?? '待补充'
-              }}{{ dimension.score === null ? '' : ' / 100' }}</strong>
+            <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b
+            ><strong
+              >{{ dimension.score ?? '待补充'
+              }}{{ dimension.score === null ? '' : ' / 100' }}</strong
+            >
           </div>
           <p class="hci-subtle">{{ dimension.evidence }}</p>
-          <span class="hci-subtle">已覆盖权重 {{ dimension.coveredWeight }} /
-            {{ dimension.weight }}</span>
+          <span class="hci-subtle"
+            >已覆盖权重 {{ dimension.coveredWeight }} /
+            {{ dimension.weight }}</span
+          >
         </div>
         <p class="hci-subtle">
           关键词抓取：{{ formatTime(detail.collectedAt) }}<br />趋势抓取：{{
@@ -950,6 +1112,31 @@ function saveMetrics() {
         >
           查看一年趋势与原始来源
         </Button>
+        <section
+          v-if="
+            detail.semrushCollection ||
+            detail.metrics?.source.includes('Semrush')
+          "
+          class="hci-evidence"
+          style="margin-top: 20px"
+        >
+          <b>Semrush 指标与查询结果</b>
+          <p>
+            月搜索量 {{ detail.metrics?.monthlySearchVolume ?? '未知' }} ·
+            自然搜索 KD {{ detail.metrics?.difficulty ?? '未知' }} · 搜索意图
+            {{ detail.metrics?.intent || '未返回' }}
+          </p>
+          <p class="hci-subtle">
+            来源 {{ detail.metrics?.source || '未返回' }} · 获取于
+            {{ formatTime(detail.metrics?.collectedAt) }}；{{
+              detail.semrushCollection?.message
+            }}
+          </p>
+          <p class="hci-subtle">
+            意图编码：0 信息型 / 1 导航型 / 2 商业型 / 3 交易型；广告竞争度与
+            CPC 仅供参考，不代替自然搜索 KD。
+          </p>
+        </section>
         <h3 style="margin-top: 24px">补充平台指标与审核备注</h3>
         <p class="hci-subtle">
           填入同国家、同时间口径的平台数据。留空表示未知；0表示平台明确返回0。
@@ -998,7 +1185,10 @@ function saveMetrics() {
           </Form.Item>
         </Form>
         <div class="hci-toolbar">
-          <Button type="primary" @click="saveMetrics">保存依据并重评</Button><Button @click="markRecords([detail], 'selected')">标为入选</Button><Button @click="markRecords([detail], 'excluded')">标为排除</Button><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
+          <Button type="primary" @click="saveMetrics">保存依据并重评</Button
+          ><Button @click="markRecords([detail], 'selected')">标为入选</Button
+          ><Button @click="markRecords([detail], 'excluded')">标为排除</Button
+          ><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
         </div>
       </template>
     </Drawer>

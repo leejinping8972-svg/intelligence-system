@@ -58,7 +58,7 @@ function decide(decision: 'approved' | 'rejected') {
     `${target.title} / ${before} → ${decision === 'approved' ? confirmedValue : '保留原值'} / ${reviewReason}`,
     target.market,
   );
-  message.success('审核结果已保存在本浏览器');
+  message.success('审核结果已更新，将同步保存到服务器');
 }
 </script>
 <template>
@@ -156,7 +156,7 @@ function decide(decision: 'approved' | 'rejected') {
             <p style="margin-top: 15px">审核理由：{{ selected.reason }}</p>
           </template>
           <p class="hci-subtle" style="margin-top: 18px">
-            当前审核结果保存在本浏览器。服务端权限、多人并发控制和历史恢复将在后端阶段实现。
+            审核结果会同步保存到服务器。本机保留缓存；完整角色权限、多人并发控制和历史恢复尚待完善。
           </p>
         </template>
       </section>

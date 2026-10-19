@@ -23,6 +23,13 @@ if not config.exists():
     with config.open('x') as target:
         target.write(f'POSTGRES_PASSWORD={secrets.token_hex(32)}\n')
         target.write(f'REDIS_PASSWORD={secrets.token_hex(32)}\n')
+if not any(line.startswith('SERVER_BRIDGE_KEY=') for line in config.read_text().splitlines()):
+    with config.open('a') as target:
+        target.write(f'SERVER_BRIDGE_KEY={secrets.token_hex(32)}\n')
+if not any(line.startswith('PROVIDER_CONFIG_ENCRYPTION_KEY=') for line in config.read_text().splitlines()):
+    import base64
+    with config.open('a') as target:
+        target.write('PROVIDER_CONFIG_ENCRYPTION_KEY='+base64.b64encode(secrets.token_bytes(32)).decode()+'\n')
 os.chmod(config, 0o600)
 print('Server credentials ready; existing credentials preserved.')
 PY

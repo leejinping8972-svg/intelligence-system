@@ -528,7 +528,7 @@ async function collectYoutube(config) {
         source,
         'needs_key',
         0,
-        '等待Google Cloud免费API Key；密钥只放GitHub Secrets',
+        '等待 YouTube API Key；请到「数据源与设置」加密保存并检测连接',
         documentation,
       ),
     };

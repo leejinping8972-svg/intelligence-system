@@ -8,6 +8,11 @@ export interface KeywordMetrics {
   monthlySearchVolume?: number;
   difficulty?: number;
   top3Share?: number;
+  cpc?: number;
+  advertisingCompetition?: number;
+  intent?: string;
+  database?: string;
+  report?: string;
 }
 export interface KeywordAssessment {
   version: string;
@@ -27,7 +32,7 @@ export interface KeywordAssessment {
     evidence: string;
   }>;
 }
-export const KEYWORD_MODEL_VERSION = 'keyword-research-v1.0';
+export const KEYWORD_MODEL_VERSION = 'keyword-research-v2.0';
 export const KEYWORD_MODEL_WEIGHTS = [
   { key: 'relevance', label: '业务相关性', weight: 25 },
   { key: 'demand', label: '需求规模', weight: 20 },
@@ -87,54 +92,113 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
   if (ingredient) relevance = 80;
   if (classified) relevance = 85;
   if (offTopic) relevance = 10;
-  const product = offTopic
+  let product = offTopic
     ? 10
     : clamp(
         25 + (ingredient ? 30 : 0) + (form ? 25 : 0) + (commercial ? 20 : 0),
       );
-  const points = (keyword.trendPoints || []).filter(
-    (point) => !point.isPartial,
+  const normalized = new Map(
+    (keyword.trendPoints || [])
+      .filter(
+        (p) =>
+          !p.isPartial &&
+          Number.isFinite(p.value) &&
+          p.value >= 0 &&
+          p.value <= 100 &&
+          Number.isFinite(Date.parse(p.date)),
+      )
+      .map((p) => [p.date, p]),
   );
-  const series =
-    points.length > 0 ? points.map((point) => point.value) : keyword.series;
+  const points = [...normalized.values()].toSorted(
+    (a, b) => Date.parse(a.date) - Date.parse(b.date),
+  );
+  const annualSeries = points.map((p) => p.value);
   const span =
     points.length > 1
-      ? (Date.parse(points.at(-1)?.date || '') -
-          Date.parse(points[0]?.date || '')) /
+      ? (Date.parse(points.at(-1)!.date) - Date.parse(points[0]!.date)) /
         86_400_000
-      : Math.max(0, series.length - 1);
+      : 0;
+  const trendAge = keyword.trendCollectedAt
+    ? (Date.now() - Date.parse(keyword.trendCollectedAt)) / 86_400_000
+    : Number.NaN;
   const usableTrend =
-    series.length >= 8 && span >= 56 && series.some((value) => value > 0);
+    points.length >= 8 &&
+    span >= 56 &&
+    span <= 800 &&
+    annualSeries.some((v) => v > 0) &&
+    trendAge >= -1 &&
+    trendAge <= 45;
   let trendScore: null | number = null;
   let trendEvidence = keyword.trendMessage || '尚无足够的有效趋势时序';
   if (usableTrend) {
-    const avg = (values: number[]) =>
-      values.reduce((sum, value) => sum + value, 0) /
-      Math.max(1, values.length);
-    const windowSize = Math.max(2, Math.floor(series.length / 4));
-    const recent = avg(series.slice(-windowSize));
-    const previous = avg(series.slice(-2 * windowSize, -windowSize));
+    const daily = (keyword.trendDailyPoints || [])
+      .filter(
+        (p) =>
+          !p.isPartial &&
+          Number.isFinite(p.value) &&
+          p.value >= 0 &&
+          p.value <= 100 &&
+          Number.isFinite(Date.parse(p.date)),
+      )
+      .toSorted((a, b) => Date.parse(a.date) - Date.parse(b.date));
+    const dailySpan =
+      daily.length > 1
+        ? (Date.parse(daily.at(-1)!.date) - Date.parse(daily[0]!.date)) /
+          86_400_000
+        : 0;
+    const windowPoints = daily.length >= 56 && dailySpan >= 55 ? daily : points;
+    const dailyUsed = windowPoints === daily;
+    const step = dailyUsed
+      ? 1
+      : Math.min(31, Math.max(1, Math.round(span / (points.length - 1))));
+    const end = Date.parse(windowPoints.at(-1)!.date) + step * 86_400_000;
+    const avgWindow = (start: number, finish: number) => {
+      let days = 0;
+      let sum = 0;
+      for (let i = 0; i < windowPoints.length; i++) {
+        const p = windowPoints[i]!;
+        const from = Date.parse(p.date);
+        const to =
+          i + 1 < windowPoints.length
+            ? Math.min(
+                Date.parse(windowPoints[i + 1]!.date),
+                from + step * 86_400_000,
+              )
+            : from + step * 86_400_000;
+        const overlap =
+          Math.max(0, Math.min(to, finish) - Math.max(from, start)) /
+          86_400_000;
+        sum += p.value * overlap;
+        days += overlap;
+      }
+      return days >= 27 ? sum / days : null;
+    };
+    const previous = avgWindow(end - 56 * 86_400_000, end - 28 * 86_400_000);
+    const recent = avgWindow(end - 28 * 86_400_000, end);
     const continuity =
-      series.filter((value) => value > 0).length / series.length;
-    let momentum = 20;
-    if (recent > 0) momentum = 70;
-    if (previous > 0)
-      momentum = clamp(50 + (50 * (recent - previous)) / previous);
-    const total = series.reduce((sum, value) => sum + value, 0);
-    const spike = Math.max(...series) / total > 0.45;
+      annualSeries.filter((v) => v > 0).length / annualSeries.length;
+    let momentum = 50;
+    if (recent !== null && previous !== null) {
+      if (previous > 0)
+        momentum = clamp(50 + (50 * (recent - previous)) / previous);
+      else momentum = recent > 0 ? 70 : 20;
+    }
+    const total = annualSeries.reduce((sum, v) => sum + v, 0);
+    const spike = Math.max(...annualSeries) / total > 0.45;
     trendScore = clamp(
-      (continuity * 35 + momentum * 0.35 + recent * 0.3) * (spike ? 0.65 : 1),
+      (continuity * 65 + momentum * 0.35) * (spike ? 0.65 : 1),
     );
     if (spike) tags.add('偶发尖峰');
     else if (continuity >= 0.7) tags.add('需求持续');
-    if (recent > previous * 1.2 && recent > 0) tags.add('近期增长');
-    else if (previous > 0 && recent < previous * 0.8) tags.add('近期回落');
-    else if (continuity >= 0.7) tags.add('走势平稳');
+    if (recent !== null && previous !== null) {
+      if (recent > previous * 1.2 && recent > 0)
+        tags.add(previous === 0 ? '新出现信号' : '近期增长');
+      else if (previous > 0 && recent < previous * 0.8) tags.add('近期回落');
+      else if (continuity >= 0.7) tags.add('走势平稳');
+    }
     if (continuity < 0.2) tags.add('低样本信号');
-    trendEvidence = `一年序列按四分之一窗口观察持续性与变化；有效点${
-      series.length
-    }个，覆盖${Math.round(span)}天，非绝对搜索量`;
-  } else tags.add(series.length > 0 ? '趋势样本不足' : '待补趋势');
+    trendEvidence = `一年趋势持续性65% + 近28天相对此前28天动量35%；${dailyUsed ? '日数据' : '按原始时点覆盖天数加权'}，有效点${points.length}个，覆盖${Math.round(span)}天；尖峰降权，不代表搜索量`;
+  } else tags.add(points.length > 0 ? '趋势样本不足或过期' : '待补趋势');
   const metrics = keyword.metrics;
   const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;
   const metricAge = (Date.now() - metricDate) / 86_400_000;
@@ -143,7 +207,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     metrics.market === keyword.market &&
     Number.isFinite(metricDate) &&
     metricAge >= -1 &&
-    metricAge <= 180,
+    metricAge <= 90,
   );
   const volume =
     validMetrics &&
@@ -157,32 +221,28 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     volume === undefined
       ? null
       : clamp((Math.log10(1 + volume) / Math.log10(1 + volumeCeiling)) * 100);
-  const competitionValues: number[] = [];
-  if (
+  const kd =
     validMetrics &&
-    metrics?.difficulty !== undefined &&
+    typeof metrics?.difficulty === 'number' &&
+    Number.isFinite(metrics.difficulty) &&
     metrics.difficulty >= 0 &&
     metrics.difficulty <= 100
-  )
-    competitionValues.push(100 - metrics.difficulty);
-  if (
-    validMetrics &&
-    metrics?.top3Share !== undefined &&
-    metrics.top3Share >= 0 &&
-    metrics.top3Share <= 100
-  )
-    competitionValues.push(100 - metrics.top3Share);
-  const competitionScore =
-    competitionValues.length > 0
-      ? clamp(
-          competitionValues.reduce((sum, value) => sum + value, 0) /
-            competitionValues.length -
-            (brand ? 10 : 0),
-        )
-      : null;
+      ? metrics.difficulty
+      : undefined;
+  const competitionScore = kd === undefined ? null : clamp(100 - kd);
   if (demandScore === null) tags.add('待补搜索量');
-  if (competitionValues.length < 2) tags.add('待补竞争指标');
-  if (metrics && !validMetrics) tags.add('指标待核验');
+  if (kd === undefined) tags.add('待补KD');
+  if (metrics && !validMetrics) tags.add('指标待核验或过期');
+  if (metrics?.source.includes('Semrush')) {
+    tags.add('Semrush指标');
+    if (metrics.intent) tags.add(`搜索意图：${metrics.intent}`);
+  }
+  const intent = validMetrics ? metrics?.intent || '' : '';
+  const purchaseIntent =
+    /(?:^|[,;\s])(2|3)(?:$|[,;\s])|commercial|transactional/i.test(intent);
+  const navigationIntent = /^1$|^navigational$/i.test(intent.trim());
+  if (purchaseIntent && !offTopic) product = clamp(product + 10);
+  if (volume === 0) tags.add('平台搜索量为0');
   const dimensions: KeywordAssessment['dimensions'] = [
     {
       key: 'relevance',
@@ -221,25 +281,27 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       weight: 20,
       coveredWeight: 20,
       score: product,
-      evidence: '成分、剂型、人群及商品表达的规则评分，不代表销量或利润',
+      evidence: `成分、剂型与商品表达的规则评分${purchaseIntent ? '；Semrush 商业或交易意图加10分（本维度封顶100）' : ''}；不代表销量或利润`,
     },
     {
       key: 'competition',
       label: '竞争切入空间',
       weight: 15,
-      coveredWeight: competitionValues.length * 7.5,
+      coveredWeight: kd === undefined ? 0 : 15,
       score: competitionScore,
-      evidence: `关键词难度与前三站点搜索份额各占本维度一半；${
-        metrics?.source || '缺少指标来源'
-      }`,
+      evidence:
+        kd === undefined
+          ? '缺少同市场自然搜索 KD；广告竞争度不是 KD'
+          : `100 − KD(${kd})；${metrics?.source}；仅反映自然搜索排名难度，不等于商业竞争、盈利或前三站点流量份额`,
     },
   ];
   const coverage = dimensions.reduce(
     (sum, item) => sum + item.coveredWeight,
     0,
   );
-  const canGrade = trendScore !== null && coverage >= 60;
-  const score = canGrade
+  const canGrade =
+    trendScore !== null && demandScore !== null && coverage >= 80;
+  let score = canGrade
     ? clamp(
         dimensions.reduce(
           (sum, item) => sum + (item.score || 0) * item.coveredWeight,
@@ -247,6 +309,11 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
         ) / coverage,
       )
     : null;
+  if (score !== null) {
+    if (offTopic) score = Math.min(score, 39);
+    if (brand || navigationIntent) score = Math.min(score, 64);
+    if (volume === 0) score = Math.min(score, 49);
+  }
   const grade = score === null ? null : gradeForScore(score);
   let status: KeywordAssessment['status'] = 'pending';
   if (grade) status = coverage === 100 ? 'rated' : 'provisional';
@@ -259,6 +326,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
   return {
     version: KEYWORD_MODEL_VERSION,
     assessedAt:
+      metrics?.collectedAt ||
       keyword.trendCollectedAt ||
       keyword.collectedAt ||
       keyword.updatedAt ||

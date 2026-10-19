@@ -28,6 +28,12 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    name: 'HciSelectedKeywords',
+    path: '/selected-keywords',
+    component: () => import('#/views/intelligence/selected-keywords.vue'),
+    meta: { title: '已入选关键词', icon: 'lucide:list-checks', order: 1.5 },
+  },
+  {
     name: 'HciSites',
     path: '/sites',
     component: () => import('#/views/intelligence/sites.vue'),
@@ -50,6 +56,16 @@ const routes: RouteRecordRaw[] = [
     path: '/radar',
     component: () => import('#/views/intelligence/radar.vue'),
     meta: { title: '新品雷达', icon: 'lucide:radar', order: 6 },
+  },
+  {
+    name: 'HciConsumerInsights',
+    path: '/consumer-insights',
+    component: () => import('#/views/intelligence/consumer-insights.vue'),
+    meta: {
+      title: '消费者需求洞察',
+      icon: 'lucide:messages-square',
+      order: 5.5,
+    },
   },
   {
     name: 'HciSignals',
@@ -85,7 +101,33 @@ const routes: RouteRecordRaw[] = [
     name: 'HciSettings',
     path: '/settings',
     component: () => import('#/views/intelligence/settings.vue'),
-    meta: { title: '数据源与设置', icon: 'lucide:settings-2', order: 12 },
+    meta: {
+      title: '数据源与设置',
+      icon: 'lucide:settings-2',
+      order: 12,
+      authority: ['super'],
+    },
   },
+  {
+    name: 'HciCodeReleases',
+    path: '/releases',
+    component: () => import('#/views/intelligence/releases.vue'),
+    meta: {
+      title: '代码提交日志',
+      icon: 'lucide:git-commit-horizontal',
+      order: 14,
+      authority: ['super'],
+    },
+  },
+  ...(import.meta.env.VITE_HCI_SERVER === 'true'
+    ? [
+        {
+          name: 'HciAdministration',
+          path: '/administration',
+          component: () => import('#/views/intelligence/administration.vue'),
+          meta: { title: '账号与管理', icon: 'lucide:users-round', order: 13 },
+        },
+      ]
+    : []),
 ];
 export default routes;

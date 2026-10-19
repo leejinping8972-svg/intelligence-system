@@ -1,6 +1,52 @@
 name: intelligence-system
 
 services:
+  api:
+    build:
+      context: ./source
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/intelligence
+      SERVER_BRIDGE_KEY: ${SERVER_BRIDGE_KEY:?Set SERVER_BRIDGE_KEY in the server .env}
+      PROVIDER_CONFIG_ENCRYPTION_KEY: ${PROVIDER_CONFIG_ENCRYPTION_KEY:?Set PROVIDER_CONFIG_ENCRYPTION_KEY in the server .env}
+      DATABASE_CONFIG_FILE: /data/database.enc.json
+    volumes:
+      - ./private-config:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 512m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api',{method:'POST',headers:{'content-type':'application/json','x-server-key':process.env.SERVER_BRIDGE_KEY},body:JSON.stringify({action:'server_status'})}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./public:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 192m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -54,5 +100,7 @@ services:
         max-file: "3"
 
 volumes:
+  caddy_data:
+  caddy_config:
   postgres_data:
   redis_data:

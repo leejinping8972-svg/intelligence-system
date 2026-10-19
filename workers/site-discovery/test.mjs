@@ -13,6 +13,7 @@ import worker, {
   googleCookieHeader,
   googleSuggestUrl,
   googleTrendsExploreUrl,
+  googleTrendsHttpError,
   hostnameRoot,
   inferCategory,
   inferTrendResolution,
@@ -25,6 +26,25 @@ import worker, {
   runProductEnrichment,
   trendSeriesMessage,
 } from './src/index.js';
+
+test('Google Trends 429 stops immediate retries and preserves Retry-After for the durable queue', async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return String(url).includes('/api/')
+      ? new Response('', { status: 429, headers: { 'retry-after': '180' } })
+      : new Response('');
+  };
+  try {
+    const [result] = await collectGoogleTrendsBatch(['qa-429-no-snapshot'], 'US');
+    assert.equal(result.rateLimited, true);
+    assert.equal(result.retryAfterSeconds, 180);
+    assert.equal(calls.filter(url => url.includes('/api/')).length, 1);
+    assert.equal(result.series.length, 0);
+    assert.equal(googleTrendsHttpError(new Response('', { status: 429, headers: { 'retry-after': '120' } }), '探索').retryAfterSeconds, 120);
+  } finally { globalThis.fetch = original; }
+});
 
 test('builds localized Google suggestion requests', () => {
   const url = new URL(googleSuggestUrl('sức khỏe phụ nữ', 'VN'));

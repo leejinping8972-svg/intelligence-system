@@ -529,12 +529,12 @@ function errorsFile() {
     <PageHeader
       title="数据导入"
       description="把已有资料纳入同一研究流程，先预览，再确认。"
-      >
-<Button @click="template">下载CSV模板</Button>
-</PageHeader>
+    >
+      <Button @click="template">下载CSV模板</Button>
+    </PageHeader>
     <div class="hci-demo-note">
       <b>浏览器内处理</b>支持CSV / XLSX /
-      JSON，文件不上传服务器；最多1000行、5MB。此为交互试用，原始证据归档与完整冲突审核将在后端实现。
+      JSON，原文件在本机解析，导入后的结构化结果同步到服务器；最多1000行、5MB。原始证据文件归档与完整冲突审核尚待完善。
     </div>
     <section class="hci-panel">
       <Steps
@@ -593,7 +593,7 @@ function errorsFile() {
         <p v-if="loading">正在解析文件…</p>
       </div>
       <template v-if="step === 1">
-<div class="hci-form-grid">
+        <div class="hci-form-grid">
           <div
             v-for="field in fields"
             :key="field.key"
@@ -624,10 +624,10 @@ function errorsFile() {
           size="small"
           :scroll="{ x: 900 }"
           :pagination="{ pageSize: 5 }"
-          >
-<template #bodyCell="{ column, record }">
-<template v-if="column.key === 'result'">
-<Tag
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'result'">
+              <Tag
                 :color="
                   record.errors.length
                     ? 'red'
@@ -635,22 +635,20 @@ function errorsFile() {
                       ? 'orange'
                       : 'green'
                 "
-                >
-{{
+              >
+                {{
                   record.errors.length
                     ? record.errors.join('；')
                     : record.duplicate
                       ? '重复，将跳过'
                       : '校验通过'
                 }}
-</Tag>
+              </Tag>
 </template><template v-else-if="column.key">
-{{
-              record.values[column.key]
-            }}
-</template>
-</template>
-</Table>
+              {{ record.values[column.key] }}
+            </template>
+          </template>
+        </Table>
         <div
           style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px"
         >
@@ -658,16 +656,16 @@ function errorsFile() {
             type="primary"
             :disabled="!valid.length || committed"
             @click="commit"
-            >
-确认导入有效行
+          >
+            确认导入有效行
 </Button><Button @click="clear">重新选择</Button><Button
             v-if="normalized.some((r) => r.errors.length)"
             @click="errorsFile"
-            >
-下载错误报告
-</Button>
+          >
+            下载错误报告
+          </Button>
         </div>
-</template>
+      </template>
       <div v-if="step === 2" class="hci-empty">
         <h2 style="color: var(--hci-accent)">资料已导入</h2>
         <p style="margin: 12px 0">

@@ -1,146 +1,303 @@
 <script setup lang="ts">
 import type { Ad } from './data';
-
-import { computed, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-
+import { computed, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
+  Alert,
   Button,
+  Drawer,
   Empty,
   Form,
   Input,
+  InputNumber,
   message,
   Modal,
   Select,
   Tag,
 } from 'ant-design-vue';
-
 import PageHeader from './components/PageHeader.vue';
-import ProductDrawer from './components/ProductDrawer.vue';
-import { audit, inMarket, marketName, state } from './data';
-const router = useRouter();
-const search = ref('');
-const platform = ref('ALL');
-const selected = ref<Ad>();
-const product = ref<string>();
-const linkId = ref('');
-watch(
-  () => state.market,
-  () => {
-    selected.value = undefined;
-    product.value = undefined;
-  },
-);
-const rows = computed(() =>
-  state.ads.filter(
-    (a) =>
-      inMarket(a.market) &&
-      `${a.brand} ${a.headline} ${a.copy}`
-        .toLowerCase()
-        .includes(search.value.toLowerCase()) &&
-      (platform.value === 'ALL' || a.platform === platform.value),
+import AdsResearchPanel from './components/AdsResearchPanel.vue';
+import AdMedia from './components/AdMedia.vue';
+import { inMarket, marketName, state } from './data';
+import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
+const route = useRoute(),
+  router = useRouter();
+const search = ref(''),
+  status = ref('ALL'),
+  selected = ref<Ad>(),
+  open = ref(false),
+  busy = ref(false),
+  error = ref('');
+const keywordIds = ref<string[]>([]);
+const advertiser = ref<Ad>();
+const form = reactive({
+  maxPages: 3,
+  maxAds: 100,
+  maxSites: 10,
+  maxRequests: 3,
+  adStatus: 'ACTIVE',
+});
+const keywords = computed(() =>
+  state.keywords.filter(
+    (k) => k.reviewStatus === 'selected' && inMarket(k.market),
   ),
 );
-function editLink(a: Ad) {
-  selected.value = a;
-  linkId.value = a.productId;
+const rows = computed(() =>
+  state.ads
+    .filter(
+      (a) =>
+        inMarket(a.market) &&
+        `${a.brand} ${a.headline} ${a.copy} ${a.query || ''}`
+          .toLowerCase()
+          .includes(search.value.toLowerCase()) &&
+        (status.value === 'ALL' || a.status === status.value) &&
+        (!route.query.keywordId ||
+          a.keywordIds?.includes(String(route.query.keywordId))) &&
+        (!route.query.site || a.siteIds?.includes(String(route.query.site))),
+    )
+    .toSorted((a, b) =>
+      (b.lastCollectedAt || b.firstSeenAt || '').localeCompare(
+        a.lastCollectedAt || a.firstSeenAt || '',
+      ),
+    ),
+);
+watch([() => keywordIds.value.length, () => form.maxPages], () => {
+  form.maxRequests = Math.max(
+    1,
+    Math.min(1000, keywordIds.value.length * form.maxPages),
+  );
+  pendingRequest = '';
+});
+function begin() {
+  advertiser.value = undefined;
+  keywordIds.value = route.query.keywordId
+    ? [String(route.query.keywordId)]
+    : [];
+  error.value = '';
+  open.value = true;
 }
-function save() {
-  if (!selected.value) return;
-  const p = state.products.find((p) => p.id === linkId.value);
-  if (!p) {
-    message.error('请选择关联商品');
+let pendingRequest = '';
+async function submit() {
+  if (busy.value) return;
+  if (!keywordIds.value.length) {
+    error.value = '请选择已入选关键词';
     return;
   }
-  selected.value.productId = p.id;
-  audit('修改广告关联', `${selected.value.brand} → ${p.title}`, p.market);
-  selected.value = undefined;
-  message.success('关联已保存到当前工作区');
+  busy.value = true;
+  error.value = '';
+  try {
+    await syncCloudWorkspace();
+    pendingRequest ||= crypto.randomUUID();
+    const result = await cloudRequest<{ jobId: string }>(
+      'server_submit_market',
+      {
+        requestId: pendingRequest,
+        kind: 'ads',
+        adId: advertiser.value?.id,
+        keywordIds: keywordIds.value,
+        ...form,
+      },
+    );
+    pendingRequest = '';
+    open.value = false;
+    message.success('广告与官网采集已提交后台，关闭页面也会继续');
+    await syncCloudWorkspace();
+    await router.push({ path: '/monitor', query: { job: result.jobId } });
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '任务提交失败';
+  } finally {
+    busy.value = false;
+  }
 }
+const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
 </script>
 <template>
   <main class="hci-page">
-    <PageHeader
-      title="广告观察"
-      description="观察竞品如何表达卖点，将素材线索关联到具体商品。"
+    <PageHeader title="广告观察" description=""
+      ><Button @click="router.push('/imports')">导入资料</Button
+      ><Button type="primary" @click="begin"
+        >采集广告与独立站</Button
+      ></PageHeader
     >
-      <Button type="primary" @click="router.push('/imports')">
-        导入广告资料
-      </Button>
-    </PageHeader>
-    <div class="hci-demo-note">
-      <b>导入优先</b>Meta / TikTok
-      自动接口尚未接入。当前不预置广告样本，可通过数据导入建立真实广告记录。
-    </div>
+    <AdsResearchPanel :ads="rows" />
     <section class="hci-panel">
-      <div class="hci-toolbar" style="margin: 0">
+      <div class="hci-toolbar">
         <Input.Search
           v-model:value="search"
-          placeholder="搜索品牌、广告文案"
+          placeholder="搜索关键词、品牌或广告文案"
           allow-clear
         /><Select
-          v-model:value="platform"
+          v-model:value="status"
           :options="[
-            { label: '全部平台', value: 'ALL' },
-            { label: 'Meta', value: 'Meta' },
-            { label: 'TikTok', value: 'TikTok' },
+            { label: '全部广告状态', value: 'ALL' },
+            { label: '投放中', value: '投放中' },
+            { label: '已停止', value: '已停止' },
           ]"
-        /><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 条广告观察</span>
+        /><Button v-if="route.query.site" @click="router.replace('/ads')"
+          >清除站点筛选</Button
+        ><span class="hci-toolbar-end hci-subtle"
+          >{{ rows.length }} 条广告</span
+        >
+      </div>
+      <Empty
+        v-if="!rows.length"
+        description="暂无广告；选择已入选关键词采集，或导入真实广告资料"
+      />
+      <div class="hci-ad-grid">
+        <article v-for="ad in rows" :key="ad.id" class="hci-ad-card">
+          <AdMedia :ad="ad" />
+          <div class="hci-ad-content">
+            <div class="hci-panel-head">
+              <strong>{{ ad.brand || '广告主待识别' }}</strong
+              ><Tag :color="ad.status === '投放中' ? 'green' : 'default'">{{
+                ad.status
+              }}</Tag>
+            </div>
+            <p>{{ ad.headline }}</p>
+            <p class="hci-ad-copy">{{ ad.copy || '未返回广告文案' }}</p>
+            <p class="hci-subtle">
+              {{ marketName(ad.market) }} · {{ ad.source || '人工导入' }} ·
+              {{ time(ad.lastCollectedAt || ad.firstSeenAt) }}
+            </p>
+            <div class="hci-toolbar">
+              <Button size="small" @click="selected = ad">查看详情</Button
+              ><a
+                v-if="ad.evidenceUrl"
+                :href="ad.evidenceUrl"
+                target="_blank"
+                rel="noreferrer"
+                >广告原文</a
+              ><span>{{ ad.siteIds?.length || 0 }} 家关联站点</span>
+            </div>
+          </div>
+        </article>
       </div>
     </section>
-    <Empty v-if="!rows.length" description="没有符合条件的广告" />
-    <div class="hci-product-grid">
-      <article v-for="ad in rows" :key="ad.id" class="hci-product-card">
-        <div class="hci-ad-creative" :class="[ad.color]">
-          <small>{{ ad.brand.toUpperCase() }}</small>
-          <h3>{{ ad.headline }}</h3>
-          <span class="hci-subtle">{{ ad.format }}素材示意 · DEMO</span>
-        </div>
-        <div class="hci-product-content">
-          <div class="hci-panel-head" style="margin-bottom: 10px">
-            <h3>{{ ad.brand }}</h3>
-            <Tag>{{ ad.platform }}</Tag>
-          </div>
-          <p class="hci-subtle">
-            {{ marketName(ad.market) }} · {{ ad.status }}
-          </p>
-          <p style="margin: 15px 0">{{ ad.copy }}</p>
-          <div class="hci-product-bottom">
-            <button class="hci-link" @click="product = ad.productId">
-              {{
-                state.products.find((p) => p.id === ad.productId)?.title ||
-                '未关联商品'
-              }}
-</button><button class="hci-link" @click="editLink(ad)">关联</button>
-          </div>
-        </div>
-      </article>
-    </div>
-    <ProductDrawer :id="product" @close="product = undefined" /><Modal
+    <Drawer
       :open="!!selected"
-      title="关联广告与商品"
-      ok-text="保存关联"
+      title="广告详情与来源"
+      :width="680"
+      @close="selected = undefined"
+    >
+      <template v-if="selected"
+        ><h2>{{ selected.brand }} · {{ selected.headline }}</h2>
+        <AdMedia :ad="selected" expanded />
+        <p style="white-space: pre-wrap">{{ selected.copy }}</p>
+        <dl class="hci-detail-grid">
+          <dt>广告 ID</dt>
+          <dd>{{ selected.archiveId || '—' }}</dd>
+          <dt>查询关键词</dt>
+          <dd>{{ selected.query || '—' }}</dd>
+          <dt>平台记录开始日期</dt>
+          <dd>{{ time(selected.startDate) }}</dd>
+          <dt>本系统首次观察</dt>
+          <dd>{{ time(selected.firstSeenAt) }}</dd>
+          <dt>采集时间</dt>
+          <dd>{{ time(selected.lastCollectedAt) }}</dd>
+          <dt>数据来源</dt>
+          <dd>{{ selected.source || '人工导入' }}</dd>
+        </dl>
+        <Button
+          v-if="selected.pageId"
+          @click="
+            advertiser = selected;
+            keywordIds = (selected.keywordIds || []).filter((id) =>
+              keywords.some((k) => k.id === id),
+            );
+            open = true;
+            selected = undefined;
+          "
+          >采集该广告主更多广告</Button
+        >
+        <h3>落地页与官网验证</h3>
+        <p v-for="v in selected.verification" :key="v.url">
+          <a :href="v.url" target="_blank" rel="noreferrer">{{ v.url }}</a
+          ><br /><Tag :color="v.status === 'verified' ? 'green' : 'orange'">{{
+            v.status === 'verified' ? '已通过官网验证' : '未通过验证'
+          }}</Tag
+          >{{ v.reason
+          }}<Button
+            v-if="v.siteId"
+            size="small"
+            @click="router.push({ path: '/sites', query: { site: v.siteId } })"
+            >查看独立站</Button
+          >
+        </p>
+        <p class="hci-subtle">
+          投放状态和持续时间不代表真实销量、利润或
+          ROAS。素材仅保存来源链接，可能过期。
+        </p></template
+      >
+    </Drawer>
+    <Modal
+      v-model:open="open"
+      :title="
+        advertiser ? `采集广告主 · ${advertiser.brand}` : '采集广告与关联独立站'
+      "
+      :confirm-loading="busy"
+      :closable="!busy"
+      :mask-closable="!busy"
+      ok-text="提交后台采集"
       cancel-text="取消"
-      @cancel="selected = undefined"
-      @ok="save"
+      @ok="submit"
     >
       <Form layout="vertical">
-        <Form.Item label="关联商品">
-          <Select
-            v-model:value="linkId"
+        <Form.Item label="已入选关键词"
+          ><Select
+            v-model:value="keywordIds"
+            mode="multiple"
             show-search
             option-filter-prop="label"
+            :max-tag-count="3"
             :options="
-              state.products
-                .filter((p) => p.market === selected?.market)
-                .map((p) => ({ label: `${p.brand} · ${p.title}`, value: p.id }))
+              keywords.map((k) => ({
+                label: `${k.term} · ${k.market}`,
+                value: k.id,
+              }))
             "
-          />
-        </Form.Item>
+            @change="pendingRequest = ''"
+        /></Form.Item>
+        <div class="hci-form-grid">
+          <Form.Item label="每词最多查询页数"
+            ><InputNumber
+              v-model:value="form.maxPages"
+              :min="1"
+              :max="10" /></Form.Item
+          ><Form.Item label="每词广告数量上限"
+            ><InputNumber
+              v-model:value="form.maxAds"
+              :min="1"
+              :max="100" /></Form.Item
+          ><Form.Item label="每词验证站点上限"
+            ><InputNumber
+              v-model:value="form.maxSites"
+              :min="1"
+              :max="20" /></Form.Item
+          ><Form.Item label="本任务广告请求上限"
+            ><InputNumber v-model:value="form.maxRequests" :min="1" :max="1000"
+          /></Form.Item>
+        </div>
+        <Form.Item label="广告状态"
+          ><Select
+            v-model:value="form.adStatus"
+            :options="[
+              { label: '正在投放', value: 'ACTIVE' },
+              { label: '全部', value: 'ALL' },
+              { label: '已停止', value: 'INACTIVE' },
+            ]"
+        /></Form.Item>
+        <Alert
+          type="info"
+          show-icon
+          :message="`已选 ${keywordIds.length} 个词；广告最多请求 ${Math.min(form.maxRequests, keywordIds.length * form.maxPages)} 次，按服务商额度计费。`"
+        />
+        <p class="hci-subtle">
+          每页通常计 1
+          credit，以接口回报为准。达到请求上限会停止并标记未完成。站点评分另外使用现有
+          Semrush 额度并优先复用30天缓存。不会自动购买额度。
+        </p>
+        <Alert v-if="error" type="error" :message="error" show-icon />
       </Form>
-      <p class="hci-subtle">
-        当前仅展示同市场商品。关联操作将保存到当前工作区。
-      </p>
     </Modal>
   </main>
 </template>

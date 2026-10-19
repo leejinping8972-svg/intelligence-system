@@ -8,9 +8,12 @@ export interface KeywordResearchInput {
   apiUrl: string;
   seeds: string[];
   markets: Market[];
-  sources: Array<'amazon_autocomplete' | 'google_autocomplete' | 'sorftime'>;
+  sources: Array<
+    'amazon_autocomplete' | 'google_autocomplete' | 'sorftime' | 'semrush'
+  >;
   depth: number;
   limit: number;
+  expectedKeywordCount?: number;
   signal?: AbortSignal;
   sorftimeRequestLimit?: number;
 }
@@ -40,19 +43,33 @@ export async function runKeywordResearch(
     input.sources.length === 0 ||
     input.sources.some(
       (source) =>
-        !['amazon_autocomplete', 'google_autocomplete', 'sorftime'].includes(
-          source,
-        ),
+        ![
+          'amazon_autocomplete',
+          'google_autocomplete',
+          'sorftime',
+          'semrush',
+        ].includes(source),
     )
   )
     throw new Error('第一步仅接受关键词发现渠道');
+  const supportedPairs =
+    seeds.length *
+    markets.filter((market) => market === 'US' || market === 'MX').length;
+  const remainingSlots = input.limit - seeds.length * markets.length;
+  const automaticLimit =
+    supportedPairs > 0 && remainingSlots > 0
+      ? input.depth === 2
+        ? Math.min(input.limit, supportedPairs + remainingSlots)
+        : supportedPairs
+      : 0;
+  const taskSorftimeLimit = input.sorftimeRequestLimit ?? automaticLimit;
   if (
     input.sources.includes('sorftime') &&
-    (!Number.isInteger(input.sorftimeRequestLimit) ||
-      (input.sorftimeRequestLimit ?? 0) < 1 ||
-      (input.sorftimeRequestLimit ?? 0) > 20)
+    (!Number.isInteger(taskSorftimeLimit) ||
+      taskSorftimeLimit < 0 ||
+      taskSorftimeLimit > 100)
   )
-    throw new Error('请设置1～20次 Sorftime 数据调用上限');
+    throw new Error('Sorftime自动调用额度无效，请检查结果数量');
   const candidates = new Map<string, Keyword>();
   const add = (
     term: string,
@@ -109,14 +126,9 @@ export async function runKeywordResearch(
       if (remaining <= 0) break;
       const allowance = Math.ceil(remaining / Math.max(1, combinationsLeft));
       combinationsLeft -= 1;
-      const sorftimeRequestLimit = Math.min(
-        6,
-        Math.max(
-          0,
-          (input.sorftimeRequestLimit || 0) -
-            sorftimeCalls -
-            sorftimeUnconfirmedCalls,
-        ),
+      const sorftimeRequestLimit = Math.max(
+        0,
+        taskSorftimeLimit - sorftimeCalls - sorftimeUnconfirmedCalls,
       );
       try {
         const result = await transport({

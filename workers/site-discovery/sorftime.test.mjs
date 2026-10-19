@@ -385,3 +385,25 @@ test('failed data calls count towards the quota and are not automatically retrie
   assert.match(result.message, /429/);
   assert.equal(calls.filter((item) => item.method === 'tools/call').length, 1);
 });
+
+test('second-level expansion follows the keyword target beyond six calls and stops when filled', async () => {
+  const calls = [];
+  const metadata = mcpMock(calls);
+  const fetcher = async (url, options) => {
+    const request = JSON.parse(options.body);
+    if (request.method !== 'tools/call') return metadata(url, options);
+    calls.push(request);
+    const word = request.params.arguments.searchKeyword;
+    const keywords = word === 'seed' ? Array.from({length: 8}, (_, i) => `child-${i}`) : [`extra-${word}`];
+    return Response.json({ jsonrpc: '2.0', id: request.id, result: { structuredContent: { keywords } } });
+  };
+  const budget = { remaining: 100, used: 0 };
+  const result = await sorftimeSuggestions('seed', 'US', 2, 15, budget, {SORFTIME_MCP_TOKEN: 'QA-only'}, fetcher);
+  assert.equal(result.items.length, 15);
+  assert.equal(budget.used, 8);
+  assert.equal(calls.filter(call => call.method === 'tools/call').length, 8);
+  const smallBudget = {remaining: 100, used: 0};
+  const small = await sorftimeSuggestions('seed', 'US', 2, 3, smallBudget, {SORFTIME_MCP_TOKEN: 'QA-only'}, fetcher);
+  assert.equal(small.items.length, 3);
+  assert.equal(smallBudget.used, 1);
+});

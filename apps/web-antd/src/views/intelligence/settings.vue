@@ -11,7 +11,12 @@ import {
   Tag,
 } from 'ant-design-vue';
 
+import { clearCloudKeywords } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import SemrushSettings from './components/SemrushSettings.vue';
+import YouTubeSettings from './components/YouTubeSettings.vue';
+import AdsSettings from './components/AdsSettings.vue';
+import AnalysisSettings from './components/AnalysisSettings.vue';
 import {
   audit,
   clearWorkspaceResults,
@@ -20,6 +25,7 @@ import {
   markets,
   state,
 } from './data';
+import { serverMode } from './session';
 import {
   keywordSourceStatus,
   saveSorftimeConfiguration,
@@ -29,6 +35,24 @@ const draft = reactive({ ...state.settings });
 const brandingDraft = reactive({ ...state.branding });
 const logoInput = ref<HTMLInputElement>();
 const resetOpen = ref(false);
+const resetBusy = ref(false);
+async function resetResults() {
+  resetBusy.value = true;
+  try {
+    await clearCloudKeywords();
+    clearWorkspaceResults();
+    Object.assign(draft, state.settings);
+    Object.assign(brandingDraft, state.branding);
+    resetOpen.value = false;
+    message.success('云端关键词及本机结果已清空，基础配置已保留');
+  } catch (error) {
+    message.error(
+      error instanceof Error ? error.message : '清除失败，未清空本机缓存',
+    );
+  } finally {
+    resetBusy.value = false;
+  }
+}
 const sorftimeToken = ref('');
 const providerBusy = ref(false);
 const sorftimeState = ref('尚未检测');
@@ -127,9 +151,9 @@ const sources = [
   {
     mark: 'YT',
     name: 'YouTube Data API',
-    status: '等待免费Key',
+    status: '本页配置 Key',
     detail:
-      '按美、墨、越市场跟踪新视频及公开互动量。需要Google Cloud启用YouTube Data API并把Key配置为GitHub Secret YOUTUBE_API_KEY。',
+      '按美、墨、越市场跟踪新视频及公开互动量。在本页 YouTube 配置区加密保存 Key 并检测；每日公共情报采集自动读取。',
   },
   {
     mark: 'GD',
@@ -150,7 +174,7 @@ const sources = [
     name: 'Google Trends',
     status: '零成本试运行',
     detail:
-      '通过公开网页接口采集同市场近90天相对趋势并计算最近28天变化；接口限流或低数据量时保留失败原因。',
+      '通过公开网页接口采集同市场过去一年相对趋势，并尝试补齐最近28天变化；限流或低数据量时保留具体原因。',
   },
   {
     mark: 'SL',
@@ -207,7 +231,7 @@ function save() {
       const url = new URL(draft.researchApiUrl);
       if (url.protocol !== 'https:') throw new Error('HTTPS required');
     } catch {
-      message.error('Worker API地址必须是有效的HTTPS网址');
+      message.error('研究服务地址必须是有效的HTTPS网址');
       return;
     }
   }
@@ -284,6 +308,10 @@ function handleLogo(event: Event) {
       title="数据源与设置"
       description="明确每个市场的覆盖边界，控制研究规模与成本。"
     />
+    <SemrushSettings v-if="serverMode" />
+    <YouTubeSettings v-if="serverMode" />
+    <AdsSettings v-if="serverMode" />
+    <AnalysisSettings v-if="serverMode" />
     <section class="hci-panel" id="keyword-providers">
       <div class="hci-panel-head">
         <h2>关键词数据源 · Sorftime MCP</h2>
@@ -291,7 +319,7 @@ function handleLogo(event: Event) {
       </div>
       <p class="hci-subtle">
         使用你已有的 MCP ACCESS TOKEN。保存到当前工作区的云端加密存储，不写入
-        GitHub，不保存在浏览器长期存储，也不会回显完整密钥。
+        源代码，不保存在浏览器长期存储，也不会回显完整密钥。
       </p>
       <Form layout="vertical">
         <Form.Item label="Sorftime MCP ACCESS TOKEN">
@@ -323,13 +351,14 @@ function handleLogo(event: Event) {
             href="https://open.sorftime.com/mcp"
             target="_blank"
             rel="noopener noreferrer"
-            >打开 Sorftime MCP</a>
+            >打开 Sorftime MCP</a
+          >
         </div>
       </Form>
       <p class="hci-evidence">{{ providerMessage }}</p>
       <p class="hci-subtle">
         美国、墨西哥：Amazon
-        延伸词；越南不跨国替代。研究时需主动勾选此来源，默认最多调用3次，可在新建任务中调整。调用使用你的平台额度，系统不会自动购买。此配置由持有研究访问码的当前工作区用户管理。
+        延伸词；越南不跨国替代。研究时需主动勾选此来源，调用次数根据结果数量、种子词、市场和扩词深度自动安排，达到结果数量即停止。调用使用你的平台额度，系统不会自动购买。此配置由当前工作区管理员管理。
       </p>
     </section>
     <section class="hci-panel">
@@ -338,7 +367,7 @@ function handleLogo(event: Event) {
           <h2>基础配置</h2>
           <p>统一管理左上角品牌、页面业务名称和右上角工作区入口。</p>
         </div>
-        <Tag color="green">当前浏览器生效</Tag>
+        <Tag color="green">同步到服务器</Tag>
       </div>
       <div class="hci-branding-layout">
         <div class="hci-brand-preview">
@@ -441,19 +470,19 @@ function handleLogo(event: Event) {
               <InputNumber
                 v-model:value="draft.taskBudget"
                 :min="0"
-              />
-</Form.Item><Form.Item label="月度预算（USD）">
+              /> </Form.Item
+            ><Form.Item label="月度预算（USD）">
               <InputNumber
                 v-model:value="draft.monthlyBudget"
                 :min="0"
-              />
-</Form.Item><Form.Item label="单任务趋势查询项">
+              /> </Form.Item
+            ><Form.Item label="单任务趋势查询项">
               <InputNumber
                 v-model:value="draft.trendLimit"
                 :min="1"
                 :max="100"
-              />
-</Form.Item><Form.Item label="每站商品上限">
+              /> </Form.Item
+            ><Form.Item label="每站商品上限">
               <InputNumber
                 v-model:value="draft.productsPerSite"
                 :min="1"
@@ -463,16 +492,17 @@ function handleLogo(event: Event) {
           </div>
           <div class="hci-form-section-title hci-full">关键词找独立站</div>
           <div class="hci-form-grid hci-full">
-            <Form.Item label="Cloudflare Worker API 地址">
+            <Form.Item label="研究服务地址">
               <Input
                 v-model:value="draft.researchApiUrl"
-                placeholder="https://zhiheng-site-discovery.你的子域.workers.dev"
+                placeholder="https://43.172.66.45/api"
+                :readonly="serverMode"
               />
             </Form.Item>
-            <Form.Item label="研究访问码">
+            <Form.Item v-if="!serverMode" label="研究访问码">
               <Input.Password
                 v-model:value="draft.researchAccessKey"
-                placeholder="填写 Worker 中的 RESEARCH_ACCESS_KEY"
+                placeholder="填写原研究访问码"
                 autocomplete="off"
               />
             </Form.Item>
@@ -485,11 +515,9 @@ function handleLogo(event: Event) {
             </Form.Item>
           </div>
           <div class="hci-cost-reference hci-full">
-            Worker 用 Brave Search
-            发现候选域名，再直接访问官网验证商品、价格、购物车和建站平台。 Brave
-            密钥只保存在 Cloudflare；研究访问码只保存在当前浏览器，不会提交到
-            GitHub。 为控制免费额度和超时，单次最多执行 3 个“关键词 ×
-            市场”组合。
+            研究接口和采集服务运行在腾讯云。Brave Search
+            用于发现候选域名，再访问官网核验商品与站点信息。
+            平台密钥加密保存在服务器；正式后台通过账号登录使用。关键词后台任务可一次提交最多100个结果，后台分步执行并保存进度；接口配额和网站访问限制仍可能影响结果数量。
           </div>
           <div class="hci-form-section-title hci-full">成本估算规则</div>
           <div class="hci-form-grid hci-full">
@@ -541,22 +569,27 @@ function handleLogo(event: Event) {
               href="https://serpapi.com/pricing"
               target="_blank"
               rel="noreferrer"
-              >SerpApi 价格</a>
+              >SerpApi 价格</a
+            >
             ·
             <a
               href="https://dataforseo.com/pricing/keywords-data/dataforseo-trends-api-pricing"
               target="_blank"
               rel="noreferrer"
-              >Trends 价格</a>
+              >Trends 价格</a
+            >
           </div>
-          <Button type="primary" @click="save">保存配置</Button><span class="hci-subtle" style="margin-left: 12px">预算0：禁止付费</span>
+          <Button type="primary" @click="save">保存配置</Button
+          ><span class="hci-subtle" style="margin-left: 12px"
+            >预算0：禁止付费</span
+          >
         </Form>
       </section>
     </div>
     <section class="hci-panel">
       <div class="hci-panel-head">
         <h2>{{ marketName(state.market) }} · 数据来源</h2>
-        <span class="hci-subtle">Brave 密钥仅在 Worker 服务端配置</span>
+        <span class="hci-subtle">平台密钥仅在服务器加密保存</span>
       </div>
       <div v-for="s in sources" :key="s.name" class="hci-source-card">
         <div class="hci-source-mark">{{ s.mark }}</div>
@@ -583,8 +616,8 @@ function handleLogo(event: Event) {
             s.name === '卖家精灵' && state.market === 'VN'
               ? '本地站点不支持'
               : sourceStatus(s)
-          }}
-</Tag><Button size="small" @click="selected = s">接入说明</Button>
+          }} </Tag
+        ><Button size="small" @click="selected = s">接入说明</Button>
       </div>
     </section>
     <section class="hci-panel">
@@ -592,7 +625,7 @@ function handleLogo(event: Event) {
         <div>
           <h2>工作区结果管理</h2>
           <p>
-            收藏、审核、导入及监控设置保存在当前浏览器。正式权限与审计由后端实现。
+            业务结果、收藏、审核、导入记录及监控设置会同步到服务器，本机保留缓存。尚未实现完整的多人角色权限管理。
           </p>
         </div>
         <Button danger @click="resetOpen = true">清空全部结果数据</Button>
@@ -600,21 +633,16 @@ function handleLogo(event: Event) {
     </section>
     <Modal
       v-model:open="resetOpen"
-      title="清空此浏览器的全部结果数据？"
+      title="清空云端关键词及本机全部结果数据？"
+      :confirm-loading="resetBusy"
       ok-text="确认清空"
       cancel-text="保留数据"
-      @ok="
-        clearWorkspaceResults();
-        Object.assign(draft, state.settings);
-        Object.assign(brandingDraft, state.branding);
-        resetOpen = false;
-        message.success('结果数据已清空，基础配置已保留');
-      "
+      @ok="resetResults"
     >
       <p>
-        这会清除关键词、趋势、独立站、商品、广告、审核、任务、监控、导入历史和操作记录。后台名称、Worker地址、研究访问码、预算和采集参数会保留，电脑上的原始文件不会受到影响。
-      </p>
-</Modal><Modal
+        这会清除云端保存的关键词、趋势和关键词任务，以及本机的独立站、商品、广告、审核、监控、导入历史和操作记录。请先取消正在运行的后台任务并导出需要保留的数据。后台名称、服务地址、研究访问码和密钥配置会保留。
+      </p> </Modal
+    ><Modal
       :open="!!selected"
       :title="selected?.name"
       :footer="null"
