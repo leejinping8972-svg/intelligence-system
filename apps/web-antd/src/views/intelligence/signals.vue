@@ -11,11 +11,13 @@ import {
   Input,
   Select,
   Table,
+  Tabs,
   Tag,
 } from 'ant-design-vue';
 
 import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
+import PublicContentPanel from './components/PublicContentPanel.vue';
 import { serverMode } from './session';
 import { csvValue, download, marketOptions, state } from './data';
 import {
@@ -27,6 +29,7 @@ import {
 import type { FreeSourceData, PublicSignalKind } from './public-sources';
 
 const data = ref<FreeSourceData>();
+const section = ref('search');
 const loading = ref(true);
 const loadError = ref('');
 const sourceFilter = ref('ALL');
@@ -207,7 +210,7 @@ function selectSignal(record: Record<string, any>) {
   <main class="hci-page">
     <PageHeader
       title="公共情报源"
-      description="自动汇集可零成本使用的官方或公共数据，并保留来源、日期、口径与限制。"
+      description="按需查找视频、文章和研究文献，保留原始来源；也可查看已有公共信号。"
     >
       <Select
         v-model:value="state.market"
@@ -215,9 +218,14 @@ function selectSignal(record: Record<string, any>) {
         style="width: 180px"
         aria-label="国家市场"
       />
-      <Button @click="exportSignals">导出当前结果</Button>
+      <Button v-if="section === 'signals'" @click="exportSignals">导出当前结果</Button>
     </PageHeader>
-
+    <Tabs v-model:active-key="section">
+      <Tabs.TabPane key="search" tab="公共内容搜索" />
+      <Tabs.TabPane key="signals" tab="已有公共信号" />
+    </Tabs>
+    <PublicContentPanel v-if="section === 'search'" />
+    <div v-show="section === 'signals'" class="hci-page">
     <Alert
       type="info"
       show-icon
@@ -426,5 +434,6 @@ function selectSignal(record: Record<string, any>) {
         </Button>
       </template>
     </Drawer>
+    </div>
   </main>
 </template>
