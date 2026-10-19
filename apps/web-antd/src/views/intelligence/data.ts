@@ -326,6 +326,12 @@ export interface Task {
     reportId: string;
   };
   collectionProgress?: {
+    channels?: {
+      source: string;
+      status: string;
+      done: number;
+      total: number;
+    }[];
     kind?: string;
     semrushUnits?: number;
     done: number;

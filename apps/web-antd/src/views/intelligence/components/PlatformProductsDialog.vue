@@ -10,6 +10,7 @@ import {
   InputNumber,
   Modal,
   Select,
+  Tooltip,
   message,
 } from 'ant-design-vue';
 import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
@@ -17,13 +18,18 @@ import { markets, state } from '../data';
 import { serverMode } from '../session';
 const props = defineProps<{
   terms?: string[];
+  market?: string;
   disabled?: boolean;
+  disabledReason?: string;
   label?: string;
 }>();
 const open = ref(false),
   busy = ref(false),
   errorMessage = ref('');
 const router = useRouter();
+const disabledMessage = computed(() =>
+  !serverMode ? '请在服务器版使用平台商品采集' : props.disabledReason || '',
+);
 const form = reactive({
   terms: '',
   market: 'US',
@@ -57,7 +63,7 @@ let requestId = '',
   signature = '';
 function show() {
   form.terms = (props.terms || []).join('\n');
-  form.market = state.market === 'ALL' ? 'US' : state.market;
+  form.market = props.market || (state.market === 'ALL' ? 'US' : state.market);
   if (form.market === 'VN') form.providers = ['semrush'];
   open.value = true;
   errorMessage.value = '';
@@ -110,9 +116,20 @@ async function submit() {
 }
 </script>
 <template>
-  <Button :disabled="disabled || !serverMode" type="primary" @click="show">{{
-    label || '按词获取平台商品'
-  }}</Button>
+  <Tooltip :title="disabledMessage" :trigger="['hover', 'focus']">
+    <span
+      :tabindex="disabled || !serverMode ? 0 : undefined"
+      :aria-label="disabledMessage || undefined"
+      style="display: inline-flex"
+    >
+      <Button
+        :disabled="disabled || !serverMode"
+        type="primary"
+        @click="show"
+        >{{ label || '按词获取平台商品' }}</Button
+      >
+    </span>
+  </Tooltip>
   <Modal
     v-model:open="open"
     title="从平台获取商品与决策指标"

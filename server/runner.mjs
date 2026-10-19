@@ -89,7 +89,7 @@ export function jobTasks(job) {
       market,
       mode: 'live',
       stage: 'sites',
-      title: `云端 · ${job.input.kind === 'ads' ? '广告与关联独立站采集' : '独立站指标与评分'} · ${label[market]}`,
+      title: `云端 · ${job.input.kind === 'ads' ? (job.input.includeSearchSites ? '广告与独立站双渠道采集' : '广告与关联独立站采集') : '独立站指标与评分'} · ${label[market]}`,
       status: job.cancelled ? 'cancelled' : job.status,
       created:
         job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
@@ -101,6 +101,7 @@ export function jobTasks(job) {
       ],
       collectionProgress: {
         kind: job.input.kind,
+        channels: job.checkpoint.channels,
         semrushUnits: job.checkpoint.semrushUnits || 0,
         done: job.checkpoint.index || 0,
         total: job.input.records.length,

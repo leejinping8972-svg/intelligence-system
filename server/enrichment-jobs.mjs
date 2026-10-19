@@ -94,8 +94,14 @@ export async function submitEnrichment(request) {
       throw new Error('后台已有20个任务，请稍后提交');
     const busy = new Set(
       active.rows
-        .filter((j) => j.input.kind === value.kind)
-        .flatMap((j) => j.input.keywordIds || []),
+        .filter(
+          (j) =>
+            j.input.kind === value.kind ||
+            (value.kind === 'sites' &&
+              j.input.kind === 'ads' &&
+              j.input.includeSearchSites),
+        )
+        .flatMap((j) => j.input.keywordIds || j.input.ids || []),
     );
     const records = [];
     for (const id of value.keywordIds) {
@@ -155,21 +161,27 @@ export async function submitEnrichment(request) {
   }
 }
 export async function cancelEnrichment(job) {
-  if (!['sites', 'metrics'].includes(job?.input?.kind)) return;
-  const field = fieldFor(job.input.kind);
-  for (const r of job.input.records) {
-    const current = await readKeyword(r.id);
-    if (
-      current?.[field]?.jobId === job.id &&
-      ['queued', 'running'].includes(current[field].status)
-    )
-      await patchCollection(r.id, field, {
-        ...current[field],
-        status: 'cancelled',
-        finishedAt: new Date().toISOString(),
-        message: '任务已取消，已获取的结果保留',
-      });
-  }
+  if (!['sites', 'metrics', 'ads'].includes(job?.input?.kind)) return;
+  const fields =
+    job.input.kind === 'ads'
+      ? job.input.includeSearchSites
+        ? ['adCollection', 'siteCollection']
+        : ['adCollection']
+      : [fieldFor(job.input.kind)];
+  for (const r of job.input.records)
+    for (const field of fields) {
+      const current = await readKeyword(r.id);
+      if (
+        current?.[field]?.jobId === job.id &&
+        ['queued', 'running'].includes(current[field].status)
+      )
+        await patchCollection(r.id, field, {
+          ...current[field],
+          status: 'cancelled',
+          finishedAt: new Date().toISOString(),
+          message: '任务已取消，已获取的结果保留',
+        });
+    }
 }
 export async function runEnrichment(job, overrides = {}) {
   const io = {
