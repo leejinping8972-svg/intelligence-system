@@ -29,6 +29,7 @@ import {
   Tag,
 } from 'ant-design-vue';
 
+import { canReadArticle } from '../article-details';
 import { download, marketOptions, state } from '../data';
 import {
   contentCategories,
@@ -40,6 +41,7 @@ import {
   filterContent,
 } from '../public-content';
 import { serverMode } from '../session';
+import PublicArticleDetails from './PublicArticleDetails.vue';
 
 const props = defineProps<{
   initialQuery?: string;
@@ -57,6 +59,7 @@ const form = reactive({
   language: languageForMarket(startingMarket),
   sources: ['youtube', 'reddit', 'medlineplus', 'europepmc'],
   limit: 30,
+  fetchDetails: true,
   includeRelated: true,
   related: '',
   organize: false,
@@ -417,6 +420,9 @@ onUnmounted(() => {
           <Checkbox v-model:checked="form.includeRelated">
             包含相关词（最多3组搜索词）
           </Checkbox>
+          <Checkbox v-model:checked="form.fetchDetails"
+            >补采文章正文与图表（公开可读内容）</Checkbox
+          >
           <Checkbox
             v-model:checked="form.organize"
             :disabled="!sourceStatus?.modelConfigured"
@@ -615,7 +621,9 @@ onUnmounted(() => {
               {{
                 item.ai?.summaryZh ||
                 item.summary ||
-                '来源未提供摘要，请查看原文。'
+                (canReadArticle(item)
+                  ? '来源未提供摘要，查看详情读取正文。'
+                  : '来源未提供摘要，请查看原文。')
               }}
             </p>
             <p class="hci-subtle">
@@ -745,15 +753,27 @@ onUnmounted(() => {
           >
         </p>
         <p class="hci-subtle">
-          内容覆盖：{{ detail.textAvailability }} · 采集于
-          {{ contentDate(detail.collectedAt) }} · 命中：{{
+          {{ canReadArticle(detail) ? '检索索引覆盖' : '内容覆盖' }}：{{
+            detail.textAvailability
+          }}
+          · 采集于 {{ contentDate(detail.collectedAt) }} · 命中：{{
             detail.matchedQueries.join(' / ')
           }}
         </p>
         <h3>来源摘要 / 描述</h3>
         <p class="pc-full-text">
-          {{ detail.summary || '来源未提供正文或摘要，仅保存索引和链接。' }}
+          {{
+            detail.summary ||
+            (canReadArticle(detail)
+              ? '来源未提供摘要，公开正文与图表见下方。'
+              : '来源未提供正文或摘要，仅保存索引和链接。')
+          }}
         </p>
+        <PublicArticleDetails
+          v-if="canReadArticle(detail)"
+          :key="detail.id"
+          :item="detail"
+        />
         <section v-if="detail.ai" class="hci-evidence">
           <h3>AI中文整理</h3>
           <p>{{ detail.ai.summaryZh }}</p>

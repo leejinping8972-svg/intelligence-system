@@ -278,6 +278,7 @@ export async function searchContentSource(step, input, io = {}) {
     );
     raw = list(data.resultList?.result, 'resultList.result').map((item) => ({
       sourceId: `${item.source}:${item.id}`,
+      pmcid: /^PMC\d{1,12}$/.test(item.pmcid || '') ? item.pmcid : '',
       title: item.title,
       author: item.authorString || '',
       summary: cleanText(item.abstractText),

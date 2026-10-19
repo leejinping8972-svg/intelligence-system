@@ -23,6 +23,19 @@ for (const name of ['youtube', 'scrapecreators', 'analysis'])
 globalThis.__publicContentUiDb = db;
 const moduleUrl = (s) => `data:text/javascript,${encodeURIComponent(s)}`;
 registerHooks({
+  load(url, context, next) {
+    const result = next(url, context);
+    if (url.endsWith('/public-article-http.mjs')) {
+      return {
+        ...result,
+        source: `${String(result.source).replace(
+          'export async function fetchPublicArticle(',
+          'async function readRealPublicArticle(',
+        )}\nexport const fetchPublicArticle = (url) => globalThis.__publicArticleUiRead(url);`,
+      };
+    }
+    return result;
+  },
   resolve(s, c, next) {
     if (c.parentURL?.endsWith('/public-content-store.mjs')) {
       if (s === './database.mjs')
@@ -57,6 +70,26 @@ registerHooks({
 });
 const json = (value) => Response.json(value);
 let calls = 0;
+let articleCalls = 0;
+const articleFixture = process.env.HCI_TEST_ARTICLE_XML
+  ? await readFile(process.env.HCI_TEST_ARTICLE_XML, 'utf8')
+  : `<article><front><article-meta><article-id pub-id-type="pmc">13666917</article-id><article-title>Omega-3 public article fixture</article-title></article-meta></front><body><sec><title>Methods</title><p>${'Public article fixture describing observations, nutrition methods and limitations. '.repeat(10)}</p></sec></body></article>`;
+globalThis.__publicArticleUiRead = async (value) => {
+  const url = new URL(value);
+  articleCalls++;
+  if (
+    url.href ===
+    'https://www.ebi.ac.uk/europepmc/webservices/rest/PMC13666917/fullTextXML'
+  )
+    return { text: articleFixture, url: url.href, status: 200 };
+  if (url.hostname === 'medlineplus.gov')
+    return {
+      text: `<article><h1>Creatine public article fixture</h1><details><summary>Body</summary><p>${'Creatine public nutrition article, with methods and study limitations. '.repeat(8)}</p></details></article>`,
+      url: url.href,
+      status: 200,
+    };
+  throw new Error('External article network disabled in UI test');
+};
 globalThis.fetch = async (value) => {
   calls++;
   const u = new URL(value);
@@ -118,17 +151,29 @@ globalThis.fetch = async (value) => {
   if (u.hostname === 'www.ebi.ac.uk')
     return json({
       resultList: {
-        result: Array.from({ length: 6 }, (_, i) => ({
-          source: 'MED',
-          id: `99000${i}`,
-          pmid: `99000${i}`,
-          title: `Creatine study ${i} (local QA)`,
-          abstractText:
-            'Creatine research abstract, limitations and outcomes. Local synthetic fixture.',
-          authorString: 'QA researchers',
-          language: 'eng',
-          firstPublicationDate: '2026-10-01',
-        })),
+        result: [
+          {
+            source: 'PMC',
+            id: 'PMC13666917',
+            pmcid: 'PMC13666917',
+            title:
+              'Dietary Omega-3 Intake, Supplement Use and Omega-3 Status in Elite (Tier 3) Male Gaelic Football Players: A Cross-Sectional Study',
+            authorString: 'Flanagan M, Ryan L.',
+            language: 'eng',
+            firstPublicationDate: '2026-10-01',
+          },
+          ...Array.from({ length: 6 }, (_, i) => ({
+            source: 'MED',
+            id: `99000${i}`,
+            pmid: `99000${i}`,
+            title: `Creatine study ${i} (local QA)`,
+            abstractText:
+              'Creatine research abstract, limitations and outcomes. Local synthetic fixture.',
+            authorString: 'QA researchers',
+            language: 'eng',
+            firstPublicationDate: '2026-10-01',
+          })),
+        ],
       },
     });
   throw new Error('External network disabled in UI test');
@@ -226,7 +271,12 @@ createServer(async (req, res) => {
   }
   if (req.url === '/qa/stats') {
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ syntheticProviderCalls: calls }));
+    res.end(
+      JSON.stringify({
+        syntheticProviderCalls: calls,
+        isolatedArticleReads: articleCalls,
+      }),
+    );
     return;
   }
   if (req.url?.startsWith('/admin/data/free-source-observations.json')) {

@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { openAdsKey } from './ads-provider.mjs';
 import { pool, putDocument, sql } from './database.mjs';
 import { modelReportText, postModel } from './model-provider.mjs';
+import { articleAction } from './public-article-details.mjs';
 import { PUBLIC_CONTENT_PROMPT } from './public-content-ai.mjs';
 import {
   CONTENT_SOURCES,
@@ -107,6 +108,8 @@ const io = {
   youtubeKey: readYoutubeKey,
   scrapeKey,
   organize,
+  getArticle: (id) => get(`content:article:${id}`),
+  writeArticle: (id, value) => write(`content:article:${id}`, value),
   saveJob: (job) =>
     update(`content:job:${job.id}`, (old) =>
       old?.status === 'cancelled' ? { ...job, status: 'cancelled' } : job,
@@ -182,6 +185,21 @@ export async function withPublicContentIdle(callback) {
   return result;
 }
 export async function publicContentAction(input, user) {
+  if (
+    ['server_content_article_get', 'server_content_article_submit'].includes(
+      input.action,
+    )
+  ) {
+    const result = await articleAction(input, user, {
+      ...io,
+      listJobs,
+      submitLease: (callback) =>
+        lease('public-content-submit', 89_761_032, callback),
+    });
+    if (result === null)
+      throw new Error('正在提交其他公共内容任务，请稍后再试');
+    return result;
+  }
   if (input.action === 'server_content_status') {
     const [youtube, scrape, model] = await Promise.all([
       credentials('provider:youtube:v1'),
