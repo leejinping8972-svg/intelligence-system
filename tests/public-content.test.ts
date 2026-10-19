@@ -6,6 +6,7 @@ import {
   contentCsv,
   contentDate,
   filterContent,
+  itemScopes,
 } from '../apps/web-antd/src/views/intelligence/public-content';
 
 const make = (id: string, extra: Partial<ContentItem> = {}): ContentItem => ({
@@ -43,6 +44,31 @@ const all = {
   favorites: false,
 };
 describe('public content search result presentation', () => {
+  it('filters multi-scope records without relabelling old records as local evidence', () => {
+    const records = [
+      make('old'),
+      make('local', { searchScope: 'local' }),
+      make('both', {
+        searchContexts: [
+          { scope: 'local', market: 'VN', language: 'vi', query: 'creatine' },
+          { scope: 'global', market: 'ALL', language: 'en', query: 'creatine' },
+        ],
+      }),
+    ];
+    expect(itemScopes(make('old'))).toEqual([]);
+    expect(
+      filterContent(records, { ...all, scope: 'global' }).map(
+        (record) => record.id,
+      ),
+    ).toEqual(['both']);
+    expect(
+      filterContent(records, { ...all, scope: 'local' }).map(
+        (record) => record.id,
+      ),
+    ).toEqual(['local', 'both']);
+    expect(contentCsv(records)).toContain('历史记录未区分');
+    expect(contentCsv(records)).toContain('全球参考证据');
+  });
   it('combines category, content type and translated text filters', () => {
     const rows = [
       make('v'),

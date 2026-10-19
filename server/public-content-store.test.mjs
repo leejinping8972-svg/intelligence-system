@@ -59,11 +59,58 @@ test(
       },
     });
     try {
-      const { publicContentAction: api, withPublicContentIdle } =
-        await import('./public-content-store.mjs');
+      const {
+        publicContentAction: api,
+        withPublicContentIdle,
+        contentCacheName,
+      } = await import('./public-content-store.mjs');
       const user = { id: 'qa', role: 'researcher' };
       const status = await api({ action: 'server_content_status' }, user);
-      assert.equal(status.sources.length, 5);
+      assert.equal(status.sources.length, 11);
+      const cacheInput = {
+        limit: 30,
+        market: 'VN',
+        language: 'vi',
+        queries: ['creatine'],
+        sources: ['web_articles'],
+        scopes: ['local', 'global'],
+        referenceQueries: ['creatine'],
+        referenceLanguage: 'en',
+      };
+      const localCache = contentCacheName(
+        {
+          source: 'web_articles',
+          query: 'creatine',
+          scope: 'local',
+          market: 'VN',
+          language: 'vi',
+        },
+        cacheInput,
+      );
+      const globalCache = contentCacheName(
+        {
+          source: 'web_articles',
+          query: 'creatine',
+          scope: 'global',
+          market: 'ALL',
+          language: 'en',
+        },
+        cacheInput,
+      );
+      assert.notEqual(localCache, globalCache);
+      assert.notEqual(
+        localCache,
+        contentCacheName(
+          {
+            source: 'web_articles',
+            query: 'creatine',
+            scope: 'local',
+            market: 'US',
+            language: 'en',
+          },
+          cacheInput,
+        ),
+      );
       assert.equal(
         status.sources.find((s) => s.id === 'reddit').configured,
         false,
@@ -173,6 +220,73 @@ test(
         user,
       );
       assert.equal(unfavorited.items.length, 0);
+      const redditId = 'pc-123456789012345678901234';
+      await db.query(
+        'INSERT INTO workspace_documents(name,value) VALUES($1,$2)',
+        [
+          `content:item:${redditId}`,
+          {
+            id: redditId,
+            source: 'reddit',
+            title: 'Creatine discussion',
+            url: 'https://www.reddit.com/r/test/comments/abc/creatine/',
+            searchMarket: 'VN',
+            searchLanguage: 'vi',
+          },
+        ],
+      );
+      const comments = await api(
+        {
+          action: 'server_content_comments',
+          requestId: randomUUID(),
+          itemId: redditId,
+        },
+        user,
+      );
+      assert.equal(comments.job.mode, 'comments');
+      const sameComments = await api(
+        {
+          action: 'server_content_comments',
+          requestId: randomUUID(),
+          itemId: redditId,
+        },
+        user,
+      );
+      assert.equal(sameComments.job.id, comments.job.id);
+      await api(
+        { action: 'server_content_cancel', jobId: comments.job.id },
+        user,
+      );
+      const referenceId = randomUUID();
+      const referenceInput = {
+        query: 'creatine',
+        market: 'VN',
+        language: 'vi',
+        scopes: ['global'],
+        sources: ['medlineplus'],
+        referenceQuery: 'creatine safety',
+        referenceLanguage: 'en',
+      };
+      const reference = await api(
+        {
+          action: 'server_content_submit',
+          requestId: referenceId,
+          input: referenceInput,
+        },
+        user,
+      );
+      assert.equal(reference.job.steps[0].language, 'en');
+      assert.equal(reference.job.steps[0].market, 'ALL');
+      const referenceAgain = await api(
+        {
+          action: 'server_content_submit',
+          requestId: referenceId,
+          input: referenceInput,
+        },
+        user,
+      );
+      assert.equal(referenceAgain.job.id, referenceId);
+      await api({ action: 'server_content_cancel', jobId: referenceId }, user);
       await assert.rejects(
         api({ action: 'server_content_snapshot', jobId: "' OR 1=1" }, user),
         /编号/,

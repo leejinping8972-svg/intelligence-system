@@ -4,11 +4,20 @@ import type {
   ContentCategory,
   ContentItem,
   ContentJob,
+  ContentScope,
   ContentSnapshot,
   ContentStatus,
 } from '../public-content';
 
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  useId,
+  watch,
+} from 'vue';
 
 import {
   Alert,
@@ -20,6 +29,7 @@ import {
   Input,
   InputNumber,
   message,
+  Modal,
   Pagination,
   Progress,
   Radio,
@@ -35,9 +45,11 @@ import {
   contentCsv,
   contentDate,
   contentRequest,
+  contentScopes,
   contentStates,
   contentTypes,
   filterContent,
+  itemScopes,
 } from '../public-content';
 import { serverMode } from '../session';
 
@@ -46,6 +58,7 @@ const props = defineProps<{
   initialMarket?: string;
   keywordIds?: string[];
   productIds?: string[];
+  openSearchOnMount?: boolean;
 }>();
 const requestedMarket = props.initialMarket || state.market;
 const startingMarket = requestedMarket === 'ALL' ? 'US' : requestedMarket;
@@ -55,7 +68,17 @@ const form = reactive({
   query: props.initialQuery || '',
   market: startingMarket,
   language: languageForMarket(startingMarket),
-  sources: ['youtube', 'reddit', 'medlineplus', 'europepmc'],
+  sources: [
+    'youtube',
+    'reddit',
+    'local_health',
+    'global_health',
+    'medlineplus',
+    'europepmc',
+  ],
+  scopes: ['local', 'global'] as ContentScope[],
+  referenceQuery: '',
+  referenceLanguage: 'en',
   limit: 30,
   includeRelated: true,
   related: '',
@@ -64,6 +87,8 @@ const form = reactive({
   productIds: props.productIds || [],
 });
 const sourceStatus = ref<ContentStatus>();
+const searchOpen = ref(props.openSearchOnMount === true);
+const searchFormId = useId();
 const errorMessage = ref('');
 const loading = ref(false);
 const submitting = ref(false);
@@ -89,6 +114,7 @@ const filter = reactive({
   since: 'ALL',
   search: '',
   favorites: false,
+  scope: 'ALL',
 });
 const detail = computed(() => items.value.find((i) => i.id === detailId.value));
 const result = computed(() => filterContent(items.value, filter));
@@ -117,10 +143,45 @@ const sources = computed(() => [
   ),
 ]);
 const sourceOptions = computed(() =>
-  (sourceStatus.value?.sources || []).map((s) => ({
-    value: s.id,
-    label: `${s.label}${s.configured ? '' : '（未配置）'}`,
-  })),
+  (sourceStatus.value?.sources || [])
+    .filter((s) => s.scopes.some((scope) => form.scopes.includes(scope)))
+    .map((s) => ({
+      value: s.id,
+      label: `${s.label}${s.configured ? '' : '（未配置）'}`,
+    })),
+);
+const selectedSources = computed(() =>
+  (sourceStatus.value?.sources || []).filter(
+    (source) =>
+      form.sources.includes(source.id) &&
+      source.scopes.some((scope) => form.scopes.includes(scope)),
+  ),
+);
+const missingScope = computed(() =>
+  form.scopes.some(
+    (scope) =>
+      !selectedSources.value.some((source) => source.scopes.includes(scope)),
+  ),
+);
+watch(
+  () => [...form.scopes],
+  (scopes, previous) => {
+    const available = sourceStatus.value?.sources || [];
+    form.sources = form.sources.filter((id) =>
+      available.some(
+        (source) =>
+          source.id === id &&
+          source.scopes.some((scope) => scopes.includes(scope)),
+      ),
+    );
+    for (const scope of scopes.filter((scope) => !previous.includes(scope))) {
+      const defaults =
+        scope === 'local'
+          ? ['youtube', 'reddit', 'local_health']
+          : ['global_health', 'medlineplus', 'europepmc'];
+      form.sources = [...new Set([...form.sources, ...defaults])];
+    }
+  },
 );
 const productOptions = computed(() =>
   state.products
@@ -230,8 +291,13 @@ async function refresh() {
 }
 async function submit() {
   if (submitting.value) return;
-  if (form.query.trim().length < 2 || form.sources.length === 0) {
-    errorMessage.value = '请填写关键词并选择至少一个来源';
+  if (
+    form.query.trim().length < 2 ||
+    form.scopes.length === 0 ||
+    missingScope.value
+  ) {
+    errorMessage.value =
+      '请填写关键词、勾选检索范围，并为每个范围选择至少一个来源';
     return;
   }
   submitting.value = true;
@@ -253,7 +319,9 @@ async function submit() {
     );
     activeJob.value = data.job.id;
     showFavorites.value = false;
+    filter.scope = 'ALL';
     pendingSubmit = undefined;
+    searchOpen.value = false;
     message.success('搜索已提交，关闭页面后仍会在后台继续');
     await refresh();
   } catch (error) {
@@ -292,6 +360,24 @@ async function transcript(item: ContentItem) {
   } catch (error) {
     errorMessage.value =
       error instanceof Error ? error.message : '字幕任务提交失败';
+  } finally {
+    submitting.value = false;
+  }
+}
+async function comments(item: ContentItem) {
+  if (submitting.value) return;
+  submitting.value = true;
+  try {
+    const data = await contentRequest<{ job: ContentJob }>(
+      'server_content_comments',
+      { requestId: crypto.randomUUID(), itemId: item.id },
+    );
+    activeJob.value = data.job.id;
+    showFavorites.value = false;
+    await refresh();
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error ? error.message : '评论取样提交失败';
   } finally {
     submitting.value = false;
   }
@@ -343,16 +429,53 @@ onUnmounted(() => {
     <section class="hci-panel">
       <div class="hci-panel-head">
         <div>
-          <h2>搜索视频与文章</h2>
-          <p>按关键词或相关产品查找公开内容，保留原文、来源和命中依据。</p>
+          <h2>公共内容搜索</h2>
+          <p>查找目标市场本地素材与全球参考证据，保留原文、来源和地域依据。</p>
         </div>
+        <Button
+          type="primary"
+          :disabled="!serverMode"
+          @click="searchOpen = true"
+          >搜索视频与文章</Button
+        >
       </div>
-      <Form :model="form" layout="vertical" @finish="submit">
+    </section>
+    <Modal
+      v-model:open="searchOpen"
+      title="搜索视频与文章"
+      :mask-closable="false"
+      width="min(1000px, 96vw)"
+      :style="{ top: '32px' }"
+      :body-style="{
+        maxHeight: 'calc(100dvh - 210px)',
+        overflowY: 'auto',
+        paddingTop: '12px',
+      }"
+    >
+      <Alert
+        v-if="errorMessage"
+        type="error"
+        show-icon
+        :message="errorMessage"
+        role="alert"
+        style="margin-bottom: 16px"
+      />
+      <Form :id="searchFormId" :model="form" layout="vertical" @finish="submit">
+        <Form.Item label="检索范围（可同时勾选）" required>
+          <Checkbox.Group v-model:value="form.scopes" class="pc-scope-options">
+            <Checkbox value="local">目标市场本地素材</Checkbox>
+            <Checkbox value="global">全球参考证据</Checkbox>
+          </Checkbox.Group>
+          <p class="hci-subtle">
+            本地素材使用目标市场与语言线索检索，结果不保证来自当地作者；全球参考证据独立检索，不按目标国家限制。
+          </p>
+        </Form.Item>
         <div class="pc-form-grid">
           <Form.Item label="关键词 / 产品名称" required class="pc-query">
             <Input
               v-model:value="form.query"
               aria-label="公共内容搜索词"
+              autofocus
               :maxlength="200"
               placeholder="例如 creatine gummies、品牌或成分"
             />
@@ -364,7 +487,7 @@ onUnmounted(() => {
               aria-label="公共内容目标市场"
             />
           </Form.Item>
-          <Form.Item label="检索语言">
+          <Form.Item label="本地素材检索语言">
             <Select
               v-model:value="form.language"
               :options="languageOptions"
@@ -381,6 +504,25 @@ onUnmounted(() => {
             />
           </Form.Item>
         </div>
+        <div v-if="form.scopes.includes('global')" class="pc-reference-fields">
+          <Form.Item label="全球参考检索词（可选）" class="pc-query">
+            <Input
+              v-model:value="form.referenceQuery"
+              aria-label="全球参考检索词"
+              :maxlength="200"
+              placeholder="建议填写英文成分名；留空使用原关键词"
+            />
+          </Form.Item>
+          <Form.Item label="全球参考检索语言">
+            <Select
+              v-model:value="form.referenceLanguage"
+              :options="
+                languageOptions.filter((option) => option.value !== 'vi')
+              "
+              aria-label="全球参考检索语言"
+            />
+          </Form.Item>
+        </div>
         <Form.Item label="数据来源">
           <Select
             v-model:value="form.sources"
@@ -390,6 +532,20 @@ onUnmounted(() => {
             placeholder="选择来源"
           />
         </Form.Item>
+        <Alert
+          v-if="missingScope && form.scopes.length"
+          type="warning"
+          show-icon
+          message="每个已勾选范围至少选择一个适用来源"
+          style="margin-bottom: 12px"
+        />
+        <p class="hci-subtle">
+          本地渠道：YouTube、TikTok、Reddit 帖子、Facebook
+          视频/索引帖子、Instagram
+          Reels、当地卫生机构/医院、网页文章。全球渠道：NIH ODS / NCCIH / NHS /
+          WHO 机构文章、MedlinePlus、Europe
+          PMC、网页文章；普通网页不自动视为权威证据。
+        </p>
         <div class="pc-form-grid">
           <Form.Item label="关联产品（可选）" class="pc-query">
             <Select
@@ -415,7 +571,7 @@ onUnmounted(() => {
         </div>
         <div class="hci-toolbar">
           <Checkbox v-model:checked="form.includeRelated">
-            包含相关词（最多3组搜索词）
+            包含相关词（每个范围最多3组词）
           </Checkbox>
           <Checkbox
             v-model:checked="form.organize"
@@ -423,19 +579,11 @@ onUnmounted(() => {
           >
             AI翻译与摘要（最多10条，一次模型调用）
           </Checkbox>
-          <Button
-            type="primary"
-            html-type="submit"
-            :loading="submitting"
-            :disabled="!serverMode || !form.sources.length"
-          >
-            搜索公共内容
-          </Button>
         </div>
         <p class="hci-subtle">
-          按需搜索，不创建定时监测。社媒接口可能扣除 ScrapeCreators
+          按需搜索，不创建定时监测。社媒和网页索引可能扣除 ScrapeCreators
           credits，YouTube 消耗 API
-          配额；24小时内相同请求优先复用结果。国家与语言用于检索，不代表作者所在地或内容语言已核实。
+          配额；每个来源每组词只请求一页，按任务总上限分摊、每组最多20条；三组词每渠道通常最多60条候选，最终入库仍受任务总上限约束。网页文章同时勾选两个范围时分别检索。24小时内相同请求优先复用结果。国家与语言用于检索，不代表作者所在地或内容语言已核实。
         </p>
         <p
           v-if="sourceStatus && !sourceStatus.modelConfigured"
@@ -444,7 +592,18 @@ onUnmounted(() => {
           尚未配置语义分析模型，仍可搜索并查看来源原文。
         </p>
       </Form>
-    </section>
+      <template #footer>
+        <Button :disabled="submitting" @click="searchOpen = false">取消</Button>
+        <Button
+          type="primary"
+          html-type="submit"
+          :form="searchFormId"
+          :loading="submitting"
+          :disabled="!serverMode || !form.scopes.length || missingScope"
+          >搜索公共内容</Button
+        >
+      </template>
+    </Modal>
     <Alert
       v-if="errorMessage"
       type="error"
@@ -492,6 +651,15 @@ onUnmounted(() => {
             取消后续请求
           </Button>
         </div>
+        <p class="hci-subtle">
+          检索范围：{{
+            job.input.scopes
+              ?.map((scope) => contentScopes[scope])
+              .join(' / ') || '历史任务未区分'
+          }}<span v-if="job.input.referenceQuery">
+            · 全球参考词：{{ job.input.referenceQuery }}</span
+          >
+        </p>
         <Progress
           :percent="progress"
           :status="isRunning ? 'active' : 'normal'"
@@ -509,6 +677,7 @@ onUnmounted(() => {
                   ?.label || step.source
               }}</b>
               · {{ step.query }} · {{ contentStates[step.status] }} ·
+              {{ step.scope ? contentScopes[step.scope] : '历史步骤' }} ·
               {{ step.message || '等待后台处理' }}
             </li>
           </ul>
@@ -530,6 +699,17 @@ onUnmounted(() => {
         />
       </Tabs>
       <div class="hci-toolbar pc-filters">
+        <Select
+          v-model:value="filter.scope"
+          aria-label="公共内容检索范围筛选"
+          :options="[
+            { value: 'ALL', label: '全部检索范围' },
+            ...Object.entries(contentScopes).map(([value, label]) => ({
+              value,
+              label,
+            })),
+          ]"
+        />
         <Input
           v-model:value="filter.search"
           aria-label="筛选内容标题或摘要"
@@ -604,6 +784,9 @@ onUnmounted(() => {
           <div class="pc-card-body">
             <div>
               <Tag>{{ contentCategories[item.category] }}</Tag
+              ><Tag v-for="scope in itemScopes(item)" :key="scope">{{
+                contentScopes[scope]
+              }}</Tag
               ><Tag v-if="item.ai?.duplicateOf">AI标记相似内容</Tag>
             </div>
             <h3>
@@ -622,6 +805,9 @@ onUnmounted(() => {
               {{ item.sourceLabel }} · {{ contentDate(item.publishedAt) }}
             </p>
             <p class="hci-subtle">{{ item.matchReason }}</p>
+            <p class="hci-subtle">
+              {{ item.marketBasis || '历史记录：来源地区未核实' }}
+            </p>
             <div class="hci-toolbar">
               <Button size="small" @click="detailId = item.id">查看详情</Button
               ><a :href="item.url" target="_blank" rel="noopener noreferrer">{{
@@ -663,6 +849,11 @@ onUnmounted(() => {
             <Tag>
               {{ contentCategories[record.category as ContentCategory] }} </Tag
             ><Tag>{{ contentTypes[record.type] }}</Tag>
+            <Tag
+              v-for="scope in itemScopes(record as ContentItem)"
+              :key="scope"
+              >{{ contentScopes[scope] }}</Tag
+            >
           </template>
           <template v-else-if="column.key === 'source'">
             {{ record.sourceLabel }}
@@ -721,6 +912,22 @@ onUnmounted(() => {
             }}
           </Tag>
         </div>
+        <p class="hci-subtle">
+          地域依据：{{ detail.marketBasis || '未核实' }} · 来源机构国家：{{
+            detail.publisherCountry || '未知'
+          }}
+        </p>
+        <ul class="pc-step-list">
+          <li
+            v-for="(context, index) in detail.searchContexts || []"
+            :key="index"
+          >
+            {{ contentScopes[context.scope] }} · 检索市场
+            {{ context.market === 'ALL' ? '全球' : context.market }} · 检索语言
+            {{ context.language }} · {{ context.query }}
+            <span v-if="context.basis"> · {{ context.basis }}</span>
+          </li>
+        </ul>
         <iframe
           v-if="detail.source === 'youtube' && detail.videoId"
           class="pc-video"
@@ -780,6 +987,36 @@ onUnmounted(() => {
             {{ detail.transcript.text || '来源没有可用的原语言字幕。' }}
           </p>
         </section>
+        <section v-if="detail.source === 'reddit'">
+          <h3>帖子评论取样</h3>
+          <p class="hci-subtle">
+            手动读取一次，可能消耗 ScrapeCreators
+            credits；保存最多20条顶层评论，不自动展开或分页。
+          </p>
+          <Button
+            :loading="submitting"
+            :disabled="isRunning || !!detail.comments"
+            @click="comments(detail)"
+            >{{ detail.comments ? '已保存评论取样' : '读取帖子评论' }}</Button
+          >
+          <p v-if="detail.comments" class="hci-subtle">
+            {{ detail.comments.completeness }}
+          </p>
+          <blockquote
+            v-for="comment in detail.comments?.items || []"
+            :key="comment.id"
+          >
+            <b>{{ comment.author || '来源未提供作者' }}</b>
+            <p class="pc-full-text">{{ comment.text }}</p>
+            <a
+              v-if="comment.url"
+              :href="comment.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              >查看评论原文</a
+            >
+          </blockquote>
+        </section>
         <Form layout="vertical" style="margin-top: 20px">
           <Form.Item label="关联关键词">
             <Select
@@ -838,6 +1075,18 @@ onUnmounted(() => {
 
 .pc-query {
   grid-column: span 2;
+}
+
+.pc-reference-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pc-scope-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .pc-filters > .ant-input-affix-wrapper,
@@ -973,6 +1222,14 @@ onUnmounted(() => {
 
   .pc-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pc-reference-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pc-reference-fields .pc-query {
+    grid-column: auto;
   }
 }
 </style>

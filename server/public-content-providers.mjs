@@ -1,7 +1,12 @@
 import { Buffer } from 'node:buffer';
 
 import {
+  discoveryRequest,
+  parseDiscovery,
+} from './public-content-discovery.mjs';
+import {
   cleanText,
+  contentPlan,
   decodeXml,
   normalizeContent,
   publicUrl,
@@ -22,7 +27,7 @@ async function request(
     response = await fetcher(url, {
       redirect: 'error',
       headers,
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(40_000),
     });
   } catch {
     throw new ContentProviderError('连接超时或网络不可达；本次未自动重试');
@@ -108,12 +113,18 @@ export function parseMedline(xml) {
 }
 export async function searchContentSource(step, input, io = {}) {
   const { source, query } = step;
+  const planLength = contentPlan(input).length;
+  input = {
+    ...input,
+    language: step.language || input.language,
+    market: step.market || input.market,
+    searchScope:
+      step.scope ||
+      (['europepmc', 'medlineplus'].includes(source) ? 'global' : 'local'),
+  };
   const perSource = Math.min(
     20,
-    Math.max(
-      1,
-      Math.ceil(input.limit / (input.sources.length * input.queries.length)),
-    ),
+    Math.max(1, Math.ceil(input.limit / Math.max(1, planLength))),
   );
   const fetcher = io.fetcher || fetch;
   let creditsCharged = null;
@@ -154,10 +165,40 @@ export async function searchContentSource(step, input, io = {}) {
                 'ytimg.com',
               ]),
               videoId: item.id.videoId,
+              marketBasis:
+                '地区参数表示在目标国家可观看，语言仅为相关性偏好；作者地区未核实',
             },
           ]
         : [],
     );
+  } else if (
+    [
+      'facebook',
+      'facebook_posts',
+      'global_health',
+      'instagram',
+      'local_health',
+      'web_articles',
+    ].includes(source)
+  ) {
+    const key = await io.scrapeKey?.();
+    if (!key)
+      throw new ContentProviderError(
+        '请在数据源与设置中配置 ScrapeCreators Key',
+        'unconfigured',
+      );
+    const discovery = discoveryRequest(source, query, input);
+    data = await request(
+      urlWith(
+        `https://api.scrapecreators.com${discovery.path}`,
+        discovery.params,
+      ),
+      { fetcher, headers: { 'x-api-key': key } },
+    );
+    raw = parseDiscovery(source, data, input, perSource, list);
+    creditsCharged = Number.isFinite(data.credits_charged)
+      ? data.credits_charged
+      : null;
   } else if (source === 'reddit' || source === 'tiktok') {
     const key = await io.scrapeKey?.();
     if (!key)
@@ -198,6 +239,9 @@ export async function searchContentSource(step, input, io = {}) {
                   title: post.title,
                   summary: post.selftext || '',
                   author: post.author || '',
+                  subreddit: cleanText(post.subreddit, 100),
+                  marketBasis:
+                    'Reddit 按关键词检索，没有国家过滤；作者地区未核实',
                   publishedAt:
                     post.created_at_iso || dateSeconds(post.created_utc),
                   type: post.is_video ? 'video' : 'post',
@@ -230,6 +274,7 @@ export async function searchContentSource(step, input, io = {}) {
               summary: item.desc || '',
               author: item.author?.nickname || user || '',
               language: item.desc_language || 'unknown',
+              marketBasis: '已传目标地区参数；不代表作者国家或观众地区已核实',
               publishedAt: dateSeconds(item.create_time),
               type: 'video',
               thumbnail: publicUrl(item.video?.cover?.url_list?.[0], [
@@ -300,12 +345,69 @@ export async function searchContentSource(step, input, io = {}) {
         : '仅文献索引',
     }));
   } else throw new ContentProviderError('不支持的数据来源');
+  const payloadKey = {
+    youtube: 'items',
+    reddit: 'posts',
+    tiktok: 'search_item_list',
+    facebook: 'videos',
+    instagram: 'reels',
+    facebook_posts: 'results',
+    local_health: 'results',
+    global_health: 'results',
+    web_articles: 'results',
+  }[source];
+  const returned = payloadKey ? data?.[payloadKey] : data?.resultList?.result;
   return {
     items: raw
+      .slice(0, perSource)
       .map((item) => normalizeContent(item, source, input, query))
       .filter(Boolean),
-    rawCount: raw.length,
+    rawCount: Array.isArray(returned) ? returned.length : raw.length,
+    pageLimit: perSource,
+    candidateCount: Math.min(raw.length, perSource),
     creditsCharged,
+  };
+}
+export async function fetchContentComments(item, io = {}) {
+  const url = publicUrl(item.url, ['reddit.com']);
+  if (
+    item.source !== 'reddit' ||
+    !url ||
+    !/\/comments\/[a-z\d]+\//i.test(new URL(url).pathname)
+  )
+    throw new ContentProviderError('仅支持已入库 Reddit 帖子的评论');
+  const key = await io.scrapeKey?.();
+  if (!key)
+    throw new ContentProviderError('请配置 ScrapeCreators Key', 'unconfigured');
+  const result = await request(
+    urlWith('https://api.scrapecreators.com/v1/reddit/post/comments', {
+      url,
+      trim: true,
+    }),
+    { fetcher: io.fetcher || fetch, headers: { 'x-api-key': key } },
+  );
+  const comments = list(result.comments, 'comments')
+    .slice(0, 20)
+    .map((comment) => ({
+      id: cleanText(comment.id, 80),
+      author: cleanText(comment.author, 120),
+      text: cleanText(comment.body, 4000),
+      url: publicUrl(comment.url || comment.permalink, ['reddit.com']),
+      score: typeof comment.score === 'number' ? comment.score : null,
+    }))
+    .filter(
+      (comment) =>
+        comment.text && !['[deleted]', '[removed]'].includes(comment.text),
+    );
+  return {
+    comments: {
+      items: comments,
+      collectedAt: new Date().toISOString(),
+      completeness: '仅本次返回的前20条顶层评论，非完整评论树',
+    },
+    creditsCharged: Number.isFinite(result.credits_charged)
+      ? result.credits_charged
+      : null,
   };
 }
 export async function fetchContentTranscript(item, io = {}) {

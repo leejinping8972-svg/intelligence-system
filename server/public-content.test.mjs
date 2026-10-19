@@ -93,7 +93,7 @@ test('validates bounded request and caps local expansion at three queries', () =
     'creatine',
     'creatine reviews',
   ]);
-  assert.equal(contentPlan(r).length, 12);
+  assert.equal(contentPlan(r).length, 10); // Local: 3x2; global English: 2x2.
   assert.deepEqual(input({ relatedTerms: ['unrequested'] }).queries, [
     'creatine gummies',
   ]);
