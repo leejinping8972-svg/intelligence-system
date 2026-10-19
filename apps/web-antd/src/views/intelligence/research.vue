@@ -22,6 +22,7 @@ import {
 
 import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import PublicContentLauncher from './components/PublicContentLauncher.vue';
 import {
   audit,
   categories,
@@ -870,6 +871,7 @@ function saveMetrics() {
             </Tag>
           </template>
           <template v-else-if="column.key === 'actions'">
+            <PublicContentLauncher :query="record.term" :market="record.market" :keyword-ids="[record.id]" />
             <Button type="link" @click="openDetail(record)">评分详情</Button
             ><Button type="link" @click="toggleFavorite(record)">
               {{ record.favorite ? '已收藏' : '收藏' }}

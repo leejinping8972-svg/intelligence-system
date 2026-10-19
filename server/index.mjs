@@ -38,6 +38,11 @@ import {
 import { submitProducts } from './product-jobs.mjs';
 import { registerRelease, releaseHistory } from './release-history.mjs';
 import { serveAdMedia } from './ad-media.mjs';
+import {
+  publicContentAction,
+  runContentQueue,
+  withPublicContentIdle,
+} from './public-content-store.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const secret = Buffer.from(process.env.SERVER_BRIDGE_KEY || '');
 if (secret.length < 32) throw new Error('SERVER_BRIDGE_KEY must be configured');
@@ -45,7 +50,10 @@ await migrate();
 await registerRelease();
 const controller = new AbortController();
 void runQueue(controller.signal);
+void runContentQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_content_'))
+    return publicContentAction(input, user);
   switch (input.action) {
     case 'server_youtube_config':
     case 'server_youtube_status':
@@ -479,7 +487,13 @@ const server = createServer(async (request, response) => {
       requireAdmin(user);
       if (input.action === 'database_migrate' && activeRequests > 1)
         throw new Error('当前有请求执行中，请稍后重试迁移');
-      response.end(JSON.stringify(await databaseAction(input)));
+      response.end(
+        JSON.stringify(
+          input.action === 'database_migrate'
+            ? await withPublicContentIdle(() => databaseAction(input))
+            : await databaseAction(input),
+        ),
+      );
     } else if (input.action === 'server_setup_credentials') {
       if (!internal) throw new Error('仅部署过程允许迁移服务凭证');
       response.end(

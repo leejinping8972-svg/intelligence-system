@@ -12,6 +12,7 @@ import {
   toggleFavorite,
 } from '../data';
 import ProductArt from './ProductArt.vue';
+import PublicContentLauncher from './PublicContentLauncher.vue';
 const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
 const router = useRouter();
@@ -169,6 +170,7 @@ function addMonitor() {
         </Tabs.TabPane>
       </Tabs>
       <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px">
+        <PublicContentLauncher :query="`${product.brand} ${product.title}`" :market="product.market" :product-ids="[product.id]" />
         <Button type="primary" @click="addMonitor">加入监控</Button><Button @click="toggleFavorite(product)">
           {{ product.favorite ? '取消收藏' : '收藏商品' }}
 </Button><Button
