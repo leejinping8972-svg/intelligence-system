@@ -31,14 +31,17 @@ jobs:
         run: npm ci --ignore-scripts --prefix server
       - name: Product and existing collection tests (mocked providers)
         run: |
-          node --test server/platform-products.test.mjs server/semrush.test.mjs server/product-queue.test.mjs server/job-progress.test.mjs workers/site-discovery/sorftime.test.mjs
-          pnpm exec vitest run tests/product-decisions.test.ts
+          node --test server/platform-products.test.mjs server/semrush.test.mjs server/product-queue.test.mjs server/job-progress.test.mjs workers/site-discovery/sorftime.test.mjs server/public-content.test.mjs
+          pnpm exec vitest run tests/product-decisions.test.ts tests/public-content.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
       - name: Build server frontend
         env:
           VITE_HCI_SERVER: 'true'
           VITE_HCI_DEMO: 'false'
+          VITE_BASE: /admin/
+          VITE_ROUTER_HISTORY: history
+          VITE_APP_NAMESPACE: intelligence-testing
         run: pnpm --filter @vben/web-antd exec vite build --mode production --base=/admin/
       - name: Build API image
         run: docker build -t intelligence-platform-products-qa -f server/Dockerfile .

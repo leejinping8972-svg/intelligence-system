@@ -242,8 +242,86 @@ try {
   await runPlatformProducts(cancelled, { collect });
   assert.equal((await readJob(cancelled.id)).status, 'cancelled');
   assert.equal(calls.length, before);
+  // Cross-feature SQL and namespace checks use the same isolated database.
+  const { publicContentAction: contentApi, withPublicContentIdle } =
+    await import('./public-content-store.mjs');
+  const user = { id: 'qa-researcher', role: 'researcher' };
+  const contentRequest = {
+    action: 'server_content_submit',
+    requestId: randomUUID(),
+    input: {
+      query: 'creatine',
+      market: 'US',
+      language: 'en',
+      sources: ['youtube'],
+      limit: 10,
+    },
+  };
+  const content = await contentApi(contentRequest, user);
+  assert.equal((await contentApi(contentRequest, user)).job.id, content.job.id);
+  await assert.rejects(
+    contentApi(
+      { ...contentRequest, input: { ...contentRequest.input, query: 'other' } },
+      user,
+    ),
+    /其他搜索/,
+  );
+  const contentId = `pc-${'a'.repeat(24)}`;
+  await putDocument('workspace_documents', `content:item:${contentId}`, {
+    id: contentId,
+    source: 'youtube',
+    title: 'QA creatine',
+    videoId: 'abcdefghijk',
+    collectedAt: at,
+    searchMarket: 'US',
+    searchLanguage: 'en',
+    favorite: false,
+    keywordIds: [],
+    productIds: [],
+  });
+  await contentApi(
+    {
+      action: 'server_content_save',
+      itemId: contentId,
+      favorite: true,
+      productIds: [amazon.id],
+    },
+    user,
+  );
+  const favorites = await contentApi(
+    { action: 'server_content_snapshot', favorites: true },
+    user,
+  );
+  assert.deepEqual(favorites.items[0].productIds, [amazon.id]);
+  assert.equal(
+    (await readProduct(amazon.id)).favorite,
+    true,
+    'content save cannot overwrite product state',
+  );
+  await assert.rejects(
+    withPublicContentIdle(async () => true),
+    /公共内容任务尚未结束/,
+  );
+  await contentApi(
+    { action: 'server_content_cancel', jobId: content.job.id },
+    user,
+  );
+  assert.equal(await withPublicContentIdle(async () => true), true);
+  const transcript = await contentApi(
+    {
+      action: 'server_content_transcript',
+      requestId: randomUUID(),
+      itemId: contentId,
+    },
+    user,
+  );
+  assert.equal(transcript.job.mode, 'transcript');
+  await contentApi(
+    { action: 'server_content_cancel', jobId: transcript.job.id },
+    user,
+  );
   console.warn(
-    `PASS ${engine}: submission/idempotency, two-platform queue, product upsert, keyword links, progress, refresh/manual state, cancellation; mocked providers only`,
+    `PASS ${engine}: product queue/links/refresh/journal/cancel and content API/idempotency/favorites/product links/idle locks/transcript queue; zero external calls`,
   );
 } finally {
   await pool.end();
