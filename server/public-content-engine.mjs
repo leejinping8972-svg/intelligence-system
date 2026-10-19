@@ -1,3 +1,8 @@
+import {
+  articleEligible,
+  collectArticleStep,
+  executeArticleJob,
+} from './public-article-details.mjs';
 import { contentAiInput, validateContentAi } from './public-content-ai.mjs';
 import {
   contentPlan,
@@ -41,6 +46,7 @@ const ended = (status) =>
   ['cancelled', 'completed', 'failed', 'partial'].includes(status);
 export async function executeContentJob(job, io) {
   if (ended(job.status)) return job;
+  if (job.mode === 'article') return executeArticleJob(job, io);
   job.status = 'running';
   job.startedAt ||= new Date().toISOString();
   // A crash during a paid request has an unknown outcome. Never replay it automatically.
@@ -74,6 +80,12 @@ export async function executeContentJob(job, io) {
     if (io.signal?.aborted) return; // Current step is still pending and safe to resume.
     step.status = 'running';
     await save();
+    if (step.kind === 'article_detail') {
+      await collectArticleStep(job, step, io);
+      if (io.leaseSignal?.aborted) return;
+      await save();
+      continue;
+    }
     let attempted = false;
     try {
       if (job.mode === 'transcript' || job.mode === 'comments') {
@@ -145,6 +157,23 @@ export async function executeContentJob(job, io) {
             job.itemIds.push(item.id);
             added++;
           }
+          if (
+            job.input.fetchDetails === true &&
+            articleEligible(item) &&
+            !job.steps.some(
+              (candidate) =>
+                candidate.kind === 'article_detail' &&
+                candidate.itemId === item.id,
+            )
+          )
+            job.steps.push({
+              kind: 'article_detail',
+              source: 'article_fulltext',
+              query: item.title,
+              itemId: item.id,
+              status: 'pending',
+              count: 0,
+            });
         }
         step.count = result.items.length;
         step.added = added;

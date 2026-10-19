@@ -6,6 +6,7 @@
     "test": "node --test domain.test.mjs"
   },
   "dependencies": {
+    "cheerio": "1.2.0",
     "mysql2": "^3.15.3",
     "pg": "^8.16.3"
   },

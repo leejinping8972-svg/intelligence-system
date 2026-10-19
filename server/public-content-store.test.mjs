@@ -291,8 +291,100 @@ test(
         api({ action: 'server_content_snapshot', jobId: "' OR 1=1" }, user),
         /编号/,
       );
+      const paperId = `pc-${'b'.repeat(24)}`;
+      await db.query(
+        'INSERT INTO workspace_documents(name,value) VALUES($1,$2)',
+        [
+          `content:item:${paperId}`,
+          {
+            id: paperId,
+            source: 'europepmc',
+            sourceId: 'PMC:PMC123',
+            type: 'paper',
+            title: 'Isolated paper',
+            favorite: true,
+            keywordIds: ['keyword-qa'],
+            productIds: ['product-qa'],
+            searchMarket: 'US',
+            searchLanguage: 'en',
+          },
+        ],
+      );
+      const missingBody = await api(
+        { action: 'server_content_article_get', itemId: paperId },
+        user,
+      );
+      assert.equal(missingBody.state, 'missing');
+      const bodyRequest = {
+        action: 'server_content_article_submit',
+        requestId: randomUUID(),
+        itemId: paperId,
+      };
+      const bodyJob = await api(bodyRequest, user);
+      assert.equal(bodyJob.job.mode, 'article');
+      const repeatedBody = await api(bodyRequest, user);
+      const pendingBody = await api(
+        { ...bodyRequest, requestId: randomUUID() },
+        user,
+      );
+      const runningBody = await api(
+        { action: 'server_content_article_get', itemId: paperId },
+        user,
+      );
+      assert.equal(repeatedBody.job.id, bodyJob.job.id);
+      assert.equal(pendingBody.job.id, bodyJob.job.id);
+      assert.equal(runningBody.state, 'running');
+      await assert.rejects(
+        withPublicContentIdle(async () => true),
+        /公共内容任务尚未结束/,
+      );
+      await api(
+        { action: 'server_content_cancel', jobId: bodyJob.job.id },
+        user,
+      );
+      assert.equal(await withPublicContentIdle(async () => true), true);
+      const savedBody = {
+        title: 'Isolated paper',
+        sections: [
+          {
+            id: 'section-1',
+            heading: 'Methods',
+            blocks: [
+              { type: 'paragraph', text: 'Saved public article body fixture.' },
+            ],
+          },
+        ],
+        tables: [],
+        figures: [],
+        collectedAt: new Date().toISOString(),
+      };
+      await db.query(
+        'INSERT INTO workspace_documents(name,value) VALUES($1,$2)',
+        [
+          `content:article:${paperId}`,
+          { status: 'ready', document: savedBody },
+        ],
+      );
+      const readyBody = await api(
+        { action: 'server_content_article_get', itemId: paperId },
+        user,
+      );
+      const reusedBody = await api(
+        { ...bodyRequest, requestId: randomUUID() },
+        user,
+      );
+      assert.deepEqual(readyBody.article, savedBody);
+      assert.deepEqual(reusedBody.article, savedBody);
+      const afterBody = await api(
+        { action: 'server_content_snapshot', favorites: true },
+        user,
+      );
+      assert.deepEqual(
+        afterBody.items.find((entry) => entry.id === paperId).productIds,
+        ['product-qa'],
+      );
       console.log(
-        'Isolated PostgreSQL API verification: submit, history, cancel, favorites, associations, transcript queue; zero provider calls.',
+        'Isolated PostgreSQL API verification: submit, history, cancel, favorites, associations, transcript and article body queues/cache; zero provider calls.',
       );
     } finally {
       hook.deregister();

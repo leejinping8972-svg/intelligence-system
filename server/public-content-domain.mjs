@@ -274,6 +274,7 @@ export function validateContentSearch(input) {
     queries,
     includeRelated: input.includeRelated === true,
     organize: input.organize === true,
+    fetchDetails: input.fetchDetails !== false,
     keywordIds: linkIds(input.keywordIds),
     productIds: linkIds(input.productIds),
   };
