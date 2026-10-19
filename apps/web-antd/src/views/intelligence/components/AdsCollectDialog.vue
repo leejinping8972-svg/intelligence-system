@@ -9,12 +9,14 @@ import {
   message,
   Modal,
   Select,
+  Tooltip,
 } from 'ant-design-vue';
 import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
 import { state } from '../data';
 const props = defineProps<{
   keywordIds: string[];
   disabled?: boolean;
+  disabledReason?: string;
   compact?: boolean;
 }>();
 const router = useRouter(),
@@ -27,11 +29,23 @@ const form = reactive({
   maxSites: 10,
   maxRequests: 3,
   adStatus: 'ACTIVE',
+  includeSearchSites: true,
 });
 const names = computed(() =>
   state.keywords
     .filter((k) => props.keywordIds.includes(k.id))
     .map((k) => k.term),
+);
+const disabledMessage = computed(
+  () =>
+    props.disabledReason ||
+    (props.disabled
+      ? '正在同步工作区，请稍后再试'
+      : !props.keywordIds.length
+        ? '请先勾选要采集的关键词'
+        : props.keywordIds.length > 100
+          ? '每次最多选择100个关键词'
+          : ''),
 );
 let requestId = '';
 watch(
@@ -58,7 +72,7 @@ async function submit() {
     );
     requestId = '';
     open.value = false;
-    message.success('广告与广告落地站的采集已提交后台');
+    message.success('广告与Brave独立站双渠道采集已提交后台');
     await syncCloudWorkspace();
     await router.push({ path: '/monitor', query: { job: result.jobId } });
   } catch (e) {
@@ -69,21 +83,29 @@ async function submit() {
 }
 </script>
 <template>
-  <Button
-    :type="compact ? 'link' : 'default'"
-    :disabled="disabled || !keywordIds.length || keywordIds.length > 100"
-    @click="
-      open = true;
-      error = '';
-      requestId = '';
-    "
-  >
-    {{
-      compact
-        ? '采集广告与站点'
-        : `采集广告与独立站（${keywordIds.length}/100）`
-    }}
-  </Button>
+  <Tooltip :title="disabledMessage || undefined" :trigger="['hover', 'focus']">
+    <span
+      style="display: inline-flex"
+      :tabindex="disabledMessage ? 0 : undefined"
+      :aria-label="disabledMessage || undefined"
+    >
+      <Button
+        :type="compact ? 'link' : 'default'"
+        :disabled="Boolean(disabledMessage)"
+        @click="
+          open = true;
+          error = '';
+          requestId = '';
+        "
+      >
+        {{
+          compact
+            ? '采集广告与独立站'
+            : `采集广告与独立站（${keywordIds.length}/100）`
+        }}
+      </Button>
+    </span>
+  </Tooltip>
   <Modal
     v-model:open="open"
     title="从入选关键词采集广告与独立站"
@@ -96,7 +118,8 @@ async function submit() {
   >
     <p>已选 {{ keywordIds.length }} 个词：{{ names.join('、') }}</p>
     <p class="hci-subtle">
-      按这些关键词搜索Meta广告，保存素材与文案，并核验广告落地页、关联独立站。与“搜索采集独立站”的结果合并去重。
+      同一批关键词先通过 Brave Search 搜索官网，再通过 ScrapeCreators
+      获取广告与落地页。两路分别执行官网电商核验，按市场与域名合并，保留搜索链接和广告证据。一条渠道失败时另一条继续；双来源不等于商品、销量已验证。
     </p>
     <Form layout="vertical" @change="requestId = ''"
       ><div class="hci-form-grid">
@@ -106,8 +129,8 @@ async function submit() {
         <Form.Item label="每词广告数量上限"
           ><InputNumber v-model:value="form.maxAds" :min="1" :max="100"
         /></Form.Item>
-        <Form.Item label="每词验证站点上限"
-          ><InputNumber v-model:value="form.maxSites" :min="1" :max="20"
+        <Form.Item label="每路每词站点上限"
+          ><InputNumber v-model:value="form.maxSites" :min="1" :max="10"
         /></Form.Item>
         <Form.Item label="本任务广告请求上限"
           ><InputNumber v-model:value="form.maxRequests" :min="1" :max="1000"
@@ -125,7 +148,7 @@ async function submit() {
     <Alert
       type="info"
       show-icon
-      :message="`最多 ${Math.min(form.maxRequests, keywordIds.length * form.maxPages)} 次广告查询，使用现有ScrapeCreators额度；站点评分优先复用Semrush缓存。`"
+      :message="`最多 ${Math.min(form.maxRequests, keywordIds.length * form.maxPages)} 次广告查询，另有 ${keywordIds.length} 次 Brave 搜索流程（含官网核验）；两路每词各最多 ${form.maxSites} 家站点，合并后去重。使用现有服务额度，站点评分优先复用 Semrush 缓存。`"
     />
     <p class="hci-subtle">
       提交后由服务器执行，关闭浏览器不影响任务。不会自动购买额度。

@@ -10,6 +10,7 @@ import {
 } from './collector.js';
 import { fetchPublicPage } from './safe-web.mjs';
 import { scoreSite } from './site-scoring.mjs';
+import { runCombinedDiscovery } from './combined-discovery.mjs';
 const readDoc = async (key) =>
   (
     await pool.query('SELECT value FROM workspace_documents WHERE name=$1', [
@@ -93,7 +94,18 @@ export function validateMarketJob(input) {
       );
   if (input.adStatus && !['ACTIVE', 'ALL', 'INACTIVE'].includes(input.adStatus))
     throw new Error('广告状态不正确');
+  if (
+    input.includeSearchSites !== undefined &&
+    typeof input.includeSearchSites !== 'boolean'
+  )
+    throw new Error('双渠道采集参数不正确');
+  if (
+    input.includeSearchSites &&
+    (input.kind !== 'ads' || limits.maxSites > 10)
+  )
+    throw new Error('双渠道仅支持广告任务，每路每词站点上限1～10');
   return {
+    includeSearchSites: input.includeSearchSites === true,
     kind: input.kind,
     ids,
     ...limits,
@@ -106,16 +118,25 @@ export async function submitMarketJob(input) {
     throw new Error('缺少提交编号');
   const v = validateMarketJob(input),
     c = await pool.connect();
-  let locked = false;
+  let locked = false,
+    searchLocked = false;
   try {
     locked = await lock(c, 'market-submit');
     if (!locked) throw new Error('正在提交研究，请稍后重试');
+    if (v.includeSearchSites) {
+      searchLocked = await lock(c, 'enrichment-submit');
+      if (!searchLocked) throw new Error('正在提交站点采集，请稍后重试');
+    }
+    await c.query('BEGIN');
     const previous = (
       await c.query('SELECT * FROM research_jobs WHERE request_id=$1', [
         input.requestId,
       ])
     ).rows[0];
-    if (previous) return previous;
+    if (previous) {
+      await c.query('COMMIT');
+      return previous;
+    }
     const active = (
       await c.query(
         "SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
@@ -133,7 +154,8 @@ export async function submitMarketJob(input) {
       if (
         active.some(
           (j) =>
-            j.input.kind === v.kind &&
+            (j.input.kind === v.kind ||
+              (v.includeSearchSites && j.input.kind === 'sites')) &&
             j.input.records?.some((x) => x.id === id),
         )
       )
@@ -183,16 +205,43 @@ export async function submitMarketJob(input) {
     );
     if (v.kind === 'ads')
       for (const r of records)
-        await patchCollection(r.id, 'adCollection', {
-          jobId,
-          status: 'queued',
-          count: 0,
-          target: v.maxAds,
-          submittedAt: new Date().toISOString(),
-        });
+        await patchCollection(
+          r.id,
+          'adCollection',
+          {
+            jobId,
+            status: 'queued',
+            count: 0,
+            target: v.maxAds,
+            submittedAt: new Date().toISOString(),
+          },
+          {},
+          c,
+        );
+    if (v.includeSearchSites)
+      for (const r of records)
+        await patchCollection(
+          r.id,
+          'siteCollection',
+          {
+            jobId,
+            status: 'queued',
+            count: 0,
+            target: v.maxSites * 2,
+            submittedAt: new Date().toISOString(),
+            message: '等待Brave搜索与广告落地站合并采集',
+          },
+          {},
+          c,
+        );
+    await c.query('COMMIT');
     return (await c.query('SELECT * FROM research_jobs WHERE id=$1', [jobId]))
       .rows[0];
+  } catch (e) {
+    await c.query('ROLLBACK').catch(() => {});
+    throw e;
   } finally {
+    if (searchLocked) await unlock(c, 'enrichment-submit');
     if (locked) await unlock(c, 'market-submit');
     c.release();
   }
@@ -273,6 +322,8 @@ export async function runMarketJob(job, overrides = {}) {
       ),
     ...overrides,
   };
+  if (job.input.includeSearchSites)
+    return runCombinedDiscovery(job, io, runMarketJob);
   const cp = {
     index: 0,
     page: 0,

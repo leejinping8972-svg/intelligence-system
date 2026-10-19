@@ -8,9 +8,7 @@ import {
   Alert,
   Button,
   Input,
-  InputNumber,
   message,
-  Modal,
   Select,
   Table,
   Tag,
@@ -20,7 +18,6 @@ import {
 import {
   cancelCloudJob,
   cloudWorkspace,
-  submitCloudEnrichment,
   syncCloudWorkspace,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
@@ -28,18 +25,14 @@ import AdsCollectDialog from './components/AdsCollectDialog.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
 import { audit, filteredKeywords, marketName, state } from './data';
 import { assessKeyword } from './keyword-scoring';
+import { platformProductSelection } from './platform-product-selection';
 
 const router = useRouter();
-const error = ref('');
 const ids = ref<string[]>([]);
-const open = ref(false);
 const search = ref('');
 const status = ref('ALL');
-const submitting = ref(false);
 const page = ref(1);
 const pageSize = ref(20);
-const pendingIds = ref<string[]>([]);
-const target = ref(10);
 const labels: Record<string, string> = {
   pending: '尚未采集',
   queued: '等待采集',
@@ -79,11 +72,14 @@ const active = (r: Keyword) =>
   ['queued', 'running'].includes(r.siteCollection?.status || '');
 const adActive = (r: Keyword) =>
   ['queued', 'running'].includes(r.adCollection?.status || '');
-const adSelectable = computed(() =>
-  selected.value.filter((k) => ids.value.includes(k.id) && !adActive(k)),
+const collectionSelection = computed(() =>
+  selected.value.filter((k) => ids.value.includes(k.id)),
 );
-const selectable = computed(() =>
-  selected.value.filter((k) => ids.value.includes(k.id) && !active(k)),
+const collectionBusy = computed(() =>
+  collectionSelection.value.some((k) => active(k) || adActive(k)),
+);
+const platformSelection = computed(() =>
+  platformProductSelection(selected.value, ids.value, cloudWorkspace.ready),
 );
 const completed = computed(
   () =>
@@ -114,29 +110,6 @@ const columns = [
   { title: '采集时间 / 说明', key: 'time', width: 260 },
   { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
 ];
-function prepare(records: Keyword[]) {
-  if (!records.length || records.length > 100) {
-    message.warning('每次请选择1～100个尚未在采集中的入选关键词');
-    return;
-  }
-  pendingIds.value = records.map((k) => k.id);
-  error.value = '';
-  open.value = true;
-}
-async function submit() {
-  submitting.value = true;
-  error.value = '';
-  try {
-    await submitCloudEnrichment('sites', pendingIds.value, target.value);
-    open.value = false;
-    ids.value = [];
-    message.success('已提交后台采集，关闭页面后继续执行');
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    submitting.value = false;
-  }
-}
 async function remove(r: Keyword) {
   r.reviewStatus = 'pending';
   audit('移出入选关键词', r.term);
@@ -149,7 +122,11 @@ async function remove(r: Keyword) {
 }
 async function cancel(r: Keyword) {
   try {
-    if (r.siteCollection?.jobId) await cancelCloudJob(r.siteCollection.jobId);
+    const jobIds = new Set([
+      ...(active(r) && r.siteCollection?.jobId ? [r.siteCollection.jobId] : []),
+      ...(adActive(r) && r.adCollection?.jobId ? [r.adCollection.jobId] : []),
+    ]);
+    for (const id of jobIds) await cancelCloudJob(id);
     message.success('已取消该批次未完成任务');
   } catch (e) {
     message.error((e as Error).message);
@@ -172,7 +149,7 @@ const time = (r: Keyword) =>
     <Alert
       type="info"
       show-icon
-      message="站点采集在服务器后台执行，关闭浏览器后继续。本站点阶段只验证官网与商品目录，商品详细采集在后续商品研究中执行。"
+      message="一次提交同时使用 Brave Search 搜索与 ScrapeCreators 广告落地页发现独立站，核验后按市场、域名合并，保留各自来源。任务在服务器后台执行，商品详情可通过平台商品流程补齐。"
       style="margin-bottom: 20px"
     />
     <section class="hci-panel">
@@ -185,17 +162,20 @@ const time = (r: Keyword) =>
       </div>
       <div class="selected-toolbar">
         <PlatformProductsDialog
-          :terms="adSelectable.map((k) => k.term)"
-          :disabled="
-            !cloudWorkspace.ready ||
-            state.market === 'ALL' ||
-            !adSelectable.length
-          "
+          :terms="platformSelection.terms"
+          :market="platformSelection.market"
+          :disabled="platformSelection.disabled"
+          :disabled-reason="platformSelection.reason"
           label="获取平台商品与趋势"
         />
         <AdsCollectDialog
-          :keyword-ids="adSelectable.map((k) => k.id)"
-          :disabled="!cloudWorkspace.ready"
+          :keyword-ids="collectionSelection.map((k) => k.id)"
+          :disabled="!cloudWorkspace.ready || collectionBusy"
+          :disabled-reason="
+            collectionBusy
+              ? '勾选的关键词仍有广告或站点任务，请等待完成或取消后再提交'
+              : ''
+          "
         />
         <Input
           v-model:value="search"
@@ -216,17 +196,6 @@ const time = (r: Keyword) =>
             })),
           ]"
         />
-        <Button
-          type="primary"
-          :disabled="
-            !cloudWorkspace.ready ||
-            !selectable.length ||
-            selectable.length > 100
-          "
-          @click="prepare(selectable)"
-        >
-          批量采集独立站（{{ selectable.length }}/100）
-        </Button>
       </div>
       <Table
         :columns="columns"
@@ -236,7 +205,6 @@ const time = (r: Keyword) =>
         :row-selection="{
           selectedRowKeys: ids,
           onChange: (keys) => (ids = keys as string[]),
-          getCheckboxProps: (r) => ({ disabled: active(r) && adActive(r) }),
         }"
         :pagination="{
           current: page,
@@ -323,20 +291,24 @@ const time = (r: Keyword) =>
             <AdsCollectDialog
               compact
               :keyword-ids="[record.id]"
-              :disabled="!cloudWorkspace.ready || adActive(record as Keyword)"
+              :disabled="
+                !cloudWorkspace.ready ||
+                active(record as Keyword) ||
+                adActive(record as Keyword)
+              "
+              :disabled-reason="
+                active(record as Keyword) || adActive(record as Keyword)
+                  ? '该关键词仍有广告或站点任务'
+                  : ''
+              "
             />
-            <Button
-              v-if="!active(record as Keyword)"
-              type="link"
-              :disabled="!cloudWorkspace.ready"
-              @click="prepare([record as Keyword])"
+            <Tooltip
+              v-if="active(record as Keyword) || adActive(record as Keyword)"
+              title="将取消同一批次中所有尚未完成的关键词采集"
             >
-              {{ record.siteCollection ? '重新采集独立站' : '采集独立站' }}
-            </Button>
-            <Tooltip v-else title="将取消同一批次中所有尚未完成的关键词采集">
-              <Button type="link" @click="cancel(record as Keyword)">
-                取消该批次
-              </Button>
+              <Button type="link" @click="cancel(record as Keyword)"
+                >取消该批次</Button
+              >
             </Tooltip>
             <Button
               type="link"
@@ -348,7 +320,9 @@ const time = (r: Keyword) =>
             </Button>
             <Button
               type="link"
-              :disabled="active(record as Keyword)"
+              :disabled="
+                active(record as Keyword) || adActive(record as Keyword)
+              "
               @click="remove(record as Keyword)"
             >
               移出入选
@@ -357,34 +331,6 @@ const time = (r: Keyword) =>
         </template>
       </Table>
     </section>
-    <Modal
-      v-model:open="open"
-      title="采集入选关键词的独立站"
-      ok-text="提交后台采集"
-      :confirm-loading="submitting"
-      :cancel-button-props="{ disabled: submitting }"
-      :closable="!submitting"
-      :mask-closable="!submitting"
-      @ok="submit"
-    >
-      <p>
-        已选择 {{ pendingIds.length }} 个关键词。使用已配置的 Brave Search
-        与官网验证。
-      </p>
-      <label for="selected-site-target">每个关键词目标站点数（1～10）</label>
-      <InputNumber
-        id="selected-site-target"
-        v-model:value="target"
-        :min="1"
-        :max="10"
-        :precision="0"
-        style="display: block; margin: 12px 0"
-      />
-      <p class="hci-subtle">
-        数量是采集目标，受搜索命中、官网可访问性与电商验证影响。未达到目标会标记部分完成或未找到站点，并记录实际数量；不自动购买任何额度。
-      </p>
-      <Alert v-if="error" type="error" :message="error" show-icon />
-    </Modal>
   </main>
 </template>
 <style scoped>

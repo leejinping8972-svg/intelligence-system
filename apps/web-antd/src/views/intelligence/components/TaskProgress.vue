@@ -43,6 +43,13 @@ const phaseLabel = computed(() => {
         ? '正在补充 Semrush 搜索量、KD 与意图'
         : '正在采集趋势并计算评分';
 });
+const channelLabels: Record<string, string> = {
+  queued: '等待执行',
+  running: '采集中',
+  completed: '已结束',
+  partial: '部分完成',
+  cancelled: '已取消',
+};
 const rowLabels: Record<string, string> = {
   pending: '尚未执行',
   running: '采集中',
@@ -274,6 +281,25 @@ const visibleRows = computed(() =>
         >广告请求 {{ task.collectionProgress.requests }} /
         {{ task.collectionProgress.requestLimit }}</span
       >
+    </div>
+    <div v-if="task.collectionProgress.channels" class="hci-toolbar">
+      <span
+        v-for="channel in task.collectionProgress.channels"
+        :key="channel.source"
+      >
+        {{ channel.source }}：{{ channel.done }}/{{ channel.total }}
+        <Tag
+          :color="
+            channel.status === 'completed'
+              ? 'green'
+              : channel.status === 'partial'
+                ? 'orange'
+                : 'blue'
+          "
+        >
+          {{ channelLabels[channel.status] || channel.status }}
+        </Tag>
+      </span>
     </div>
     <p class="hci-subtle">
       {{ task.collectionProgress.current
