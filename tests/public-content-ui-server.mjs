@@ -60,6 +60,68 @@ let calls = 0;
 globalThis.fetch = async (value) => {
   calls++;
   const u = new URL(value);
+  if (
+    u.hostname === 'api.scrapecreators.com' &&
+    u.pathname === '/v1/google/search'
+  ) {
+    const query = u.searchParams.get('query') || '';
+    let host = 'www.vinmec.com';
+    if (query.includes('site:facebook.com')) host = 'www.facebook.com';
+    if (query.includes('site:ods.od.nih.gov')) host = 'ods.od.nih.gov';
+    return json({
+      credits_charged: 1,
+      results: Array.from({ length: 6 }, (_, i) => ({
+        title: `Creatine thông tin sức khỏe ${i} (local QA)`,
+        description:
+          'Creatine thông tin và trải nghiệm. Synthetic index snippet.',
+        url: `https://${host}/${host.includes('facebook') ? 'sample/posts' : 'vie/creatine'}/${i}`,
+      })),
+    });
+  }
+  if (
+    u.hostname === 'api.scrapecreators.com' &&
+    u.pathname === '/v1/facebook/search/videos'
+  )
+    return json({
+      credits_charged: 1,
+      videos: [
+        {
+          id: 'qa-fb',
+          title: 'Creatine Facebook video (local QA)',
+          description: 'creatine routine',
+          url: 'https://www.facebook.com/reel/12345/',
+        },
+      ],
+    });
+  if (
+    u.hostname === 'api.scrapecreators.com' &&
+    u.pathname === '/v2/instagram/reels/search'
+  )
+    return json({
+      credits_charged: 1,
+      reels: [
+        {
+          id: 'qa-ig',
+          caption: 'Creatine Instagram video (local QA)',
+          url: 'https://www.instagram.com/reel/qa-abc/',
+        },
+      ],
+    });
+  if (
+    u.hostname === 'api.scrapecreators.com' &&
+    u.pathname === '/v1/reddit/post/comments'
+  )
+    return json({
+      credits_charged: 1,
+      comments: [
+        {
+          id: 'qa-comment',
+          body: 'Creatine gummies taste and daily routine (local QA)',
+          author: 'QA-user',
+          url: 'https://www.reddit.com/r/Fitness/comments/qa0/creatine/comment/',
+        },
+      ],
+    });
   if (u.hostname === 'www.googleapis.com')
     return json({
       items: Array.from({ length: 8 }, (_, i) => ({

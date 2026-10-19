@@ -9,6 +9,7 @@ import { modelReportText, postModel } from './model-provider.mjs';
 import { PUBLIC_CONTENT_PROMPT } from './public-content-ai.mjs';
 import {
   CONTENT_SOURCES,
+  contentPlan,
   validItemId,
   validJobId,
 } from './public-content-domain.mjs';
@@ -47,16 +48,18 @@ async function update(name, transform) {
     c.release();
   }
 }
-const cacheName = (step, input) =>
+export const contentCacheName = (step, input) =>
   `content:cache:${createHash('sha256')
     .update(
       JSON.stringify([
+        'scope-v2',
         step.source,
         step.query,
-        input.market,
-        input.language,
+        step.scope,
+        step.market || input.market,
+        step.language || input.language,
         input.limit,
-        input.sources.length,
+        contentPlan(input).length,
       ]),
     )
     .digest('hex')}`;
@@ -113,13 +116,16 @@ const io = {
     ),
   updateItem: (id, transform) => update(`content:item:${id}`, transform),
   async readCache(step, input) {
-    const cached = await get(cacheName(step, input));
+    const cached = await get(contentCacheName(step, input));
     return cached && Date.now() - Date.parse(cached.at) < 86_400_000
       ? cached.result
       : null;
   },
   writeCache: (step, input, result) =>
-    write(cacheName(step, input), { at: new Date().toISOString(), result }),
+    write(contentCacheName(step, input), {
+      at: new Date().toISOString(),
+      result,
+    }),
 };
 // Dedicated lock IDs avoid reusing the keyword runner/submission advisory locks.
 async function lease(name, id, callback) {
@@ -205,7 +211,8 @@ export async function publicContentAction(input, user) {
   }
   if (
     input.action === 'server_content_submit' ||
-    input.action === 'server_content_transcript'
+    input.action === 'server_content_transcript' ||
+    input.action === 'server_content_comments'
   ) {
     const result = await lease(
       'public-content-submit',
@@ -222,8 +229,10 @@ export async function publicContentAction(input, user) {
                     .input,
                   duplicate.input,
                 )
-              : duplicate.mode === 'transcript' &&
-                duplicate.itemId === input.itemId;
+              : duplicate.mode ===
+                  (input.action === 'server_content_comments'
+                    ? 'comments'
+                    : 'transcript') && duplicate.itemId === input.itemId;
           if (!same) throw new Error('提交编号已用于其他搜索，请重新提交');
           return { job: duplicate };
         }
@@ -236,25 +245,41 @@ export async function publicContentAction(input, user) {
         else {
           if (!validItemId(input.itemId)) throw new Error('内容编号无效');
           const item = await getItem(input.itemId);
-          if (!item || item.source !== 'youtube')
-            throw new Error('只能获取已入库 YouTube 视频的字幕');
+          const comments = input.action === 'server_content_comments';
+          if (!item || item.source !== (comments ? 'reddit' : 'youtube'))
+            throw new Error(
+              comments
+                ? '只能获取已入库 Reddit 帖子的评论'
+                : '只能获取已入库 YouTube 视频的字幕',
+            );
+          if (comments && item.comments)
+            throw new Error('已有本次评论取样，请查看已保存内容');
+          const previous = jobs.find(
+            (candidate) =>
+              active(candidate) &&
+              candidate.itemId === item.id &&
+              candidate.mode === (comments ? 'comments' : 'transcript'),
+          );
+          if (previous) return { job: previous };
           job = {
             id: input.requestId,
             userId: user.id,
-            mode: 'transcript',
+            mode: comments ? 'comments' : 'transcript',
             itemId: item.id,
             input: {
               query: item.title,
               market: item.searchMarket,
               language: item.searchLanguage,
+              scopes: item.searchScope ? [item.searchScope] : undefined,
             },
             status: 'queued',
             submittedAt: new Date().toISOString(),
             itemIds: [item.id],
             steps: [
               {
-                source: 'youtube_transcript',
+                source: comments ? 'reddit_comments' : 'youtube_transcript',
                 query: item.title,
+                scope: item.searchScope,
                 status: 'pending',
                 count: 0,
               },

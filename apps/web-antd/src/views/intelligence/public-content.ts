@@ -1,10 +1,23 @@
 import { adminRequest, serverMode } from './session';
 
-export type ContentCategory = 'academic' | 'health' | 'social';
+export type ContentCategory = 'academic' | 'health' | 'social' | 'web';
+export type ContentScope = 'global' | 'local';
+export const contentScopes = {
+  local: '目标市场本地素材',
+  global: '全球参考证据',
+};
+export function itemScopes(item: ContentItem): ContentScope[] {
+  const scopes =
+    item.searchContexts?.map((context) => context.scope) ||
+    (item.searchScope ? [item.searchScope] : []);
+  // Legacy social hits were not localised; do not relabel them as local material.
+  return [...new Set(scopes)];
+}
 export const contentCategories = {
   social: '社媒内容',
   health: '权威健康资讯',
   academic: '学术证据',
+  web: '网页文章',
 };
 export const contentTypes: Record<string, string> = {
   video: '视频',
@@ -47,6 +60,27 @@ export interface ContentItem {
   collectedAt: string;
   searchMarket: string;
   searchLanguage: string;
+  searchScope?: ContentScope;
+  searchContexts?: {
+    scope: ContentScope;
+    market: string;
+    language: string;
+    query: string;
+    basis?: string;
+  }[];
+  marketBasis?: string;
+  publisherCountry?: string;
+  comments?: {
+    items: {
+      id: string;
+      text: string;
+      author: string;
+      url: string;
+      score: null | number;
+    }[];
+    collectedAt: string;
+    completeness: string;
+  };
   matchedQueries: string[];
   matchReason: string;
   keywordIds: string[];
@@ -82,10 +116,14 @@ export interface ContentJob {
     language: string;
     limit?: number;
     queries?: string[];
+    scopes?: ContentScope[];
+    referenceQuery?: string;
   };
   steps: {
     source: string;
     query: string;
+    scope?: ContentScope;
+    language?: string;
     status: string;
     count: number;
     cached?: boolean;
@@ -112,6 +150,7 @@ export interface ContentStatus {
     label: string;
     category: ContentCategory;
     configured: boolean;
+    scopes: ContentScope[];
   }[];
   modelConfigured: boolean;
 }
@@ -139,12 +178,16 @@ export function filterContent(
     since: string;
     search: string;
     favorites: boolean;
+    scope?: string;
   },
 ) {
   const needle = filter.search.trim().toLocaleLowerCase();
   return items.filter(
     (item) =>
       (filter.category === 'ALL' || item.category === filter.category) &&
+      (!filter.scope ||
+        filter.scope === 'ALL' ||
+        itemScopes(item).includes(filter.scope as ContentScope)) &&
       (filter.type === 'ALL' || item.type === filter.type) &&
       (filter.source === 'ALL' || item.source === filter.source) &&
       (filter.language === 'ALL' || item.language === filter.language) &&
@@ -188,6 +231,10 @@ export function contentCsv(items: ContentItem[]) {
       '来源语言',
       '发布时间',
       '检索市场',
+      '检索范围',
+      '地域依据',
+      '来源机构国家',
+      '检索上下文',
       '命中词',
       '原文链接',
       '关联关键词ID',
@@ -205,6 +252,12 @@ export function contentCsv(items: ContentItem[]) {
       i.language,
       i.publishedAt,
       i.searchMarket,
+      itemScopes(i)
+        .map((scope) => contentScopes[scope])
+        .join(' / ') || '历史记录未区分',
+      i.marketBasis || '未核实',
+      i.publisherCountry || 'unknown',
+      JSON.stringify(i.searchContexts || []),
       i.matchedQueries.join(' / '),
       i.url,
       i.keywordIds.join(' / '),

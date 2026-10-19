@@ -2,11 +2,13 @@ import { contentAiInput, validateContentAi } from './public-content-ai.mjs';
 import {
   contentPlan,
   mergeContent,
+  paidContentSource,
   validateContentSearch,
   validJobId,
 } from './public-content-domain.mjs';
 import {
   ContentProviderError,
+  fetchContentComments,
   fetchContentTranscript,
   searchContentSource,
 } from './public-content-providers.mjs';
@@ -48,8 +50,7 @@ export async function executeContentJob(job, io) {
       step.message = '服务重启时请求结果未确认，未自动重复调用';
       if (!step.accounted) {
         job.requests++;
-        if (['reddit', 'tiktok', 'youtube_transcript'].includes(step.source))
-          job.unknownChargeRequests++;
+        if (paidContentSource(step.source)) job.unknownChargeRequests++;
         step.accounted = true;
       }
     }
@@ -75,31 +76,42 @@ export async function executeContentJob(job, io) {
     await save();
     let attempted = false;
     try {
-      if (job.mode === 'transcript') {
+      if (job.mode === 'transcript' || job.mode === 'comments') {
         const item = await io.getItem(job.itemId);
         if (!item) throw new Error('原内容不存在');
         attempted = true;
-        const result = await (io.transcript || fetchContentTranscript)(
-          item,
-          io,
-        );
+        const result = await (
+          job.mode === 'comments'
+            ? io.comments || fetchContentComments
+            : io.transcript || fetchContentTranscript
+        )(item, io);
         if (io.leaseSignal?.aborted) return;
         job.requests++;
         step.accounted = true;
         if (result.creditsCharged === null) job.unknownChargeRequests++;
         else job.creditsCharged += result.creditsCharged;
-        await io.updateItem(item.id, (old) => ({
-          ...old,
-          transcript: result.transcript,
-          textAvailability: result.transcript.text
-            ? '已有字幕'
-            : old.textAvailability,
-        }));
-        step.status = 'success';
-        step.count = result.transcript.text ? 1 : 0;
-        step.message = result.transcript.text
-          ? '已取得来源字幕；未生成音频转写'
-          : '来源没有可用的原语言字幕';
+        if (job.mode === 'comments') {
+          await io.updateItem(item.id, (old) => ({
+            ...old,
+            comments: result.comments,
+          }));
+          step.status = 'success';
+          step.count = result.comments.items.length;
+          step.message = result.comments.completeness;
+        } else {
+          await io.updateItem(item.id, (old) => ({
+            ...old,
+            transcript: result.transcript,
+            textAvailability: result.transcript.text
+              ? '已有字幕'
+              : old.textAvailability,
+          }));
+          step.status = 'success';
+          step.count = result.transcript.text ? 1 : 0;
+          step.message = result.transcript.text
+            ? '已取得来源字幕；未生成音频转写'
+            : '来源没有可用的原语言字幕';
+        }
       } else {
         const cached = await io.readCache?.(step, job.input);
         attempted = !cached;
@@ -111,7 +123,7 @@ export async function executeContentJob(job, io) {
           job.requests++;
           step.accounted = true;
         }
-        if (!cached && ['reddit', 'tiktok'].includes(step.source)) {
+        if (!cached && paidContentSource(step.source)) {
           if (result.creditsCharged === null) job.unknownChargeRequests++;
           else job.creditsCharged += result.creditsCharged;
         }
@@ -137,11 +149,14 @@ export async function executeContentJob(job, io) {
         step.count = result.items.length;
         step.added = added;
         step.rawCount = result.rawCount;
+        step.pageLimit = result.pageLimit;
+        step.candidateCount = result.candidateCount;
         step.cached = Boolean(cached);
         step.status = 'success';
-        step.message = cached
-          ? '复用24小时内的结果，未重新请求来源'
-          : `来源返回${result.rawCount}条，词面相关${result.items.length}条，新增${added}条`;
+        step.message = `本页返回${result.rawCount}条，本组处理上限${result.pageLimit ?? '未知'}条，安全候选${result.candidateCount ?? result.items.length}条，词面相关${result.items.length}条，新增${added}条${result.items.length === 0 ? '；候选未通过链接/相关性过滤' : ''}${result.rawCount > (result.pageLimit ?? Infinity) ? '；超出本组上限的候选未处理' : ''}`;
+        if (result.rawCount === 0)
+          step.message = `本页未返回候选（本组处理上限${result.pageLimit ?? '未知'}条）；不代表平台没有相关内容，未自动重复请求`;
+        if (cached) step.message = '复用24小时内的结果，未重新请求来源';
         if (!cached) await io.writeCache?.(step, job.input, result);
       }
     } catch (error) {
@@ -157,8 +172,7 @@ export async function executeContentJob(job, io) {
       ) {
         job.requests++;
         step.accounted = true;
-        if (['reddit', 'tiktok', 'youtube_transcript'].includes(step.source))
-          job.unknownChargeRequests++;
+        if (paidContentSource(step.source)) job.unknownChargeRequests++;
       }
       if (
         ['blocked', 'rate_limited', 'unconfigured', 'unsupported'].includes(

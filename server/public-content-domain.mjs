@@ -1,23 +1,91 @@
 import { createHash } from 'node:crypto';
 
 export const CONTENT_SOURCES = {
-  youtube: { label: 'YouTube', category: 'social', credential: 'youtube' },
+  youtube: {
+    label: 'YouTube',
+    category: 'social',
+    credential: 'youtube',
+    scopes: ['local'],
+  },
   reddit: {
     label: 'Reddit / ScrapeCreators',
     category: 'social',
     credential: 'scrapecreators',
+    scopes: ['local'],
   },
   tiktok: {
     label: 'TikTok / ScrapeCreators',
     category: 'social',
     credential: 'scrapecreators',
+    scopes: ['local'],
+  },
+  facebook: {
+    label: 'Facebook 公开视频 / ScrapeCreators',
+    category: 'social',
+    credential: 'scrapecreators',
+    scopes: ['local'],
+  },
+  facebook_posts: {
+    label: 'Facebook 公开帖子（网页索引）',
+    category: 'social',
+    credential: 'scrapecreators',
+    scopes: ['local'],
+  },
+  instagram: {
+    label: 'Instagram Reels / ScrapeCreators',
+    category: 'social',
+    credential: 'scrapecreators',
+    scopes: ['local'],
+  },
+  local_health: {
+    label: '本地卫生机构 / 医院文章（网页索引）',
+    category: 'health',
+    credential: 'scrapecreators',
+    scopes: ['local'],
+  },
+  global_health: {
+    label: 'NIH ODS / NCCIH / NHS / WHO（机构文章索引）',
+    category: 'health',
+    credential: 'scrapecreators',
+    scopes: ['global'],
+  },
+  web_articles: {
+    label: '网页文章 / 博客（网页索引）',
+    category: 'web',
+    credential: 'scrapecreators',
+    scopes: ['local', 'global'],
   },
   medlineplus: {
     label: 'MedlinePlus / 美国国家医学图书馆',
     category: 'health',
+    scopes: ['global'],
   },
-  europepmc: { label: 'Europe PMC 文献检索', category: 'academic' },
+  europepmc: {
+    label: 'Europe PMC 文献检索',
+    category: 'academic',
+    scopes: ['global'],
+  },
 };
+export const CONTENT_SCOPES = {
+  local: '目标市场本地素材',
+  global: '全球参考证据',
+};
+export const paidContentSource = (source) =>
+  CONTENT_SOURCES[source]?.credential === 'scrapecreators' ||
+  ['reddit_comments', 'youtube_transcript'].includes(source);
+export const HEALTH_SITES = {
+  VN: ['moh.gov.vn', 'vinmec.com', 'hcdc.vn'],
+  US: ['medlineplus.gov', 'nih.gov', 'cdc.gov'],
+  MX: ['gob.mx', 'imss.gob.mx', 'insp.mx'],
+};
+export const GLOBAL_HEALTH_SITES = [
+  'ods.od.nih.gov',
+  'nccih.nih.gov',
+  'nhs.uk',
+  'who.int',
+];
+export const marketName = (market) =>
+  ({ VN: 'Việt Nam', US: 'United States', MX: 'México' })[market] || '';
 export const cleanText = (value, max = 12_000) =>
   typeof value === 'string'
     ? value
@@ -122,9 +190,45 @@ export function validateContentSearch(input) {
     throw new Error('请选择国家市场');
   if (!['en', 'es', 'vi'].includes(input.language))
     throw new Error('请选择检索语言');
+  if (!Array.isArray(input.sources)) throw new Error('请选择有效的数据来源');
   const sources = [...new Set(input.sources || [])];
-  if (sources.length === 0 || sources.some((s) => !CONTENT_SOURCES[s]))
+  if (
+    sources.length === 0 ||
+    sources.some((s) => !Object.hasOwn(CONTENT_SOURCES, s))
+  )
     throw new Error('请选择有效的数据来源');
+  const scopes =
+    input.scopes === undefined
+      ? [
+          ...new Set(
+            sources.flatMap((source) => CONTENT_SOURCES[source].scopes),
+          ),
+        ]
+      : [...new Set(Array.isArray(input.scopes) ? input.scopes : [])];
+  if (scopes.length === 0 || scopes.some((scope) => !CONTENT_SCOPES[scope]))
+    throw new Error('请勾选检索范围');
+  if (
+    scopes.some(
+      (scope) =>
+        !sources.some((source) =>
+          CONTENT_SOURCES[source].scopes.includes(scope),
+        ),
+    )
+  )
+    throw new Error('每个检索范围至少选择一个适用来源');
+  const applicableSources = sources.filter((source) =>
+    CONTENT_SOURCES[source].scopes.some((scope) => scopes.includes(scope)),
+  );
+  const referenceLanguage = input.referenceLanguage === 'es' ? 'es' : 'en';
+  const referenceQuery = cleanText(input.referenceQuery, 200) || query;
+  if (
+    scopes.includes('global') &&
+    input.referenceLanguage !== undefined &&
+    !['en', 'es'].includes(input.referenceLanguage)
+  )
+    throw new Error('全球参考检索语言仅支持英语或西班牙语');
+  if (scopes.includes('global') && referenceQuery.length < 2)
+    throw new Error('全球参考检索词至少2个字符');
   const limit = Number(input.limit ?? 30);
   if (!Number.isInteger(limit) || limit < 5 || limit > 100)
     throw new Error('结果上限须为5～100条');
@@ -150,7 +254,22 @@ export function validateContentSearch(input) {
     query,
     market: input.market,
     language: input.language,
-    sources,
+    sources: applicableSources,
+    scopes,
+    referenceLanguage,
+    referenceQuery,
+    referenceQueries: [
+      ...new Set([
+        referenceQuery,
+        ...(input.includeRelated === true
+          ? aliases
+              .filter(([pattern]) =>
+                new RegExp(pattern, 'iu').test(referenceQuery),
+              )
+              .map(([, map]) => map[referenceLanguage])
+          : []),
+      ]),
+    ].slice(0, 3),
     limit,
     queries,
     includeRelated: input.includeRelated === true,
@@ -205,6 +324,12 @@ export function normalizeContent(
     item.publishedAt && Number.isFinite(Date.parse(item.publishedAt))
       ? new Date(item.publishedAt).toISOString()
       : null;
+  const searchScope = input.searchScope || CONTENT_SOURCES[source].scopes[0];
+  const marketBasis =
+    item.marketBasis ||
+    (searchScope === 'global'
+      ? '全球参考检索，不限定研究或作者国家'
+      : '按目标市场检索，作者地区未核实');
   return {
     ...item,
     id,
@@ -228,6 +353,17 @@ export function normalizeContent(
     textAvailability:
       item.textAvailability || (item.summary ? '摘要 / 描述' : '仅标题与链接'),
     reuseStatus: '未核验',
+    searchScope,
+    marketBasis,
+    searchContexts: [
+      {
+        scope: searchScope,
+        market: input.market,
+        language: input.language,
+        query,
+        basis: marketBasis,
+      },
+    ],
   };
 }
 export function mergeContent(old, incoming) {
@@ -249,6 +385,13 @@ export function mergeContent(old, incoming) {
         ...(incoming.matchedQueries || []),
       ]),
     ],
+    searchContexts: [
+      ...new Map(
+        [...(old.searchContexts || []), ...(incoming.searchContexts || [])].map(
+          (context) => [JSON.stringify(context), context],
+        ),
+      ).values(),
+    ].slice(-30),
     ai:
       old.title === incoming.title && old.summary === incoming.summary
         ? old.ai
@@ -259,6 +402,27 @@ export function mergeContent(old, incoming) {
 }
 export function contentPlan(input) {
   // Query-major round robin prevents one source exhausting all result slots.
+  if (input.scopes)
+    return Array.from({ length: 3 }, (_, index) => index).flatMap((index) =>
+      input.scopes.flatMap((scope) => {
+        const query = (
+          scope === 'global' ? input.referenceQueries : input.queries
+        )?.[index];
+        if (!query) return [];
+        return input.sources
+          .filter((source) => CONTENT_SOURCES[source].scopes.includes(scope))
+          .map((source) => ({
+            source,
+            scope,
+            query,
+            language:
+              scope === 'global' ? input.referenceLanguage : input.language,
+            market: scope === 'global' ? 'ALL' : input.market,
+            status: 'pending',
+            count: 0,
+          }));
+      }),
+    );
   return input.queries.flatMap((query) =>
     input.sources.map((source) => ({
       source,

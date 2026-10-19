@@ -27,6 +27,7 @@ const open = ref(false);
       :initial-market="market"
       :keyword-ids="keywordIds"
       :product-ids="productIds"
+      open-search-on-mount
     />
   </Drawer>
 </template>
