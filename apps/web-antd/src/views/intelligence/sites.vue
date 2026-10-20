@@ -17,6 +17,7 @@ import {
 
 import PageHeader from './components/PageHeader.vue';
 import ProductCollectDialog from './components/ProductCollectDialog.vue';
+import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
 import { exportCsv, filteredSites, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
 const router = useRouter();
@@ -192,6 +193,7 @@ const columns = [
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"
     >
       <ProductCollectDialog :site-ids="ids" />
+      <CompetitorWatchPanel kind="site" :site-id="ids.length === 1 ? ids[0] : undefined" />
       <Button
         type="primary"
         :disabled="!ids.length || ids.length > 100"
@@ -366,6 +368,7 @@ const columns = [
             </p> </template
           ><template v-if="column.key === 'actions'">
             <ProductCollectDialog :site-ids="[record.id]" />
+            <CompetitorWatchPanel kind="site" :site-id="record.id" />
             <button
               class="hci-link"
               @click="selected = state.sites.find((s) => s.id === record.id)"

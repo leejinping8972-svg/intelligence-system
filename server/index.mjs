@@ -44,6 +44,11 @@ import {
   cancelPlatformCompletion,
 } from './platform-products-jobs.mjs';
 import { protectPlatformClientEdit } from './platform-product-data.mjs';
+import {
+  competitorAction,
+  runCompetitorQueue,
+  withCompetitorIdle,
+} from './competitor-monitor-store.mjs';
 import { registerRelease, releaseHistory } from './release-history.mjs';
 import { serveAdMedia } from './ad-media.mjs';
 import {
@@ -59,7 +64,10 @@ await registerRelease();
 const controller = new AbortController();
 void runQueue(controller.signal);
 void runContentQueue(controller.signal);
+void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_competitor_'))
+    return competitorAction(input, user);
   if (input.action?.startsWith('server_content_'))
     return publicContentAction(input, user);
   switch (input.action) {
@@ -528,7 +536,9 @@ const server = createServer(async (request, response) => {
       response.end(
         JSON.stringify(
           input.action === 'database_migrate'
-            ? await withPublicContentIdle(() => databaseAction(input))
+            ? await withCompetitorIdle(() =>
+                withPublicContentIdle(() => databaseAction(input)),
+              )
             : await databaseAction(input),
         ),
       );

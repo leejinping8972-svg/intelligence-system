@@ -18,6 +18,7 @@ import {
 import PageHeader from './components/PageHeader.vue';
 import AdsResearchPanel from './components/AdsResearchPanel.vue';
 import AdMedia from './components/AdMedia.vue';
+import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
 import { inMarket, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
 const route = useRoute(),
@@ -127,6 +128,7 @@ const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
         >采集广告与独立站</Button
       ></PageHeader
     >
+    <div class="hci-toolbar"><CompetitorWatchPanel kind="advertiser" /></div>
     <AdsResearchPanel :ads="rows" />
     <section class="hci-panel">
       <div class="hci-toolbar">
@@ -190,6 +192,7 @@ const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
       <template v-if="selected"
         ><h2>{{ selected.brand }} · {{ selected.headline }}</h2>
         <AdMedia :ad="selected" expanded />
+        <CompetitorWatchPanel v-if="selected.pageId" kind="advertiser" :ad-id="selected.id" />
         <p style="white-space: pre-wrap">{{ selected.copy }}</p>
         <dl class="hci-detail-grid">
           <dt>广告 ID</dt>
