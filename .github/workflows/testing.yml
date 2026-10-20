@@ -39,6 +39,10 @@ jobs:
           pnpm exec vitest run tests/product-decisions.test.ts tests/public-content.test.ts tests/platform-product-selection.test.ts tests/keyword-selection.test.ts tests/article-details.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
+      - name: Focused monitors and advertiser batch selection (synthetic data)
+        run: |
+          node --test server/advertiser-monitor-batch.test.mjs
+          pnpm exec vitest run tests/advertiser-monitor.test.ts tests/competitor-workspace.test.ts
       - name: Site collection fallbacks (synthetic, no paid calls)
         run: node --test server/site-page-fallbacks.test.mjs server/product-queue.test.mjs
       - name: Competitor monitoring and Semrush ranking tests (mocked providers)

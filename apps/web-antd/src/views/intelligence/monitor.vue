@@ -11,10 +11,7 @@ import {
   Drawer,
   Empty,
   message,
-  Select,
   Spin,
-  Switch,
-  Table,
   Tabs,
 } from 'ant-design-vue';
 
@@ -28,13 +25,17 @@ import {
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import ResearchTaskList from './components/ResearchTaskList.vue';
+import FocusedMonitors from './components/FocusedMonitors.vue';
+import { useCompetitorWorkspace } from './competitor-workspace';
+import { focusedMonitorRows } from './focused-monitors';
 import TaskProgress from './components/TaskProgress.vue';
-import { audit, inMarket, marketName, state } from './data';
+import { audit, marketName, state } from './data';
 import { groupTasks } from './task-list';
 startCloudSync();
 const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
+const watchWorkspace = useCompetitorWorkspace();
 const selected = ref<TaskGroup>();
 const detailsLoading = ref(false);
 const detailsError = ref('');
@@ -83,17 +84,12 @@ async function retryTrends(task: Task) {
 watch(
   () => route.query.tab,
   (v) => {
-    if (v === 'tasks') tab.value = 'tasks';
+    if (v === 'tasks' || v === 'monitors') tab.value = v;
   },
   { immediate: true },
 );
 const monitors = computed(() =>
-  state.monitors.filter((monitor) => {
-    const product = state.products.find(
-      (item) => item.id === monitor.productId,
-    );
-    return product ? inMarket(product.market) : false;
-  }),
+  focusedMonitorRows(state.products, state.monitors, watchWorkspace.targets, watchWorkspace.runs, state.market),
 );
 const tasks = computed(() => groupTasks(state.tasks, state.market));
 function isLiveTask(task: Task) {
@@ -178,68 +174,7 @@ const statuses = {
     </div>
     <section class="hci-panel">
       <Tabs v-model:active-key="tab">
-        <Tabs.TabPane key="monitors" :tab="`重点监控（${monitors.length}）`">
-          <Table
-            :data-source="monitors"
-            row-key="id"
-            :pagination="false"
-            :scroll="{ x: 650 }"
-            :columns="[
-              { title: '监控商品', key: 'product' },
-              { title: '周期', key: 'frequency' },
-              { title: '监控字段', key: 'fields' },
-              { title: '状态', key: 'status' },
-            ]"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'product'">
-                <b>{{
-                  state.products.find((p) => p.id === record.productId)?.title
-                }}</b>
-                <p class="hci-subtle">
-                  {{
-                    state.products.find((p) => p.id === record.productId)?.brand
-                  }}
-                </p>
-</template><template v-if="column.key === 'frequency'">
-                <Select
-                  v-model:value="record.frequency"
-                  :options="
-                    ['每天', '每两天', '每周'].map((v) => ({
-                      label: v,
-                      value: v,
-                    }))
-                  "
-                  style="width: 110px"
-                  @change="
-                    audit(
-                      '修改演示监控频率',
-                      record.productId,
-                      state.products.find((p) => p.id === record.productId)
-                        ?.market,
-                    )
-                  "
-                />
-</template><template v-if="column.key === 'fields'">
-                价格 / 库存状态 / 配方
-</template><template v-if="column.key === 'status'">
-                <Switch
-                  v-model:checked="record.enabled"
-                  checked-children="开启"
-                  un-checked-children="暂停"
-                  @change="
-                    audit(
-                      '调整演示监控状态',
-                      record.productId,
-                      state.products.find((p) => p.id === record.productId)
-                        ?.market,
-                    )
-                  "
-                />
-              </template>
-            </template>
-          </Table>
-</Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
+        <Tabs.TabPane key="monitors" :tab="`重点监控（${monitors.length}）`"><FocusedMonitors /></Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
           <ResearchTaskList
             :tasks="tasks"
             :retrying="retrying"

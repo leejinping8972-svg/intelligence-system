@@ -2,7 +2,7 @@
 const contextKeys: Record<string, string[]> = {
   '/sites': ['keywordId', 'keyword', 'site'],
   '/products': ['keyword', 'site', 'product'],
-  '/ads': ['keywordId', 'site', 'report'],
+  '/ads': ['keywordId', 'site', 'report', 'pageId'],
   '/trends': ['keyword', 'term', 'market'],
   '/consumer-insights': ['keywordId', 'site', 'product', 'report'],
 };

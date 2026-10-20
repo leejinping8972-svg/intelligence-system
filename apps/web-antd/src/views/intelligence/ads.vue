@@ -16,6 +16,7 @@ import {
   Modal,
   Select,
   Tag,
+  Tabs,
 } from 'ant-design-vue';
 import PageHeader from './components/PageHeader.vue';
 import SelectionBar from './components/SelectionBar.vue';
@@ -25,6 +26,8 @@ import AdMedia from './components/AdMedia.vue';
 import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
 import DiscoveryTag from './components/DiscoveryTag.vue';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
+import AdvertiserList from './components/AdvertiserList.vue';
+import { groupAdvertisers } from './advertisers';
 import { discoveryDecision, discoveryFilters } from './discovery';
 import { inMarket, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
@@ -38,6 +41,12 @@ const search = ref(''),
   busy = ref(false),
   error = ref('');
 const keywordIds = ref<string[]>([]);
+const viewTab = ref('ads');
+watch(() => route.query.tab, (value) => { if (value === 'advertisers' || value === 'ads') viewTab.value = value; }, { immediate: true });
+const advertiserCount = computed(() => groupAdvertisers(rows.value, state.sites).length);
+watch(() => route.query.pageId, (value) => {
+  if (value) { search.value = ''; status.value = 'ALL'; newness.value = 'ALL'; }
+}, { immediate: true });
 const advertiser = ref<Ad>();
 const form = reactive({
   maxPages: 3,
@@ -56,7 +65,7 @@ const rows = computed(() =>
     .filter(
       (a) =>
         inMarket(a.market) &&
-        `${a.brand} ${a.headline} ${a.copy} ${a.query || ''}`
+        `${a.brand} ${a.headline} ${a.copy} ${a.query || ''} ${a.pageId || ''}`
           .toLowerCase()
           .includes(search.value.toLowerCase()) &&
         (status.value === 'ALL' || a.status === status.value) &&
@@ -149,6 +158,8 @@ watch([() => route.query.ad, () => state.ads], () => {
       ></PageHeader
     >
     <div class="hci-toolbar" style="margin-bottom: 16px"><CompetitorWatchPanel kind="advertiser" /><DailyDiscoveryPlan /><label for="ad-newness">广告新旧标签</label><Select id="ad-newness" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /></div>
+    <Tabs v-model:active-key="viewTab">
+    <Tabs.TabPane key="ads" :tab="`广告素材（${rows.length}）`">
     <AdsResearchPanel ref="adResearch" :ads="rows" />
     <section class="hci-panel">
       <div class="hci-toolbar">
@@ -207,6 +218,11 @@ watch([() => route.query.ad, () => state.ads], () => {
       </div>
       <div v-if="rows.length" class="hci-list-pagination"><Pagination :current="page" :page-size="pageSize" :total="rows.length" :show-size-changer="true" :page-size-options="['10','20','50','100']" @change="(current: number, size: number) => { page = current; pageSize = size; }" /></div>
     </section>
+    </Tabs.TabPane>
+    <Tabs.TabPane key="advertisers" :tab="`广告主（${advertiserCount}）`">
+      <AdvertiserList :ads="rows" :page-id="typeof route.query.pageId === 'string' ? route.query.pageId : undefined" @ads="(pageId) => { search=pageId; viewTab='ads'; }" />
+    </Tabs.TabPane>
+    </Tabs>
     <Drawer
       :open="!!selected"
       title="广告详情与来源"
@@ -223,6 +239,8 @@ watch([() => route.query.ad, () => state.ads], () => {
         <dl class="hci-detail-grid">
           <dt>广告 ID</dt>
           <dd>{{ selected.archiveId || '—' }}</dd>
+          <dt>广告主 Page ID</dt>
+          <dd>{{ selected.pageId || '来源未提供' }}</dd>
           <dt>查询关键词</dt>
           <dd>{{ selected.query || '—' }}</dd>
           <dt>平台记录开始日期</dt>
