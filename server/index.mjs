@@ -38,6 +38,7 @@ import {
   reviewInsight,
 } from './insight-jobs.mjs';
 import { submitProducts } from './product-jobs.mjs';
+import { siteFetchConfig } from './site-fetch-config.mjs';
 import {
   submitPlatformProducts,
   submitPlatformProductEnrichment,
@@ -73,6 +74,9 @@ async function api(input, user) {
   if (input.action?.startsWith('server_content_'))
     return publicContentAction(input, user);
   switch (input.action) {
+    case 'server_site_fetch_status':
+    case 'server_site_fetch_config':
+      return siteFetchConfig(input, user);
     case 'server_daily_discovery_status':
     case 'server_daily_discovery_save':
       return dailyDiscoveryAction(input, user);
@@ -96,7 +100,7 @@ async function api(input, user) {
       return { jobId: job.id, tasks: jobTasks(job) };
     }
     case 'server_submit_products': {
-      const job = await submitProducts(input);
+      const job = await submitProducts(input, user);
       return { jobId: job.id, tasks: jobTasks(job) };
     }
     case 'server_complete_platform_products': {

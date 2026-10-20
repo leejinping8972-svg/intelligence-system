@@ -14,6 +14,7 @@ import {
 import { clearCloudKeywords } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import SemrushSettings from './components/SemrushSettings.vue';
+import SiteCollectionSettings from './components/SiteCollectionSettings.vue';
 import YouTubeSettings from './components/YouTubeSettings.vue';
 import AdsSettings from './components/AdsSettings.vue';
 import AnalysisSettings from './components/AnalysisSettings.vue';
@@ -309,6 +310,7 @@ function handleLogo(event: Event) {
       description="明确每个市场的覆盖边界，控制研究规模与成本。"
     />
     <SemrushSettings v-if="serverMode" />
+    <SiteCollectionSettings v-if="serverMode" />
     <YouTubeSettings v-if="serverMode" />
     <AdsSettings v-if="serverMode" />
     <AnalysisSettings v-if="serverMode" />

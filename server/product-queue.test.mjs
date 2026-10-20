@@ -84,6 +84,118 @@ function harness(n = 2, maxRequests = 20) {
     now: () => clock,
   };
 }
+
+function dynamicHarness(maxRequests = 20) {
+  const h = harness(1, maxRequests);
+  Object.assign(h.job.input, {
+    collectionPolicyVersion: 1,
+    maxBrowserPages: 5,
+    maxPaidRequests: 0,
+  });
+  h.job.checkpoint = initializeProducts(h.job, h.now());
+  h.job.checkpoint.siteWork[0].urls = ['https://s0.example/products/dynamic'];
+  h.io.fetchPage = async (url) => {
+    h.calls.push(url);
+    return {
+      url,
+      html: '<div id="app"></div><script src="/bundle.js"></script>',
+    };
+  };
+  return h;
+}
+const productHtml =
+  '<script type="application/ld+json">{"@type":"Product","name":"Creatine","url":"https://s0.example/products/dynamic","image":"https://s0.example/c.jpg"}</script>';
+test('dynamic page schedules a bounded browser attempt on another dispatch and preserves product provenance', async () => {
+  const h = dynamicHarness();
+  let renders = 0;
+  h.io.fetchFallback = async (url, site, mode) => {
+    assert.equal(mode, 'browser');
+    renders++;
+    return { url, html: productHtml, resourceRequests: 2 };
+  };
+  await runProductsJob(h.job, h.io);
+  assert.equal(renders, 0);
+  assert.equal(h.saved.checkpoint.siteWork[0].status, 'retry_wait');
+  h.advance();
+  await runProductsJob(h.saved, h.io);
+  assert.equal(renders, 1);
+  assert.equal(h.saved.checkpoint.browserPages, 1);
+  assert.equal(h.saved.checkpoint.paidRequests || 0, 0);
+  assert.match(
+    [...h.docs.values()].find((v) => v.evidenceUrl).extractionMethod,
+    /浏览器渲染/,
+  );
+});
+test('paid fallback stays off by default and a zero browser budget cannot silently switch to hosted', async () => {
+  const h = dynamicHarness();
+  h.job.input.maxBrowserPages = 0;
+  h.io.fetchFallback = async () => {
+    throw new Error('must not call');
+  };
+  await runProductsJob(h.job, h.io);
+  assert.equal(h.saved.checkpoint.browserPages || 0, 0);
+  assert.equal(h.saved.checkpoint.paidRequests || 0, 0);
+});
+test('explicit paid fallback waits for host cooldown; network failure never retries a billable request', async () => {
+  const h = dynamicHarness();
+  h.job.input.maxPaidRequests = 2;
+  h.io.fetchPage = async () => {
+    throw Object.assign(new Error('HTTP 403'), { status: 403 });
+  };
+  let calls = 0;
+  h.io.fetchFallback = async (url, site, mode) => {
+    assert.equal(mode, 'hosted');
+    calls++;
+    throw new Error('托管响应未知');
+  };
+  await runProductsJob(h.job, h.io);
+  assert.equal(calls, 0);
+  assert.equal(h.saved.checkpoint.siteWork[0].nextRunAt, h.now() + 1800000);
+  await runProductsJob(h.saved, h.io);
+  assert.equal(calls, 0);
+  h.advance();
+  await runProductsJob(h.saved, h.io);
+  assert.equal(calls, 1);
+  assert.equal(h.saved.checkpoint.paidRequests, 1);
+  assert.equal(h.saved.checkpoint.siteWork[0].status, 'partial');
+  h.advance();
+  await runProductsJob(h.saved, h.io);
+  assert.equal(calls, 1);
+});
+test('in-flight hosted recovery retains the reserved counter and never sends again', async () => {
+  const h = dynamicHarness();
+  h.job.input.maxPaidRequests = 2;
+  Object.assign(h.job.checkpoint, {
+    paidRequests: 1,
+    requests: 1,
+    inFlight: {
+      index: 0,
+      url: 'https://s0.example/products/dynamic',
+      method: 'hosted',
+    },
+  });
+  h.io.fetchFallback = async () => {
+    throw new Error('must not replay');
+  };
+  await runProductsJob(h.job, h.io);
+  assert.equal(h.saved.checkpoint.paidRequests, 1);
+  assert.match(h.saved.checkpoint.siteWork[0].message, /不自动重放/);
+  assert.equal(h.saved.checkpoint.siteWork[0].status, 'partial');
+});
+test('browser and hosted attempts cannot exceed overall page budget', async () => {
+  const h = dynamicHarness(1);
+  h.job.input.maxPaidRequests = 1;
+  let calls = 0;
+  h.io.fetchFallback = async () => {
+    calls++;
+  };
+  await runProductsJob(h.job, h.io);
+  h.advance();
+  await runProductsJob(h.saved, h.io);
+  assert.equal(calls, 0);
+  assert.equal(h.saved.checkpoint.requests, 1);
+  assert.equal(h.saved.checkpoint.siteWork[0].status, 'partial');
+});
 test('first round touches every site; a busy catalog cannot consume the entire batch', async () => {
   const h = harness(8, 100);
   for (let i = 0; i < 8; i++) await runProductsJob(h.saved || h.job, h.io);

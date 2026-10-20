@@ -178,6 +178,9 @@ const visibleRows = computed(() =>
           · 下次调度 {{ time(task.researchProgress.nextRunAt) }}</span
         >。
       </p>
+      <p v-if="task.researchProgress.browserPageLimit !== undefined" class="hci-subtle">
+        浏览器渲染 {{ task.researchProgress.browserPages || 0 }}/{{ task.researchProgress.browserPageLimit }} 页；托管备用尝试 {{ task.researchProgress.paidRequests || 0 }}/{{ task.researchProgress.paidRequestLimit || 0 }} 次（含结果未知的已预留次数，非积分账单）。
+      </p>
       <p v-if="task.researchProgress.previousRequests" class="hci-subtle">
         修复前历史网页请求
         {{ task.researchProgress.previousRequests }}
