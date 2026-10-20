@@ -12,6 +12,8 @@ import {
   toggleFavorite,
 } from '../data';
 import ProductArt from './ProductArt.vue';
+import CollectionTime from './CollectionTime.vue';
+import { productCollectedAt } from '../resource-metadata';
 import ProductDecisionTags from './ProductDecisionTags.vue';
 import ProductCompletionDialog from './ProductCompletionDialog.vue';
 import { productDataSource } from '../product-decisions';
@@ -50,6 +52,7 @@ function addMonitor() {
           {{ product.brand }} · {{ marketName(product.market) }}
         </p>
         <h2 class="hci-resource-title">{{ product.title }}</h2>
+        <p class="hci-subtle">最近采集：<CollectionTime :at="productCollectedAt(product)" /></p>
         <div style="display: flex; gap: 12px; margin: 14px 0">
           <Tag :color="product.reviewed ? 'green' : 'orange'">
             {{
@@ -118,7 +121,7 @@ function addMonitor() {
               </p>
             </dd>
             <dt>采集时间</dt>
-            <dd>{{ product.sourceMetrics?.collectedAt || '未知' }}</dd>
+            <dd><CollectionTime :at="product.sourceMetrics?.collectedAt" /></dd>
           </dl>
           <h3 class="hci-section-heading">商品属性原文</h3>
           <dl v-if="product.sourceContent?.attributes" class="hci-detail-grid">

@@ -22,6 +22,8 @@ import {
 
 import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
+import { keywordChineseName } from './keyword-names';
 import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import { emptyScoreFilter, matchesScore } from './resource-list';
@@ -145,7 +147,7 @@ const rows = computed(() =>
       ? (Date.now() - Date.parse(collectedAt)) / 86_400_000
       : Infinity;
     return (
-      `${record.term} ${record.seedTerm || ''} ${record.assessment.tags.join(
+      `${record.term} ${keywordChineseName(record)} ${record.seedTerm || ''} ${record.assessment.tags.join(
         ' ',
       )}`
         .toLocaleLowerCase()
@@ -456,6 +458,7 @@ function exportKeywords() {
     '关键词研究与评级.csv',
     rows.value.map((record) => ({
       关键词: record.term,
+      中文名称: keywordChineseName(record),
       种子词: record.seedTerm || '',
       市场: record.market,
       品类: record.category,
@@ -717,7 +720,7 @@ function saveMetrics() {
           重置筛选
         </Button>
       </div>
-      <div class="hci-toolbar"><ScoreRangeFilter v-model="scoreFilter" label="关键词" /></div>
+      <div class="hci-toolbar"><ScoreRangeFilter v-model="scoreFilter" label="关键词" /><KeywordNamesDialog :ids="selectedIds" /></div>
       <div class="hci-toolbar">
         <span class="hci-subtle"
           >已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span
@@ -798,6 +801,7 @@ function saveMetrics() {
             <button class="hci-link keyword-term" @click="openDetail(record)">
               {{ record.term }}
             </button>
+            <p class="hci-subtle">{{ record.termZh ? '中文' : '中文参考' }}：{{ keywordChineseName({ term: record.term, termZh: record.termZh }) || '待补充' }}</p>
             <p class="hci-subtle">种子：{{ record.seedTerm || '历史记录' }}</p>
           </template>
           <template v-else-if="column.key === 'market'">
@@ -1085,6 +1089,7 @@ function saveMetrics() {
     >
       <template v-if="detail && assessment">
         <h2 class="keyword-detail-title hci-resource-title">{{ detail.term }}</h2>
+        <p>{{ detail.termZh ? '中文名称' : '中文参考' }}：{{ keywordChineseName(detail) || '待补充' }}</p>
         <p class="hci-subtle">
           {{ marketName(detail.market) }} · {{ detail.category }} ·
           {{ assessment.version }}

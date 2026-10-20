@@ -34,6 +34,7 @@ export const keywordFields = new Set([
   'semrushCollection',
   'source',
   'term',
+  'termZh',
   'trendCollectedAt',
   'trendDailyMessage',
   'trendDailyCollectedAt',
@@ -54,6 +55,8 @@ export function cleanKeyword(value) {
     Object.entries(value).filter(([key]) => keywordFields.has(key)),
   );
   record.term = normalizeTerm(record.term);
+  if (typeof record.termZh === 'string') record.termZh = normalizeTerm(record.termZh).slice(0, 255);
+  else delete record.termZh;
   if (
     !record.term ||
     record.term.length > 255 ||
@@ -145,6 +148,7 @@ export function validateJob(value) {
 }
 export function editableKeywordPatch(patch) {
   const result = {};
+  if (typeof patch.termZh === 'string') result.termZh = normalizeTerm(patch.termZh).slice(0, 255);
   if (typeof patch.favorite === 'boolean') result.favorite = patch.favorite;
   if (['excluded', 'pending', 'selected'].includes(patch.reviewStatus))
     result.reviewStatus = patch.reviewStatus;

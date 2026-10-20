@@ -61,7 +61,7 @@ export async function saveKeyword(value, importOnly = false, client = pool) {
           ? {
               ...record,
               ...Object.fromEntries(
-                ['id', 'favorite', 'reviewStatus', 'reviewNote', 'metrics', 'productIds']
+                ['id', 'favorite', 'reviewStatus', 'reviewNote', 'termZh', 'metrics', 'productIds']
                   .filter((key) => old[key] !== undefined)
                   .map((key) => [key, old[key]]),
               ),
@@ -80,13 +80,14 @@ export async function saveKeyword(value, importOnly = false, client = pool) {
     'id', research_keywords.data->'id', 'favorite', research_keywords.data->'favorite',
     'reviewStatus', research_keywords.data->'reviewStatus', 'reviewNote', research_keywords.data->'reviewNote',
     'source', concat_ws(' / ', EXCLUDED.data->>'source', CASE WHEN research_keywords.data->>'source' LIKE '%竞品上新%' AND EXCLUDED.data->>'source' NOT LIKE '%竞品上新%' THEN '竞品上新' END, CASE WHEN research_keywords.data->>'source' LIKE '%Semrush热词%' AND EXCLUDED.data->>'source' NOT LIKE '%Semrush热词%' THEN 'Semrush热词' END),
+    'termZh', COALESCE(research_keywords.data->'termZh', EXCLUDED.data->'termZh'),
     'metrics', research_keywords.data->'metrics',
     'productIds', COALESCE(research_keywords.data->'productIds', EXCLUDED.data->'productIds'),
     'siteIds', research_keywords.data->'siteIds', 'siteCollection', research_keywords.data->'siteCollection', 'semrushCollection', research_keywords.data->'semrushCollection', 'adCollection', research_keywords.data->'adCollection'), updated_at=now()`;
   await client.query(
     sql(
       `INSERT INTO research_keywords(natural_key,data) VALUES($1,$2) ON CONFLICT(natural_key) ${merge}`,
-      `INSERT ${importOnly ? 'IGNORE' : ''} INTO research_keywords(natural_key,data) VALUES($1,$2) ${importOnly ? '' : `ON DUPLICATE KEY UPDATE data=JSON_SET(VALUES(data), '$.source',CONCAT_WS(' / ',JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')),IF(JSON_UNQUOTE(JSON_EXTRACT(data,'$.source')) LIKE '%竞品上新%' AND JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')) NOT LIKE '%竞品上新%','竞品上新',NULL),IF(JSON_UNQUOTE(JSON_EXTRACT(data,'$.source')) LIKE '%Semrush热词%' AND JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')) NOT LIKE '%Semrush热词%','Semrush热词',NULL)), '$.id',JSON_EXTRACT(data,'$.id'),'$.favorite',JSON_EXTRACT(data,'$.favorite'),'$.reviewStatus',JSON_EXTRACT(data,'$.reviewStatus'),'$.reviewNote',JSON_EXTRACT(data,'$.reviewNote'),'$.metrics',JSON_EXTRACT(data,'$.metrics'),'$.productIds',COALESCE(JSON_EXTRACT(data,'$.productIds'),JSON_EXTRACT(VALUES(data),'$.productIds')),'$.siteIds',JSON_EXTRACT(data,'$.siteIds'),'$.siteCollection',JSON_EXTRACT(data,'$.siteCollection'),'$.semrushCollection',JSON_EXTRACT(data,'$.semrushCollection'),'$.adCollection',JSON_EXTRACT(data,'$.adCollection')),updated_at=now()`}`,
+      `INSERT ${importOnly ? 'IGNORE' : ''} INTO research_keywords(natural_key,data) VALUES($1,$2) ${importOnly ? '' : `ON DUPLICATE KEY UPDATE data=JSON_SET(VALUES(data), '$.source',CONCAT_WS(' / ',JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')),IF(JSON_UNQUOTE(JSON_EXTRACT(data,'$.source')) LIKE '%竞品上新%' AND JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')) NOT LIKE '%竞品上新%','竞品上新',NULL),IF(JSON_UNQUOTE(JSON_EXTRACT(data,'$.source')) LIKE '%Semrush热词%' AND JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')) NOT LIKE '%Semrush热词%','Semrush热词',NULL)), '$.id',JSON_EXTRACT(data,'$.id'),'$.favorite',JSON_EXTRACT(data,'$.favorite'),'$.reviewStatus',JSON_EXTRACT(data,'$.reviewStatus'),'$.reviewNote',JSON_EXTRACT(data,'$.reviewNote'),'$.termZh',COALESCE(JSON_EXTRACT(data,'$.termZh'),JSON_EXTRACT(VALUES(data),'$.termZh')),'$.metrics',JSON_EXTRACT(data,'$.metrics'),'$.productIds',COALESCE(JSON_EXTRACT(data,'$.productIds'),JSON_EXTRACT(VALUES(data),'$.productIds')),'$.siteIds',JSON_EXTRACT(data,'$.siteIds'),'$.siteCollection',JSON_EXTRACT(data,'$.siteCollection'),'$.semrushCollection',JSON_EXTRACT(data,'$.semrushCollection'),'$.adCollection',JSON_EXTRACT(data,'$.adCollection')),updated_at=now()`}`,
     ),
     [naturalKey(record), record],
   );

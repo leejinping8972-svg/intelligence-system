@@ -298,6 +298,17 @@ console.log('Batch configuration integration passed: mixed markets, admin permis
 console.log(
   'Isolated monitor integration passed: baseline, daily dedup, permissions, launch links/tags, rollback, crash protection and hotword import; zero external calls.',
 );
+// Saved Chinese names are human metadata and survive recollection/richer imports.
+const namedKeyword = { id: 'qa-named-keyword', term: 'creatine gummies qa translation', market: 'US', dataNature: 'collected', termZh: '人工校对肌酸软糖' };
+await saveKeyword(namedKeyword);
+await saveKeyword({ ...namedKeyword, termZh: undefined, series: [1, 2, 3], source: '重新采集' });
+let named = (await query('SELECT data FROM research_keywords WHERE natural_key=$1', ['US|creatine gummies qa translation'])).rows[0].data;
+assert.equal(named.termZh, '人工校对肌酸软糖');
+await saveKeyword({ ...namedKeyword, termZh: '不应覆盖的导入译名', series: [1, 2, 3, 4] }, true);
+named = (await query('SELECT data FROM research_keywords WHERE natural_key=$1', ['US|creatine gummies qa translation'])).rows[0].data;
+assert.equal(named.termZh, '人工校对肌酸软糖');
+assert.equal(named.id, namedKeyword.id);
+console.log('Chinese name persistence passed: recollection and duplicate import preserve saved names.');
 c.release();
 await memory?.close();
 await pool.end();

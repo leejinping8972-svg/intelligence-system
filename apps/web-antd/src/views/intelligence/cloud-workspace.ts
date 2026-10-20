@@ -95,6 +95,7 @@ watch(
   { deep: true, flush: 'sync' },
 );
 const editable = (record: Keyword) => ({
+  termZh: record.termZh || '',
   favorite: record.favorite,
   reviewStatus: record.reviewStatus || 'pending',
   reviewNote: record.reviewNote || '',

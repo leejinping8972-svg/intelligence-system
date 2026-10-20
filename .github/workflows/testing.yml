@@ -47,6 +47,10 @@ jobs:
         run: |
           node --test server/competitor-batch.test.mjs server/semrush-balance.test.mjs
           pnpm exec vitest run tests/resource-list.test.ts apps/web-antd/src/views/intelligence/__tests__/compact-tags.test.ts
+      - name: Resource timestamps and Chinese keyword names (mocked model)
+        run: |
+          node --test server/keyword-names.test.mjs
+          pnpm exec vitest run tests/resource-metadata.test.ts
       - name: Daily keyword discovery and newness rules (mocked providers)
         run: |
           node --test server/daily-discovery.test.mjs

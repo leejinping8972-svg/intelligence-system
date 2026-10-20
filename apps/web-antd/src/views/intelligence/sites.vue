@@ -15,6 +15,8 @@ import {
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
+import CollectionTime from './components/CollectionTime.vue';
+import { collectionTimeOrder, siteCollectedAt } from './resource-metadata';
 import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SelectionBar from './components/SelectionBar.vue';
@@ -183,6 +185,7 @@ watch([search, platform, category, ownership, keywordFilter, source, scoreFilter
 const columns = [
   { title: '品牌 / 独立站', key: 'brand', width: 220 },
   { title: '市场', key: 'market', width: 90 },
+  { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: (a: Site, b: Site) => collectionTimeOrder(siteCollectedAt(a)) - collectionTimeOrder(siteCollectedAt(b)) },
   {
     title: '站点评分',
     key: 'assessment',
@@ -226,6 +229,7 @@ const columns = [
               主要产品: s.mainProducts.join('、'),
               股权背景: s.ownershipBackground,
               官网依据: s.ownershipEvidence,
+              采集时间: siteCollectedAt(s) || '',
               证据网址: s.evidenceUrl || '',
               验证置信度: s.confidence ?? '',
               验证信号: s.signals?.join('、') || '',
@@ -340,7 +344,9 @@ const columns = [
             </div> </template
           ><template v-if="column.key === 'market'">
             <Tag>{{ marketName(record.market) }}</Tag> </template
-          ><template v-if="column.key === 'mainProducts'">
+          ><template v-if="column.key === 'collectedAt'">
+              <CollectionTime :at="siteCollectedAt(record)" />
+          </template><template v-if="column.key === 'mainProducts'">
             <CompactTags :items="record.mainProducts" label="主要产品" /> </template
           ><template v-if="column.key === 'ownership'">
             <Tag
