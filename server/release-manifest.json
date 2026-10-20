@@ -1,42 +1,37 @@
 {
-  "includedCommits": ["fa5a2aa42c1bbbee980daa6855382fd1b33b74da"],
+  "title": "重点监控统一展示与广告主批量监控",
+  "includedCommits": ["32e8599bc7368176d50568e2ee4df66058d2852d"],
+  "sourceSha": "2fe33c7bc5f53717ae20146b487de789185607a3",
   "changes": [
-    "独立站与商品支持按真实采集时间排序，并同步展示于卡片、详情和导出；缺失时间保持未记录。",
-    "商品情报库默认使用列表展示，保留卡片切换。",
-    "关键词研究与已入选列表增加中文参考名称和中文搜索，支持人工校对保存；模型翻译仅管理员主动点击调用，不自动重试。",
-    "关键词重采集和重复导入保留人工保存的中文译名、ID及关联。"
-  ],
-  "operator": "Codex",
-  "validation": [
-    "本机专项4项后台测试和4项前端测试通过，web-antd类型检查与生产/history构建通过。",
-    "功能会话记录26项前端相关回归及隔离PGlite译名保留集成验证通过。",
-    "准确候选GitHub CI待通过后部署；CI包含隔离MySQL持久化测试。"
+    "监控与任务的重点监控页统一展示商品、独立站和广告主配置，支持状态筛选、分页、执行概况、配置管理和资源跳转。",
+    "广告观察新增按市场和精确Meta Page ID汇总广告主、批量跨页选择及监控名额预览；新监控默认暂停，不覆盖既有计划。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/components/CollectionTime.vue",
-    "apps/web-antd/src/views/intelligence/components/KeywordNamesDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
-    "apps/web-antd/src/views/intelligence/components/SiteDrawer.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/keyword-names.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/resource-metadata.ts",
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "server/RESOURCE-TIME-NAMES.md",
+    "apps/web-antd/src/views/intelligence/ads.vue",
+    "apps/web-antd/src/views/intelligence/advertisers.ts",
+    "apps/web-antd/src/views/intelligence/competitor-workspace.ts",
+    "apps/web-antd/src/views/intelligence/components/AdvertiserList.vue",
+    "apps/web-antd/src/views/intelligence/components/BulkAdvertiserWatch.vue",
+    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
+    "apps/web-antd/src/views/intelligence/focused-monitors.ts",
+    "apps/web-antd/src/views/intelligence/market-navigation.ts",
+    "apps/web-antd/src/views/intelligence/monitor.vue",
+    "server/ADVERTISER-MONITOR-OVERVIEW.md",
+    "server/advertiser-monitor-batch.mjs",
+    "server/advertiser-monitor-batch.test.mjs",
+    "server/competitor-monitor-store.mjs",
     "server/competitor-monitor.integration.mjs",
-    "server/domain.mjs",
-    "server/index.mjs",
-    "server/keyword-names.mjs",
-    "server/keyword-names.test.mjs",
-    "server/store.mjs",
-    "tests/resource-metadata.test.ts"
+    "tests/advertiser-monitor.test.ts",
+    "tests/competitor-workspace.test.ts"
   ],
-  "title": "资源采集时间与关键词中文名称",
-  "sourceSha": "05536a8cbdac4de23fff87942f24a2fe4bdede7a",
-  "id": "20261020090950-5d3f200a",
-  "builtAt": "2026-10-20T09:09:50.508Z",
-  "sourceDigest": "5d3f200a674a9e0c8f01629db70b0d44c6209b7bd4de6bcced04d794294d67d8"
+  "validation": [
+    "本机广告主批量/竞品监控及站点备用链路后端35项通过；重点监控、广告主、资源列表和紧凑标签前端16项通过。",
+    "web-antd类型检查及服务器/history生产构建通过。",
+    "GitHub testing准确候选CI待运行，包含真实隔离MySQL竞品监控集成。",
+    "未调用真实收费服务；无数据库结构变更或新worker。"
+  ],
+  "operator": "Codex",
+  "id": "20261020093428-56ff1f54",
+  "builtAt": "2026-10-20T09:34:28.149Z",
+  "sourceDigest": "56ff1f54351c594c741874bc8801bd75bd9ae35a1fe46b886ad1b678dba2d023"
 }
