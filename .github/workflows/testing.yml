@@ -45,7 +45,7 @@ jobs:
         run: node --test server/competitor-monitor.test.mjs
       - name: Compact resources, bulk monitoring and Semrush balance (synthetic data)
         run: |
-          node --test server/competitor-batch.test.mjs server/semrush-balance.test.mjs
+          node --test server/competitor-batch.test.mjs server/semrush-balance.test.mjs server/semrush-usage.test.mjs
           pnpm exec vitest run tests/resource-list.test.ts apps/web-antd/src/views/intelligence/__tests__/compact-tags.test.ts
       - name: Resource timestamps and Chinese keyword names (mocked model)
         run: |

@@ -126,6 +126,7 @@ async function api(input, user) {
 
     case 'server_semrush_config':
     case 'server_semrush_balance':
+    case 'server_semrush_usage':
     case 'server_semrush_status':
       return semrushAction(input, user);
     case 'server_workspace_snapshot': {

@@ -309,6 +309,7 @@ named = (await query('SELECT data FROM research_keywords WHERE natural_key=$1', 
 assert.equal(named.termZh, '人工校对肌酸软糖');
 assert.equal(named.id, namedKeyword.id);
 console.log('Chinese name persistence passed: recollection and duplicate import preserve saved names.');
+await (await import('./semrush-usage.integration.mjs')).verifySemrushUsage(c);
 c.release();
 await memory?.close();
 await pool.end();

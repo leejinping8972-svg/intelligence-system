@@ -180,6 +180,7 @@ export async function collectSemrush(request) {
       const items = new Map(),
         sources = [];
       let apiUnits = 0;
+      let semrushUnknownCharges = 0;
       const reports = [
         'phrase_related',
         'phrase_fullsearch',
@@ -196,7 +197,9 @@ export async function collectSemrush(request) {
               remaining / (reports.length - reportIndex),
             ),
           });
-          apiUnits += payload.metadata?.usage?.api_units || 0;
+          const units = payload.metadata?.usage?.api_units;
+          if (Number.isSafeInteger(units) && units >= 0) apiUnits += units;
+          else semrushUnknownCharges++;
           const rows = reportRows(payload);
           for (const row of rows) {
             const word = rowTerm(row);
@@ -214,6 +217,7 @@ export async function collectSemrush(request) {
             message: `报告返回${rows.length}个词`,
           });
         } catch (e) {
+          semrushUnknownCharges++;
           sources.push({
             source: `Semrush ${report}`,
             status: 'error',
@@ -242,6 +246,7 @@ export async function collectSemrush(request) {
           { keyword: term, market, items: [...items.values()], sources },
         ],
         apiUnits,
+        semrushUnknownCharges,
       };
     }
     const payload = await execute(c, 'phrase_this', {

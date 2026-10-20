@@ -5,6 +5,7 @@ import process from 'node:process';
 import { requireAdmin } from './auth.mjs';
 import { pool, putDocument } from './database.mjs';
 import { semrushBalance } from './semrush-balance.mjs';
+import { semrushUsage } from './semrush-usage.mjs';
 import {
   SEMRUSH_MCP_URL,
   semrushConnectionStatus,
@@ -48,6 +49,7 @@ export async function semrushAction(input, user, overrides = {}) {
   if (
     input.action === 'server_semrush_config' ||
     input.action === 'server_semrush_balance' ||
+    input.action === 'server_semrush_usage' ||
     input.verify === true
   )
     requireAdmin(user);
@@ -63,8 +65,10 @@ export async function semrushAction(input, user, overrides = {}) {
     secret: process.env.PROVIDER_CONFIG_ENCRYPTION_KEY,
     status: semrushConnectionStatus,
     balance: semrushBalance,
+    usage: semrushUsage,
     ...overrides,
   };
+  if (input.action === 'server_semrush_usage') return io.usage();
   const stored = await io.read();
   if (input.action === 'server_semrush_balance') {
     if (!stored) return { configured: false, balance: null };
