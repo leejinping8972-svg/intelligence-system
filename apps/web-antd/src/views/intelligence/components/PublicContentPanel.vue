@@ -23,7 +23,6 @@ import {
   Alert,
   Button,
   Checkbox,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -53,8 +52,8 @@ import {
   itemScopes,
 } from '../public-content';
 import { serverMode } from '../session';
-import PublicArticleDetails from './PublicArticleDetails.vue';
-
+import PublicContentDrawer from './PublicContentDrawer.vue';
+import PublicContentHistory from './PublicContentHistory.vue';
 const props = defineProps<{
   initialQuery?: string;
   initialMarket?: string;
@@ -62,6 +61,14 @@ const props = defineProps<{
   productIds?: string[];
   openSearchOnMount?: boolean;
 }>();
+const detailStepLabels: Record<string, string> = {
+  article_fulltext: '文章正文与图表',
+  youtube_metadata: '视频完整描述',
+  europepmc_metadata: '研究摘要',
+  reddit_details: '帖子原文',
+  youtube_transcript: '视频字幕',
+};
+
 const requestedMarket = props.initialMarket || state.market;
 const startingMarket = requestedMarket === 'ALL' ? 'US' : requestedMarket;
 const languageForMarket = (market: string) =>
@@ -102,10 +109,6 @@ const items = ref<ContentItem[]>([]);
 const activeJob = ref('');
 const showFavorites = ref(false);
 const detailId = ref('');
-const relationDraft = reactive({
-  keywordIds: [] as string[],
-  productIds: [] as string[],
-});
 const layout = ref('cards');
 const page = ref(1);
 const pageSize = ref(10);
@@ -230,10 +233,7 @@ let pendingSubmit: undefined | { signature: string; requestId: string };
 watch(filter, () => {
   page.value = 1;
 });
-watch(detailId, () => {
-  relationDraft.keywordIds = [...(detail.value?.keywordIds || [])];
-  relationDraft.productIds = [...(detail.value?.productIds || [])];
-});
+
 watch([activeJob, showFavorites], () => {
   page.value = 1;
   void refresh();
@@ -633,6 +633,13 @@ onUnmounted(() => {
         />
         <Checkbox v-model:checked="showFavorites">查看全部收藏</Checkbox>
         <Button :loading="loading" @click="refresh">刷新结果</Button>
+        <PublicContentHistory
+          @submitted="
+            activeJob = $event;
+            showFavorites = false;
+            void refresh();
+          "
+        />
         <Button :disabled="!result.length" @click="exportResults">
           导出当前链接清单
         </Button>
@@ -680,7 +687,9 @@ onUnmounted(() => {
             <li v-for="(step, i) in job.steps" :key="i">
               <b>{{
                 sourceStatus?.sources.find((s) => s.id === step.source)
-                  ?.label || step.source
+                  ?.label ||
+                detailStepLabels[step.source] ||
+                step.source
               }}</b>
               · {{ step.query }} · {{ contentStates[step.status] }} ·
               {{ step.scope ? contentScopes[step.scope] : '历史步骤' }} ·
@@ -894,190 +903,17 @@ onUnmounted(() => {
         @show-size-change="page = 1"
       />
     </section>
-    <Drawer
-      :open="!!detail"
-      title="公共内容详情"
-      width="min(780px, 96vw)"
-      destroy-on-close
+    <PublicContentDrawer
+      :item="detail"
+      :saving="saving === detail?.id"
+      :submitting="submitting"
+      :keyword-options="keywordOptions"
+      :product-options="productOptions"
       @close="detailId = ''"
-    >
-      <template v-if="detail">
-        <h2>{{ detail.ai?.titleZh || detail.title }}</h2>
-        <p>{{ detail.title }}</p>
-        <p class="hci-subtle">
-          {{ detail.sourceLabel }} · {{ detail.author || '来源未提供作者' }} ·
-          {{ contentDate(detail.publishedAt) }}
-        </p>
-        <div class="hci-toolbar">
-          <Tag>{{ contentCategories[detail.category] }}</Tag
-          ><Tag>{{ contentTypes[detail.type] }}</Tag
-          ><Tag>来源语言：{{ detail.language }}</Tag
-          ><Tag>
-            作者国家：{{
-              detail.authorCountry === 'unknown'
-                ? '未核实'
-                : detail.authorCountry
-            }}
-          </Tag>
-        </div>
-        <p class="hci-subtle">
-          地域依据：{{ detail.marketBasis || '未核实' }} · 来源机构国家：{{
-            detail.publisherCountry || '未知'
-          }}
-        </p>
-        <ul class="pc-step-list">
-          <li
-            v-for="(context, index) in detail.searchContexts || []"
-            :key="index"
-          >
-            {{ contentScopes[context.scope] }} · 检索市场
-            {{ context.market === 'ALL' ? '全球' : context.market }} · 检索语言
-            {{ context.language }} · {{ context.query }}
-            <span v-if="context.basis"> · {{ context.basis }}</span>
-          </li>
-        </ul>
-        <iframe
-          v-if="detail.source === 'youtube' && detail.videoId"
-          class="pc-video"
-          :src="`https://www.youtube-nocookie.com/embed/${detail.videoId}`"
-          title="YouTube 视频预览"
-          loading="lazy"
-          referrerpolicy="strict-origin-when-cross-origin"
-          allowfullscreen
-        ></iframe>
-        <p>
-          <a :href="detail.url" target="_blank" rel="noopener noreferrer">{{
-            detail.type === 'video' ? '在原平台观看视频' : '打开来源原文'
-          }}</a
-          ><span v-if="detail.fullTextUrl">
-            ·
-            <a
-              :href="detail.fullTextUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              >来源提供的开放全文</a
-            ></span
-          >
-        </p>
-        <p class="hci-subtle">
-          {{ canReadArticle(detail) ? '检索索引覆盖' : '内容覆盖' }}：{{
-            detail.textAvailability
-          }}
-          · 采集于 {{ contentDate(detail.collectedAt) }} · 命中：{{
-            detail.matchedQueries.join(' / ')
-          }}
-        </p>
-        <h3>来源摘要 / 描述</h3>
-        <p class="pc-full-text">
-          {{
-            detail.summary ||
-            (canReadArticle(detail)
-              ? '来源未提供摘要，公开正文与图表见下方。'
-              : '来源未提供正文或摘要，仅保存索引和链接。')
-          }}
-        </p>
-        <PublicArticleDetails
-          v-if="canReadArticle(detail)"
-          :key="detail.id"
-          :item="detail"
-        />
-        <section v-if="detail.ai" class="hci-evidence">
-          <h3>AI中文整理</h3>
-          <p>{{ detail.ai.summaryZh }}</p>
-          <p>{{ detail.ai.reason }}</p>
-          <blockquote>{{ detail.ai.quote }}</blockquote>
-          <p v-if="detail.ai.duplicateOf" class="hci-subtle">
-            AI标记为相似内容，原始记录与来源均保留。
-          </p>
-        </section>
-        <section v-if="detail.source === 'youtube'">
-          <h3>已有视频字幕</h3>
-          <p class="hci-subtle">
-            按需读取来源已有字幕，可能消耗1次 ScrapeCreators
-            请求；不会生成音频转写。
-          </p>
-          <Button
-            :loading="submitting"
-            :disabled="isRunning || !!detail.transcript"
-            @click="transcript(detail)"
-          >
-            {{ detail.transcript ? '已检查来源字幕' : '获取已有字幕' }}
-          </Button>
-          <p v-if="detail.transcript" class="pc-full-text">
-            {{ detail.transcript.text || '来源没有可用的原语言字幕。' }}
-          </p>
-        </section>
-        <section v-if="detail.source === 'reddit'">
-          <h3>帖子评论取样</h3>
-          <p class="hci-subtle">
-            手动读取一次，可能消耗 ScrapeCreators
-            credits；保存最多20条顶层评论，不自动展开或分页。
-          </p>
-          <Button
-            :loading="submitting"
-            :disabled="isRunning || !!detail.comments"
-            @click="comments(detail)"
-            >{{ detail.comments ? '已保存评论取样' : '读取帖子评论' }}</Button
-          >
-          <p v-if="detail.comments" class="hci-subtle">
-            {{ detail.comments.completeness }}
-          </p>
-          <blockquote
-            v-for="comment in detail.comments?.items || []"
-            :key="comment.id"
-          >
-            <b>{{ comment.author || '来源未提供作者' }}</b>
-            <p class="pc-full-text">{{ comment.text }}</p>
-            <a
-              v-if="comment.url"
-              :href="comment.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              >查看评论原文</a
-            >
-          </blockquote>
-        </section>
-        <Form layout="vertical" style="margin-top: 20px">
-          <Form.Item label="关联关键词">
-            <Select
-              v-model:value="relationDraft.keywordIds"
-              mode="multiple"
-              :options="keywordOptions"
-              show-search
-              option-filter-prop="label"
-              aria-label="内容关联关键词"
-            /> </Form.Item
-          ><Form.Item label="关联产品">
-            <Select
-              v-model:value="relationDraft.productIds"
-              mode="multiple"
-              :options="productOptions"
-              show-search
-              option-filter-prop="label"
-              aria-label="内容关联产品"
-            />
-          </Form.Item>
-        </Form>
-        <Button
-          :loading="saving === detail.id"
-          style="margin-right: 8px"
-          @click="
-            save(detail, {
-              keywordIds: relationDraft.keywordIds,
-              productIds: relationDraft.productIds,
-            })
-          "
-        >
-          保存关联
-        </Button>
-        <Button
-          :loading="saving === detail.id"
-          @click="save(detail, { favorite: !detail.favorite })"
-        >
-          {{ detail.favorite ? '取消收藏' : '收藏此内容' }}
-        </Button>
-      </template>
-    </Drawer>
+      @save="detail && save(detail, $event)"
+      @transcript="detail && transcript(detail)"
+      @comments="detail && comments(detail)"
+    />
   </div>
 </template>
 
