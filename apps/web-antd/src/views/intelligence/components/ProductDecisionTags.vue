@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue';
 import { Button, Modal, Tag } from 'ant-design-vue';
 import type { Product } from '../data';
+import ProductHistory from './ProductHistory.vue';
+import ProductCompletionDialog from './ProductCompletionDialog.vue';
 import {
   PRODUCT_DECISION_RULES,
   PRODUCT_DECISION_VERSION,
@@ -58,6 +60,7 @@ const safeLink = (value?: string) => {
       >
     </article>
   </div>
+  <ProductHistory v-if="details" :product="product" />
   <Modal
     v-if="open"
     v-model:open="open"
@@ -94,6 +97,8 @@ const safeLink = (value?: string) => {
     <p class="hci-subtle" style="margin-top: 16px">
       {{ PRODUCT_DECISION_RULES }}
     </p>
+    <ProductHistory :product="product" />
+    <ProductCompletionDialog :product-ids="[product.id]" compact />
     <Button style="margin-top: 16px" @click="open = false">关闭</Button>
   </Modal>
 </template>

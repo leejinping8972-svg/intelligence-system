@@ -15,6 +15,7 @@ import { runProductsJob } from './product-jobs.mjs';
 import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
 import { productProgress } from './product-queue.mjs';
 import { runPlatformProducts } from './platform-products-jobs.mjs';
+import { completionProgress } from './platform-product-completion.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   if (
@@ -31,7 +32,10 @@ export function jobTasks(job) {
       ad_analysis: '广告拆解与分析',
       evidence_analysis: '需求语义分析',
       products: '站点商品采集',
-      platform_products: '平台商品发现与趋势补全',
+      platform_products:
+        job.input.mode === 'enrich'
+          ? '已有商品全量补全'
+          : '平台商品发现与趋势补全',
     };
     return job.input.markets.map((market) => ({
       id: `${job.id}:${market}`,
@@ -46,17 +50,21 @@ export function jobTasks(job) {
       created:
         job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
       steps: [
-        `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
+        job.input.kind === 'platform_products' && job.input.completeAll
+          ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；数据请求 ${job.checkpoint.requests || 0} 次；已发现商品逐件补全，不被发现预算截断`
+          : `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
         ...(job.checkpoint.logs || []),
       ],
       researchProgress: {
         kind: job.input.kind,
         done: job.checkpoint.index || 0,
         total:
-          job.checkpoint.work?.length ||
-          job.input.records?.length ||
-          job.input.urls?.length ||
-          1,
+          job.input.kind === 'platform_products' && job.input.mode === 'enrich'
+            ? (job.checkpoint.work?.length ?? job.input.initialWork?.length ?? 0)
+            : job.checkpoint.work?.length ||
+              job.input.records?.length ||
+              job.input.urls?.length ||
+              1,
         evidence: job.checkpoint.evidenceIds?.length || 0,
         products: job.checkpoint.products || 0,
         requests: job.checkpoint.requests || 0,
@@ -68,6 +76,10 @@ export function jobTasks(job) {
           : job.id,
         ...(job.input.kind === 'platform_products'
           ? {
+              completion: job.input.completeAll
+                ? completionProgress(job.checkpoint)
+                : undefined,
+              unlimitedRequests: job.input.completeAll,
               semrushUnits: job.checkpoint.semrushUnits || 0,
               semrushReserved: job.checkpoint.semrushReserved || 0,
               semrushUnitLimit: job.input.semrushUnitLimit,

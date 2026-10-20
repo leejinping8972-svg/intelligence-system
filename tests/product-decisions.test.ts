@@ -144,3 +144,36 @@ describe('product decision labels use comparable product evidence', () => {
     expect(keys([duplicate])).toEqual(['insufficient']);
   });
 });
+
+describe('product completion evidence is specific', () => {
+  it('separates unrequested, queued, empty, failed and unsupported histories', () => {
+    const expected = {
+      queued: '趋势补全中',
+      empty: '平台暂无有效历史',
+      failed: '趋势采集未完成',
+      unsupported: '来源不提供历史',
+    };
+    for (const [status, label] of Object.entries(expected)) {
+      const tag = productDecisions(
+        {
+          market: 'US',
+          dataCompletion: {
+            trend_AsinSalesVolume: { status, message: 'QA reason' },
+          },
+        },
+        now,
+      ).find((t) => t.key === 'insufficient');
+      expect(tag?.label).toBe(label);
+    }
+  });
+  it('review history produces review activity instead of sales growth', () => {
+    const result = tags([series([100, 140], { metric: 'review_count' })]);
+    expect(result.map((t) => t.key)).toEqual(['review_activity']);
+    expect(result[0]?.reason).toContain('评论指标不等于销量');
+  });
+  it('rank history can provide a reference even when sales history is empty', () => {
+    const result = tags([series([200, 100], { metric: 'sales_rank' })]);
+    expect(result.map((t) => t.key)).toEqual(['rank_improving']);
+    expect(result[0]?.reason).toContain('不等于销量增长');
+  });
+});

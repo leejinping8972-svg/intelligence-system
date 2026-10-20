@@ -57,6 +57,7 @@ const request = (patch) =>
     market: 'US',
     providers: ['sorftime', 'semrush'],
     maxRequests: 20,
+    completeAll: false, enrich: false, trend: false,
     ...patch,
   });
 test('observed Sorftime snake_case fields preserve sentinels as unknown and never infer launch from collection', () => {

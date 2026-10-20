@@ -1,5 +1,6 @@
 export type ProductMetricKind =
   | 'sales_volume'
+  | 'review_count'
   | 'sales_rank'
   | 'shopping_rank'
   | 'keywords_count';
@@ -19,6 +20,14 @@ export interface ProductMetricSeries {
     partial?: boolean;
   }>;
 }
+export interface ProductCompletionState {
+  status: string;
+  message: string;
+  jobId?: string;
+  at?: string;
+  points?: number;
+}
+export type ProductCompletion = Record<string, ProductCompletionState>;
 export interface ProductDecisionData {
   listing?: {
     date: string;
@@ -51,11 +60,12 @@ export const productDecisionFilters = [
   { value: 'low_base', label: '低基数' },
   { value: 'rank_improving', label: '排名改善' },
   { value: 'coverage_growing', label: '搜索覆盖扩大' },
+  { value: 'review_activity', label: '评论数变化' },
   { value: 'first_seen', label: '首次发现' },
   { value: 'insufficient', label: '趋势待补充' },
   { value: 'stale', label: '趋势数据过旧' },
 ];
-export const PRODUCT_DECISION_VERSION = 'product-decisions-v1';
+export const PRODUCT_DECISION_VERSION = 'product-decisions-v2';
 export function productDataSource(product: {
   sourceProvider?: string;
   sourcePlatform?: string;
@@ -68,7 +78,7 @@ export function productDataSource(product: {
   return product.siteId ? '官网实采' : '人工导入 / 来源待确认';
 }
 export const PRODUCT_DECISION_RULES =
-  '新品：有来源的上架日期在90天内。近期增长/回落：相邻完整周期销量变化≥20%/≤-20%；连续三个周期增长需四个观测值。零基数不计算百分比；销量基数不足20时标记低基数，不升级为持续增长。排名和关键词覆盖变化分别标记，不等同于销量。首次发现仅指系统首次观察。';
+  '新品：有来源的上架日期在90天内。近期增长/回落：相邻完整周期销量变化≥20%/≤-20%；连续三个周期增长需四个观测值。零基数不计算百分比；销量基数不足20时标记低基数，不升级为持续增长。排名、评论数和关键词覆盖变化分别标记，不等同于销量。首次发现仅指系统首次观察。';
 const DAY = 86_400_000;
 const day = (value: unknown) => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
@@ -116,6 +126,7 @@ export function productDecisions(
     market: string;
     firstSeenAt?: string;
     decisionData?: ProductDecisionData;
+    dataCompletion?: ProductCompletion;
   },
   now = Date.now(),
 ): ProductDecision[] {
@@ -157,6 +168,7 @@ export function productDecisions(
         'sales_rank',
         'shopping_rank',
         'keywords_count',
+        'review_count',
       ].includes(series.metric) ||
       !['day', 'week', 'month'].includes(series.period) ||
       !Array.isArray(series.points) ||
@@ -285,6 +297,16 @@ export function productDecisions(
         );
       continue;
     }
+    if (series.metric === 'review_count') {
+      add(
+        'review_activity',
+        `${suffix}评论数${growth > 0 ? '增加' : growth < 0 ? '减少' : '不变'}`,
+        'blue',
+        `评论数由${previous.value}变为${current.value}，变化${growth.toFixed(1)}%；评论指标不等于销量。`,
+        growth,
+      );
+      continue;
+    }
     if (series.metric === 'keywords_count') {
       if (growth >= 20)
         add(
@@ -393,16 +415,48 @@ export function productDecisions(
       source: '系统采集记录',
       date: new Date(first).toISOString(),
     });
-  if (!hasTrend)
+  if (!hasTrend) {
+    const steps = Object.entries(product.dataCompletion || {}).filter(([key]) =>
+      key.startsWith('trend'),
+    );
+    const states = steps.map(([, value]) => value);
+    let label = stale ? '趋势数据过旧' : '趋势未请求';
+    let reason = stale
+      ? '历史数据已超过时效窗口，暂不用于当前趋势判断。'
+      : '该商品尚未完成历史请求；可在商品库点击补全商品数据。';
+    if (states.some((s) => ['queued', 'running'].includes(s.status))) {
+      label = '趋势补全中';
+      reason = '已进入后台补全队列，关闭页面后继续执行。';
+    } else if (
+      states.some((s) => ['failed', 'unknown', 'cancelled'].includes(s.status))
+    ) {
+      label = '趋势采集未完成';
+      reason = states
+        .filter((s) => ['failed', 'unknown', 'cancelled'].includes(s.status))
+        .map((s) => s.message)
+        .join('；');
+    } else if (
+      states.length > 0 &&
+      states.every((s) => s.status === 'unsupported')
+    ) {
+      label = '来源不提供历史';
+      reason = states.map((s) => s.message).join('；');
+    } else if (states.length > 0 && states.every((s) => s.status === 'empty')) {
+      label = '平台暂无有效历史';
+      reason = states.map((s) => s.message).join('；');
+    } else if ((data?.series?.length || 0) > 0 && !stale) {
+      label = '历史周期不足';
+      reason =
+        '已有历史，但缺少同商品、同市场、同指标的相邻完整周期；可在详情查看实际返回值。';
+    }
     result.push({
       key: stale ? 'stale' : 'insufficient',
-      label: stale ? '趋势数据过旧' : '趋势待补充',
+      label,
       color: 'default',
-      reason: stale
-        ? '历史数据已超过时效窗口，暂不用于当前趋势判断。'
-        : '需要同商品、同市场、同平台、同指标的相邻完整周期数据。缺失、部分周期和不同口径数据不参与比较。',
+      reason,
       source: '系统规则',
       date: new Date(now).toISOString(),
     });
+  }
   return result;
 }

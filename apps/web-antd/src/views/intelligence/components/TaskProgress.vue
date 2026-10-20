@@ -126,11 +126,25 @@ const visibleRows = computed(() =>
       ><span v-else>原文 {{ task.researchProgress.evidence }} 条</span
       ><span
         >请求 {{ task.researchProgress.requests }} /
-        {{ task.researchProgress.requestLimit }}</span
+        {{
+          task.researchProgress.unlimitedRequests
+            ? '补全请求不截断'
+            : task.researchProgress.requestLimit
+        }}</span
       ><span v-if="task.researchProgress.credits !== undefined"
         >确认扣除 {{ task.researchProgress.credits }} credits</span
       >
     </div>
+    <p v-if="task.researchProgress.completion" class="hci-subtle">
+      商品补全：已处理 {{ task.researchProgress.completion.done }}/{{
+        task.researchProgress.completion.total
+      }}
+      件；有历史 {{ task.researchProgress.completion.withHistory }} 件，等待
+      {{ task.researchProgress.completion.pending }} 件，未完成
+      {{ task.researchProgress.completion.failed }} 件，来源不支持
+      {{ task.researchProgress.completion.unsupported }}
+      件。逐项原因与历史曲线请到商品详情查看。
+    </p>
     <p
       v-if="task.researchProgress.kind === 'platform_products'"
       class="hci-subtle"
@@ -139,7 +153,7 @@ const visibleRows = computed(() =>
       {{ task.researchProgress.semrushUnits || 0 }} API units，保守预留
       {{ task.researchProgress.semrushReserved || 0 }} /
       {{
-        task.researchProgress.semrushUnitLimit || 0
+        task.researchProgress.semrushUnitLimit || '开放请求'
       }}；报告返回未知时不自动重放收费请求。结果到商品情报库按数据来源查看。
     </p>
     <p v-if="task.researchProgress.transcriptSummary" class="hci-subtle">

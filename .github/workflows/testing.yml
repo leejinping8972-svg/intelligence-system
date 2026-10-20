@@ -31,8 +31,7 @@ jobs:
         run: npm ci --ignore-scripts --prefix server
       - name: Product and existing collection tests (mocked providers)
         run: |
-          node --test server/platform-products.test.mjs server/semrush.test.mjs server/product-queue.test.mjs server/job-progress.test.mjs workers/site-discovery/sorftime.test.mjs server/public-content.test.mjs server/combined-discovery.test.mjs server/market-jobs.test.mjs server/enrichment.test.mjs server/public-content-scope.test.mjs
-          node --test server/public-article.test.mjs
+          node --test server/platform-products.test.mjs server/platform-product-completion.test.mjs server/semrush.test.mjs server/product-queue.test.mjs server/job-progress.test.mjs workers/site-discovery/sorftime.test.mjs server/public-content.test.mjs server/public-article.test.mjs server/combined-discovery.test.mjs server/market-jobs.test.mjs server/enrichment.test.mjs server/public-content-scope.test.mjs
           pnpm exec vitest run tests/product-decisions.test.ts tests/public-content.test.ts tests/platform-product-selection.test.ts tests/keyword-selection.test.ts tests/article-details.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
@@ -63,10 +62,26 @@ jobs:
           docker run --rm --network platform-products-qa-net --memory=256m \
             -e PLATFORM_PRODUCTS_QA=disposable-only -e QA_MYSQL_HOST=platform-products-qa-db \
             --entrypoint node intelligence-platform-products-qa platform-products.integration.mjs
+      - name: Isolated full product completion (synthetic data only)
+        run: |
+          docker run -d --name product-completion-qa-db --network platform-products-qa-net \
+            --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
+            -e MYSQL_DATABASE=product_completion_qa -e MYSQL_USER=qa \
+            -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
+            --innodb-buffer-pool-size=64M --performance-schema=OFF
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec product-completion-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+          docker run --rm --network platform-products-qa-net --memory=256m \
+            -e PRODUCT_COMPLETION_QA=disposable-only -e QA_MYSQL_HOST=product-completion-qa-db \
+            --entrypoint node intelligence-platform-products-qa platform-product-completion.integration.mjs
       - name: Clean disposable database
         if: always()
         run: |
-          docker rm -f platform-products-qa-db || true
+          docker rm -f platform-products-qa-db product-completion-qa-db || true
           docker network rm platform-products-qa-net || true
       - name: Upload test frontend build
         uses: actions/upload-artifact@v4

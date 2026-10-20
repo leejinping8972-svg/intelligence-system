@@ -451,12 +451,23 @@ export function normalizeAmazonContent(value, product, at) {
   ];
   return patch;
 }
-export function normalizeAmazonTrend(value, product, at) {
+export function normalizeAmazonTrend(
+  value,
+  product,
+  at,
+  trendType = 'AsinSalesVolume',
+) {
+  const metrics = {
+    AsinSalesVolume: 'sales_volume',
+    Rank: 'sales_rank',
+    ReviewCount: 'review_count',
+  };
+  if (!metrics[trendType]) throw new Error('不支持的商品趋势口径');
   const points = [];
   const inner = value.data || value.Data || value;
   if (
     (inner.asin && inner.asin !== product.sourceProductId) ||
-    (inner.type && inner.type !== 'AsinSalesVolume')
+    (inner.type && inner.type !== trendType)
   )
     throw new Error('趋势商品或指标口径不一致，未混入其他ASIN或父体销量');
   const raw = records(value);
@@ -467,39 +478,47 @@ export function normalizeAmazonTrend(value, product, at) {
           value: raw[i * 2 + 1],
         }))
       : raw;
+  let recognized = 0;
   for (const row of rows) {
     const key = String(
       Array.isArray(row)
         ? row[0]
         : field(row, 'key', 'Key', 'date', 'Date', 'month', 'Month') || '',
     );
-    const n = number(
-      Array.isArray(row)
-        ? row[1]
-        : field(row, 'value', 'Value', 'salesVolume', 'SalesVolume'),
-    );
+    const rawNumber = Array.isArray(row)
+      ? row[1]
+      : field(row, 'value', 'Value', 'salesVolume', 'SalesVolume');
+    const n = number(rawNumber);
     // Do not convert rolling daily observations into completed calendar months.
     const match = /^(\d{4})[-/]?(\d{2})(?:-01(?:T.*)?)?$/.exec(key);
     if (
       !match ||
-      n === undefined ||
       Number(match[2]) < 1 ||
       Number(match[2]) > 12
     )
       continue;
+    if (n === undefined && ![-1, '-1', null].includes(rawNumber)) continue;
+    recognized++;
+    if (n === undefined) continue;
     const year = Number(match[1]),
       month = Number(match[2]);
     const start = `${match[1]}-${match[2]}-01`,
       end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
     points.push({ start, end, value: n, partial: end >= at.slice(0, 10) });
   }
+  if (raw.length > 0 && recognized === 0)
+    throw new Error('平台返回了历史数据，但日期或数值结构无法识别；请检查字段，不能视为无历史');
   return {
     ...sourceContext('Sorftime', product.market, at, product.sourceUrl),
     productId: product.sourceProductId,
-    metric: 'sales_volume',
+    metric: metrics[trendType],
     period: 'month',
     points,
-    basis: 'AsinSalesVolume：仅当前ASIN，不混合子变体',
+    basis: {
+      AsinSalesVolume: 'AsinSalesVolume：仅当前ASIN，不混合子变体',
+      Rank: 'Rank：平台月度大类排名，数字降低表示位置改善，不等于销量',
+      ReviewCount: 'ReviewCount：平台月度评论数，不等于销量',
+    }[trendType],
   };
 }
 export function attributeTable(raw) {
@@ -530,7 +549,10 @@ export function attributeTable(raw) {
   return Object.fromEntries(entries);
 }
 export function protectPlatformClientEdit(old, incoming) {
-  if (!old?.sourceProvider || !old.sourceProductId) return incoming;
+  if (!old?.sourceProvider || !old.sourceProductId)
+    return old?.dataCompletion
+      ? { ...incoming, dataCompletion: old.dataCompletion }
+      : incoming;
   return {
     ...old,
     favorite:
@@ -576,6 +598,7 @@ export function mergePlatformProduct(old, patch) {
     'queryTerms',
     'collectionFields',
     'sourceEvidence',
+    'imageUrls',
   ])
     merged[key] = [
       ...new Map(
@@ -587,6 +610,9 @@ export function mergePlatformProduct(old, patch) {
     ];
   merged.sourceEvidence = merged.sourceEvidence.slice(-100);
   merged.sourceMetrics = { ...old.sourceMetrics, ...patch.sourceMetrics };
+  for (const key of ['benefits', 'ingredientInsights'])
+    if (patch[key]?.length === 0 && old[key]?.length > 0)
+      merged[key] = old[key];
   const series = new Map();
   for (const s of [
     ...(old.decisionData?.series || []),
@@ -605,9 +631,7 @@ export function mergePlatformProduct(old, patch) {
       ...new Map(
         [...(previous?.points || []), ...s.points].map((p) => [p.start, p]),
       ).values(),
-    ]
-      .toSorted((a, b) => a.start.localeCompare(b.start))
-      .slice(-36);
+    ].toSorted((a, b) => a.start.localeCompare(b.start));
     series.set(key, { ...s, points });
   }
   merged.decisionData = {
@@ -616,5 +640,15 @@ export function mergePlatformProduct(old, patch) {
     listing: patch.decisionData?.listing || old.decisionData?.listing,
     series: [...series.values()],
   };
+  merged.dataCompletion = { ...old.dataCompletion };
+  for (const [key, state] of Object.entries(patch.dataCompletion || {})) {
+    const current = merged.dataCompletion[key];
+    if (
+      !current?.jobId ||
+      current.jobId === state.jobId ||
+      state.status === 'queued'
+    )
+      merged.dataCompletion[key] = state;
+  }
   return merged;
 }
