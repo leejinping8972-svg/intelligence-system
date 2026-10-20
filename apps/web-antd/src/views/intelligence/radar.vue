@@ -2,7 +2,7 @@
 import type { FreeSourceData } from './public-sources';
 import type { PublicCollectorData, RadarFinding } from './radar-engine';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import {
@@ -22,7 +22,7 @@ import {
 
 import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
-import { download, marketName, marketOptions, state } from './data';
+import { download, marketName, state } from './data';
 import {
   buildCollectedRadarFindings,
   buildFreeSourceRadarFindings,
@@ -36,6 +36,7 @@ const windowDays = ref(7);
 const findingType = ref('all');
 const includeDemo = ref(false);
 const selected = ref<RadarFinding>();
+watch(() => state.market, () => { selected.value = undefined; });
 const reportOpen = ref(false);
 const sourceOpen = ref(false);
 const collectorData = ref<null | PublicCollectorData>(null);
@@ -234,14 +235,6 @@ function openRelated(item: RadarFinding) {
             { label: '14天', value: 14 },
             { label: '30天', value: 30 },
           ]"
-        />
-      </div>
-      <div>
-        <span>国家市场</span>
-        <Select
-          v-model:value="state.market"
-          :options="marketOptions"
-          style="width: 150px"
         />
       </div>
       <div>

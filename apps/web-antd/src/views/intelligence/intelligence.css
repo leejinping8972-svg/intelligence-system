@@ -1144,6 +1144,13 @@
   white-space: nowrap;
 }
 
+.hci-page-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: center;
+}
+
 .hci-market-picker > span {
   font-size: 12px;
   color: var(--hci-muted);

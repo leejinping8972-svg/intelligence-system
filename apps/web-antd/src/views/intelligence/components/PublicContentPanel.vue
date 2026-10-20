@@ -44,6 +44,7 @@ import {
   contentCategories,
   contentCsv,
   contentDate,
+  contentInMarket,
   contentRequest,
   contentScopes,
   contentStates,
@@ -70,6 +71,7 @@ const detailStepLabels: Record<string, string> = {
 };
 
 const requestedMarket = props.initialMarket || state.market;
+const browseMarket = computed(() => props.initialMarket || state.market);
 const startingMarket = requestedMarket === 'ALL' ? 'US' : requestedMarket;
 const languageForMarket = (market: string) =>
   ({ MX: 'es', VN: 'vi', US: 'en' })[market as 'MX' | 'US' | 'VN'] || 'en';
@@ -123,7 +125,14 @@ const filter = reactive({
   scope: 'ALL',
 });
 const detail = computed(() => items.value.find((i) => i.id === detailId.value));
-const result = computed(() => filterContent(items.value, filter));
+const scopedItems = computed(() =>
+  items.value.filter((item) => contentInMarket(item, browseMarket.value)),
+);
+const scopedJobs = computed(() =>
+  jobs.value.filter((item) =>
+    browseMarket.value === 'ALL' || item.input.market === browseMarket.value),
+);
+const result = computed(() => filterContent(scopedItems.value, filter));
 const paged = computed(() =>
   result.value.slice(
     (page.value - 1) * pageSize.value,
@@ -137,14 +146,14 @@ const languageOptions = [
 ];
 const languages = computed(() => [
   { value: 'ALL', label: '全部来源语言' },
-  ...[...new Set(items.value.map((i) => i.language))].map((value) => ({
+  ...[...new Set(scopedItems.value.map((i) => i.language))].map((value) => ({
     value,
     label: value === 'unknown' ? '来源未提供语言' : value,
   })),
 ]);
 const sources = computed(() => [
   { value: 'ALL', label: '全部来源' },
-  ...[...new Map(items.value.map((i) => [i.source, i.sourceLabel]))].map(
+  ...[...new Map(scopedItems.value.map((i) => [i.source, i.sourceLabel]))].map(
     ([value, label]) => ({ value, label }),
   ),
 ]);
@@ -191,12 +200,12 @@ watch(
 );
 const productOptions = computed(() =>
   state.products
-    .filter((p) => p.dataNature !== 'demo')
+    .filter((p) => p.dataNature !== 'demo' && p.market === form.market)
     .map((p) => ({ value: p.id, label: `${p.brand} · ${p.title}` })),
 );
 const keywordOptions = computed(() =>
   state.keywords
-    .filter((k) => k.dataNature !== 'demo')
+    .filter((k) => k.dataNature !== 'demo' && k.market === form.market)
     .map((k) => ({ value: k.id, label: `${k.term} · ${k.market}` })),
 );
 const isRunning = computed(
@@ -214,10 +223,10 @@ const progress = computed(() =>
     : 0,
 );
 const categoryTabs = computed(() => [
-  { key: 'ALL', tab: `全部内容（${items.value.length}）` },
+  { key: 'ALL', tab: `全部内容（${scopedItems.value.length}）` },
   ...Object.entries(contentCategories).map(([key, name]) => ({
     key,
-    tab: `${name}（${items.value.filter((i) => i.category === key).length}）`,
+    tab: `${name}（${scopedItems.value.filter((i) => i.category === key).length}）`,
   })),
 ]);
 const columns = [
@@ -237,6 +246,19 @@ watch(filter, () => {
 watch([activeJob, showFavorites], () => {
   page.value = 1;
   void refresh();
+});
+watch(browseMarket, (market) => {
+  detailId.value = '';
+  job.value = null;
+  page.value = 1;
+  filter.source = 'ALL';
+  filter.language = 'ALL';
+  form.keywordIds = [];
+  form.productIds = [];
+  if (market !== 'ALL') form.market = market;
+  const next = scopedJobs.value[0]?.id || '';
+  if (activeJob.value === next) void refresh();
+  else activeJob.value = next;
 });
 watch(
   () => result.value.length,
@@ -272,10 +294,15 @@ async function refresh() {
     );
     if (disposed || call !== sequence) return;
     jobs.value = data.jobs;
-    job.value = data.job;
+    job.value = data.job &&
+      (browseMarket.value === 'ALL' || data.job.input.market === browseMarket.value)
+      ? data.job : null;
     items.value = data.items;
     errorMessage.value = '';
-    if (!activeJob.value && data.job) activeJob.value = data.job.id;
+    if (!activeJob.value) {
+      const matching = scopedJobs.value[0]?.id;
+      if (matching) activeJob.value = matching;
+    }
   } catch (error) {
     if (call === sequence)
       errorMessage.value =
@@ -622,7 +649,7 @@ onUnmounted(() => {
         <Select
           v-model:value="activeJob"
           :options="
-            jobs.map((j) => ({
+            scopedJobs.map((j) => ({
               value: j.id,
               label: `${j.input.query} · ${contentStates[j.status]} · ${contentDate(j.submittedAt)}`,
             }))

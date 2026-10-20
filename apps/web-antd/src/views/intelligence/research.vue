@@ -67,6 +67,10 @@ function clearSelection() {
   selectionSnapshots.value = new Map();
 }
 const detailId = ref('');
+watch(() => state.market, () => {
+  detailId.value = '';
+  tagFilter.value = [];
+});
 const pageSize = ref(10);
 const currentPage = ref(1);
 const gradeColors: Record<string, string> = {

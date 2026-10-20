@@ -204,6 +204,7 @@ async function migrateDatabase() {
   <main class="hci-page">
     <PageHeader
       title="账号与管理"
+      :show-market="false"
       description="管理工作区成员、登录安全与独立数据库。"
     />
     <Alert

@@ -141,6 +141,19 @@ onUnmounted(() => {
   listToken++;
   detailToken++;
 });
+watch(() => state.market, () => {
+  listToken++;
+  selected.value = undefined;
+  evidence.value = [];
+  reports.value = [];
+  list.total = 0;
+  adIds.value = [];
+  reusing.value = undefined;
+  open.value = false;
+  detailToken++;
+  detailBusy.value = false;
+  detailRefreshing.value = false;
+});
 watch(
   () => [state.market, list.status],
   () => {

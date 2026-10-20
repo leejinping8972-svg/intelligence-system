@@ -19,7 +19,7 @@ import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
 import PublicContentPanel from './components/PublicContentPanel.vue';
 import { serverMode } from './session';
-import { csvValue, download, marketOptions, state } from './data';
+import { csvValue, download, state } from './data';
 import {
   kindMeta,
   publicMarketName,
@@ -212,12 +212,6 @@ function selectSignal(record: Record<string, any>) {
       title="公共情报源"
       description="按需查找视频、文章和研究文献，保留原始来源；也可查看已有公共信号。"
     >
-      <Select
-        v-model:value="state.market"
-        :options="marketOptions"
-        style="width: 180px"
-        aria-label="国家市场"
-      />
       <Button v-if="section === 'signals'" @click="exportSignals">导出当前结果</Button>
     </PageHeader>
     <Tabs v-model:active-key="section">

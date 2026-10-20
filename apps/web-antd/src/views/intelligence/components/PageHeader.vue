@@ -1,27 +1,21 @@
 <script setup lang="ts">
-import { Select } from 'ant-design-vue';
-
 import { cloudWorkspace, startCloudSync } from '../cloud-workspace';
-import { marketOptions, state, storageError } from '../data';
+import { state, storageError } from '../data';
 import { serverMode } from '../session';
-defineProps<{ title: string; description: string; showMarket?: boolean }>();
+import MarketSwitcher from './MarketSwitcher.vue';
+withDefaults(
+  defineProps<{ title: string; description: string; showMarket?: boolean }>(),
+  { showMarket: true },
+);
 startCloudSync();
 </script>
 <template>
   <div class="hci-page-head">
-    <div>
+    <div class="hci-page-scope">
       <h1>{{ title }}</h1>
+      <MarketSwitcher v-if="showMarket !== false" />
     </div>
     <div class="hci-head-actions">
-      <div v-if="showMarket !== false" class="hci-market-picker">
-        <span>国家市场</span
-        ><Select
-          v-model:value="state.market"
-          :options="marketOptions"
-          aria-label="国家市场"
-          style="width: 145px"
-        />
-      </div>
       <slot></slot>
     </div>
   </div>

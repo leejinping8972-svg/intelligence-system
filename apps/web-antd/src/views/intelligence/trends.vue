@@ -49,6 +49,10 @@ const keyword = computed(
     filteredKeywords.value.find((k) => k.id === selected.value) ||
     filteredKeywords.value[0],
 );
+watch(() => state.market, () => {
+  if (!filteredKeywords.value.some((item) => item.id === selected.value))
+    selected.value = filteredKeywords.value[0]?.id || '';
+});
 const avg = (xs: number[]) =>
   xs.length > 0
     ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10
