@@ -6,13 +6,6 @@ import { Alert, Button, Form, Input, message, Tag } from 'ant-design-vue';
 import { adminRequest, session } from '../session';
 
 interface Connection {
-  balance?: null | {
-    units: null | number;
-    status: string;
-    checkedAt: string;
-    source: string;
-    message: string;
-  };
   configured: boolean;
   ready: boolean;
   endpoint?: string;
@@ -22,27 +15,35 @@ interface Connection {
 }
 const apiKey = ref('');
 const busy = ref(false);
-const balanceBusy = ref(false);
-async function refreshBalance() {
-  if (balanceBusy.value) return;
-  balanceBusy.value = true;
+interface Usage {
+  confirmedUnits: number;
+  confirmedRecords: number;
+  unknownRecords: number;
+  cachedRecords: number;
+  unclassifiedRecords: number;
+  firstRecordedAt: null | string;
+  checkedAt: string;
+  breakdown: Array<{
+    id: string;
+    label: string;
+    confirmedUnits: number;
+    unknownRecords: number;
+  }>;
+}
+const usage = ref<null | Usage>(null);
+const usageBusy = ref(false);
+const usageError = ref('');
+async function refreshUsage() {
+  if (usageBusy.value || session.user?.role !== 'admin') return;
+  usageBusy.value = true;
+  usageError.value = '';
   try {
-    const result = await adminRequest<Pick<Connection, 'balance'>>(
-      'server_semrush_balance',
-      {},
-      30_000,
-    );
-    status.value.balance = result.balance;
+    usage.value = await adminRequest<Usage>('server_semrush_usage');
   } catch (error) {
-    status.value.balance = {
-      units: null,
-      status: 'unavailable',
-      checkedAt: new Date().toISOString(),
-      source: 'Semrush Standard API units',
-      message: error instanceof Error ? error.message : '余额读取失败',
-    };
+    usageError.value =
+      error instanceof Error ? error.message : '消耗记录读取失败';
   } finally {
-    balanceBusy.value = false;
+    usageBusy.value = false;
   }
 }
 const status = ref<Connection>({
@@ -68,12 +69,10 @@ async function configure(save: boolean) {
     );
     if (save) {
       apiKey.value = '';
-      message.success('Key 已加密保存，正在读取账户余额');
-      await refreshBalance();
+      message.success('Key 已加密保存');
     } else {
       if (status.value.ready) message.success('MCP 握手及关键词工具发现通过');
       else message.warning(status.value.message);
-      await refreshBalance();
     }
   } catch (error) {
     const text = error instanceof Error ? error.message : '配置或检测失败';
@@ -83,7 +82,10 @@ async function configure(save: boolean) {
     busy.value = false;
   }
 }
-onMounted(load);
+onMounted(() => {
+  void load();
+  void refreshUsage();
+});
 onDeactivated(() => {
   apiKey.value = '';
 });
@@ -156,26 +158,55 @@ onUnmounted(() => {
     </Form>
     <div class="hci-provider-balance" role="status">
       <div>
-        <span>账户 API units 余额</span><strong>{{
-          typeof status.balance?.units === 'number'
-            ? status.balance.units.toLocaleString('zh-CN')
-            : '—'
-        }}</strong><small>{{ status.balance?.source || '保存 Key 后读取' }}</small>
+        <span>系统已记录消耗积分</span>
+        <strong>{{
+          usage ? usage.confirmedUnits.toLocaleString('zh-CN') : '—'
+        }}</strong>
+        <small>Semrush API units · 仅已确认扣费</small>
       </div>
       <Button
-        :loading="balanceBusy"
-        :disabled="busy || !status.configured || session.user?.role !== 'admin'"
-        @click="refreshBalance"
-        >
-刷新余额
-</Button>
-      <p v-if="status.balance" class="hci-subtle">
-        {{ status.balance.message }} · 更新于
-        {{
-          new Date(status.balance.checkedAt).toLocaleString('zh-CN', {
-            hour12: false,
-          })
-        }}
+        :loading="usageBusy"
+        :disabled="session.user?.role !== 'admin'"
+        @click="refreshUsage"
+      >
+        刷新消耗记录
+      </Button>
+      <template v-if="usage">
+        <p class="hci-subtle">
+          已确认 {{ usage.confirmedRecords }} 条记录 · 扣费未确认
+          {{ usage.unknownRecords }} 条 · 缓存命中 {{ usage.cachedRecords }} 条
+          <span v-if="usage.unclassifiedRecords">
+            · 平台来源待核验 {{ usage.unclassifiedRecords }} 条</span>
+        </p>
+        <div class="hci-toolbar">
+          <Tag v-for="group in usage.breakdown" :key="group.id">
+            {{ group.label }}：{{
+              group.confirmedUnits.toLocaleString('zh-CN')
+            }}
+            <span v-if="group.unknownRecords">（{{ group.unknownRecords }} 条扣费未确认）</span>
+          </Tag>
+        </div>
+        <p class="hci-subtle">
+          全部已保存任务，包含历史 Key。统计截至
+          {{
+            new Date(usage.checkedAt).toLocaleString('zh-CN', {
+              hour12: false,
+            })
+          }}。
+          仅汇总原始请求记录，缓存不重复计费；失败、缺失扣费及来源不明的记录不按零处理，统计可能低于实际消耗。
+          此数值不是账户余额或完整账单，刷新仅查询本地记录，不消耗 Semrush
+          积分。
+        </p>
+      </template>
+      <Alert
+        v-if="usageError"
+        type="error"
+        show-icon
+        :message="usageError"
+        description="无法更新消耗统计；已有数值保留为上次结果。"
+      />
+      <p v-if="session.user?.role !== 'admin'" class="hci-subtle">
+        消耗统计仅管理员可查看。
       </p>
     </div>
     <p class="hci-evidence" role="status">{{ status.message }}</p>
@@ -192,8 +223,8 @@ onUnmounted(() => {
       description="检测仅完成身份握手和工具发现，不执行关键词报告。勾选新建研究中的 Semrush 后，会扩词、补充月搜索量、自然搜索KD和意图，再结合 Google Trends 评分；旧关键词可勾选后点击「一键补齐数据并重评」。保存 Key 或检测通过本身不会启动查询。数据报告仍消耗 API units，5 万额度不等于 5 万次查询；有效期及权限以账户或提供方说明为准。"
     />
     <p class="hci-subtle" style="margin-top: 12px">
-      研究数据固定连接官方地址 https://mcp.semrush.com/v2/mcp；余额使用官方
-      HTTPS 免费只读接口，不执行数据报告。Key
+      研究数据固定连接官方地址
+      https://mcp.semrush.com/v2/mcp；消耗统计来自系统保存的任务请求日志，不查询外部余额。Key
       不回传浏览器或记录到日志。如提供方指定了其他 MCP
       地址，请先核对授权。数据是否返回由该词在目标国家的收录情况及账户权限决定；缺项不会伪造为0。
     </p>

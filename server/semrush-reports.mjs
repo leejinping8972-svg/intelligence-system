@@ -1,5 +1,6 @@
-import process from 'node:process';
 import { createHash } from 'node:crypto';
+import process from 'node:process';
+
 import { pool, putDocument } from './database.mjs';
 import { decryptSemrushKey } from './semrush-config.mjs';
 import { connectSemrush, safeSemrushError } from './semrush-mcp.mjs';
@@ -30,9 +31,9 @@ export function csvRows(text) {
     throw new Error(`Semrush ${text.trim().slice(0, 300)}`);
   const delimiter = text.split('\n')[0].includes(';') ? ';' : ',';
   const rows = [];
-  let row = [],
-    cell = '',
-    quoted = false;
+  let cell = '';
+    let quoted = false;
+    let row = [];
   for (let i = 0; i <= text.length; i++) {
     const c = text[i];
     if (c === '"') {
@@ -124,8 +125,8 @@ export async function client() {
   );
   try {
     return { c: await connectSemrush(key), key };
-  } catch (e) {
-    throw new Error(safeSemrushError(e, key));
+  } catch (error) {
+    throw new Error(safeSemrushError(error, key), { cause: e });
   }
 }
 async function execute(c, report, params) {
@@ -156,9 +157,9 @@ async function execute(c, report, params) {
   );
 }
 export async function collectSemrush(request) {
-  const term = request.keywords[0],
-    market = request.markets[0],
-    at = new Date().toISOString();
+  const at = new Date().toISOString();
+    const market = request.markets[0];
+    const term = request.keywords[0];
   const name = cacheName(term, market);
   if (request.semExpansion !== true) {
     const { rows } = await pool.query(
@@ -166,7 +167,7 @@ export async function collectSemrush(request) {
       [name],
     );
     const cached = rows[0]?.value;
-    if (cached && Date.now() - Date.parse(cached.cachedAt) < 30 * 86400000)
+    if (cached && Date.now() - Date.parse(cached.cachedAt) < 30 * 86_400_000)
       return {
         ...cached.result,
         apiUnits: 0,
@@ -177,9 +178,10 @@ export async function collectSemrush(request) {
   const { c, key } = await client();
   try {
     if (request.semExpansion === true) {
-      const items = new Map(),
-        sources = [];
+      const items = new Map();
+        const sources = [];
       let apiUnits = 0;
+      let semrushUnknownCharges = 0;
       const reports = [
         'phrase_related',
         'phrase_fullsearch',
@@ -196,7 +198,9 @@ export async function collectSemrush(request) {
               remaining / (reports.length - reportIndex),
             ),
           });
-          apiUnits += payload.metadata?.usage?.api_units || 0;
+          const units = payload.metadata?.usage?.api_units;
+          if (Number.isSafeInteger(units) && units >= 0) apiUnits += units;
+          else semrushUnknownCharges++;
           const rows = reportRows(payload);
           for (const row of rows) {
             const word = rowTerm(row);
@@ -213,14 +217,15 @@ export async function collectSemrush(request) {
             count: rows.length,
             message: `报告返回${rows.length}个词`,
           });
-        } catch (e) {
+        } catch (error) {
+          semrushUnknownCharges++;
           sources.push({
             source: `Semrush ${report}`,
             status: 'error',
             count: 0,
-            message: safeSemrushError(e, key),
+            message: safeSemrushError(error, key),
           });
-          if (/401|403|429|额度|权限|过期/.test(e.message)) break;
+          if (/401|403|429|额度|权限|过期/.test(error.message)) break;
         }
       }
       for (const item of items.values())
@@ -242,6 +247,7 @@ export async function collectSemrush(request) {
           { keyword: term, market, items: [...items.values()], sources },
         ],
         apiUnits,
+        semrushUnknownCharges,
       };
     }
     const payload = await execute(c, 'phrase_this', {
@@ -269,7 +275,7 @@ export async function collectSemrush(request) {
     };
     await putDocument('provider_configs', name, { cachedAt: at, result });
     return result;
-  } catch (e) {
-    throw new Error(safeSemrushError(e, key));
+  } catch (error) {
+    throw new Error(safeSemrushError(error, key), { cause: e });
   }
 }

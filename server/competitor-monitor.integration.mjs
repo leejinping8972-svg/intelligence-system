@@ -1,8 +1,8 @@
 // Run only with an explicitly supplied isolated in-memory PostgreSQL runtime.
 import assert from 'node:assert/strict';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { unlink, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { randomUUID, randomBytes } from 'node:crypto';
-import { writeFile, unlink } from 'node:fs/promises';
 if (
   process.env.COMPETITOR_MONITOR_QA !== 'disposable-only' ||
   (!process.env.PGLITE_RUNTIME &&
@@ -49,7 +49,8 @@ const query = async (sql, params = []) => {
   if (!memory) return originalPoolQuery(sql, params);
   if (/pg_try_advisory_lock/.test(sql)) return { rows: [{ locked: true }] };
   if (/pg_advisory_unlock/.test(sql)) return { rows: [] };
-  if (!params.length) return (await memory.exec(sql)).at(-1) || { rows: [] };
+  if (params.length === 0)
+    return (await memory.exec(sql)).at(-1) || { rows: [] };
   return memory.query(sql, params);
 };
 if (memory) {
@@ -65,8 +66,8 @@ const {
 } = await import('./competitor-monitor-store.mjs');
 const { dayKey } = await import('./competitor-monitor-domain.mjs');
 const c = await pool.connect();
-const db = createMonitorStore(c),
-  admin = { role: 'admin' };
+const admin = { role: 'admin' };
+  const db = createMonitorStore(c);
 await migrate();
 const site = {
   id: 'qa-site',
@@ -277,71 +278,226 @@ assert.ok(hotKeyword.source.includes('Semrush热词'));
 assert.equal(hotKeyword.metrics.monthlySearchVolume, 700);
 assert.equal((await db.list('competitor:history:US:')).length, 1);
 // Batch configuration uses the real store and transaction, with external fetch disabled.
-await assert.rejects(() => competitorAction({ action: 'server_competitor_batch_save', siteIds: [site.id] }, { role: 'researcher' }), /管理员/);
+await assert.rejects(
+  () =>
+    competitorAction(
+      { action: 'server_competitor_batch_save', siteIds: [site.id] },
+      { role: 'researcher' },
+    ),
+  /管理员/,
+);
 const oldTarget = await db.read(`competitor:target:${target.id}`);
-for (const market of ['MX', 'VN']) await db.write(`business:sites:batch-${market}`, { id: `batch-${market}`, market, domain: `${market}.example.test` });
-const batchInput = { action: 'server_competitor_batch_save', siteIds: [site.id, 'batch-MX', 'batch-VN', 'batch-VN'], enabled: false, hour: 9, maxRequests: 3 };
+for (const market of ['MX', 'VN'])
+  await db.write(`business:sites:batch-${market}`, {
+    id: `batch-${market}`,
+    market,
+    domain: `${market}.example.test`,
+  });
+const batchInput = {
+  action: 'server_competitor_batch_save',
+  siteIds: [site.id, 'batch-MX', 'batch-VN', 'batch-VN'],
+  enabled: false,
+  hour: 9,
+  maxRequests: 3,
+};
 const batch = await competitorAction(batchInput, admin);
 assert.equal(batch.created, 2);
 assert.equal(batch.preserved, 1);
 assert.deepEqual(await db.read(`competitor:target:${target.id}`), oldTarget);
 assert.equal((await competitorAction(batchInput, admin)).created, 0);
 const beforeInvalid = await db.list('competitor:target:');
-await assert.rejects(() => competitorAction({ ...batchInput, siteIds: ['invalid-site'] }, admin), /不存在/);
+await assert.rejects(
+  () => competitorAction({ ...batchInput, siteIds: ['invalid-site'] }, admin),
+  /不存在/,
+);
 assert.deepEqual(await db.list('competitor:target:'), beforeInvalid);
 const { saveSiteBatch } = await import('./competitor-batch.mjs');
-for (const id of ['rollback-1', 'rollback-2']) await db.write(`business:sites:${id}`, { id, market: 'US', domain: `${id}.example.test` });
+for (const id of ['rollback-1', 'rollback-2'])
+  await db.write(`business:sites:${id}`, {
+    id,
+    market: 'US',
+    domain: `${id}.example.test`,
+  });
 let batchWrites = 0;
-await assert.rejects(() => saveSiteBatch({ siteIds: ['rollback-1', 'rollback-2'] }, { ...db, write: async (name, value) => { if (++batchWrites === 2) throw new Error('synthetic batch failure'); await db.write(name, value); } }, c), /synthetic batch failure/);
+await assert.rejects(
+  () =>
+    saveSiteBatch(
+      { siteIds: ['rollback-1', 'rollback-2'] },
+      {
+        ...db,
+        write: async (name, value) => {
+          if (++batchWrites === 2) throw new Error('synthetic batch failure');
+          await db.write(name, value);
+        },
+      },
+      c,
+    ),
+  /synthetic batch failure/,
+);
 assert.deepEqual(await db.list('competitor:target:'), beforeInvalid);
-console.log('Batch configuration integration passed: mixed markets, admin permission, idempotency, preserving paused targets and real transaction rollback.');
+console.log(
+  'Batch configuration integration passed: mixed markets, admin permission, idempotency, preserving paused targets and real transaction rollback.',
+);
 console.log(
   'Isolated monitor integration passed: baseline, daily dedup, permissions, launch links/tags, rollback, crash protection and hotword import; zero external calls.',
 );
 // Saved Chinese names are human metadata and survive recollection/richer imports.
-const namedKeyword = { id: 'qa-named-keyword', term: 'creatine gummies qa translation', market: 'US', dataNature: 'collected', termZh: '人工校对肌酸软糖' };
+const namedKeyword = {
+  id: 'qa-named-keyword',
+  term: 'creatine gummies qa translation',
+  market: 'US',
+  dataNature: 'collected',
+  termZh: '人工校对肌酸软糖',
+};
 await saveKeyword(namedKeyword);
-await saveKeyword({ ...namedKeyword, termZh: undefined, series: [1, 2, 3], source: '重新采集' });
-let named = (await query('SELECT data FROM research_keywords WHERE natural_key=$1', ['US|creatine gummies qa translation'])).rows[0].data;
+await saveKeyword({
+  ...namedKeyword,
+  termZh: undefined,
+  series: [1, 2, 3],
+  source: '重新采集',
+});
+let named = (
+  await query('SELECT data FROM research_keywords WHERE natural_key=$1', [
+    'US|creatine gummies qa translation',
+  ])
+).rows[0].data;
 assert.equal(named.termZh, '人工校对肌酸软糖');
-await saveKeyword({ ...namedKeyword, termZh: '不应覆盖的导入译名', series: [1, 2, 3, 4] }, true);
-named = (await query('SELECT data FROM research_keywords WHERE natural_key=$1', ['US|creatine gummies qa translation'])).rows[0].data;
+await saveKeyword(
+  { ...namedKeyword, termZh: '不应覆盖的导入译名', series: [1, 2, 3, 4] },
+  true,
+);
+named = (
+  await query('SELECT data FROM research_keywords WHERE natural_key=$1', [
+    'US|creatine gummies qa translation',
+  ])
+).rows[0].data;
 assert.equal(named.termZh, '人工校对肌酸软糖');
 assert.equal(named.id, namedKeyword.id);
-console.log('Chinese name persistence passed: recollection and duplicate import preserve saved names.');
+console.log(
+  'Chinese name persistence passed: recollection and duplicate import preserve saved names.',
+);
 // Advertiser bulk submission shares existing capacity/lock and preserves stored schedules.
-const advertiserInput = { action: 'server_competitor_advertiser_batch_save', adIds: ['qa-ad','qa-ad-same','qa-ad-vn'], enabled: false, hour: 11, maxRequests: 4 };
-await db.write('business:ads:qa-ad-same', { id: 'qa-ad-same', pageId: '123', market: 'US', brand: 'QA' });
-await db.write('business:ads:qa-ad-vn', { id: 'qa-ad-vn', pageId: '123', market: 'VN', brand: 'QA VN' });
-await assert.rejects(() => competitorAction(advertiserInput, {role:'researcher'}), /管理员/);
+const advertiserInput = {
+  action: 'server_competitor_advertiser_batch_save',
+  adIds: ['qa-ad', 'qa-ad-same', 'qa-ad-vn'],
+  enabled: false,
+  hour: 11,
+  maxRequests: 4,
+};
+await db.write('business:ads:qa-ad-same', {
+  id: 'qa-ad-same',
+  pageId: '123',
+  market: 'US',
+  brand: 'QA',
+});
+await db.write('business:ads:qa-ad-vn', {
+  id: 'qa-ad-vn',
+  pageId: '123',
+  market: 'VN',
+  brand: 'QA VN',
+});
+await assert.rejects(
+  () => competitorAction(advertiserInput, { role: 'researcher' }),
+  /管理员/,
+);
 const advertiserBatch = await competitorAction(advertiserInput, admin);
 assert.equal(advertiserBatch.created, 2);
-const overview = await competitorAction({action:'server_competitor_overview'}, {role:'researcher'});
-assert.equal(overview.targets.filter((t)=>t.kind === 'advertiser').length, 2);
+const overview = await competitorAction(
+  { action: 'server_competitor_overview' },
+  { role: 'researcher' },
+);
+assert.equal(overview.targets.filter((t) => t.kind === 'advertiser').length, 2);
 assert.equal(overview.rankings, undefined);
-const advertiserTarget = overview.targets.find((t)=>t.kind === 'advertiser' && t.market === 'US');
-await db.write(`competitor:target:${advertiserTarget.id}`, {...advertiserTarget, siteId:site.id, requested:true});
-await competitorAction({action:'server_competitor_update',id:advertiserTarget.id,enabled:false,hour:15,maxRequests:6},admin);
-const updatedAdvertiser = await db.read(`competitor:target:${advertiserTarget.id}`);
-assert.equal(updatedAdvertiser.siteId,site.id);
-assert.equal(updatedAdvertiser.requested,false);
-assert.equal(updatedAdvertiser.hour,15);
-assert.equal((await competitorAction(advertiserInput,admin)).created,0);
-assert.deepEqual(await db.read(`competitor:target:${advertiserTarget.id}`),updatedAdvertiser);
-await competitorAction({action:'server_competitor_update',id:advertiserTarget.id,enabled:true},admin);
-const switchedAdvertiser=await db.read(`competitor:target:${advertiserTarget.id}`);
-assert.equal(switchedAdvertiser.hour,15);
-assert.equal(switchedAdvertiser.maxRequests,6);
-assert.equal(switchedAdvertiser.enabled,true);
-await assert.rejects(()=>competitorAction({action:'server_competitor_update',id:advertiserTarget.id,enabled:true,hour:30},admin),/0～23/);
-assert.deepEqual(await db.read(`competitor:target:${advertiserTarget.id}`),switchedAdvertiser);
+const advertiserTarget = overview.targets.find(
+  (t) => t.kind === 'advertiser' && t.market === 'US',
+);
+await db.write(`competitor:target:${advertiserTarget.id}`, {
+  ...advertiserTarget,
+  siteId: site.id,
+  requested: true,
+});
+await competitorAction(
+  {
+    action: 'server_competitor_update',
+    id: advertiserTarget.id,
+    enabled: false,
+    hour: 15,
+    maxRequests: 6,
+  },
+  admin,
+);
+const updatedAdvertiser = await db.read(
+  `competitor:target:${advertiserTarget.id}`,
+);
+assert.equal(updatedAdvertiser.siteId, site.id);
+assert.equal(updatedAdvertiser.requested, false);
+assert.equal(updatedAdvertiser.hour, 15);
+assert.equal((await competitorAction(advertiserInput, admin)).created, 0);
+assert.deepEqual(
+  await db.read(`competitor:target:${advertiserTarget.id}`),
+  updatedAdvertiser,
+);
+await competitorAction(
+  {
+    action: 'server_competitor_update',
+    id: advertiserTarget.id,
+    enabled: true,
+  },
+  admin,
+);
+const switchedAdvertiser = await db.read(
+  `competitor:target:${advertiserTarget.id}`,
+);
+assert.equal(switchedAdvertiser.hour, 15);
+assert.equal(switchedAdvertiser.maxRequests, 6);
+assert.equal(switchedAdvertiser.enabled, true);
+await assert.rejects(
+  () =>
+    competitorAction(
+      {
+        action: 'server_competitor_update',
+        id: advertiserTarget.id,
+        enabled: true,
+        hour: 30,
+      },
+      admin,
+    ),
+  /0～23/,
+);
+assert.deepEqual(
+  await db.read(`competitor:target:${advertiserTarget.id}`),
+  switchedAdvertiser,
+);
 const { saveAdvertiserBatch } = await import('./advertiser-monitor-batch.mjs');
-for (const id of ['ad-r1','ad-r2']) await db.write(`business:ads:${id}`,{id,pageId:id==='ad-r1'?'345':'678',market:'US'});
-const beforeAdvertiserFailure=await db.list('competitor:target:');
-let adWrites=0;
-await assert.rejects(()=>saveAdvertiserBatch({adIds:['ad-r1','ad-r2']},{...db,write:async(name,value)=>{if(++adWrites===2)throw new Error('synthetic advertiser transaction failure');await db.write(name,value);}},c),/synthetic advertiser/);
-assert.deepEqual(await db.list('competitor:target:'),beforeAdvertiserFailure);
-console.log('Advertiser integration passed: exact identity, market separation, researcher read/admin write, overview, schedule update, preservation and rollback.');
+for (const id of ['ad-r1', 'ad-r2'])
+  await db.write(`business:ads:${id}`, {
+    id,
+    pageId: id === 'ad-r1' ? '345' : '678',
+    market: 'US',
+  });
+const beforeAdvertiserFailure = await db.list('competitor:target:');
+let adWrites = 0;
+await assert.rejects(
+  () =>
+    saveAdvertiserBatch(
+      { adIds: ['ad-r1', 'ad-r2'] },
+      {
+        ...db,
+        write: async (name, value) => {
+          if (++adWrites === 2)
+            throw new Error('synthetic advertiser transaction failure');
+          await db.write(name, value);
+        },
+      },
+      c,
+    ),
+  /synthetic advertiser/,
+);
+assert.deepEqual(await db.list('competitor:target:'), beforeAdvertiserFailure);
+console.log(
+  'Advertiser integration passed: exact identity, market separation, researcher read/admin write, overview, schedule update, preservation and rollback.',
+);
+await (await import('./semrush-usage.integration.mjs')).verifySemrushUsage(c);
 c.release();
 await memory?.close();
 await pool.end();

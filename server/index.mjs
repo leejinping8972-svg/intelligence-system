@@ -1,10 +1,17 @@
 import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
-import { isWorkspaceSyncKey } from './workspace-sync-keys.mjs';
 import { createServer } from 'node:http';
 import process from 'node:process';
 
+import { serveAdMedia } from './ad-media.mjs';
+import { adsConfig } from './ads-provider.mjs';
 import { authAction, requireAdmin, sessionUser } from './auth.mjs';
+import {
+  competitorAction,
+  runCompetitorQueue,
+  withCompetitorIdle,
+} from './competitor-monitor-store.mjs';
+import { dailyDiscoveryAction } from './daily-discovery.mjs';
 import { databaseAction, maintenance } from './database-admin.mjs';
 import {
   currentDatabase,
@@ -13,53 +20,45 @@ import {
   sql,
   unlock,
 } from './database.mjs';
+import { protectDiscoveryEdit } from './discovery-newness.mjs';
 import { cleanKeyword, editableKeywordPatch, validateJob } from './domain.mjs';
-import { localCollect, migrateCredentials } from './local-provider.mjs';
-import { assessKeyword } from './model.js';
-import { jobTasks, runQueue } from './runner.mjs';
-import { retryRecords } from './job-progress.mjs';
-import { semrushAction } from './semrush-config.mjs';
-import { keywordNamesAction } from './keyword-names.mjs';
-import { youtubeAction } from './youtube-config.mjs';
-import { publicBranding } from './public-branding.mjs';
-import { workspaceSnapshot } from './workspace-snapshot.mjs';
-import { submitKeywordJob } from './keyword-submit.mjs';
-import { submitEnrichment, cancelEnrichment } from './enrichment-jobs.mjs';
-import { migrate, pool, saveKeyword } from './store.mjs';
-
-import { adsConfig } from './ads-provider.mjs';
-import { submitMarketJob } from './market-jobs.mjs';
-import { scoreSite } from './site-scoring.mjs';
-import { analysisConfig } from './model-provider.mjs';
-import { reportPromptAction } from './report-prompts.mjs';
+import { cancelEnrichment, submitEnrichment } from './enrichment-jobs.mjs';
 import {
-  submitInsight,
-  insightSnapshot,
   insightDetails,
+  insightSnapshot,
   reviewInsight,
+  submitInsight,
 } from './insight-jobs.mjs';
-import { submitProducts } from './product-jobs.mjs';
-import { siteFetchConfig } from './site-fetch-config.mjs';
-import {
-  submitPlatformProducts,
-  submitPlatformProductEnrichment,
-  cancelPlatformCompletion,
-} from './platform-products-jobs.mjs';
+import { retryRecords } from './job-progress.mjs';
+import { keywordNamesAction } from './keyword-names.mjs';
+import { submitKeywordJob } from './keyword-submit.mjs';
+import { localCollect, migrateCredentials } from './local-provider.mjs';
+import { submitMarketJob } from './market-jobs.mjs';
+import { analysisConfig } from './model-provider.mjs';
+import { assessKeyword } from './model.js';
 import { protectPlatformClientEdit } from './platform-product-data.mjs';
 import {
-  competitorAction,
-  runCompetitorQueue,
-  withCompetitorIdle,
-} from './competitor-monitor-store.mjs';
-import { protectDiscoveryEdit } from './discovery-newness.mjs';
-import { dailyDiscoveryAction } from './daily-discovery.mjs';
-import { registerRelease, releaseHistory } from './release-history.mjs';
-import { serveAdMedia } from './ad-media.mjs';
+  cancelPlatformCompletion,
+  submitPlatformProductEnrichment,
+  submitPlatformProducts,
+} from './platform-products-jobs.mjs';
+import { submitProducts } from './product-jobs.mjs';
+import { publicBranding } from './public-branding.mjs';
 import {
   publicContentAction,
   runContentQueue,
   withPublicContentIdle,
 } from './public-content-store.mjs';
+import { registerRelease, releaseHistory } from './release-history.mjs';
+import { reportPromptAction } from './report-prompts.mjs';
+import { jobTasks, runQueue } from './runner.mjs';
+import { semrushAction } from './semrush-config.mjs';
+import { siteFetchConfig } from './site-fetch-config.mjs';
+import { scoreSite } from './site-scoring.mjs';
+import { migrate, pool, saveKeyword } from './store.mjs';
+import { workspaceSnapshot } from './workspace-snapshot.mjs';
+import { isWorkspaceSyncKey } from './workspace-sync-keys.mjs';
+import { youtubeAction } from './youtube-config.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const secret = Buffer.from(process.env.SERVER_BRIDGE_KEY || '');
 if (secret.length < 32) throw new Error('SERVER_BRIDGE_KEY must be configured');
@@ -75,29 +74,38 @@ async function api(input, user) {
   if (input.action?.startsWith('server_content_'))
     return publicContentAction(input, user);
   switch (input.action) {
-    case 'server_keyword_names':
+    case 'server_keyword_names': {
       return keywordNamesAction(input, user);
+    }
     case 'server_site_fetch_status':
-    case 'server_site_fetch_config':
+    case 'server_site_fetch_config': {
       return siteFetchConfig(input, user);
+    }
     case 'server_daily_discovery_status':
-    case 'server_daily_discovery_save':
+    case 'server_daily_discovery_save': {
       return dailyDiscoveryAction(input, user);
+    }
     case 'server_youtube_config':
-    case 'server_youtube_status':
+    case 'server_youtube_status': {
       return youtubeAction(input, user);
+    }
     case 'server_ad_report_prompt':
-    case 'server_ad_report_prompt_save':
+    case 'server_ad_report_prompt_save': {
       return reportPromptAction(input, user);
+    }
     case 'server_analysis_config':
-    case 'server_analysis_status':
+    case 'server_analysis_status': {
       return analysisConfig(input, user);
-    case 'server_insight_snapshot':
+    }
+    case 'server_insight_snapshot': {
       return insightSnapshot(input);
-    case 'server_insight_details':
+    }
+    case 'server_insight_details': {
       return insightDetails(input);
-    case 'server_review_insight':
+    }
+    case 'server_review_insight': {
       return reviewInsight(input);
+    }
     case 'server_submit_insight': {
       const job = await submitInsight(input);
       return { jobId: job.id, tasks: jobTasks(job) };
@@ -114,11 +122,13 @@ async function api(input, user) {
       const job = await submitPlatformProducts(input);
       return { jobId: job.id, tasks: jobTasks(job) };
     }
-    case 'server_release_history':
+    case 'server_release_history': {
       return releaseHistory(user);
+    }
     case 'server_ads_config':
-    case 'server_ads_status':
+    case 'server_ads_status': {
       return adsConfig(input, user);
+    }
     case 'server_submit_market': {
       const job = await submitMarketJob(input);
       return { jobId: job.id, tasks: jobTasks(job) };
@@ -126,8 +136,10 @@ async function api(input, user) {
 
     case 'server_semrush_config':
     case 'server_semrush_balance':
-    case 'server_semrush_status':
+    case 'server_semrush_usage':
+    case 'server_semrush_status': {
       return semrushAction(input, user);
+    }
     case 'server_workspace_snapshot': {
       const { rows } = await pool.query(
         "SELECT name,value FROM workspace_documents WHERE name LIKE 'business:%'",
@@ -143,7 +155,7 @@ async function api(input, user) {
           })),
       };
     }
-    case 'server_workspace_delta':
+    case 'server_workspace_delta': {
       return workspaceSnapshot(input, {
         pool,
         sql,
@@ -151,6 +163,7 @@ async function api(input, user) {
         scoreSite,
         isWorkspaceSyncKey,
       });
+    }
     case 'server_task_detail': {
       if (!uuid.test(input.jobId)) throw new Error('任务编号无效');
       const { rows } = await pool.query(
@@ -194,7 +207,8 @@ async function api(input, user) {
                   [`business:${entry.key}`],
                 )
               ).rows[0]?.value;
-              if (entry.key.startsWith('products:') && !input.importOnly) entry.value = protectPlatformClientEdit(old, entry.value);
+              if (entry.key.startsWith('products:') && !input.importOnly)
+                entry.value = protectPlatformClientEdit(old, entry.value);
               entry.value = protectDiscoveryEdit(old, entry.value);
             }
             await putDocument(
@@ -264,7 +278,7 @@ async function api(input, user) {
           previous.checkpoint.keywords || [],
           all.rows.map((row) => row.data),
         );
-        if (!records.length)
+        if (records.length === 0)
           throw new Error(
             '该任务已无采集失败的趋势；低搜索量或零基数不需要重复抓取',
           );
@@ -301,7 +315,7 @@ async function api(input, user) {
           'SELECT name FROM provider_configs WHERE name=$1',
           ['provider:semrush:mcp:v1'],
         );
-        if (!rows.length)
+        if (rows.length === 0)
           throw new Error('请先在数据源与设置中配置 Semrush MCP');
       }
       const { job, reused } = await submitKeywordJob(value, input.requestId, {
@@ -471,11 +485,11 @@ const server = createServer(async (request, response) => {
         requestUrl.searchParams.get('kind') || 'video',
         index,
       );
-    } catch (e) {
+    } catch (error) {
       if (!response.headersSent)
         response
-          .writeHead(e.status || 502)
-          .end(JSON.stringify({ error: e.message }));
+          .writeHead(error.status || 502)
+          .end(JSON.stringify({ error: error.message }));
       else response.destroy();
     } finally {
       activeRequests--;
@@ -528,9 +542,9 @@ const server = createServer(async (request, response) => {
             'auth_status',
             'server_snapshot',
             'server_status',
-            'server_workspace_snapshot',
-            'server_workspace_delta',
             'server_task_detail',
+            'server_workspace_delta',
+            'server_workspace_snapshot',
           ].includes(input.action),
         );
     if (input.action?.startsWith('auth_')) {
