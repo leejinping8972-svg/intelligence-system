@@ -122,6 +122,11 @@ watch(
     selected.value = undefined;
     compareIds.value = [];
     compareOpen.value = false;
+    category.value = 'ALL';
+    benefitFilter.value = 'ALL';
+    ingredientFilter.value = 'ALL';
+    sourceFilter.value = 'ALL';
+    search.value = '';
     if (
       siteFilter.value &&
       !state.sites.some(

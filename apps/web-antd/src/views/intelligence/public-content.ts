@@ -13,6 +13,13 @@ export function itemScopes(item: ContentItem): ContentScope[] {
   // Legacy social hits were not localised; do not relabel them as local material.
   return [...new Set(scopes)];
 }
+// This is the research market, not proof of the author's country or audience.
+export function contentInMarket(item: ContentItem, market: string) {
+  return (market === 'ALL' ||
+    (item.searchContexts?.length
+      ? item.searchContexts.some((context) => context.market === market)
+      : item.searchMarket === market));
+}
 export const contentCategories = {
   social: '社媒内容',
   health: '权威健康资讯',

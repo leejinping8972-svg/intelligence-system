@@ -77,6 +77,14 @@ function begin() {
   open.value = true;
 }
 let pendingRequest = '';
+watch(() => state.market, () => {
+  selected.value = undefined;
+  advertiser.value = undefined;
+  keywordIds.value = [];
+  pendingRequest = '';
+  open.value = false;
+  search.value = '';
+});
 async function submit() {
   if (busy.value) return;
   if (!keywordIds.value.length) {

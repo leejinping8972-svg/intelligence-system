@@ -65,6 +65,8 @@ const category = ref('ALL');
 const ownership = ref('ALL');
 const keywordFilter = ref('');
 const selected = ref<Site>();
+const page = ref(1);
+const pageSize = ref(8);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keywordId),
 );
@@ -119,6 +121,14 @@ watch(
   () => state.market,
   () => {
     selected.value = undefined;
+    ids.value = [];
+    scoreRequest = '';
+    source.value = 'ALL';
+    platform.value = 'ALL';
+    category.value = 'ALL';
+    ownership.value = 'ALL';
+    search.value = '';
+    page.value = 1;
     if (
       keywordFilter.value &&
       !state.keywords.some(
@@ -277,7 +287,16 @@ const columns = [
         :data-source="rows"
         row-key="id"
         :scroll="{ x: 1250 }"
-        :pagination="{ pageSize: 8 }"
+        :pagination="{
+          current: page,
+          pageSize,
+          showSizeChanger: true,
+          pageSizeOptions: ['8', '20', '50', '100'],
+          onChange: (current: number, size: number) => {
+            page = current;
+            pageSize = size;
+          },
+        }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'brand'">
