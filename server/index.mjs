@@ -36,7 +36,11 @@ import {
   reviewInsight,
 } from './insight-jobs.mjs';
 import { submitProducts } from './product-jobs.mjs';
-import { submitPlatformProducts } from './platform-products-jobs.mjs';
+import {
+  submitPlatformProducts,
+  submitPlatformProductEnrichment,
+  cancelPlatformCompletion,
+} from './platform-products-jobs.mjs';
 import { protectPlatformClientEdit } from './platform-product-data.mjs';
 import { registerRelease, releaseHistory } from './release-history.mjs';
 import { serveAdMedia } from './ad-media.mjs';
@@ -78,6 +82,10 @@ async function api(input, user) {
     }
     case 'server_submit_products': {
       const job = await submitProducts(input);
+      return { jobId: job.id, tasks: jobTasks(job) };
+    }
+    case 'server_complete_platform_products': {
+      const job = await submitPlatformProductEnrichment(input);
       return { jobId: job.id, tasks: jobTasks(job) };
     }
     case 'server_submit_platform_products': {
@@ -352,6 +360,7 @@ async function api(input, user) {
         [input.jobId],
       );
       await cancelEnrichment(rows[0]);
+      await cancelPlatformCompletion(rows[0]);
       return { cancelled: true };
     }
     case 'server_clear_keywords': {

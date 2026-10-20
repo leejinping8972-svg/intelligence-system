@@ -21,6 +21,7 @@ import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
+import ProductCompletionDialog from './components/ProductCompletionDialog.vue';
 import {
   productDecisions,
   productDecisionFilters,
@@ -227,6 +228,7 @@ function toggleCompare(id: string) {
       description="从配方、规格到市场定位，建立可追溯的商品认知。"
     >
       <PlatformProductsDialog />
+      <ProductCompletionDialog :product-ids="rows.map((p) => p.id)" />
       <Button
         :disabled="!rows.length"
         @click="

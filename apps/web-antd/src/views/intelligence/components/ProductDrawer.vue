@@ -13,6 +13,7 @@ import {
 } from '../data';
 import ProductArt from './ProductArt.vue';
 import ProductDecisionTags from './ProductDecisionTags.vue';
+import ProductCompletionDialog from './ProductCompletionDialog.vue';
 import { productDataSource } from '../product-decisions';
 import PublicContentLauncher from './PublicContentLauncher.vue';
 const props = defineProps<{ id?: string }>();
@@ -60,6 +61,7 @@ function addMonitor() {
           ><Tag>{{ product.category }}</Tag>
         </div>
       </div>
+      <ProductCompletionDialog :product-ids="[product.id]" compact />
       <Tabs>
         <Tabs.TabPane
           v-if="product.sourceProvider"

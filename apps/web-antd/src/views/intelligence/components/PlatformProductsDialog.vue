@@ -36,10 +36,10 @@ const form = reactive({
   providers: ['sorftime', 'semrush'],
   maxProducts: 100,
   perKeyword: 20,
-  maxRequests: 25,
-  maxDetailProducts: 5,
+  maxRequests: 0,
+  completeAll: true,
   maxDomains: 3,
-  semrushUnitLimit: 2000,
+  semrushUnitLimit: 0,
   enrich: true,
   trend: true,
 });
@@ -84,7 +84,10 @@ async function submit() {
     errorMessage.value = 'Sorftime Amazon 不支持越南，请取消此来源';
     return;
   }
-  if (form.maxRequests < parsedTerms.value.length * form.providers.length) {
+  if (
+    form.maxRequests > 0 &&
+    form.maxRequests < parsedTerms.value.length * form.providers.length
+  ) {
     errorMessage.value = `本次有${parsedTerms.value.length}个词、${form.providers.length}个来源，基础发现至少需要${parsedTerms.value.length * form.providers.length}次处理额度；请调整上限或减少关键词。`;
     return;
   }
@@ -177,8 +180,8 @@ async function submit() {
         <Form.Item label="整批商品总数上限"
           ><InputNumber v-model:value="form.maxProducts" :min="1" :max="1000"
         /></Form.Item>
-        <Form.Item label="整批请求处理上限"
-          ><InputNumber v-model:value="form.maxRequests" :min="1" :max="1000"
+        <Form.Item label="发现阶段请求上限（0为不限制）"
+          ><InputNumber v-model:value="form.maxRequests" :min="0" :max="100000"
         /></Form.Item>
         <Form.Item label="Semrush 每词商家数上限"
           ><InputNumber
@@ -187,35 +190,29 @@ async function submit() {
             :max="5"
             :disabled="!form.providers.includes('semrush')"
         /></Form.Item>
-        <Form.Item label="Semrush API units 预留上限"
+        <Form.Item label="Semrush API units 上限（0为不限制）"
           ><InputNumber
             v-model:value="form.semrushUnitLimit"
             :min="0"
             :max="100000"
             :disabled="!form.providers.includes('semrush')"
         /></Form.Item>
-        <Form.Item label="最多补全多少件 Amazon 商品"
-          ><InputNumber
-            v-model:value="form.maxDetailProducts"
-            :min="0"
-            :max="100"
-        /></Form.Item>
       </div>
-      <Form.Item label="初筛后补全（只对匹配商品执行）"
+      <Form.Item label="对全部已发现商品补全（不再抽前几件）"
         ><Checkbox v-model:checked="form.enrich">商品详情与图片/属性</Checkbox
         ><Checkbox v-model:checked="form.trend"
-          >当前 ASIN 历史月销量</Checkbox
+          >ASIN月销量、大类排名与评论数历史</Checkbox
         ></Form.Item
       >
     </Form>
     <p class="hci-subtle">
       {{ parsedTerms.length }} 个词；基础发现参考约
       {{ expected }}
-      次数据请求；过滤不相关商品可能追加翻页（每词最多5页），详情与趋势另计。达到预算即停止，实际结果不足不会虚构补满。相同查询优先复用缓存。
+      次数据请求；过滤不相关商品可能追加翻页。默认开放数据请求，已发现商品全部排队补全；如手动设置发现预算，只停止继续找新商品，不截断已发现商品补全。相同查询优先复用缓存。
     </p>
     <p class="hci-subtle">
       Sorftime 消耗现有平台额度，Semrush 按报告行消耗 API units；次数和 units
-      不是同一单位。这里只设上限，不购买额度。缺历史、配方或剂量时保留未知，销量口径按平台标注。
+      不是同一单位。消耗现有平台额度，不购买额度。缺历史、配方或剂量时记录平台返回情况；可以在商品库再次补全。
     </p>
     <Alert v-if="errorMessage" :message="errorMessage" type="error" show-icon />
   </Modal>

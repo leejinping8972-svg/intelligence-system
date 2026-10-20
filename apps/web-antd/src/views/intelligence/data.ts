@@ -1,5 +1,8 @@
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
-import type { ProductDecisionData } from './product-decisions';
+import type {
+  ProductDecisionData,
+  ProductCompletion,
+} from './product-decisions';
 
 import { computed, reactive, watch } from 'vue';
 
@@ -144,6 +147,7 @@ export interface Product {
   imageUrls?: string[];
   queryTerms?: string[];
   decisionData?: ProductDecisionData;
+  dataCompletion?: ProductCompletion;
   sourceProvider?: string;
   sourcePlatform?: string;
   sourceProductId?: string;
@@ -279,6 +283,15 @@ export interface Review {
 }
 export interface Task {
   researchProgress?: {
+    unlimitedRequests?: boolean;
+    completion?: {
+      total: number;
+      done: number;
+      withHistory: number;
+      pending: number;
+      failed: number;
+      unsupported: number;
+    };
     semrushUnits?: number;
     semrushReserved?: number;
     semrushUnitLimit?: number;

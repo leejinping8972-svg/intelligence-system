@@ -34,7 +34,7 @@ export async function platformProductRequest(request, overrides = {}) {
           write: (name, value) => putDocument('provider_configs', name, value),
         };
   const discovery = ['search', 'domains', 'shopping'].includes(request.op);
-  const signature = JSON.stringify([
+  const signatureParts = [
     request.provider,
     request.op,
     request.market,
@@ -43,13 +43,30 @@ export async function platformProductRequest(request, overrides = {}) {
     request.page,
     request.provider === 'semrush' ? request.limit : undefined,
     request.product?.sourceProductId,
-  ]);
+  ];
+  if (
+    request.op === 'trend' &&
+    request.trendType &&
+    request.trendType !== 'AsinSalesVolume'
+  )
+    signatureParts.push(request.trendType);
+  const signature = JSON.stringify(signatureParts);
   const name = `platform-products:${createHash('sha256').update(signature).digest('hex')}`;
   const previous = await cache?.read(name);
-  const ttl = ['detail', 'content'].includes(request.op)
-    ? 7 * 86_400_000
-    : 86_400_000;
-  if (previous && Date.now() - Date.parse(previous.cachedAt) < ttl)
+  const emptyTrend =
+    previous?.result &&
+    (previous.result.empty ||
+      (request.op === 'trend' &&
+        previous.result.series?.points?.length === 0) ||
+      (request.op === 'content' && emptyContent(previous.result.patch)));
+  let ttl = 86_400_000;
+  if (['detail', 'content'].includes(request.op)) ttl = 7 * 86_400_000;
+  if (emptyTrend) ttl = 15 * 60_000;
+  if (
+    previous &&
+    !(request.refreshEmpty && emptyTrend) &&
+    Date.now() - Date.parse(previous.cachedAt) < ttl
+  )
     return { ...previous.result, cached: true, apiUnits: 0, providerCalls: 0 };
   const result = await collectProductData(request, overrides);
   if (JSON.stringify(result).length < 250_000)
@@ -57,6 +74,18 @@ export async function platformProductRequest(request, overrides = {}) {
   return result;
 }
 const clients = new Map();
+function emptyContent(patch) {
+  const c = patch?.sourceContent;
+  return (
+    !patch?.imageUrl &&
+    !patch?.ingredient &&
+    !patch?.dose &&
+    !c?.descriptions?.length &&
+    Object.keys(c?.attributes || {}).length === 0 &&
+    Object.keys(c?.productInfo || {}).length === 0 &&
+    !c?.aPlusImages?.length
+  );
+}
 async function collectProductData(request, overrides = {}) {
   const at = new Date().toISOString();
   if (request.provider === 'sorftime') {
@@ -100,7 +129,9 @@ async function collectProductData(request, overrides = {}) {
           : {
               asin: request.product.sourceProductId,
               amz_site: request.market,
-              ...(request.op === 'trend' ? { type: 'AsinSalesVolume' } : {}),
+              ...(request.op === 'trend'
+                ? { type: request.trendType || 'AsinSalesVolume' }
+                : {}),
             };
       const allowedMarkets = tool.inputSchema?.properties?.amz_site?.enum;
       if (!allowedMarkets?.includes(request.market))
@@ -125,6 +156,9 @@ async function collectProductData(request, overrides = {}) {
         );
         return {
           products,
+          pageFingerprint: createHash('sha256')
+            .update(normalized.map((p) => p.sourceProductId).join('|'))
+            .digest('hex'),
           hasMore: sourceRows.length === 20,
           sourceRows: sourceRows.length,
           rejected: normalized.length - products.length,
@@ -143,6 +177,16 @@ async function collectProductData(request, overrides = {}) {
           value.data ||
           value.Data ||
           value;
+        if (
+          !row ||
+          Object.keys(row).filter((k) => !['asin', 'Asin', 'ASIN'].includes(k))
+            .length === 0
+        )
+          return {
+            empty: true,
+            providerCalls: 1,
+            message: '平台未返回基础详情，已有资料保留',
+          };
         const product = normalizeAmazon(
           { ...row, title: row.title || row.Title || request.product.title },
           request.market,
@@ -153,19 +197,31 @@ async function collectProductData(request, overrides = {}) {
           throw new Error('Sorftime 商品详情标识不一致或格式不可识别');
         return { product, providerCalls: 1 };
       }
-      if (request.op === 'content')
+      if (request.op === 'content') {
+        const patch = normalizeAmazonContent(value, request.product, at),
+          empty = emptyContent(patch);
         return {
-          patch: normalizeAmazonContent(value, request.product, at),
+          patch: empty ? undefined : patch,
+          empty,
           providerCalls: 1,
+          message: empty
+            ? '平台未返回该商品的图片、属性或描述，未伪造填充字段'
+            : '已保存平台图片与属性原文；未公开的配方/剂量保持未知',
         };
-      const series = normalizeAmazonTrend(value, request.product, at);
+      }
+      const series = normalizeAmazonTrend(
+        value,
+        request.product,
+        at,
+        request.trendType || 'AsinSalesVolume',
+      );
       return {
         series,
         providerCalls: 1,
         message:
           series.points.length > 0
-            ? '已获取当前ASIN的月销量历史；未结束月份不参与标签计算'
-            : '平台历史格式尚未识别或没有数据，未计算增长标签',
+            ? `已取得 ${request.trendType || 'AsinSalesVolume'} 历史 ${series.points.length} 个周期；未结束月份不参与标签计算`
+            : `平台未返回 ${request.trendType || 'AsinSalesVolume'} 有效历史（缺失值不按0处理），可查看其他趋势指标`,
       };
     } catch (error) {
       clients.clear();
