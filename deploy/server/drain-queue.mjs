@@ -11,7 +11,12 @@ const deadline = Date.now() + 15 * 60 * 1000,
 const connection = await pool.connect();
 connection.on('error', () => process.exit(1));
 try {
-  for (const name of ['runner', 'trend-runner']) {
+  for (const name of [
+    'runner',
+    'trend-runner',
+    'competitor-runner',
+    'public-content-runner',
+  ]) {
     while (!(await lock(connection, name))) {
       if (Date.now() > deadline) throw new Error('Queue drain timed out');
       await sleep(1000);

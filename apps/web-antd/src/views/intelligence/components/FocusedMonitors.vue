@@ -27,6 +27,7 @@ import {
 } from '../competitor-workspace';
 import { audit, marketName, state } from '../data';
 import { focusedMonitorRows } from '../focused-monitors';
+import { collectionTimeLabel } from '../resource-metadata';
 import { serverMode, session } from '../session';
 import ProductDrawer from './ProductDrawer.vue';
 
@@ -117,6 +118,19 @@ async function remove(row: FocusedMonitorRow) {
     await refreshCompetitorWorkspace(true);
   } catch (error) {
     message.error(error instanceof Error ? error.message : '移除失败');
+  } finally {
+    busy.value = '';
+  }
+}
+async function retryPublic(row: FocusedMonitorRow) {
+  if (!row.target || busy.value) return;
+  busy.value = row.id;
+  try {
+    await cloudRequest('server_competitor_retry_site', { id: row.target.id });
+    await refreshCompetitorWorkspace(true);
+    message.success('已排队，仅恢复官网；不会重跑广告或Semrush');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '恢复提交失败');
   } finally {
     busy.value = '';
   }
@@ -238,6 +252,15 @@ function view(row: FocusedMonitorRow) {
           <p v-for="text in record.run.errors" :key="text" class="hci-subtle">
             {{ text }}
           </p>
+          <p
+            v-if="record.run.publicRecovery?.eligible && !record.run.publicRecovery?.ready"
+            class="hci-subtle"
+          >
+            官网冷却至{{ collectionTimeLabel(new Date(record.run.publicRecovery.nextRunAt).toISOString()) }}
+          </p>
+          <p v-if="record.target?.siteId && record.run.publicRecovery?.reason" class="hci-subtle">
+            {{ record.run.publicRecovery.reason }} · 今日剩余{{ record.run.publicRecovery.remaining }}次
+          </p>
 </template>
         <span v-else class="hci-subtle">{{
           record.legacy ? '商品监控配置' : '尚未执行'
@@ -259,6 +282,14 @@ function view(row: FocusedMonitorRow) {
           <Button size="small" @click="view(record as FocusedMonitorRow)">
 查看对象
 </Button><template v-if="record.target && canEdit">
+<Button
+  v-if="record.run?.publicRecovery?.eligible"
+  size="small"
+  :disabled="!!busy || !record.run.publicRecovery.ready"
+  @click="retryPublic(record as FocusedMonitorRow)"
+>
+  仅恢复官网
+</Button>
 <Button
               size="small"
               :disabled="!!busy"

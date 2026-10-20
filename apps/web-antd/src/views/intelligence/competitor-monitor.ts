@@ -25,6 +25,10 @@ export interface WatchRun {
   added?: number;
   count?: number;
   requests: number;
+  nextRunAt?: number;
+  browserPages?: number;
+  publicRecoveryAttempts?: number;
+  publicRecovery?: { eligible: boolean; remaining: number; nextRunAt?: number; ready?: boolean; reason?: string };
   reservedUnits?: number;
   confirmedUnits?: number;
   unknownCharges?: number;
@@ -73,6 +77,8 @@ export const watchStatus: Record<string, string> = {
   failed: '失败',
   empty: '无数据',
   interrupted: '执行中断',
+  retry_wait: '冷却待恢复',
+  blocked: '需检查来源',
 };
 export function researchSourceTags(source: string) {
   return ['竞品上新', 'Semrush热词'].filter((tag) => source.includes(tag));

@@ -63,6 +63,7 @@ const advisoryLocks = new Map([
   ['daily-discovery', 89_761_034],
   ['keyword-submit', 89_761_032],
   ['enrichment-submit', 89_761_018],
+  ['public-content-runner', 89_761_031],
   ['runner', 89_761_016],
   ['trend-runner', 89_761_019],
 ]);

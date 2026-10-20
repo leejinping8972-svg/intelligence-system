@@ -22,6 +22,12 @@ import {
   rowMetrics,
   rowTerm,
 } from './semrush-reports.mjs';
+import { publicRetryDelay } from './monitor-public-recovery.mjs';
+import { dayKey } from './competitor-monitor-domain.mjs';
+import {
+  fetchFallbackPage,
+  renderedPageNeeded,
+} from './site-page-fallbacks.mjs';
 
 export async function scanSite(
   site,
@@ -30,19 +36,41 @@ export async function scanSite(
   fetchPage = fetchPublicPage,
   progress = null,
   wait = () => pause(20_000),
+  options = {},
 ) {
+  const now = options.now || Date.now;
+  const day = dayKey(now());
+  const fetchBrowser =
+    options.fetchBrowser ||
+    ((url, source) => fetchFallbackPage(url, source, 'browser'));
   const base = siteBase(site);
   const queue = progress?.queue || [
     ...(site.platform === 'Shopify'
-      ? [`${base}/products.json?limit=250&page=1`]
+      ? [`${base}/products.json?limit=50&page=1`]
       : []),
     ...fallbackProductUrls(site),
   ];
   const attempted = new Set();
-    const errors = [];
-    const products = new Map();
-    const visited = new Set(progress?.visited || []);
+  const errors = [];
+  const products = new Map();
+  const visited = new Set(progress?.visited || []);
   let truncated = progress?.truncated === true;
+  const methods = { ...progress?.methods };
+  const failures = progress?.day === day ? { ...progress?.failures } : {};
+  let browserPages = progress?.day === day ? progress.browserPages || 0 : 0;
+  let nextRunAt = progress?.nextRunAt || 0,
+    lastHttpStatus = progress?.lastHttpStatus || 0,
+    manualRequired = false;
+  if (nextRunAt > now())
+    return {
+      items: [],
+      complete: false,
+      requests: 0,
+      errors: ['官网仍在冷却，尚未发起新请求'],
+      progress: { ...progress, queue, visited: [...visited], nextRunAt, day },
+      retryAt: nextRunAt,
+    };
+  nextRunAt = 0;
   while (attempted.size < limit) {
     const index = queue.findIndex((url) => !attempted.has(url));
     if (index === -1) break;
@@ -51,21 +79,47 @@ export async function scanSite(
     if (attempted.size > 0) await wait();
     attempted.add(url);
     try {
-      const page = await request(url, () =>
-        fetchPage(url, 0, [
-          'text/html',
-          'application/xml',
-          'text/xml',
-          'application/json',
-        ]),
+      const mode = methods[url] || 'direct';
+      if (mode === 'browser' && options.browserEnabled === false) {
+        manualRequired = true;
+        queue.push(url);
+        errors.push('动态页面需要浏览器，当前未启用');
+        break;
+      }
+      if (mode === 'browser' && browserPages >= 2) {
+        manualRequired = true;
+        queue.push(url);
+        errors.push('今日浏览器备用已达2页上限');
+        break;
+      }
+      if (mode === 'browser') browserPages++;
+      const page = await request(
+        mode === 'browser' ? `browser:${url}` : url,
+        () =>
+          mode === 'browser'
+            ? fetchBrowser(url, site)
+            : fetchPage(url, 0, [
+                'text/html',
+                'application/xml',
+                'text/xml',
+                'application/json',
+              ]),
       );
       if (!canonicalCatalogUrl(page.url, base))
         throw new Error('页面跳转至其他站点，未作为本站商品证据');
+      if (
+        /<title[^>]*>\s*(?:Just a moment|Access denied|Security check|Verify you are human)/i.test(
+          page.html,
+        )
+      )
+        throw Object.assign(new Error('官网返回访问验证页，未当作商品数据'), {
+          status: 403,
+        });
       let list;
       if (/\/products\.json/.test(url)) {
         const data = JSON.parse(page.html);
         list = shopifyCatalogProducts(data, base, site);
-        if (data.products.length === 250) {
+        if (data.products.length === 50) {
           const next = new URL(url);
           next.searchParams.set(
             'page',
@@ -90,6 +144,28 @@ export async function scanSite(
             else truncated = true;
           }
         }
+        if (
+          list.length === 0 &&
+          renderedPageNeeded(page, url, list, catalogLinks(page.html, page.url))
+        ) {
+          if (mode === 'direct') {
+            if (options.browserEnabled === false) {
+              manualRequired = true;
+              queue.push(url);
+              errors.push('动态页面需要浏览器，当前未启用');
+              break;
+            }
+            methods[url] = 'browser';
+            queue.push(url);
+            nextRunAt = now() + 30_000;
+            errors.push('动态页面尚无可验证商品，等待浏览器备用');
+            break;
+          }
+          manualRequired = true;
+          queue.push(url);
+          errors.push('浏览器仍未读取到可验证的商品目录，需检查公开来源');
+          break;
+        }
       }
       for (const p of list) {
         try {
@@ -111,7 +187,30 @@ export async function scanSite(
       }
       errors.push(error.message);
       queue.push(url);
-      if (/429|403|401|预算|额度/.test(error.message)) break;
+      lastHttpStatus =
+        error.status || Number(error.message.match(/HTTP\s+(\d{3})/)?.[1]) || 0;
+      failures[url] = (failures[url] || 0) + 1;
+      if (
+        lastHttpStatus === 401 ||
+        (lastHttpStatus === 403 && methods[url] === 'browser')
+      )
+        manualRequired = true;
+      if (
+        lastHttpStatus === 403 &&
+        !/\.(?:json|xml)$/i.test(new URL(url).pathname)
+      )
+        methods[url] = 'browser';
+      if (
+        [401, 403, 429].includes(lastHttpStatus) ||
+        /HTTP\s+5\d\d|超时|timeout|ECONNRESET|ETIMEDOUT/i.test(error.message)
+      ) {
+        nextRunAt = now() + publicRetryDelay(error, failures[url] - 1);
+        break;
+      }
+      if (/预算|额度|浏览器渲染已关闭|Chromium/i.test(error.message)) {
+        manualRequired = true;
+        break;
+      }
     }
   }
   return {
@@ -127,7 +226,17 @@ export async function scanSite(
       queue: queue.filter((u) => !visited.has(u)),
       visited: [...visited],
       truncated,
+      day,
+      methods,
+      failures,
+      browserPages,
+      nextRunAt,
+      lastHttpStatus,
+      manualRequired,
     },
+    retryAt: nextRunAt,
+    manualRequired,
+    browserPages,
   };
 }
 
@@ -140,9 +249,9 @@ export async function scanAdvertiser(
 ) {
   const ads = new Map();
   const cursors = new Set(progress?.cursors || []);
-    const errors = [];
+  const errors = [];
   let cursor = progress?.cursor || '';
-    let pages = 0;
+  let pages = 0;
   do {
     try {
       const result = await request(`ads:${cursor || 'first'}`, () =>
