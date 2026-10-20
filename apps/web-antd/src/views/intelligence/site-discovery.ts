@@ -116,6 +116,8 @@ export interface ProductEnrichmentResponse {
 export interface TrendGroup {
   collectedAt?: string;
   dailyMessage?: string;
+  dailyCollectedAt?: string;
+  historyPoints?: Array<{date:string; value:number; isPartial?:boolean}>;
   dailyPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
   growth: null | number;
   keyword: string;
@@ -152,6 +154,11 @@ export function trendRecordFields(trend: TrendGroup) {
     series: trend.series,
     trendPoints: trend.points,
     trendDailyPoints: trend.dailyPoints || [],
+    trendDailyCollectedAt: trend.dailyCollectedAt,
+    trendHistoryPoints: trend.historyPoints || [],
+    trendHistoryResolution: trend.resolution,
+    trendHistoryCollectedAt: trend.historyPoints?.length ? trend.collectedAt : undefined,
+    trendHistorySourceUrl: trend.historyPoints?.length ? trend.sourceUrl : undefined,
     trendResolution: trend.resolution || 'unknown',
     trendPeriod: trend.period,
     trendSourceUrl: trend.sourceUrl,

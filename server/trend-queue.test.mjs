@@ -11,6 +11,70 @@ import {
 import { collectTrendPart } from './trend-provider.mjs';
 import { jobProgress, trendNeedsRetry } from './job-progress.mjs';
 
+test('new submissions collect comparison history while existing queues keep their saved steps', () => {
+  const checkpoint = {
+    keywords: [
+      {
+        term: 'a',
+        market: 'US',
+        series: [10],
+        trendPoints: [{ date: '2026-10-01', value: 10 }],
+      },
+    ],
+  };
+  assert.equal(
+    initializeTrendQueue(checkpoint, 1000).trendWork[0].annual.status,
+    'done',
+  );
+  const next = initializeTrendQueue(checkpoint, 1000, 2);
+  assert.equal(next.trendWork[0].annual.status, 'pending');
+  assert.deepEqual(initializeTrendQueue(next, 2000, 2), next);
+});
+
+test('annual comparison collection preserves two-year history in one request and keeps the visible one-year curve', async () => {
+  let calls = 0;
+  const at = Date.parse('2026-10-20T00:00:00Z');
+  const history = Array.from({ length: 106 }, (_, i) => ({
+    date: new Date(at - (106 - i) * 7 * 86400000).toISOString().slice(0, 10),
+    value: 50,
+  }));
+  const fetcher = async (_terms, _market, period) => {
+    calls++;
+    assert.equal(period, '2024-10-12 2026-10-20');
+    return [
+      {
+        points: history,
+        resolution: 'week',
+        collectedAt: new Date(at).toISOString(),
+      },
+    ];
+  };
+  const result = await collectTrendPart(
+    {
+      keywords: ['a'],
+      markets: ['US'],
+      trendPhase: 'annual',
+      trendComparisonVersion: 2,
+    },
+    fetcher,
+    at,
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.historyPoints.length, 106);
+  assert.ok(result.points.length >= 52 && result.points.length <= 54);
+  assert.equal(result.status, 'success');
+  let legacyPeriod;
+  await collectTrendPart(
+    { keywords: ['a'], markets: ['US'], trendPhase: 'annual' },
+    async (_a, _b, p) => {
+      legacyPeriod = p;
+      return [{ points: [], resolution: 'week' }];
+    },
+    at,
+  );
+  assert.equal(legacyPeriod, 'today 12-m');
+});
+
 function harness(terms = ['a', 'b']) {
   let clock = Date.now(),
     gate = {},
@@ -298,4 +362,24 @@ test('zero or empty real responses finish without retry; wrong resolution needs 
     ],
   );
   assert.equal(bad.status, 'error');
+});
+
+test('new queue persists comparison history and calculates30-day growth without refetching annual after resume', async () => {
+  const h = harness(['a']);
+  h.job.input.trendComparisonVersion = 2;
+  const end = Math.floor(h.now / 86400000) * 86400000;
+  const point = (count, step, value) => Array.from({length:count}, (_,i)=>({date:new Date(end-(count-i)*step*86400000).toISOString().slice(0,10),value:typeof value==='function'?value(i):value}));
+  const history = point(106,7,40);
+  h.io.collect = async (_job,key,req) => {
+    h.requests.push({key,req});
+    return {...h.result(req),points:req.trendPhase==='annual'?history.slice(-53):point(60,1,i=>i<30?40:60),...(req.trendPhase==='annual'?{historyPoints:history,period:'synthetic-two-year-range'}:{})};
+  };
+  await runTrendJob(h.job,h.io);
+  assert.equal(h.records.get('a').trendHistoryPoints.length,106);
+  assert.equal(h.requests[0].req.trendComparisonVersion,2);
+  h.advance();
+  await runTrendJob(h.saved,h.io);
+  assert.equal(h.records.get('a').growth,50);
+  assert.equal(h.requests.filter(r=>r.req.trendPhase==='annual').length,1);
+  assert.equal(h.saved.status,'awaiting_review');
 });

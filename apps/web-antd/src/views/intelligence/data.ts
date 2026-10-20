@@ -1,3 +1,4 @@
+import { trendComparisons } from './trend-comparison';
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
 import type { DiscoveryObservation } from './discovery';
 import type {
@@ -76,6 +77,11 @@ export interface Keyword {
   reviewStatus?: 'excluded' | 'pending' | 'selected';
   reviewNote?: string;
   trendPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
+  trendHistoryPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
+  trendHistoryResolution?: 'day' | 'month' | 'unknown' | 'week';
+  trendHistoryCollectedAt?: string;
+  trendHistorySourceUrl?: string;
+  trendDailyCollectedAt?: string;
   trendDailyPoints?: Array<{
     date: string;
     isPartial?: boolean;
@@ -563,17 +569,10 @@ function normalizeGrowth(data: DemoState) {
       if (!k.trendDailyPoints?.length) {
         k.growth = null;
         k.trendDailyMessage =
-          '一年周曲线已采集；28天变化需要另取日数据，不能把周时点当成天计算';
+          '一年周曲线已采集；30天变化需要另取日数据，不能把周时点当成天计算';
       }
     }
-    if (k.trendResolution && k.trendResolution !== 'day') continue;
-    if (k.growth === null || k.series.length < 56) continue;
-    const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
-    const previous = sum(k.series.slice(-56, -28));
-    k.growth = previous
-      ? Math.round(((sum(k.series.slice(-28)) - previous) / previous) * 1000) /
-        10
-      : null;
+    k.growth = trendComparisons(k)[0]!.change;
   }
   return data;
 }

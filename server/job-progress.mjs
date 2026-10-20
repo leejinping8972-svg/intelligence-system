@@ -1,3 +1,4 @@
+import { trendComparisons } from './model.js';
 import { naturalKey } from './domain.mjs';
 
 const terminalStates = new Set([
@@ -78,7 +79,7 @@ export function jobProgress(
       market: record.market,
       annualPoints: record.series?.length || 0,
       dailyPoints: record.trendDailyPoints?.length || 0,
-      growth: Number.isFinite(record.growth) ? record.growth : null,
+      growth: trendComparisons(record)[0].change,
       assessment: assess(record).status,
       status: notStarted
         ? 'not_started'
@@ -199,7 +200,7 @@ function asyncTrendProgress(job, assess, now) {
       market: record.market,
       annualPoints: record.series?.length || 0,
       dailyPoints: record.trendDailyPoints?.length || 0,
-      growth: Number.isFinite(record.growth) ? record.growth : null,
+      growth: trendComparisons(record)[0].change,
       assessment: assess(record).status,
       status,
       annual: Boolean(record.series?.length),

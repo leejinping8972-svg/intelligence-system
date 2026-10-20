@@ -5,6 +5,7 @@ import { fetchGoogleTrendsBatch, trendSeriesMessage } from './collector.js';
 export async function collectTrendPart(
   request,
   fetchBatch = fetchGoogleTrendsBatch,
+  now = Date.now(),
 ) {
   const phase = request.trendPhase;
   if (
@@ -15,34 +16,58 @@ export async function collectTrendPart(
     throw new Error('趋势步骤参数无效');
   const keyword = request.keywords[0],
     market = request.markets[0];
-  const period = phase === 'annual' ? 'today 12-m' : 'today 3-m';
+  const extended = phase === 'annual' && request.trendComparisonVersion === 2;
+  const captured = new Date(now);
+  const start = new Date(now);
+  start.setUTCFullYear(start.getUTCFullYear() - 2);
+  start.setUTCDate(start.getUTCDate() - 8);
+  let period = phase === 'annual' ? 'today 12-m' : 'today 3-m';
+  if (extended)
+    period = `${start.toISOString().slice(0, 10)} ${captured.toISOString().slice(0, 10)}`;
   try {
     const rows = await fetchBatch([keyword], market, period);
     const row = rows?.[0];
     if (!row || !Array.isArray(row.points))
       throw new Error('Google Trends返回结构异常，需人工核对');
-    if (phase === 'daily' && row.points.length && row.resolution !== 'day')
+    if (phase === 'daily' && row.points.length > 0 && row.resolution !== 'day')
       throw new Error('Google Trends未返回日粒度，需人工核对');
-    const points = row.points.filter((p) => !p.isPartial);
-    if (points.some((p) => !Number.isFinite(p.value) || !p.date))
+    const historyPoints = row.points.filter((p) => !p.isPartial);
+    if (
+      historyPoints.some(
+        (p) =>
+          !Number.isFinite(p.value) ||
+          p.value < 0 ||
+          p.value > 100 ||
+          !Number.isFinite(Date.parse(p.date)),
+      )
+    )
       throw new Error('Google Trends时点格式异常，需人工核对');
+    const annualStart = new Date(row.collectedAt || now);
+    annualStart.setUTCFullYear(annualStart.getUTCFullYear() - 1);
+    annualStart.setUTCDate(annualStart.getUTCDate() - 7);
+    const points = extended
+      ? historyPoints.filter((p) => Date.parse(p.date) >= annualStart.getTime())
+      : historyPoints;
+    let message = 'Google Trends已返回，但本周期没有可用时点';
+    if (points.length > 0) {
+      message = trendSeriesMessage(points.map((p) => p.value));
+      if (phase === 'annual')
+        message = points.some((p) => p.value > 0)
+          ? '已采集一年趋势'
+          : '一年相对热度均为0，Google Trends样本不足';
+    }
     return {
-      status: points.length ? 'success' : 'empty',
+      status: points.length > 0 ? 'success' : 'empty',
       phase,
       keyword,
       market,
       period,
       points,
+      ...(extended ? { historyPoints } : {}),
       resolution: row.resolution,
       collectedAt: row.collectedAt || new Date().toISOString(),
       sourceUrl: `https://trends.google.com/trends/explore?geo=${encodeURIComponent(market)}&date=${encodeURIComponent(period)}&q=${encodeURIComponent(keyword)}`,
-      message: !points.length
-        ? 'Google Trends已返回，但本周期没有可用时点'
-        : phase === 'annual'
-          ? points.some((p) => p.value > 0)
-            ? '已采集一年趋势'
-            : '一年相对热度均为0，Google Trends样本不足'
-          : trendSeriesMessage(points.map((p) => p.value)),
+      message,
     };
   } catch (error) {
     return {

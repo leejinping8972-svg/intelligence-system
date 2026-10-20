@@ -15,5 +15,6 @@ export {
 export {
   fetchGoogleTrendsBatch,
   calculate28DayGrowth,
+  calculate30DayGrowth,
   trendSeriesMessage,
 } from '../workers/site-discovery/src/index.js';

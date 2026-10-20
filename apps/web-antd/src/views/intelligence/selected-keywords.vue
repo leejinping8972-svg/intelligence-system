@@ -24,6 +24,7 @@ import PageHeader from './components/PageHeader.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import { keywordChineseName } from './keyword-names';
 import SelectionBar from './components/SelectionBar.vue';
+import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import { useFilteredSelection } from './resource-list';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import AdsCollectDialog from './components/AdsCollectDialog.vue';
@@ -73,7 +74,10 @@ const rows = computed(() =>
     .map((k) => ({ ...k, score: assessKeyword(k).score }))
     .toSorted((a, b) => (b.score ?? -1) - (a.score ?? -1)),
 );
-const { selectable, selectAll, clear, rowSelection } = useFilteredSelection(rows, ids);
+const { selectable, selectAll, clear, rowSelection } = useFilteredSelection(
+  rows,
+  ids,
+);
 const active = (r: Keyword) =>
   ['queued', 'running'].includes(r.siteCollection?.status || '');
 const adActive = (r: Keyword) =>
@@ -110,6 +114,7 @@ const columns = [
     sorter: (a: { score: null | number }, b: { score: null | number }) =>
       (a.score ?? -1) - (b.score ?? -1),
   },
+  { title: '趋势热度 / 周期变化', key: 'trend', width: 215 },
   { title: '站点采集状态', key: 'status', width: 145 },
   { title: '广告采集状态', key: 'ads', width: 145 },
   { title: '关联站点', key: 'sites', width: 100 },
@@ -204,14 +209,20 @@ const time = (r: Keyword) =>
           ]"
         />
       </div>
-      <SelectionBar :count="ids.length" :total="selectable.length" @all="selectAll" @clear="clear"><KeywordNamesDialog :ids="ids" /></SelectionBar>
+      <SelectionBar
+        :count="ids.length"
+        :total="selectable.length"
+        @all="selectAll"
+        @clear="clear"
+        ><KeywordNamesDialog :ids="ids"
+      /></SelectionBar>
       <Table
         class="hci-resource-table"
         size="small"
         :columns="columns"
         :data-source="rows"
         row-key="id"
-        :scroll="{ x: 1300 }"
+        :scroll="{ x: 1600 }"
         :row-selection="rowSelection"
         :pagination="{
           current: page,
@@ -228,7 +239,14 @@ const time = (r: Keyword) =>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'term'">
             <b>{{ record.term }}</b>
-            <p class="hci-subtle">{{ record.termZh ? '中文' : '中文参考' }}：{{ keywordChineseName({ term: record.term, termZh: record.termZh }) || '待补充' }}</p>
+            <p class="hci-subtle">
+              {{ record.termZh ? '中文' : '中文参考' }}：{{
+                keywordChineseName({
+                  term: record.term,
+                  termZh: record.termZh,
+                }) || '待补充'
+              }}
+            </p>
             <p class="hci-subtle">种子：{{ record.seedTerm || '—' }}</p>
           </template>
           <template v-else-if="column.key === 'market'">
@@ -283,6 +301,18 @@ const time = (r: Keyword) =>
               条广告</Button
             ></template
           >
+          <template v-else-if="column.key === 'trend'">
+            <button
+              v-if="record.series.length"
+              class="hci-link"
+              @click="
+                router.push({ path: '/trends', query: { keyword: record.id } })
+              "
+            >
+              查看一年曲线
+            </button>
+            <KeywordTrendComparison :keyword="record as Keyword" />
+          </template>
           <template v-else-if="column.key === 'time'">
             <span>{{
               time(record as Keyword)

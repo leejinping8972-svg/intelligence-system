@@ -475,7 +475,7 @@ const visibleRows = computed(() =>
           { title: '关键词 / 市场', key: 'term', width: 220 },
           { title: '状态', key: 'status', width: 140 },
           { title: '一年 / 日趋势时点', key: 'points', width: 135 },
-          { title: '28天变化', key: 'growth', width: 110 },
+          { title: '30天变化', key: 'growth', width: 110 },
           ...(p.asyncRetries
             ? [{ title: '自动重试 / 下次执行', key: 'retry', width: 190 }]
             : []),

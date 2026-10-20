@@ -144,3 +144,12 @@ test('keyword edits cannot replace source evidence, identities, scores or task f
     },
   );
 });
+
+test('new jobs opt into comparison history and keyword storage accepts the original historical series', () => {
+  const input=validateJob({seeds:['magnesium'],markets:['US'],sources:['google_autocomplete'],limit:10,trendComparisonVersion:0});
+  assert.equal(input.trendComparisonVersion,2);
+  const history=[{date:'2024-10-20',value:40},{date:'2026-10-19',value:60}];
+  const record=cleanKeyword({term:'magnesium',market:'US',source:'synthetic',trendHistoryPoints:history,trendHistoryResolution:'week',trendHistoryCollectedAt:'2026-10-20T00:00:00Z',trendHistorySourceUrl:'https://trends.google.com/trends/explore'});
+  assert.deepEqual(record.trendHistoryPoints,history);
+  assert.equal(record.trendHistoryResolution,'week');
+});

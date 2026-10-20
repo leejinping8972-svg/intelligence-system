@@ -1,3 +1,4 @@
+import { trendComparisons } from './trend-comparison';
 import type { Ad, DemoState, Keyword, Market, Product } from './data';
 import type { FreeSourceData, PublicSignal } from './public-sources';
 import { discoveryDecision } from './discovery';
@@ -156,7 +157,7 @@ function productEvidence(product: Product, ads: Ad[], keywords: Keyword[]) {
       detail:
         keyword.growth === null
           ? `${keyword.term}：缺少可比较趋势`
-          : `${keyword.term}：28天变化 ${keyword.growth > 0 ? '+' : ''}${keyword.growth}%`,
+          : `${keyword.term}：30天变化 ${keyword.growth > 0 ? '+' : ''}${keyword.growth}%`,
       observedAt: keyword.updatedAt || observedAt,
     });
   }
@@ -227,7 +228,7 @@ function productFindings(
             : '暂未发现关联广告信号',
           growth === null
             ? '缺少同品类可比较趋势'
-            : `同品类关键词28天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
+            : `同品类关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
         ],
         gaps,
       };
@@ -286,7 +287,7 @@ function conceptFindings(
         id: `concept-keyword-${keyword.id}-${concept}`,
         kind: 'trend' as const,
         source: keyword.source,
-        detail: `${keyword.term} · 28天变化 ${keyword.growth ?? '数据不足'}${keyword.growth === null ? '' : '%'}`,
+        detail: `${keyword.term} · 30天变化 ${keyword.growth ?? '数据不足'}${keyword.growth === null ? '' : '%'}`,
         observedAt: keyword.updatedAt || today(),
       })),
     ];
@@ -320,7 +321,7 @@ function conceptFindings(
         `${ads.length} 条关联广告，${sourceKinds} 类独立证据`,
         growth === null
           ? '暂缺趋势验证'
-          : `同品类关键词28天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
+          : `同品类关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
       ],
       gaps: [
         brandCount < 2 ? '尚未达到“至少2个品牌采用”的确认门槛' : '',
@@ -398,7 +399,7 @@ function ingredientFindings(
         `记录剂量口径：${insight.amount}`,
         growth === null
           ? '暂缺相关需求趋势'
-          : `关联品类关键词28天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
+          : `关联品类关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
       ],
       gaps: [
         brandCount < 2 ? '目前只有单一品牌证据，仍属于成分候选' : '',
@@ -413,11 +414,12 @@ export function buildRadarFindings(
   windowDays: number,
   includeDemo = true,
 ) {
+  const compared = { ...state, keywords: state.keywords.map(k => ({...k, growth: trendComparisons(k)[0]!.change})) };
   return [
-    ...adFindings(state, windowDays, includeDemo),
-    ...productFindings(state, windowDays, includeDemo),
-    ...conceptFindings(state, windowDays, includeDemo),
-    ...ingredientFindings(state, windowDays, includeDemo),
+    ...adFindings(compared, windowDays, includeDemo),
+    ...productFindings(compared, windowDays, includeDemo),
+    ...conceptFindings(compared, windowDays, includeDemo),
+    ...ingredientFindings(compared, windowDays, includeDemo),
   ].sort(
     (a, b) =>
       (b.businessScore ?? -1) - (a.businessScore ?? -1) ||

@@ -34,7 +34,7 @@ export interface KeywordAssessment {
     evidence: string;
   }>;
 }
-export const KEYWORD_MODEL_VERSION = 'keyword-research-v3.0';
+export const KEYWORD_MODEL_VERSION = 'keyword-research-v3.1-30d';
 export const KEYWORD_MODEL_WEIGHTS = [
   { key: 'relevance', label: '业务相关性', weight: 25 },
   { key: 'demand', label: '需求规模', weight: 20 },
@@ -104,7 +104,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
         ? (Date.parse(daily.at(-1)!.date) - Date.parse(daily[0]!.date)) /
           86_400_000
         : 0;
-    const windowPoints = daily.length >= 56 && dailySpan >= 55 ? daily : points;
+    const windowPoints = daily.length >= 60 && dailySpan >= 59 ? daily : points;
     const dailyUsed = windowPoints === daily;
     const step = dailyUsed
       ? 1
@@ -129,10 +129,10 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
         sum += p.value * overlap;
         days += overlap;
       }
-      return days >= 27 ? sum / days : null;
+      return days >= 30 ? sum / days : null;
     };
-    const previous = avgWindow(end - 56 * 86_400_000, end - 28 * 86_400_000);
-    const recent = avgWindow(end - 28 * 86_400_000, end);
+    const previous = avgWindow(end - 60 * 86_400_000, end - 30 * 86_400_000);
+    const recent = avgWindow(end - 30 * 86_400_000, end);
     const continuity =
       annualSeries.filter((v) => v > 0).length / annualSeries.length;
     let momentum = 50;
@@ -155,7 +155,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       else if (continuity >= 0.7) tags.add('走势平稳');
     }
     if (continuity < 0.2) tags.add('低样本信号');
-    trendEvidence = `一年趋势持续性65% + 近28天相对此前28天动量35%；${dailyUsed ? '日数据' : '按原始时点覆盖天数加权'}，有效点${points.length}个，覆盖${Math.round(span)}天；尖峰降权，不代表搜索量`;
+    trendEvidence = `一年趋势持续性65% + 近30天相对此前30天动量35%；${dailyUsed ? '日数据' : '按原始时点覆盖天数加权'}，有效点${points.length}个，覆盖${Math.round(span)}天；尖峰降权，不代表搜索量`;
   } else tags.add(points.length > 0 ? '趋势样本不足或过期' : '待补趋势');
   const metrics = keyword.metrics;
   const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;

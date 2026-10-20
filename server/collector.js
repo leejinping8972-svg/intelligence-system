@@ -1,4 +1,4 @@
-// ../workers/site-discovery/data/trends-snapshots.json
+// workers/site-discovery/data/trends-snapshots.json
 var trends_snapshots_default = [
   {
     keyword: "women's health gummies",
@@ -278,7 +278,7 @@ var trends_snapshots_default = [
   }
 ];
 
-// ../workers/site-discovery/src/provider-config.js
+// workers/site-discovery/src/provider-config.js
 var STORAGE_KEY = "provider:sorftime:mcp:v1";
 var encode = (value) => btoa(String.fromCodePoint(...value));
 var decode = (value) => Uint8Array.from(atob(value), (letter) => letter.codePointAt(0));
@@ -349,7 +349,7 @@ async function readSorftimeToken(env) {
   return env.SORFTIME_MCP_TOKEN || "";
 }
 
-// ../workers/site-discovery/src/server-relay.js
+// workers/site-discovery/src/server-relay.js
 var SERVER_ACTIONS = /* @__PURE__ */ new Set([
   "server_cancel",
   "server_clear_keywords",
@@ -382,7 +382,7 @@ async function serverRelay(input, env, fetcher = fetch) {
   return payload;
 }
 
-// ../workers/site-discovery/src/sorftime.js
+// workers/site-discovery/src/sorftime.js
 var MCP_URL = "https://mcp.sorftime.com/";
 var SOURCE = "Sorftime \xB7 Amazon";
 var TOOLS = {
@@ -694,7 +694,7 @@ async function sorftimeSuggestions(keyword, market, depth, limit, budget, env, f
   }
 }
 
-// ../workers/site-discovery/src/index.js
+// workers/site-discovery/src/index.js
 var MARKET_OPTIONS = {
   US: {
     country: "us",
@@ -1612,17 +1612,23 @@ function calculate28DayGrowth(series) {
   const recent = average(series.slice(-28));
   return Math.round((recent - previous) / previous * 1e3) / 10;
 }
+function calculate30DayGrowth(series) {
+  if (!Array.isArray(series) || series.length < 60 || series.some((v) => !Number.isFinite(v) || v < 0 || v > 100)) return null;
+  const sum = (values) => values.reduce((total, value) => total + value, 0);
+  const previous = sum(series.slice(-60, -30));
+  return previous > 0 ? Math.round((sum(series.slice(-30)) - previous) / previous * 1e3) / 10 : null;
+}
 function trendSeriesMessage(series) {
-  if (!Array.isArray(series) || series.length < 56)
-    return "\u6709\u6548\u65E5\u5E8F\u5217\u4E0D\u8DB356\u5929\uFF0C\u6682\u4E0D\u8BA1\u7B9728\u5929\u53D8\u5316";
+  if (!Array.isArray(series) || series.length < 60)
+    return "\u6709\u6548\u65E5\u5E8F\u5217\u4E0D\u8DB360\u5929\uFF0C\u6682\u4E0D\u8BA1\u7B9730\u5929\u53D8\u5316";
   const average = (values) => values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
-  const previous = average(series.slice(-56, -28));
-  const recent = average(series.slice(-28));
+  const previous = average(series.slice(-60, -30));
+  const recent = average(series.slice(-30));
   if (series.every((value) => Number(value || 0) === 0))
     return "\u8FD190\u5929\u76F8\u5BF9\u70ED\u5EA6\u5747\u4E3A0\uFF0CGoogle Trends\u6837\u672C\u4E0D\u8DB3";
   if (previous <= 0 && recent > 0)
-    return "\u6B64\u524D28\u5929\u5747\u503C\u4E3A0\uFF0C\u6700\u8FD128\u5929\u5DF2\u51FA\u73B0\u641C\u7D22\u4FE1\u53F7\uFF0C\u65E0\u6CD5\u8BA1\u7B97\u767E\u5206\u6BD4\u53D8\u5316";
-  if (previous <= 0) return "\u6B64\u524D28\u5929\u57FA\u671F\u4E3A0\uFF0C\u65E0\u6CD5\u8BA1\u7B97\u767E\u5206\u6BD4\u53D8\u5316";
+    return "\u6B64\u524D30\u5929\u5747\u503C\u4E3A0\uFF0C\u6700\u8FD130\u5929\u5DF2\u51FA\u73B0\u641C\u7D22\u4FE1\u53F7\uFF0C\u65E0\u6CD5\u8BA1\u7B97\u767E\u5206\u6BD4\u53D8\u5316";
+  if (previous <= 0) return "\u6B64\u524D30\u5929\u57FA\u671F\u4E3A0\uFF0C\u65E0\u6CD5\u8BA1\u7B97\u767E\u5206\u6BD4\u53D8\u5316";
   return "";
 }
 function googleTrendsExploreUrl(keywords, market, period = "today 12-m") {
@@ -1780,7 +1786,20 @@ async function collectGoogleTrendsBatch(keywords, market) {
     let rateLimited = false;
     let retryAfterSeconds = 0;
     try {
-      [annual] = await fetchGoogleTrendsBatch([keyword], market);
+      const end = /* @__PURE__ */ new Date();
+      const start = new Date(end);
+      start.setUTCFullYear(start.getUTCFullYear() - 2);
+      start.setUTCDate(start.getUTCDate() - 8);
+      const period = `${start.toISOString().slice(0, 10)} ${end.toISOString().slice(0, 10)}`;
+      [annual] = await fetchGoogleTrendsBatch([keyword], market, period);
+      if (annual?.points.length) {
+        annual.historyPoints = annual.points;
+        const cutoff = new Date(end);
+        cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+        cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+        annual.points = annual.points.filter((p) => Date.parse(p.date) >= cutoff.getTime());
+        annual.series = annual.points.map((p) => p.value);
+      }
     } catch (error) {
       annualError = error instanceof Error ? error.message : "Google Trends\u91C7\u96C6\u5931\u8D25";
       rateLimited = error?.status === 429;
@@ -1831,13 +1850,14 @@ async function collectGoogleTrendsBatch(keywords, market) {
       );
       const dailyPoints = daily.resolution === "day" ? daily.points.filter((point) => !point.isPartial) : [];
       annual.dailyPoints = dailyPoints;
+      annual.dailyCollectedAt = daily.collectedAt;
       const dailySeries = dailyPoints.map((point) => point.value);
-      annual.growth = calculate28DayGrowth(dailySeries);
+      annual.growth = calculate30DayGrowth(dailySeries);
       annual.dailyMessage = trendSeriesMessage(dailySeries);
     } catch (error) {
       annual.dailyPoints = [];
       annual.growth = null;
-      annual.dailyMessage = `\u4E00\u5E74\u66F2\u7EBF\u5DF2\u4FDD\u5B58\uFF1B28\u5929\u65E5\u6570\u636E\u67E5\u8BE2\u5931\u8D25\uFF1A${error instanceof Error ? error.message : "\u63A5\u53E3\u5F02\u5E38"}`;
+      annual.dailyMessage = `\u4E00\u5E74\u66F2\u7EBF\u5DF2\u4FDD\u5B58\uFF1B30\u5929\u65E5\u6570\u636E\u67E5\u8BE2\u5931\u8D25\uFF1A${error instanceof Error ? error.message : "\u63A5\u53E3\u5F02\u5E38"}`;
       annual.rateLimited = error?.status === 429;
       annual.retryAfterSeconds = error?.retryAfterSeconds || 0;
     }
@@ -2109,6 +2129,7 @@ var src_default = {
 };
 export {
   calculate28DayGrowth,
+  calculate30DayGrowth,
   classifyStore,
   connect as connectSorftime,
   src_default as default,
