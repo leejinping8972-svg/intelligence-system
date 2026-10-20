@@ -32,6 +32,7 @@
     "apps/web-antd/src/views/intelligence/trends.vue",
     "server/COMPETITOR-MONITOR.md",
     "server/DAILY-DISCOVERY.md",
+    "server/Dockerfile",
     "server/RESOURCE-MARKET-SWITCH.md",
     "server/competitor-monitor-domain.mjs",
     "server/competitor-monitor-engine.mjs",
@@ -64,21 +65,23 @@
     "统一业务资源市场切换并在切换时清理旧页面上下文",
     "提升保健品关键词相关性评分与解释能力",
     "新增竞品站点与广告主监控及Semrush种子词热词榜",
-    "新增入选关键词每日广告与商品发现及新品雷达"
+    "新增入选关键词每日广告与商品发现及新品雷达",
+    "将关键词相关性模块纳入API镜像模型构建"
   ],
-  "sourceSha": "8e024a4108a8cef4911d94d597db5f41dab092f8",
+  "sourceSha": "6c69b4a85e03441d18f45b321fbb1d96eea81dcd",
   "includedCommits": [
     "f04d2f0c8925ad63875aa7d58dd5eb22ca4e49e1",
     "dd4295fdf2b2e9c516c2905278fe87694bc599a4",
     "0f0c71d4d7ce7be50a2c2b969abeca5e8c653a6b",
-    "41bd1939c98cc12cbe16293c1ad9de045f13f36e"
+    "41bd1939c98cc12cbe16293c1ad9de045f13f36e",
+    "6c69b4a85e03441d18f45b321fbb1d96eea81dcd"
   ],
   "validation": [
     "集成后后台相关测试219项、前端相关测试122项通过；类型检查和服务器/history构建通过",
-    "GitHub Actions将执行准确候选的全工作流和隔离MySQL集成"
+    "Dockerfile已补入模型依赖源文件；GitHub Actions将重跑准确候选全工作流和隔离MySQL集成"
   ],
   "operator": "Codex",
-  "id": "20261020063801-6bfda893",
-  "builtAt": "2026-10-20T06:38:01.121Z",
-  "sourceDigest": "6bfda893090b0222d7da340f9e02e5b2cd7c7df9d95fafe2637e6265788b9e97"
+  "id": "20261020064247-9d696af4",
+  "builtAt": "2026-10-20T06:42:47.594Z",
+  "sourceDigest": "9d696af458ae0473c8094cbcb1e584aee470659d94ca3b9b24cd73bf9f79b4ef"
 }
