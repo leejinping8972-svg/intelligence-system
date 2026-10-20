@@ -8,6 +8,7 @@ import { cleanKeyword, naturalKey } from './domain.mjs';
 import { saveKeyword } from './store.mjs';
 import { maintenance } from './database-admin.mjs';
 import { saveSiteBatch } from './competitor-batch.mjs';
+import { saveAdvertiserBatch } from './advertiser-monitor-batch.mjs';
 import {
   dayKey,
   digest,
@@ -64,6 +65,13 @@ export async function withCompetitorIdle(callback) {
 }
 
 export async function competitorAction(input, user) {
+  if (input.action === 'server_competitor_overview') {
+    const db = createMonitorStore();
+    return {
+      targets: (await db.list(`${PREFIX}target:`)).map((row) => row.value),
+      runs: (await db.list(`${PREFIX}run:`)).map((row) => row.value),
+    };
+  }
   if (input.action === 'server_competitor_snapshot') {
     const db = createMonitorStore();
     return {
@@ -81,6 +89,8 @@ export async function competitorAction(input, user) {
     const db = createMonitorStore(c);
     if (input.action === 'server_competitor_batch_save')
       return saveSiteBatch(input, db, c);
+    if (input.action === 'server_competitor_advertiser_batch_save')
+      return saveAdvertiserBatch(input, db, c);
     if (input.action === 'server_competitor_save') {
       const schedule = validateSchedule(input);
       let site, ad;
@@ -142,6 +152,11 @@ export async function competitorAction(input, user) {
     const name = `${PREFIX}${hot ? 'hot-config' : 'target'}:${id}`;
     const config = await db.read(name);
     if (!config) throw new Error('监控配置不存在');
+    if (input.action === 'server_competitor_update' && !hot) {
+      const schedule = validateSchedule({ ...config, ...input });
+      await db.write(name, { ...config, ...schedule, requested: schedule.enabled ? config.requested === true : false, updatedAt: new Date().toISOString() });
+      return { saved: true };
+    }
     if (input.action === 'server_competitor_remove' && !hot) {
       for (const key of [
         name,
