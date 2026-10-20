@@ -51,11 +51,11 @@ describe('keyword research decision model', () => {
     expect(result.status).toBe('pending');
     expect(result.coverage).toBe(45);
   });
-  it('labels the free-data model provisional and exposes missing weights', () => {
+  it('keeps free-data results pending and exposes missing weights', () => {
     const result = assessKeyword(sample());
-    expect(result.status).toBe('provisional');
+    expect(result.status).toBe('pending');
     expect(result.coverage).toBe(65);
-    expect(result.grade).toBe('A');
+    expect(result.grade).toBeNull();
     expect(result.tags).toContain('待补搜索量');
     expect(
       result.dimensions.find((item) => item.key === 'demand')?.score,
@@ -99,7 +99,7 @@ describe('keyword research decision model', () => {
     ]) {
       const result = assessKeyword(sample({ metrics }));
       expect(result.coverage).toBe(65);
-      expect(result.tags).toContain('指标待核验');
+      expect(result.tags).toContain('指标待核验或过期');
     }
   });
   it('keeps a verified zero volume distinct from missing data', () => {
@@ -118,7 +118,7 @@ describe('keyword research decision model', () => {
     );
     expect(result.coverage).toBe(85);
   });
-  it('does not call a partial competition estimate complete', () => {
+  it('treats verified natural-search KD as complete without top3 traffic share', () => {
     const result = assessKeyword(
       sample({
         metrics: {
@@ -130,8 +130,8 @@ describe('keyword research decision model', () => {
         },
       }),
     );
-    expect(result.coverage).toBe(92.5);
-    expect(result.status).toBe('provisional');
+    expect(result.coverage).toBe(100);
+    expect(result.status).toBe('rated');
   });
   it('treats all-zero Google samples as insufficient evidence', () => {
     const record = sample();

@@ -1,5 +1,129 @@
+// apps/web-antd/src/views/intelligence/keyword-relevance.ts
+function normalize(value) {
+  return value.normalize("NFKD").replaceAll(/\p{M}/gu, "").toLowerCase().replaceAll("\u0111", "d").replaceAll(/[‐‑‒–—−]/g, "-").replaceAll(/\s+/g, " ").trim();
+}
+var families = [
+  ["omega", /\b(?:omega\s*-?\s*[369]|dha|epa)\b|欧米伽\s*[369]|欧米茄\s*[369]/],
+  ["fish-oil", /\b(?:fish[ -]oil|aceite de pescado|dau ca)\b|鱼油|魚油/],
+  ["magnesium", /\b(?:magnesium|magnesio|magie)\b|镁|鎂/],
+  ["collagen", /\b(?:collagen|colageno|collagene)\b|胶原|膠原/],
+  ["creatine", /\b(?:creatine|creatina)\b|肌酸/],
+  ["probiotic", /\b(?:probiotics?|probioticos?|men vi sinh)\b|益生菌/],
+  [
+    "prebiotic",
+    /\b(?:prebiotics?|prebioticos?|inulin|inulina|psyllium)\b|益生元|菊粉|车前子/
+  ],
+  ["inositol", /\b(?:inositol|myo inositol)\b|肌醇/],
+  ["ashwagandha", /\bashwagandha\b|南非醉茄/],
+  ["berberine", /\b(?:berberine|berberina)\b|小檗碱/],
+  ["melatonin", /\b(?:melatonin|melatonina)\b|褪黑素/],
+  [
+    "vitamin",
+    /\b(?:multi\s*-?\s*vitamins?|vitamins?|vitaminas?)\b|维生素|維生素/
+  ],
+  ["protein", /\b(?:protein|proteina|whey)\b|蛋白/],
+  ["electrolyte", /\b(?:electrolytes?|electrolitos?|dien giai)\b|电解质/],
+  ["fiber", /\b(?:fibers?|fibres?|fibra|chat xo)\b|膳食纤维/],
+  ["zinc", /\b(?:zinc|kem)\b|锌|鋅/],
+  ["calcium", /\b(?:calcium|calcio|canxi)\b|钙|鈣/],
+  ["iron", /\b(?:iron|hierro|sat)\b|补铁|補鐵/],
+  ["coq10", /\b(?:coq\s*-?\s*10|coenzyme q10|ubiquinol)\b|辅酶Q10/i]
+];
+var formPattern = /\b(?:gumm(?:y|ies)|capsules?|capsulas?|powders?|polvo|softgels?|tablets?|liquid|liquido|bot|vien)\b|软糖|軟糖|胶囊|膠囊|粉剂|片剂|滴剂/;
+var supplementPattern = /\b(?:supplements?|suplementos?|complementos? alimenticios?|thuc pham (?:bo sung|chuc nang)|bo sung|health products?)\b|保健品|膳食补充剂|营养补充剂|營養補充劑/;
+var purchasePattern = /\b(?:buy|price|shop|comprar|precio|mua|gia)\b|购买|價格|价格/;
+var dosePattern = /\b\d+(?:[.,]\d+)?\s*(?:mg|mcg|ug|g|iu|cfu|ui)\b|\d+\s*(?:毫克|微克|亿菌|%)/;
+var audiencePattern = /\b(?:women|female|menopause|prenatal|pregnancy|kids|children|seniors|phu nu|mujeres?|ninos)\b|女性|孕妇|儿童|老年/;
+var informationPattern = /\b(?:how|what|benefits?|side effects?|cach|la gi|como|para que)\b|功效|副作用|是什么/;
+var brandPattern = /\b(?:amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/;
+var excludedPattern = /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoo|serum|face cream)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜/;
+var servicePattern = /\b(?:hospitals?|clinics?|doctors?|jobs?|salary|magazine|badge reel|services?|partners|specialists?|environmental protection agency)\b|benh vien|tuyen dung|招聘|医院/;
+function ingredients(text) {
+  return families.filter(([, pattern]) => pattern.test(text)).map(([key]) => key);
+}
+function assessSupplementRelevance(keyword) {
+  const text = normalize(keyword.term);
+  const found = ingredients(text);
+  const seeds = ingredients(normalize(keyword.seedTerm || ""));
+  const scope = (key) => key === "fish-oil" ? "omega" : key;
+  const seedMatch = found.some(
+    (key) => seeds.some((seed) => scope(key) === scope(seed))
+  );
+  const seedMismatch = found.length > 0 && seeds.length > 0 && !seedMatch;
+  const ingredient = found.length > 0;
+  const form = formPattern.test(text);
+  const commercial = supplementPattern.test(text) || purchasePattern.test(text);
+  const information = informationPattern.test(text);
+  const brand = brandPattern.test(text);
+  const audience = audiencePattern.test(text);
+  const dose = dosePattern.test(text);
+  const excluded = excludedPattern.test(text) || /\bomega\b.*\b(?:constellation|de ville|planet ocean)\b/.test(text);
+  const service = servicePattern.test(text);
+  const offTopic = excluded || service;
+  const ambiguous = /\bomega\b/.test(text) && !ingredient;
+  const broadFishOil = found.length === 1 && found.includes("fish-oil") && !(form && dose);
+  const broadCategory = !ingredient && supplementPattern.test(text);
+  const bareIngredient = ingredient && !form && !dose && !audience;
+  const tags = [];
+  if (ingredient && !offTopic) tags.push("\u6210\u5206\u8BCD");
+  if (form && ingredient && !offTopic) tags.push("\u5242\u578B\u8BCD");
+  if ((ingredient || broadCategory) && !offTopic) tags.push("\u5546\u54C1\u9700\u6C42\u8BCD");
+  if (audience) tags.push("\u4EBA\u7FA4\u8BCD");
+  if (brand) tags.push("\u54C1\u724C\u5BFC\u822A\u8BCD");
+  if (information) tags.push("\u5185\u5BB9\u7814\u7A76\u8BCD");
+  if (seedMatch && !offTopic) tags.push("\u79CD\u5B50\u6210\u5206\u5339\u914D");
+  if (seedMismatch && !offTopic) tags.push("\u504F\u79BB\u79CD\u5B50\u6210\u5206");
+  let relevance = 20;
+  let product = 10;
+  let scoreCap = 49;
+  let evidence = "\u5173\u952E\u8BCD\u81EA\u8EAB\u7F3A\u5C11\u53EF\u8BC6\u522B\u7684\u4FDD\u5065\u54C1\u6210\u5206\u4F9D\u636E\uFF0C\u5206\u7C7B\u6807\u7B7E\u4E0E\u79CD\u5B50\u8BCD\u4E0D\u4F5C\u4E3A\u76F8\u5173\u6027\u8BC1\u660E\uFF1B\u603B\u5206\u6700\u9AD849";
+  if (ingredient) {
+    relevance = Math.min(
+      100,
+      75 + (form ? 15 : 0) + (dose ? 5 : 0) + (audience ? 5 : 0) + (seedMatch ? 5 : 0)
+    );
+    product = Math.min(
+      100,
+      55 + (form ? 25 : 0) + (commercial ? 10 : 0) + (dose ? 10 : 0) + (audience ? 5 : 0)
+    );
+    scoreCap = bareIngredient ? 69 : 100;
+    evidence = `\u5173\u952E\u8BCD\u81EA\u8EAB\u8BC6\u522B\u5230\u4FDD\u5065\u54C1\u6210\u5206${form ? "\u3001\u5242\u578B" : ""}${dose ? "\u3001\u5242\u91CF" : ""}${audience ? "\u3001\u9002\u7528\u4EBA\u7FA4" : ""}${seedMatch ? "\uFF1B\u4E0E\u79CD\u5B50\u6210\u5206\u5339\u914D" : ""}${bareIngredient ? "\uFF1B\u6210\u5206\u77ED\u8BCD\u7F3A\u5C11\u5177\u4F53\u5546\u54C1\u9650\u5B9A\uFF0C\u603B\u5206\u6700\u9AD869" : ""}`;
+  }
+  if (broadFishOil || broadCategory) {
+    relevance = broadFishOil ? 55 : 40;
+    product = broadFishOil ? 40 : 25;
+    scoreCap = broadFishOil ? 59 : 49;
+    tags.push("\u6CDB\u8BCD\u964D\u6743");
+    evidence = `${broadFishOil ? "\u9C7C\u6CB9\u7C7B\u6CDB\u8BCD\uFF0C\u672A\u660E\u786EOmega-3/EPA/DHA\u6216\u5242\u578B\u4E0E\u5242\u91CF\u7EC4\u5408" : "\u4FDD\u5065\u54C1\u7C7B\u76EE\u6CDB\u8BCD\uFF0C\u672A\u660E\u786E\u5177\u4F53\u6210\u5206"}\uFF1B\u603B\u5206\u6700\u9AD8${scoreCap}`;
+  }
+  if (seedMismatch) {
+    relevance = Math.min(relevance, 45);
+    scoreCap = Math.min(scoreCap, 59);
+    evidence += "\uFF1B\u5173\u952E\u8BCD\u6210\u5206\u4E0E\u79CD\u5B50\u6210\u5206\u4E0D\u5339\u914D\uFF0C\u603B\u5206\u6700\u9AD859";
+  }
+  if (information && !offTopic) {
+    scoreCap = Math.min(scoreCap, 64);
+    evidence += "\uFF1B\u4FE1\u606F\u67E5\u8BE2\u7528\u4E8E\u5185\u5BB9\u7814\u7A76\uFF0C\u603B\u5206\u6700\u9AD864";
+  }
+  if (ambiguous && !offTopic) {
+    relevance = 15;
+    product = 10;
+    scoreCap = 39;
+    tags.push("\u540C\u540D\u6B67\u4E49\u5F85\u6838\u9A8C");
+    evidence = "\u5355\u72ECOmega\u4E0D\u80FD\u8BC1\u660E\u662FOmega-3\u4FDD\u5065\u54C1\uFF1B\u9700\u660E\u786E\u6210\u5206\u8868\u8FBE\uFF0C\u603B\u5206\u6700\u9AD839";
+  }
+  if (offTopic) {
+    relevance = excluded ? 0 : 10;
+    product = excluded ? 0 : 10;
+    scoreCap = excluded ? 19 : 39;
+    tags.push("\u975E\u5546\u54C1\u9700\u6C42", ...excluded ? ["\u975E\u4FDD\u5065\u54C1\u7C7B\u76EE"] : []);
+    evidence = `${excluded ? "\u547D\u4E2D\u624B\u8868\u3001\u6C7D\u8F66\u3001\u5BA0\u7269\u6216\u5916\u7528\u62A4\u80A4\u7B49\u975E\u76EE\u6807\u7C7B\u76EE" : "\u547D\u4E2D\u533B\u7597\u670D\u52A1\u3001\u62DB\u8058\u6216\u5A92\u4F53\u7B49\u975E\u5546\u54C1\u8868\u8FBE"}\uFF1B\u79CD\u5B50\u4E0E\u5206\u7C7B\u4E0D\u80FD\u62B5\u6D88\uFF0C\u603B\u5206\u6700\u9AD8${scoreCap}`;
+  }
+  return { relevance, product, scoreCap, evidence, tags, offTopic, brand };
+}
+
 // apps/web-antd/src/views/intelligence/keyword-scoring.ts
-var KEYWORD_MODEL_VERSION = "keyword-research-v2.0";
+var KEYWORD_MODEL_VERSION = "keyword-research-v3.0";
 var clamp = (value) => Math.round(Math.max(0, Math.min(100, value)));
 function gradeForScore(score) {
   if (score >= 80) return "A";
@@ -8,45 +132,11 @@ function gradeForScore(score) {
   return "D";
 }
 function assessKeyword(keyword) {
-  const text = keyword.term.toLocaleLowerCase();
-  const tags = /* @__PURE__ */ new Set();
+  const business = assessSupplementRelevance(keyword);
+  const { relevance, offTopic, brand } = business;
+  const tags = new Set(business.tags);
   if (keyword.source.includes("Sorftime")) tags.add("Amazon\u7AD9\u5185\u6765\u6E90");
-  const offTopic = /\b(hospital|clinic|doctor|jobs?|salary|magazine|badge reel|services?|partners|specialists?)\b|bệnh viện|tuyển dụng|招聘|医院/.test(
-    text
-  );
-  const ingredient = /magnesium|glycinate|collagen|creatine|probiotic|prebiotic|inositol|ashwagandha|berberine|melatonin|omega|vitamin|protein|electrolyte|inulin|psyllium|colágeno|probiótico|men vi sinh|chất xơ|胶原|益生菌/.test(
-    text
-  );
-  const form = /gumm|capsul|powder|softgel|tablet|liquid|cápsula|polvo|\bbột\b|viên|软糖|胶囊|粉剂/.test(
-    text
-  );
-  const commercial = /supplement|buy|price|shop|comprar|precio|suplemento|bổ sung|mua|giá|保健品|购买/.test(
-    text
-  );
-  const brand = /\b(amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/.test(
-    text
-  );
-  const classified = Boolean(
-    keyword.category && !["\u5F85\u5206\u7C7B", "\u672A\u5206\u7C7B"].includes(keyword.category)
-  );
-  if (ingredient) tags.add("\u6210\u5206\u8BCD");
-  if (form) tags.add("\u5242\u578B\u8BCD");
-  if (commercial || ingredient || form) tags.add("\u5546\u54C1\u9700\u6C42\u8BCD");
-  if (/women|female|menopause|prenatal|phụ nữ|mujer|女性/.test(text))
-    tags.add("\u4EBA\u7FA4\u8BCD");
-  if (brand) tags.add("\u54C1\u724C\u5BFC\u822A\u8BCD");
-  if (offTopic) tags.add("\u975E\u5546\u54C1\u9700\u6C42");
-  if (/how|what|benefits|side effects|cách|là gì|cómo|para qué|功效|副作用/.test(
-    text
-  ))
-    tags.add("\u5185\u5BB9\u7814\u7A76\u8BCD");
-  let relevance = 30;
-  if (ingredient) relevance = 80;
-  if (classified) relevance = 85;
-  if (offTopic) relevance = 10;
-  let product = offTopic ? 10 : clamp(
-    25 + (ingredient ? 30 : 0) + (form ? 25 : 0) + (commercial ? 20 : 0)
-  );
+  let product = business.product;
   const normalized = new Map(
     (keyword.trendPoints || []).filter(
       (p) => !p.isPartial && Number.isFinite(p.value) && p.value >= 0 && p.value <= 100 && Number.isFinite(Date.parse(p.date))
@@ -132,7 +222,8 @@ function assessKeyword(keyword) {
   const intent = validMetrics ? metrics?.intent || "" : "";
   const purchaseIntent = /(?:^|[,;\s])(2|3)(?:$|[,;\s])|commercial|transactional/i.test(intent);
   const navigationIntent = /^1$|^navigational$/i.test(intent.trim());
-  if (purchaseIntent && !offTopic) product = clamp(product + 10);
+  const purchaseBonus = purchaseIntent && !offTopic && business.scoreCap > 49;
+  if (purchaseBonus) product = clamp(product + 10);
   if (volume === 0) tags.add("\u5E73\u53F0\u641C\u7D22\u91CF\u4E3A0");
   const dimensions = [
     {
@@ -141,7 +232,7 @@ function assessKeyword(keyword) {
       weight: 25,
       coveredWeight: 25,
       score: relevance,
-      evidence: offTopic ? "\u547D\u4E2D\u533B\u9662\u3001\u670D\u52A1\u3001\u62DB\u8058\u6216\u5A92\u4F53\u7B49\u975E\u5546\u54C1\u8868\u8FBE\u89C4\u5219" : "\u7ED3\u5408\u5173\u952E\u8BCD\u3001\u79CD\u5B50\u8BCD\u4E0A\u4E0B\u6587\u548C\u7814\u7A76\u54C1\u7C7B\u7684\u89C4\u5219\u5224\u65AD"
+      evidence: business.evidence
     },
     {
       key: "demand",
@@ -165,7 +256,7 @@ function assessKeyword(keyword) {
       weight: 20,
       coveredWeight: 20,
       score: product,
-      evidence: `\u6210\u5206\u3001\u5242\u578B\u4E0E\u5546\u54C1\u8868\u8FBE\u7684\u89C4\u5219\u8BC4\u5206${purchaseIntent ? "\uFF1BSemrush \u5546\u4E1A\u6216\u4EA4\u6613\u610F\u56FE\u52A010\u5206\uFF08\u672C\u7EF4\u5EA6\u5C01\u9876100\uFF09" : ""}\uFF1B\u4E0D\u4EE3\u8868\u9500\u91CF\u6216\u5229\u6DA6`
+      evidence: `\u4FDD\u5065\u54C1\u6210\u5206\u3001\u5242\u578B\u3001\u5242\u91CF\u3001\u4EBA\u7FA4\u4E0E\u5546\u54C1\u8868\u8FBE\u7684\u89C4\u5219\u8BC4\u5206${purchaseBonus ? "\uFF1BSemrush \u5546\u4E1A\u6216\u4EA4\u6613\u610F\u56FE\u52A010\u5206\uFF08\u672C\u7EF4\u5EA6\u5C01\u9876100\uFF09" : ""}\uFF1B\u4E0D\u4EE3\u8868\u9500\u91CF\u6216\u5229\u6DA6`
     },
     {
       key: "competition",
@@ -188,7 +279,7 @@ function assessKeyword(keyword) {
     ) / coverage
   ) : null;
   if (score !== null) {
-    if (offTopic) score = Math.min(score, 39);
+    score = Math.min(score, business.scoreCap);
     if (brand || navigationIntent) score = Math.min(score, 64);
     if (volume === 0) score = Math.min(score, 49);
   }
@@ -201,6 +292,12 @@ function assessKeyword(keyword) {
     C: "\u7EE7\u7EED\u89C2\u5BDF\uFF0C\u4F18\u5148\u8865\u5145\u7F3A\u5931\u8BC1\u636E",
     D: "\u6682\u7F13\u6DF1\u5165\u7814\u7A76\uFF0C\u68C0\u67E5\u76F8\u5173\u6027\u548C\u9700\u6C42\u4FE1\u53F7"
   };
+  let recommendation = grade ? recommendations[grade] : "\u5148\u8865\u9F50\u6709\u6548\u8D8B\u52BF\u4E0E\u5173\u952E\u6307\u6807\uFF0C\u518D\u8FDB\u884C\u8BC4\u7EA7";
+  if (tags.has("\u6CDB\u8BCD\u964D\u6743"))
+    recommendation = "\u6CDB\u8BCD\u4F18\u5148\u7EC6\u5316\u6210\u5206\u3001\u5242\u578B\u3001\u5242\u91CF\u6216\u4EBA\u7FA4\uFF0C\u518D\u8BC4\u4F30\u5546\u54C1\u673A\u4F1A";
+  if (tags.has("\u540C\u540D\u6B67\u4E49\u5F85\u6838\u9A8C"))
+    recommendation = "\u5148\u6838\u9A8C\u662F\u5426\u6307Omega-3\u4FDD\u5065\u54C1\uFF0C\u660E\u786E\u6210\u5206\u540E\u518D\u7814\u7A76";
+  if (offTopic) recommendation = "\u4E0D\u5C5E\u4E8E\u76EE\u6807\u4FDD\u5065\u54C1\u5546\u54C1\u9700\u6C42\uFF0C\u5EFA\u8BAE\u6392\u9664\u6216\u4EBA\u5DE5\u6838\u9A8C";
   return {
     version: KEYWORD_MODEL_VERSION,
     assessedAt: metrics?.collectedAt || keyword.trendCollectedAt || keyword.collectedAt || keyword.updatedAt || "",
@@ -209,7 +306,7 @@ function assessKeyword(keyword) {
     score,
     coverage,
     tags: [...tags],
-    recommendation: grade ? recommendations[grade] : "\u5148\u8865\u9F50\u6709\u6548\u8D8B\u52BF\u4E0E\u5173\u952E\u6307\u6807\uFF0C\u518D\u8FDB\u884C\u8BC4\u7EA7",
+    recommendation,
     dimensions
   };
 }

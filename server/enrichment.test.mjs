@@ -373,7 +373,7 @@ test('research pipeline merges Semrush and free suggestions with hard limit, the
   );
   assert.ok(calls.every((c) => !c.r.sources.includes('site_discovery')));
 });
-test('v2 scoring requires volume and trends, KD alone completes competition, no Similarweb placeholder required', () => {
+test('v3 scoring still requires volume and trends, KD alone completes competition, no Similarweb placeholder required', () => {
   const at = new Date().toISOString();
   const points = Array.from({ length: 53 }, (_, i) => ({
     date: new Date(Date.now() - (52 - i) * 7 * 86400000)
@@ -394,7 +394,7 @@ test('v2 scoring requires volume and trends, KD alone completes competition, no 
     },
   };
   const a = assessKeyword(k);
-  assert.equal(a.version, 'keyword-research-v2.0');
+  assert.equal(a.version, 'keyword-research-v3.0');
   assert.equal(a.coverage, 100);
   assert.equal(a.status, 'rated');
   assert.equal(a.dimensions.find((d) => d.key === 'competition').score, 71);
