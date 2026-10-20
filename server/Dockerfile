@@ -5,7 +5,7 @@ RUN cd server && npm ci --ignore-scripts
 COPY server ./server
 COPY workers/site-discovery/src ./workers/site-discovery/src
 COPY workers/site-discovery/data ./workers/site-discovery/data
-COPY apps/web-antd/src/views/intelligence/keyword-scoring.ts apps/web-antd/src/views/intelligence/site-discovery.ts ./apps/web-antd/src/views/intelligence/
+COPY apps/web-antd/src/views/intelligence/keyword-scoring.ts apps/web-antd/src/views/intelligence/site-discovery.ts apps/web-antd/src/views/intelligence/keyword-relevance.ts ./apps/web-antd/src/views/intelligence/
 RUN server/node_modules/.bin/esbuild server/model.ts --bundle --platform=node --format=esm --outfile=server/model.js
 RUN server/node_modules/.bin/esbuild server/collector.ts --bundle --platform=node --format=esm --outfile=server/collector.js
 
