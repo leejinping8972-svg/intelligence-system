@@ -7,6 +7,7 @@ import { requireAdmin } from './auth.mjs';
 import { cleanKeyword, naturalKey } from './domain.mjs';
 import { saveKeyword } from './store.mjs';
 import { maintenance } from './database-admin.mjs';
+import { saveSiteBatch } from './competitor-batch.mjs';
 import {
   dayKey,
   digest,
@@ -78,6 +79,8 @@ export async function competitorAction(input, user) {
   requireAdmin(user);
   return withCompetitorIdle(async (c) => {
     const db = createMonitorStore(c);
+    if (input.action === 'server_competitor_batch_save')
+      return saveSiteBatch(input, db, c);
     if (input.action === 'server_competitor_save') {
       const schedule = validateSchedule(input);
       let site, ad;

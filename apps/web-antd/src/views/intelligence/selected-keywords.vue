@@ -21,6 +21,8 @@ import {
   syncCloudWorkspace,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import SelectionBar from './components/SelectionBar.vue';
+import { useFilteredSelection } from './resource-list';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import AdsCollectDialog from './components/AdsCollectDialog.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
@@ -69,6 +71,7 @@ const rows = computed(() =>
     .map((k) => ({ ...k, score: assessKeyword(k).score }))
     .toSorted((a, b) => (b.score ?? -1) - (a.score ?? -1)),
 );
+const { selectable, selectAll, clear, rowSelection } = useFilteredSelection(rows, ids);
 const active = (r: Keyword) =>
   ['queued', 'running'].includes(r.siteCollection?.status || '');
 const adActive = (r: Keyword) =>
@@ -199,15 +202,15 @@ const time = (r: Keyword) =>
           ]"
         />
       </div>
+      <SelectionBar :count="ids.length" :total="selectable.length" @all="selectAll" @clear="clear" />
       <Table
+        class="hci-resource-table"
+        size="small"
         :columns="columns"
         :data-source="rows"
         row-key="id"
         :scroll="{ x: 1300 }"
-        :row-selection="{
-          selectedRowKeys: ids,
-          onChange: (keys) => (ids = keys as string[]),
-        }"
+        :row-selection="rowSelection"
         :pagination="{
           current: page,
           pageSize,

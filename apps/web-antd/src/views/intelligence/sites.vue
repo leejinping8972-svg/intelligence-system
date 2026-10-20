@@ -7,7 +7,6 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   Alert,
   Button,
-  Drawer,
   Input,
   message,
   Select,
@@ -16,6 +15,12 @@ import {
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
+import CompactTags from './components/CompactTags.vue';
+import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
+import SelectionBar from './components/SelectionBar.vue';
+import SiteDrawer from './components/SiteDrawer.vue';
+import BulkSiteWatch from './components/BulkSiteWatch.vue';
+import { emptyScoreFilter, matchesScore, useFilteredSelection } from './resource-list';
 import ProductCollectDialog from './components/ProductCollectDialog.vue';
 import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
 import { exportCsv, filteredSites, marketName, state } from './data';
@@ -29,6 +34,7 @@ const sources = (s: Site) =>
     ? s.sources
     : [s.dataNature === 'imported' ? '人工导入' : '历史采集 · 来源待核对'];
 const source = ref('ALL');
+const scoreFilter = ref(emptyScoreFilter());
 const sourceOptions = computed(() => [
   { label: '全部数据来源', value: 'ALL' },
   ...[...new Set(filteredSites.value.flatMap(sources))].map((value) => ({
@@ -156,6 +162,7 @@ const rows = computed(() =>
         .join(' ')}`
         .toLowerCase()
         .includes(search.value.toLowerCase()) &&
+      matchesScore(s.assessment?.score, scoreFilter.value) &&
       (source.value === 'ALL' || sources(s).includes(source.value)) &&
       (platform.value === 'ALL' || s.platform === platform.value) &&
       (category.value === 'ALL' || s.category === category.value) &&
@@ -168,6 +175,11 @@ const rows = computed(() =>
       (!linkedKeyword.value || linkedKeyword.value.siteIds.includes(s.id)),
   ),
 );
+const { selectAll, clear, selectable, rowSelection } = useFilteredSelection(rows, ids);
+watch([search, platform, category, ownership, keywordFilter, source, scoreFilter], () => {
+  page.value = 1;
+  scoreRequest = '';
+});
 const columns = [
   { title: '品牌 / 独立站', key: 'brand', width: 220 },
   { title: '市场', key: 'market', width: 90 },
@@ -182,8 +194,8 @@ const columns = [
   { title: '类别', dataIndex: 'category', width: 150 },
   { title: '主要产品', key: 'mainProducts', width: 250 },
   { title: '股权背景（官网）', key: 'ownership', width: 220 },
-  { title: '关联商品', key: 'products' },
-  { title: '操作', key: 'actions' },
+  { title: '关联商品', key: 'products', width: 105 },
+  { title: '操作', key: 'actions', width: 190, fixed: 'right' as const },
 ];
 </script>
 <template>
@@ -193,6 +205,7 @@ const columns = [
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"
     >
       <ProductCollectDialog :site-ids="ids" />
+      <BulkSiteWatch :site-ids="ids" />
       <CompetitorWatchPanel kind="site" :site-id="ids.length === 1 ? ids[0] : undefined" />
       <Button
         type="primary"
@@ -241,7 +254,7 @@ const columns = [
         清除关联筛选
       </button>
     </div>
-    <section class="hci-panel">
+    <section class="hci-panel hci-resource-list">
       <div class="hci-toolbar">
         <Input.Search
           v-model:value="search"
@@ -271,20 +284,17 @@ const columns = [
           >{{ rows.length }} 家站点 · {{ collectedCount }} 家实采</span
         >
       </div>
+      <div class="hci-toolbar"><ScoreRangeFilter v-model="scoreFilter" label="独立站" /></div>
+      <SelectionBar :count="ids.length" :total="selectable.length" :busy="scoring" @all="selectAll" @clear="clear" />
       <Alert
         v-if="scoreError"
         :message="scoreError"
         type="error"
         show-icon
       /><Table
-        :row-selection="{
-          preserveSelectedRowKeys: true,
-          selectedRowKeys: ids,
-          onChange: (keys: any[]) => {
-            ids = keys.map(String);
-            scoreRequest = '';
-          },
-        }"
+        class="hci-resource-table"
+        size="small"
+        :row-selection="rowSelection"
         :columns="columns"
         :data-source="rows"
         row-key="id"
@@ -306,16 +316,11 @@ const columns = [
               class="hci-link"
               @click="selected = state.sites.find((s) => s.id === record.id)"
             >
-              {{ record.brand }}
+              <span class="hci-clamp-2">{{ record.brand }}</span>
             </button>
             <div class="hci-subtle">
               {{ record.domain }}
-              <Tag
-                v-for="label in sources(record as Site)"
-                :key="label"
-                color="blue"
-                >{{ label }}</Tag
-              >
+              <CompactTags :items="sources(record as Site)" label="数据来源" color="blue" />
             </div> </template
           ><template v-if="column.key === 'assessment'"
             ><button class="hci-link" @click="selected = record as Site">
@@ -336,11 +341,7 @@ const columns = [
           ><template v-if="column.key === 'market'">
             <Tag>{{ marketName(record.market) }}</Tag> </template
           ><template v-if="column.key === 'mainProducts'">
-            <div class="hci-compact-tags">
-              <Tag v-for="item in record.mainProducts" :key="item">
-                {{ item }}
-              </Tag>
-            </div> </template
+            <CompactTags :items="record.mainProducts" label="主要产品" /> </template
           ><template v-if="column.key === 'ownership'">
             <Tag
               :color="
@@ -350,7 +351,7 @@ const columns = [
               {{ record.ownershipBackground }}
             </Tag>
             <div class="hci-subtle">
-              {{ record.ownershipSource }}
+              <span class="hci-clamp-2">{{ record.ownershipSource }}</span>
             </div> </template
           ><template v-if="column.key === 'products'">
             {{ state.products.filter((p) => p.siteId === record.id).length }}
@@ -379,146 +380,6 @@ const columns = [
         </template>
       </Table>
     </section>
-    <Drawer
-      :open="!!selected"
-      :width="560"
-      title="品牌与站点档案"
-      @close="selected = undefined"
-    >
-      <template v-if="selected">
-        <h2 style="font-size: 25px">{{ selected.brand }}</h2>
-        <p class="hci-subtle">
-          {{ selected.domain }} ·
-          {{
-            selected.dataNature === 'collected'
-              ? '官网实采记录'
-              : '虚构示例域名'
-          }}
-        </p>
-        <dl class="hci-detail-grid">
-          <dt>销售市场</dt>
-          <dd>{{ marketName(selected.market) }}</dd>
-          <dt>电商平台</dt>
-          <dd>{{ selected.platform }}</dd>
-          <dt>网站类型</dt>
-          <dd>{{ selected.type }}</dd>
-          <dt>站点类别</dt>
-          <dd>{{ selected.category }}</dd>
-          <dt>主要产品</dt>
-          <dd>{{ selected.mainProducts.join('、') || '待提取' }}</dd>
-          <dt>发现关键词</dt>
-          <dd>{{ selected.keyword }}</dd>
-          <dt>来源</dt>
-          <dd>
-            {{ sources(selected).join(' / ') }}
-          </dd>
-          <dt>首次观察</dt>
-          <dd>
-            {{ selected.lastCollectedAt || '未记录' }}（不等于品牌成立日期）
-          </dd>
-          <template v-if="selected.dataNature === 'collected'">
-            <dt>验证置信度</dt>
-            <dd>{{ selected.confidence ?? 0 }} / 100</dd>
-            <dt>验证信号</dt>
-            <dd>{{ selected.signals?.join('、') || '待补充' }}</dd>
-          </template>
-        </dl>
-        <h3 class="hci-section-heading">
-          站点评分 · {{ selected.assessment?.grade || '待评分' }} ·
-          {{ selected.assessment?.score ?? '—' }} / 100
-        </h3>
-        <p class="hci-subtle">
-          研究优先级，不是营收或盈利预测；{{
-            selected.metricsStatus || '第三方指标待补充'
-          }}。{{ selected.metricsMessage }}
-        </p>
-        <dl class="hci-detail-grid">
-          <dt>自然搜索流量估算</dt>
-          <dd>{{ selected.metrics?.organicTraffic ?? '—' }}</dd>
-          <dt>自然关键词数</dt>
-          <dd>{{ selected.metrics?.organicKeywords ?? '—' }}</dd>
-          <dt>指标来源 / 市场 / 日期</dt>
-          <dd>
-            {{ selected.metrics?.source || '—' }} ·
-            {{ selected.metrics?.market || '—' }} ·
-            {{ selected.metrics?.collectedAt || '—' }}
-          </dd>
-        </dl>
-        <div
-          v-for="d in selected.assessment?.dimensions"
-          :key="d.key"
-          class="hci-evidence"
-        >
-          <strong
-            >{{ d.label }} · 权重{{ d.weight }}% ·
-            {{ d.value ?? '待补充' }}</strong
-          >
-          <p>{{ d.evidence }}</p>
-        </div>
-        <h3 class="hci-section-heading">发现来源与证据</h3>
-        <p v-for="(e, i) in selected.sourceEvidence" :key="i">
-          <Tag>{{ e.source }}</Tag
-          >{{ e.keyword
-          }}<a v-if="e.url" :href="e.url" target="_blank" rel="noreferrer">
-            原始证据</a
-          >
-          {{ e.collectedAt }}
-        </p>
-        <Button
-          @click="router.push({ path: '/ads', query: { site: selected.id } })"
-          >查看关联广告</Button
-        >
-        <h3 class="hci-section-heading">官网股权与运营背景</h3>
-        <dl class="hci-detail-grid">
-          <dt>股权背景</dt>
-          <dd>
-            <Tag color="blue">{{ selected.ownershipBackground }}</Tag>
-          </dd>
-          <dt>运营主体</dt>
-          <dd>{{ selected.ownershipOperations }}</dd>
-          <dt>官网来源</dt>
-          <dd>{{ selected.ownershipSource }}</dd>
-        </dl>
-        <div class="hci-evidence">
-          <b>官网信息摘录</b><br />{{ selected.ownershipEvidence }}<br />
-          <span class="hci-subtle">
-            {{
-              selected.dataNature === 'collected'
-                ? '股权背景仍需继续采集 About、页脚及隐私政策后人工核验。'
-                : '演示数据仅说明字段结构，真实结论需保留官网 URL、原文与采集时间。'
-            }}
-          </span>
-        </div>
-        <div class="hci-evidence">
-          <template v-if="selected.evidenceUrl">
-            已保留官网验证页面：
-            <a :href="selected.evidenceUrl" target="_blank" rel="noreferrer"
-              >打开官网证据</a
-            >
-          </template>
-          <template v-else>
-            此处将展示原始搜索命中、自然排名和采集批次。目前没有真实网页证据。
-          </template>
-        </div>
-        <Button
-          type="primary"
-          @click="
-            router.push({ path: '/products', query: { site: selected.id } })
-          "
-        >
-          查看该站商品
-        </Button>
-        <ProductCollectDialog :site-ids="[selected.id]" />
-        <Button
-          @click="
-            router.push({
-              path: '/consumer-insights',
-              query: { site: selected.id },
-            })
-          "
-          >研究该品牌消费者需求</Button
-        >
-      </template>
-    </Drawer>
+    <SiteDrawer :id="selected?.id" @close="selected = undefined" />
   </main>
 </template>

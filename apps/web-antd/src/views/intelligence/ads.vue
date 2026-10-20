@@ -4,6 +4,8 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   Alert,
+  Checkbox,
+  Pagination,
   Button,
   Drawer,
   Empty,
@@ -16,6 +18,8 @@ import {
   Tag,
 } from 'ant-design-vue';
 import PageHeader from './components/PageHeader.vue';
+import SelectionBar from './components/SelectionBar.vue';
+import { useFilteredSelection } from './resource-list';
 import AdsResearchPanel from './components/AdsResearchPanel.vue';
 import AdMedia from './components/AdMedia.vue';
 import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
@@ -69,6 +73,12 @@ const rows = computed(() =>
       ),
     ),
 );
+const { ids: bulkIds, selectable, selectAll, clear } = useFilteredSelection(rows);
+const page = ref(1);
+const pageSize = ref(20);
+const pagedRows = computed(() => rows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
+const adResearch = ref<InstanceType<typeof AdsResearchPanel>>();
+watch([search, status, newness, () => state.market, () => route.query], () => { page.value = 1; });
 watch([() => keywordIds.value.length, () => form.maxPages], () => {
   form.maxRequests = Math.max(
     1,
@@ -139,7 +149,7 @@ watch([() => route.query.ad, () => state.ads], () => {
       ></PageHeader
     >
     <div class="hci-toolbar" style="margin-bottom: 16px"><CompetitorWatchPanel kind="advertiser" /><DailyDiscoveryPlan /><label for="ad-newness">广告新旧标签</label><Select id="ad-newness" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /></div>
-    <AdsResearchPanel :ads="rows" />
+    <AdsResearchPanel ref="adResearch" :ads="rows" />
     <section class="hci-panel">
       <div class="hci-toolbar">
         <Input.Search
@@ -159,12 +169,14 @@ watch([() => route.query.ad, () => state.ads], () => {
           >{{ rows.length }} 条广告</span
         >
       </div>
+      <SelectionBar :count="bulkIds.length" :total="selectable.length" @all="selectAll" @clear="clear"><Button size="small" :disabled="!bulkIds.length || bulkIds.length > 100" @click="adResearch?.begin(bulkIds)">分析所选广告</Button><span v-if="bulkIds.length > 100" class="hci-subtle">每份报告最多100条，请缩小筛选</span></SelectionBar>
       <Empty
         v-if="!rows.length"
         description="暂无广告；选择已入选关键词采集，或导入真实广告资料"
       />
       <div class="hci-ad-grid">
-        <article v-for="ad in rows" :key="ad.id" class="hci-ad-card">
+        <article v-for="ad in pagedRows" :key="ad.id" class="hci-ad-card">
+          <div class="hci-card-select"><Checkbox :checked="bulkIds.includes(ad.id)" :disabled="ad.dataNature === 'demo'" :aria-label="`选择广告 ${ad.headline || ad.id}`" @change="bulkIds = $event.target.checked ? [...bulkIds, ad.id] : bulkIds.filter((id) => id !== ad.id)" /></div>
           <AdMedia :ad="ad" />
           <div class="hci-ad-content">
             <div class="hci-panel-head">
@@ -193,19 +205,21 @@ watch([() => route.query.ad, () => state.ads], () => {
           </div>
         </article>
       </div>
+      <div v-if="rows.length" class="hci-list-pagination"><Pagination :current="page" :page-size="pageSize" :total="rows.length" :show-size-changer="true" :page-size-options="['10','20','50','100']" @change="(current: number, size: number) => { page = current; pageSize = size; }" /></div>
     </section>
     <Drawer
       :open="!!selected"
       title="广告详情与来源"
-      :width="680"
+      root-class-name="hci-resource-drawer"
+      width="min(940px, 100vw)"
       @close="selected = undefined"
     >
       <template v-if="selected"
-        ><h2>{{ selected.brand }} · {{ selected.headline }}</h2>
-        <AdMedia :ad="selected" expanded />
+        ><header class="hci-resource-hero"><div class="hci-resource-heading"><p class="hci-eyebrow">{{ marketName(selected.market) }} · {{ selected.platform }}</p><h2>{{ selected.brand }}</h2><p>{{ selected.headline }}</p></div><Tag>{{ selected.status }}</Tag></header>
+        <div class="hci-ad-detail-layout"><div><AdMedia :ad="selected" expanded />
         <DiscoveryTag :item="selected" kind="ad" details />
         <CompetitorWatchPanel v-if="selected.pageId" kind="advertiser" :ad-id="selected.id" />
-        <p style="white-space: pre-wrap">{{ selected.copy }}</p>
+        </div><section class="hci-detail-section"><h3>广告文案</h3><p class="hci-resource-copy">{{ selected.copy || '来源未提供文案' }}</p></section></div>
         <dl class="hci-detail-grid">
           <dt>广告 ID</dt>
           <dd>{{ selected.archiveId || '—' }}</dd>

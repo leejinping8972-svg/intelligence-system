@@ -33,22 +33,23 @@ function addMonitor() {
 <template>
   <Drawer
     :open="!!product"
-    :width="620"
+    width="min(940px, 100vw)"
+    root-class-name="hci-resource-drawer"
     title="商品情报详情"
     @close="emit('close')"
   >
     <template v-if="product">
-      <ProductArt
+      <div class="hci-product-detail-hero"><ProductArt
         :color="product.color"
         :brand="product.brand"
         :image-url="product.imageUrl"
         :source-label="productDataSource(product)"
       />
-      <div style="margin-top: 20px">
+      <div class="hci-resource-heading">
         <p class="hci-product-brand">
           {{ product.brand }} · {{ marketName(product.market) }}
         </p>
-        <h2 style="font-size: 23px; font-weight: 600">{{ product.title }}</h2>
+        <h2 class="hci-resource-title">{{ product.title }}</h2>
         <div style="display: flex; gap: 12px; margin: 14px 0">
           <Tag :color="product.reviewed ? 'green' : 'orange'">
             {{
@@ -60,7 +61,7 @@ function addMonitor() {
             }} </Tag
           ><Tag>{{ product.category }}</Tag>
         </div>
-      </div>
+      </div></div>
       <ProductCompletionDialog :product-ids="[product.id]" compact />
       <Tabs>
         <Tabs.TabPane
@@ -293,7 +294,7 @@ function addMonitor() {
           </p>
         </Tabs.TabPane>
       </Tabs>
-      <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px">
+      <div class="hci-detail-actions">
         <PublicContentLauncher :query="`${product.brand} ${product.title}`" :market="product.market" :product-ids="[product.id]" />
         <Button type="primary" @click="addMonitor">加入监控</Button
         ><Button @click="toggleFavorite(product)">

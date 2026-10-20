@@ -6,6 +6,13 @@ import { Alert, Button, Form, Input, message, Tag } from 'ant-design-vue';
 import { adminRequest, session } from '../session';
 
 interface Connection {
+  balance?: null | {
+    units: null | number;
+    status: string;
+    checkedAt: string;
+    source: string;
+    message: string;
+  };
   configured: boolean;
   ready: boolean;
   endpoint?: string;
@@ -15,6 +22,29 @@ interface Connection {
 }
 const apiKey = ref('');
 const busy = ref(false);
+const balanceBusy = ref(false);
+async function refreshBalance() {
+  if (balanceBusy.value) return;
+  balanceBusy.value = true;
+  try {
+    const result = await adminRequest<Pick<Connection, 'balance'>>(
+      'server_semrush_balance',
+      {},
+      30_000,
+    );
+    status.value.balance = result.balance;
+  } catch (error) {
+    status.value.balance = {
+      units: null,
+      status: 'unavailable',
+      checkedAt: new Date().toISOString(),
+      source: 'Semrush Standard API units',
+      message: error instanceof Error ? error.message : '余额读取失败',
+    };
+  } finally {
+    balanceBusy.value = false;
+  }
+}
 const status = ref<Connection>({
   configured: false,
   ready: false,
@@ -38,10 +68,13 @@ async function configure(save: boolean) {
     );
     if (save) {
       apiKey.value = '';
-      message.success('Key 已加密保存，请检测连接');
-    } else if (status.value.ready)
-      message.success('MCP 握手及关键词工具发现通过');
-    else message.warning(status.value.message);
+      message.success('Key 已加密保存，正在读取账户余额');
+      await refreshBalance();
+    } else {
+      if (status.value.ready) message.success('MCP 握手及关键词工具发现通过');
+      else message.warning(status.value.message);
+      await refreshBalance();
+    }
   } catch (error) {
     const text = error instanceof Error ? error.message : '配置或检测失败';
     status.value = { ...status.value, ready: false, message: text };
@@ -118,17 +151,39 @@ onUnmounted(() => {
           href="https://developer.semrush.com/api/v3/introduction/semrush-mcp/"
           target="_blank"
           rel="noopener noreferrer"
-          >官方接入说明</a
-        >
+          >官方接入说明</a>
       </div>
     </Form>
+    <div class="hci-provider-balance" role="status">
+      <div>
+        <span>账户 API units 余额</span><strong>{{
+          typeof status.balance?.units === 'number'
+            ? status.balance.units.toLocaleString('zh-CN')
+            : '—'
+        }}</strong><small>{{ status.balance?.source || '保存 Key 后读取' }}</small>
+      </div>
+      <Button
+        :loading="balanceBusy"
+        :disabled="busy || !status.configured || session.user?.role !== 'admin'"
+        @click="refreshBalance"
+        >
+刷新余额
+</Button>
+      <p v-if="status.balance" class="hci-subtle">
+        {{ status.balance.message }} · 更新于
+        {{
+          new Date(status.balance.checkedAt).toLocaleString('zh-CN', {
+            hour12: false,
+          })
+        }}
+      </p>
+    </div>
     <p class="hci-evidence" role="status">{{ status.message }}</p>
     <p v-if="status.checkedAt" class="hci-subtle">
       上次检测：{{
         new Date(status.checkedAt).toLocaleString('zh-CN', { hour12: false })
       }}<span v-if="status.toolCount !== undefined">
-        · 发现 {{ status.toolCount }} 个工具</span
-      >
+        · 发现 {{ status.toolCount }} 个工具</span>
     </p>
     <Alert
       type="info"
@@ -137,8 +192,9 @@ onUnmounted(() => {
       description="检测仅完成身份握手和工具发现，不执行关键词报告。勾选新建研究中的 Semrush 后，会扩词、补充月搜索量、自然搜索KD和意图，再结合 Google Trends 评分；旧关键词可勾选后点击「一键补齐数据并重评」。保存 Key 或检测通过本身不会启动查询。数据报告仍消耗 API units，5 万额度不等于 5 万次查询；有效期及权限以账户或提供方说明为准。"
     />
     <p class="hci-subtle" style="margin-top: 12px">
-      固定连接官方地址 https://mcp.semrush.com/v2/mcp，不向其他地址转发
-      Key。如提供方指定了其他 MCP
+      研究数据固定连接官方地址 https://mcp.semrush.com/v2/mcp；余额使用官方
+      HTTPS 免费只读接口，不执行数据报告。Key
+      不回传浏览器或记录到日志。如提供方指定了其他 MCP
       地址，请先核对授权。数据是否返回由该词在目标国家的收录情况及账户权限决定；缺项不会伪造为0。
     </p>
   </section>

@@ -4,6 +4,7 @@ import process from 'node:process';
 
 import { requireAdmin } from './auth.mjs';
 import { pool, putDocument } from './database.mjs';
+import { semrushBalance } from './semrush-balance.mjs';
 import {
   SEMRUSH_MCP_URL,
   semrushConnectionStatus,
@@ -44,7 +45,11 @@ export function decryptSemrushKey(value, secret) {
   ]).toString('utf8');
 }
 export async function semrushAction(input, user, overrides = {}) {
-  if (input.action === 'server_semrush_config' || input.verify === true)
+  if (
+    input.action === 'server_semrush_config' ||
+    input.action === 'server_semrush_balance' ||
+    input.verify === true
+  )
     requireAdmin(user);
   const io = {
     async read() {
@@ -57,9 +62,29 @@ export async function semrushAction(input, user, overrides = {}) {
     write: (value) => putDocument('provider_configs', CONFIG_NAME, value),
     secret: process.env.PROVIDER_CONFIG_ENCRYPTION_KEY,
     status: semrushConnectionStatus,
+    balance: semrushBalance,
     ...overrides,
   };
   const stored = await io.read();
+  if (input.action === 'server_semrush_balance') {
+    if (!stored) return { configured: false, balance: null };
+    let apiKey;
+    try {
+      apiKey = decryptSemrushKey(stored, io.secret);
+    } catch {
+      throw new Error('Semrush 密钥解密失败，请重新保存 API Key');
+    }
+    const balance = await io.balance(apiKey);
+    const latest = await io.read();
+    if (
+      !latest ||
+      latest.ciphertext !== stored.ciphertext ||
+      latest.iv !== stored.iv
+    )
+      throw new Error('Key 已更换，请刷新后重新读取余额');
+    await io.write({ ...latest, lastBalance: balance });
+    return { configured: true, balance };
+  }
   if (input.action === 'server_semrush_config') {
     requireAdmin(user);
     const apiKey = validateSemrushKey(input.apiKey);
@@ -84,6 +109,7 @@ export async function semrushAction(input, user, overrides = {}) {
       ready: false,
       endpoint: SEMRUSH_MCP_URL,
       updatedAt: stored.updatedAt,
+      balance: stored.lastBalance || null,
       ...stored.lastCheck,
       message: stored.lastCheck?.message || 'API Key 已保存，等待检测连接',
     };

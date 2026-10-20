@@ -276,6 +276,25 @@ const hotKeyword = (
 assert.ok(hotKeyword.source.includes('Semrush热词'));
 assert.equal(hotKeyword.metrics.monthlySearchVolume, 700);
 assert.equal((await db.list('competitor:history:US:')).length, 1);
+// Batch configuration uses the real store and transaction, with external fetch disabled.
+await assert.rejects(() => competitorAction({ action: 'server_competitor_batch_save', siteIds: [site.id] }, { role: 'researcher' }), /管理员/);
+const oldTarget = await db.read(`competitor:target:${target.id}`);
+for (const market of ['MX', 'VN']) await db.write(`business:sites:batch-${market}`, { id: `batch-${market}`, market, domain: `${market}.example.test` });
+const batchInput = { action: 'server_competitor_batch_save', siteIds: [site.id, 'batch-MX', 'batch-VN', 'batch-VN'], enabled: false, hour: 9, maxRequests: 3 };
+const batch = await competitorAction(batchInput, admin);
+assert.equal(batch.created, 2);
+assert.equal(batch.preserved, 1);
+assert.deepEqual(await db.read(`competitor:target:${target.id}`), oldTarget);
+assert.equal((await competitorAction(batchInput, admin)).created, 0);
+const beforeInvalid = await db.list('competitor:target:');
+await assert.rejects(() => competitorAction({ ...batchInput, siteIds: ['invalid-site'] }, admin), /不存在/);
+assert.deepEqual(await db.list('competitor:target:'), beforeInvalid);
+const { saveSiteBatch } = await import('./competitor-batch.mjs');
+for (const id of ['rollback-1', 'rollback-2']) await db.write(`business:sites:${id}`, { id, market: 'US', domain: `${id}.example.test` });
+let batchWrites = 0;
+await assert.rejects(() => saveSiteBatch({ siteIds: ['rollback-1', 'rollback-2'] }, { ...db, write: async (name, value) => { if (++batchWrites === 2) throw new Error('synthetic batch failure'); await db.write(name, value); } }, c), /synthetic batch failure/);
+assert.deepEqual(await db.list('competitor:target:'), beforeInvalid);
+console.log('Batch configuration integration passed: mixed markets, admin permission, idempotency, preserving paused targets and real transaction rollback.');
 console.log(
   'Isolated monitor integration passed: baseline, daily dedup, permissions, launch links/tags, rollback, crash protection and hotword import; zero external calls.',
 );

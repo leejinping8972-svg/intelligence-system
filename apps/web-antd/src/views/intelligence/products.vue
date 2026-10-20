@@ -17,6 +17,9 @@ import {
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
+import CompactTags from './components/CompactTags.vue';
+import SelectionBar from './components/SelectionBar.vue';
+import { useFilteredSelection } from './resource-list';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
@@ -180,6 +183,8 @@ const rows = computed(() =>
       (!linkedKeyword.value || linkedKeyword.value.productIds.includes(p.id)),
   ),
 );
+const { ids: bulkIds, selected: bulkSelected, selectable, selectAll, clear, rowSelection } = useFilteredSelection(rows);
+const exportRows = computed(() => bulkIds.value.length ? bulkSelected.value : rows.value);
 const pagedRows = computed(() =>
   rows.value.slice(
     (page.value - 1) * pageSize.value,
@@ -244,7 +249,7 @@ function toggleCompare(id: string) {
         @click="
           exportCsv(
             '商品库.csv',
-            rows.map((p) => ({
+            exportRows.map((p) => ({
               商品: p.title,
               品牌: p.brand,
               国家: p.market,
@@ -282,7 +287,7 @@ function toggleCompare(id: string) {
           )
         "
       >
-        导出商品 </Button
+        {{ bulkIds.length ? `导出所选（${bulkIds.length}）` : '导出商品' }} </Button
       ><Button
         type="primary"
         :disabled="comparison.length < 2"
@@ -369,12 +374,14 @@ function toggleCompare(id: string) {
       >
       <Button @click="decisionRulesOpen = true">决策标签规则</Button>
     </div>
+    <SelectionBar :count="bulkIds.length" :total="selectable.length" @all="selectAll" @clear="clear"><ProductCompletionDialog v-if="bulkIds.length" :product-ids="bulkIds" :compact="bulkIds.length === 1" /></SelectionBar>
     <div v-if="viewMode === 'cards'" class="hci-product-grid">
       <article
         v-for="product in pagedRows"
         :key="product.id"
         class="hci-product-card"
       >
+        <div class="hci-card-select"><Checkbox :checked="bulkIds.includes(product.id)" :disabled="product.dataNature === 'demo'" :aria-label="`选择商品 ${product.title}`" @change="bulkIds = $event.target.checked ? [...bulkIds, product.id] : bulkIds.filter((id) => id !== product.id)" /></div>
         <button
           style="width: 100%"
           @click="selected = product.id"
@@ -398,7 +405,7 @@ function toggleCompare(id: string) {
           <div class="hci-product-brand">
             {{ product.brand }} · {{ product.market }}
           </div>
-          <button class="hci-product-title" @click="selected = product.id">
+          <button class="hci-product-title hci-clamp-2" @click="selected = product.id">
             {{ product.title }}
           </button>
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
@@ -421,18 +428,7 @@ function toggleCompare(id: string) {
           <div class="hci-product-insights">
             <div>
               <span>功效卖点</span>
-              <div class="hci-compact-tags">
-                <Tag
-                  v-for="benefit in product.benefits"
-                  :key="benefit"
-                  color="green"
-                >
-                  {{ benefit }}
-                </Tag>
-                <span v-if="!product.benefits.length" class="hci-subtle"
-                  >待提取</span
-                >
-              </div>
+              <CompactTags :items="product.benefits" label="商品功效卖点" color="green" />
             </div>
             <div>
               <span>成分分析</span>
@@ -492,6 +488,8 @@ function toggleCompare(id: string) {
     </div>
     <Table
       v-else
+      class="hci-resource-table"
+      :row-selection="rowSelection"
       :data-source="pagedRows"
       row-key="id"
       size="middle"
