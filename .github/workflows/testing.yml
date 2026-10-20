@@ -36,6 +36,10 @@ jobs:
           pnpm exec vitest run tests/product-decisions.test.ts tests/public-content.test.ts tests/platform-product-selection.test.ts tests/keyword-selection.test.ts tests/article-details.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
+      - name: Task deduplication, delta sync and monitor tests (no provider calls)
+        run: |
+          node --test server/keyword-submit.test.mjs server/workspace-snapshot.test.mjs
+          pnpm exec vitest run tests/task-list.test.ts tests/cloud-workspace.test.ts
       - name: Build server frontend
         env:
           VITE_HCI_SERVER: 'true'

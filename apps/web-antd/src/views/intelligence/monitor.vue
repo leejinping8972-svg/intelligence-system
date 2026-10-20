@@ -1,36 +1,72 @@
 <script setup lang="ts">
 import type { Task } from './data';
+import type { TaskGroup } from './task-list';
 
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import {
+  Alert,
   Button,
   Drawer,
   Empty,
   message,
   Select,
+  Spin,
   Switch,
   Table,
   Tabs,
-  Tag,
 } from 'ant-design-vue';
 
 import {
   cancelCloudJob,
+  cloudRequest,
   cloudWorkspace,
   retryCloudTrends,
   startCloudSync,
   syncCloudWorkspace,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import ResearchTaskList from './components/ResearchTaskList.vue';
 import TaskProgress from './components/TaskProgress.vue';
 import { audit, inMarket, marketName, state } from './data';
+import { groupTasks } from './task-list';
 startCloudSync();
 const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
-const selected = ref<Task>();
+const selected = ref<TaskGroup>();
+const detailsLoading = ref(false);
+const detailsError = ref('');
+let detailsSequence = 0;
+async function showDetails(task: TaskGroup) {
+  selected.value = task;
+  detailsError.value = '';
+  const sequence = ++detailsSequence;
+  detailsLoading.value = false;
+  if (!task.cloudJobId) return;
+  detailsLoading.value = true;
+  try {
+    const result = await cloudRequest<{ tasks: Task[] }>('server_task_detail', {
+      jobId: task.cloudJobId,
+    });
+    if (sequence === detailsSequence && selected.value?.id === task.id)
+      selected.value = groupTasks(result.tasks)[0];
+  } catch (error) {
+    if (sequence === detailsSequence)
+      detailsError.value =
+        error instanceof Error ? error.message : '详情读取失败';
+  } finally {
+    if (sequence === detailsSequence) detailsLoading.value = false;
+  }
+}
+watch(
+  () => cloudWorkspace.taskRevision,
+  () => {
+    if (selected.value && !detailsLoading.value)
+      void showDetails(selected.value);
+  },
+);
 const retrying = ref('');
 async function retryTrends(task: Task) {
   if (!task.cloudJobId || retrying.value) return;
@@ -59,11 +95,7 @@ const monitors = computed(() =>
     return product ? inMarket(product.market) : false;
   }),
 );
-const tasks = computed(() =>
-  state.tasks
-    .filter((t) => inMarket(t.market))
-    .sort((a, b) => Date.parse(b.created) - Date.parse(a.created)),
-);
+const tasks = computed(() => groupTasks(state.tasks, state.market));
 function isLiveTask(task: Task) {
   return (
     task.mode === 'live' ||
@@ -72,6 +104,8 @@ function isLiveTask(task: Task) {
   );
 }
 function run(task: Task) {
+  const original = state.tasks.find((t) => t.id === task.id);
+  if (original) task = original;
   task.status = 'partial';
   task.steps = [
     '演示配置校验通过',
@@ -92,6 +126,8 @@ async function cancel(task: Task) {
     }
     return;
   }
+  const original = state.tasks.find((t) => t.id === task.id);
+  if (original) original.status = 'cancelled';
   task.status = 'cancelled';
   audit('取消演示任务', task.title, task.market);
 }
@@ -164,8 +200,8 @@ const statuses = {
                   {{
                     state.products.find((p) => p.id === record.productId)?.brand
                   }}
-                </p> </template
-              ><template v-if="column.key === 'frequency'">
+                </p>
+</template><template v-if="column.key === 'frequency'">
                 <Select
                   v-model:value="record.frequency"
                   :options="
@@ -183,10 +219,10 @@ const statuses = {
                         ?.market,
                     )
                   "
-                /> </template
-              ><template v-if="column.key === 'fields'">
-                价格 / 库存状态 / 配方 </template
-              ><template v-if="column.key === 'status'">
+                />
+</template><template v-if="column.key === 'fields'">
+                价格 / 库存状态 / 配方
+</template><template v-if="column.key === 'status'">
                 <Switch
                   v-model:checked="record.enabled"
                   checked-children="开启"
@@ -202,89 +238,26 @@ const statuses = {
                 />
               </template>
             </template>
-          </Table> </Tabs.TabPane
-        ><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
-          <Empty v-if="!tasks.length" description="暂无任务" />
-          <div
-            v-for="task in tasks"
-            :key="task.id"
-            class="hci-source-card"
-            style="flex-wrap: wrap"
-          >
-            <div class="hci-source-info">
-              <h3>{{ task.title }}</h3>
-              <p class="hci-subtle">
-                {{ marketName(task.market) }} · {{ task.created }}
-              </p>
-            </div>
-            <Tag
-              :color="
-                task.status === 'partial'
-                  ? 'orange'
-                  : task.status === 'running'
-                    ? 'blue'
-                    : task.status === 'completed'
-                      ? 'green'
-                      : 'default'
-              "
-            >
-              {{ statuses[task.status] }} </Tag
-            ><Button size="small" @click="selected = task">
-              查看进度与详情 </Button
-            ><Button
-              v-if="task.status === 'queued' && !isLiveTask(task)"
-              size="small"
-              type="primary"
-              @click="run(task)"
-            >
-              模拟执行 </Button
-            ><Button
-              v-if="
-                task.status === 'queued' ||
-                (task.cloudJobId && task.status === 'running')
-              "
-              size="small"
-              @click="cancel(task)"
-            >
-              取消 </Button
-            ><Button
-              v-if="
-                (task.status === 'cancelled' || task.status === 'partial') &&
-                !isLiveTask(task)
-              "
-              size="small"
-              @click="
+          </Table>
+</Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
+          <ResearchTaskList
+            :tasks="tasks"
+            :retrying="retrying"
+            @details="showDetails"
+            @cancel="cancel"
+            @run="run"
+            @trends="retryTrends"
+            @research="router.push('/research?new=1')"
+            @retry="
+              (task) => {
                 task.status = 'queued';
+                const original = state.tasks.find((t) => t.id === task.id);
+                if (original) original.status = 'queued';
                 audit('重试演示任务', task.title, task.market);
-              "
-            >
-              重试 </Button
-            ><Button
-              v-if="
-                (task.status === 'cancelled' || task.status === 'partial') &&
-                isLiveTask(task)
-              "
-              size="small"
-              @click="router.push('/research?new=1')"
-            >
-              重新研究
-            </Button>
-            <Button
-              v-if="
-                task.cloudJobId &&
-                task.progress?.terminal &&
-                task.progress.failed > 0
-              "
-              size="small"
-              :loading="retrying === task.cloudJobId"
-              :disabled="!!retrying && retrying !== task.cloudJobId"
-              @click="retryTrends(task)"
-            >
-              仅重试未完成趋势
-            </Button>
-            <TaskProgress :task="task" />
-          </div> </Tabs.TabPane
-        ><Tabs.TabPane key="audit" :tab="`操作记录（${auditRows.length}）`">
+              }
+            "
+          />
+</Tabs.TabPane><Tabs.TabPane key="audit" :tab="`操作记录（${auditRows.length}）`">
           <Empty
             v-if="!auditRows.length"
             description="收藏、审核或修改监控后，会在这里留下记录"
@@ -307,9 +280,28 @@ const statuses = {
       :open="!!selected"
       title="研究任务详情"
       :width="960"
-      @close="selected = undefined"
+      @close="
+        selected = undefined;
+        detailsSequence++;
+        detailsLoading = false;
+      "
     >
       <template v-if="selected">
+        <Alert
+          v-if="detailsError"
+          type="error"
+          :message="detailsError"
+          show-icon
+        />
+        <Button v-if="detailsError" @click="showDetails(selected)">
+          重新读取详情
+        </Button>
+        <Spin v-if="detailsLoading" tip="正在读取任务详情" />
+        <p class="hci-subtle">
+          覆盖市场：{{
+            selected.markets.map(marketName).join(' / ')
+          }}；进度为整项任务合计。
+        </p>
         <h2 style="font-size: 22px">{{ selected.title }}</h2>
         <p class="hci-subtle" style="margin: 12px 0">
           {{ selected.created }} · {{ statuses[selected.status] }}
@@ -332,8 +324,7 @@ const statuses = {
           :key="i"
           class="hci-market-row"
         >
-          <span class="hci-market-code">{{ i + 1 }}</span
-          ><span style="flex: 1">{{ step }}</span>
+          <span class="hci-market-code">{{ i + 1 }}</span><span style="flex: 1">{{ step }}</span>
         </div>
         <div v-if="isLiveTask(selected)" class="hci-evidence">
           本任务已调用已配置的真实采集服务。上方步骤会保留实际返回数量、失败原因和限流状态；外部费用以任务配置为准。

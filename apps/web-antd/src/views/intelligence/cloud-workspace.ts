@@ -1,9 +1,10 @@
 import type { Keyword, Task } from './data';
 import type { KeywordResearchInput } from './keyword-research';
 
-import { reactive, watch } from 'vue';
+import { reactive, ref, watch } from 'vue';
 
 import { state } from './data';
+import { RequestFlight } from './request-flight';
 import { adminRequest, leaveSession, serverMode, session } from './session';
 import { isWorkspaceSyncKey } from './workspace-sync-keys';
 
@@ -14,6 +15,7 @@ export const cloudWorkspace = reactive({
   error: '',
   lastSynced: '',
   active: 0,
+  taskRevision: '',
 });
 const known = new Map<string, string>();
 const pending = new Map<string, Record<string, unknown>>();
@@ -53,18 +55,29 @@ function businessEntries() {
   }
   return entries;
 }
-let applying = false;
+const applying = ref(false);
+let revisions: Record<string, string> = {};
+const syncFlight = new RequestFlight<void>();
+const submissionFlights = new Map<string, Promise<ResearchSubmission>>();
+interface ResearchSubmission {
+  jobId: string;
+  tasks: Task[];
+  acceptedKeywords?: number;
+  reused?: boolean;
+}
 let clearing = false;
 let initialized = '';
 let pendingSubmission: undefined | { signature: string; requestId: string };
 watch(
   () =>
-    [...businessEntries()].map(([key, value]) => ({
-      key,
-      value: JSON.stringify(value),
-    })),
+    applying.value
+      ? null
+      : [...businessEntries()].map(([key, value]) => ({
+          key,
+          value: JSON.stringify(value),
+        })),
   (entries) => {
-    if (applying || !cloudWorkspace.ready) return;
+    if (!entries || applying.value || !cloudWorkspace.ready) return;
     const current = new Map(entries.map((entry) => [entry.key, entry.value]));
     for (const { key, value } of entries)
       if (businessKnown.get(key) !== value)
@@ -115,19 +128,24 @@ export async function cloudRequest<T>(
 }
 watch(
   () =>
-    state.keywords.map((record) => ({
-      id: record.id,
-      patch: editable(record),
-    })),
+    applying.value
+      ? null
+      : state.keywords.map((record) => ({
+          id: record.id,
+          patch: editable(record),
+        })),
   (values) => {
-    if (applying) return;
+    if (!values || applying.value) return;
     for (const { id, patch } of values)
       if (known.has(id) && known.get(id) !== JSON.stringify(patch))
         pending.set(id, patch);
   },
   { deep: true, flush: 'sync' },
 );
-export async function syncCloudWorkspace() {
+export function syncCloudWorkspace() {
+  return syncFlight.run(runCloudSync);
+}
+async function runCloudSync() {
   if (
     cloudWorkspace.syncing ||
     clearing ||
@@ -150,7 +168,7 @@ export async function syncCloudWorkspace() {
       const local = state.keywords.filter(
         (record) => record.dataNature !== 'demo',
       );
-      if (local.length > 1000)
+      if (!serverMode && local.length > 1000)
         throw new Error('本机超过1000个关键词，请先导出备份并分批迁移');
       const migration = serverMode
         ? { initialized: false }
@@ -175,8 +193,9 @@ export async function syncCloudWorkspace() {
           importOnly: true,
         });
       initialized = scope;
+      revisions = {};
     }
-    if (pending.size) {
+    if (pending.size > 0) {
       const updates = [...pending]
         .slice(0, 100)
         .map(([id, patch]) => ({ id, patch }));
@@ -187,7 +206,7 @@ export async function syncCloudWorkspace() {
           pending.delete(id);
       }
     }
-    if (businessPending.size) {
+    if (businessPending.size > 0) {
       const entries = [...businessPending]
         .slice(0, 1000)
         .map(([key, value]) => ({ key, value }));
@@ -199,85 +218,121 @@ export async function syncCloudWorkspace() {
         else businessKnown.set(key, JSON.stringify(value));
       }
     }
-    const business = await cloudRequest<{
-      entries: Array<{ key: string; value: unknown }>;
-    }>('server_workspace_snapshot');
-    const snapshot = await cloudRequest<{
-      keywords: Keyword[];
-      tasks: Task[];
-      generatedAt: string;
-    }>('server_snapshot');
-    applying = true;
+    const snapshot = serverMode
+      ? await cloudRequest<{
+          business?: { entries: Array<{ key: string; value: unknown }> };
+          keywords?: Keyword[];
+          tasks?: Task[];
+          revisions: Record<string, string>;
+          generatedAt: string;
+        }>('server_workspace_delta', { revisions })
+      : await Promise.all([
+          cloudRequest<{ entries: Array<{ key: string; value: unknown }> }>(
+            'server_workspace_snapshot',
+          ),
+          cloudRequest<{
+            keywords: Keyword[];
+            tasks: Task[];
+            generatedAt: string;
+          }>('server_snapshot'),
+        ]).then(([business, snapshot]) => ({
+          ...snapshot,
+          business,
+          revisions: {} as Record<string, string>,
+        }));
+    const business = snapshot.business;
+    applying.value = true;
+
     try {
-      const entries = new Map(
-        business.entries
-          .filter(({ key }) => isWorkspaceSyncKey(key))
-          .map(({ key, value }) => [key, value]),
-      );
-      businessKnown.clear();
-      for (const [key, value] of entries)
-        if (
-          !serverMode ||
-          session.user?.role === 'admin' ||
-          !/^(branding|preferences):/.test(key)
-        )
-          businessKnown.set(key, JSON.stringify(value));
-      for (const [key, value] of businessPending) {
-        if (value === null) entries.delete(key);
-        else entries.set(key, value);
+      if (business) {
+        const entries = new Map(
+          business.entries
+            .filter(({ key }) => isWorkspaceSyncKey(key))
+            .map(({ key, value }) => [key, value]),
+        );
+        businessKnown.clear();
+        for (const [key, value] of entries)
+          if (
+            !serverMode ||
+            session.user?.role === 'admin' ||
+            !/^(branding|preferences):/.test(key)
+          )
+            businessKnown.set(key, JSON.stringify(value));
+        for (const [key, value] of businessPending) {
+          if (value === null) entries.delete(key);
+          else entries.set(key, value);
+        }
+        for (const collection of collections) {
+          const values = [...entries]
+            .filter(([key]) => key.startsWith(`${collection}:`))
+            .map(([, value]) => value);
+          (state[collection] as unknown[]).splice(
+            0,
+            state[collection].length,
+            ...values,
+          );
+        }
+        for (const [key, value] of entries)
+          if (key.startsWith('legacyTasks:')) {
+            const task = value as Task;
+            const current = state.tasks.find((item) => item.id === task.id);
+            if (current) Object.assign(current, task);
+            else state.tasks.push(task);
+          }
+        if (entries.has('branding:main'))
+          Object.assign(state.branding, entries.get('branding:main'));
+        if (serverMode && state.branding.logo === '/hci-logo.svg')
+          state.branding.logo = `${import.meta.env.BASE_URL}hci-logo.svg`;
+        if (entries.has('preferences:main'))
+          Object.assign(state.settings, entries.get('preferences:main'));
       }
-      for (const collection of collections) {
-        const values = [...entries]
-          .filter(([key]) => key.startsWith(`${collection}:`))
-          .map(([, value]) => value);
-        (state[collection] as unknown[]).splice(
-          0,
-          state[collection].length,
-          ...values,
+      if (snapshot.keywords) {
+        const currentKeywords = new Map(
+          state.keywords.map((record) => [record.id, record]),
+        );
+        const next = snapshot.keywords.map((record) => {
+          const local = currentKeywords.get(record.id);
+          const merged = {
+            ...record,
+            ...pending.get(record.id),
+          } as Keyword;
+          known.set(record.id, JSON.stringify(editable(record)));
+          if (local) {
+            Object.assign(local, merged);
+            return local;
+          }
+          return merged;
+        });
+        state.keywords.splice(0, state.keywords.length, ...next);
+      }
+      if (snapshot.tasks) {
+        cloudWorkspace.taskRevision =
+          snapshot.revisions.tasks || snapshot.generatedAt;
+        const currentTasks = new Map(
+          state.tasks.map((task) => [task.id, task]),
+        );
+        for (const task of snapshot.tasks) {
+          const current = currentTasks.get(task.id);
+          if (current) Object.assign(current, task);
+          else state.tasks.unshift(task);
+        }
+        const taskIds = new Set(snapshot.tasks.map((task) => task.id));
+        state.tasks = state.tasks.filter(
+          (task) => !task.cloudJobId || taskIds.has(task.id),
         );
       }
-      for (const [key, value] of entries)
-        if (key.startsWith('legacyTasks:')) {
-          const task = value as Task;
-          const current = state.tasks.find((item) => item.id === task.id);
-          if (current) Object.assign(current, task);
-          else state.tasks.push(task);
-        }
-      if (entries.has('branding:main'))
-        Object.assign(state.branding, entries.get('branding:main'));
-      if (serverMode && state.branding.logo === '/hci-logo.svg')
-        state.branding.logo = `${import.meta.env.BASE_URL}hci-logo.svg`;
-      if (entries.has('preferences:main'))
-        Object.assign(state.settings, entries.get('preferences:main'));
-      const next = snapshot.keywords.map((record) => {
-        const local = state.keywords.find((item) => item.id === record.id);
-        const merged = {
-          ...record,
-          ...(pending.get(record.id) || {}),
-        } as Keyword;
-        known.set(record.id, JSON.stringify(editable(record)));
-        if (local) {
-          Object.assign(local, merged);
-          return local;
-        }
-        return merged;
-      });
-      state.keywords.splice(0, state.keywords.length, ...next);
-      for (const task of snapshot.tasks) {
-        const current = state.tasks.find((item) => item.id === task.id);
-        if (current) Object.assign(current, task);
-        else state.tasks.unshift(task);
-      }
-      const taskIds = new Set(snapshot.tasks.map((task) => task.id));
-      state.tasks = state.tasks.filter(
-        (task) => !task.cloudJobId || taskIds.has(task.id),
-      );
+      revisions = snapshot.revisions;
     } finally {
-      applying = false;
+      applying.value = false;
     }
-    cloudWorkspace.active = snapshot.tasks.filter((task) =>
-      ['queued', 'running'].includes(task.status),
-    ).length;
+    cloudWorkspace.active = new Set(
+      state.tasks
+        .filter(
+          (task) =>
+            task.cloudJobId && ['queued', 'running'].includes(task.status),
+        )
+        .map((task) => task.cloudJobId),
+    ).size;
     cloudWorkspace.ready = true;
     cloudWorkspace.error = '';
     cloudWorkspace.lastSynced = snapshot.generatedAt;
@@ -289,7 +344,21 @@ export async function syncCloudWorkspace() {
     cloudWorkspace.syncing = false;
   }
 }
-export async function submitCloudResearch(
+export function submitCloudResearch(
+  input: Omit<KeywordResearchInput, 'signal'>,
+  existingRecords?: Keyword[],
+) {
+  const key = JSON.stringify({ input, existingRecords });
+  const pending = submissionFlights.get(key);
+  if (pending) return pending;
+  if (cloudWorkspace.submitting)
+    return Promise.reject(new Error('正在提交另一项任务，请稍后再试'));
+  const result = doSubmitCloudResearch(input, existingRecords);
+  submissionFlights.set(key, result);
+  void result.finally(() => submissionFlights.delete(key)).catch(() => {});
+  return result;
+}
+async function doSubmitCloudResearch(
   input: Omit<KeywordResearchInput, 'signal'>,
   existingRecords?: Keyword[],
 ) {
@@ -313,11 +382,7 @@ export async function submitCloudResearch(
     pendingSubmission = { signature, requestId: crypto.randomUUID() };
   cloudWorkspace.submitting = true;
   try {
-    const result = await cloudRequest<{
-      jobId: string;
-      tasks: Task[];
-      acceptedKeywords?: number;
-    }>('server_submit', {
+    const result = await cloudRequest<ResearchSubmission>('server_submit', {
       input: payload,
       requestId: pendingSubmission.requestId,
     });
@@ -334,7 +399,14 @@ export async function submitCloudResearch(
       if (!state.tasks.some((item) => item.id === task.id))
         state.tasks.unshift(task);
     cloudWorkspace.ready = true;
-    cloudWorkspace.active += result.tasks.length;
+    cloudWorkspace.active = new Set(
+      state.tasks
+        .filter(
+          (task) =>
+            task.cloudJobId && ['queued', 'running'].includes(task.status),
+        )
+        .map((task) => task.cloudJobId),
+    ).size;
     cloudWorkspace.error = '';
     void syncCloudWorkspace().catch(() => {});
     return result;
@@ -358,7 +430,7 @@ export async function submitCloudEnrichment(
   if (cloudWorkspace.error) throw new Error(cloudWorkspace.error);
   const signature = JSON.stringify({
     kind,
-    keywordIds: [...keywordIds].sort(),
+    keywordIds: keywordIds.toSorted(),
     maxSites,
   });
   if (enrichmentRequest?.signature !== signature)
@@ -397,11 +469,21 @@ export async function clearCloudKeywords() {
     clearing = false;
   }
 }
+let lastPoll = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
 export function startCloudSync() {
   if (timer) return;
   void syncCloudWorkspace().catch(() => {});
-  timer = setInterval(() => void syncCloudWorkspace().catch(() => {}), 5000);
+  timer = setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    const idle =
+      cloudWorkspace.active === 0 &&
+      pending.size === 0 &&
+      businessPending.size === 0;
+    if (idle && Date.now() - lastPoll < 30_000) return;
+    lastPoll = Date.now();
+    void syncCloudWorkspace().catch(() => {});
+  }, 5000);
 }
 export function stopCloudSync() {
   if (timer) clearInterval(timer);

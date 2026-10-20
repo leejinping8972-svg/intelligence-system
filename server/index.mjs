@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { isWorkspaceSyncKey } from './workspace-sync-keys.mjs';
 import { createServer } from 'node:http';
 import process from 'node:process';
@@ -21,6 +21,8 @@ import { retryRecords } from './job-progress.mjs';
 import { semrushAction } from './semrush-config.mjs';
 import { youtubeAction } from './youtube-config.mjs';
 import { publicBranding } from './public-branding.mjs';
+import { workspaceSnapshot } from './workspace-snapshot.mjs';
+import { submitKeywordJob } from './keyword-submit.mjs';
 import { submitEnrichment, cancelEnrichment } from './enrichment-jobs.mjs';
 import { migrate, pool, saveKeyword } from './store.mjs';
 
@@ -111,6 +113,23 @@ async function api(input, user) {
               : row.value,
           })),
       };
+    }
+    case 'server_workspace_delta':
+      return workspaceSnapshot(input, {
+        pool,
+        sql,
+        jobTasks,
+        scoreSite,
+        isWorkspaceSyncKey,
+      });
+    case 'server_task_detail': {
+      if (!uuid.test(input.jobId)) throw new Error('任务编号无效');
+      const { rows } = await pool.query(
+        'SELECT * FROM research_jobs WHERE id=$1',
+        [input.jobId],
+      );
+      if (!rows[0]) throw new Error('任务不存在或已移除');
+      return { tasks: jobTasks(rows[0]) };
     }
     case 'server_workspace_sync': {
       if (!Array.isArray(input.entries) || input.entries.length > 1000)
@@ -255,23 +274,15 @@ async function api(input, user) {
         if (!rows.length)
           throw new Error('请先在数据源与设置中配置 Semrush MCP');
       }
-      const active = await pool.query(
-        "SELECT count(*)::integer AS total FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
-      );
-      if (active.rows[0].total >= 20)
-        throw new Error('后台已有20个待完成任务，请稍后提交');
-      const id = randomUUID();
-      await pool.query(
-        'INSERT INTO research_jobs(id,request_id,input,checkpoint) VALUES($1,$2,$3,$4)',
-        [id, input.requestId, value, { submittedAt: new Date().toISOString() }],
-      );
-      const { rows } = await pool.query(
-        'SELECT * FROM research_jobs WHERE id=$1',
-        [id],
-      );
+      const { job, reused } = await submitKeywordJob(value, input.requestId, {
+        pool,
+        lock,
+        unlock,
+      });
       return {
-        jobId: rows[0].id,
-        tasks: jobTasks(rows[0]),
+        jobId: job.id,
+        tasks: jobTasks(job),
+        reused,
         acceptedKeywords: value.existingRecords?.length ?? value.limit,
       };
     }
@@ -487,6 +498,8 @@ const server = createServer(async (request, response) => {
             'server_snapshot',
             'server_status',
             'server_workspace_snapshot',
+            'server_workspace_delta',
+            'server_task_detail',
           ].includes(input.action),
         );
     if (input.action?.startsWith('auth_')) {
