@@ -310,6 +310,10 @@ export interface Task {
     };
     waiting?: number;
     previousRequests?: number;
+    browserPages?: number;
+    browserPageLimit?: number;
+    paidRequests?: number;
+    paidRequestLimit?: number;
     nextRunAt?: string;
     rows?: Array<{
       id: string;

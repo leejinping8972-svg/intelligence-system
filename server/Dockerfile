@@ -10,7 +10,9 @@ RUN server/node_modules/.bin/esbuild server/model.ts --bundle --platform=node --
 RUN server/node_modules/.bin/esbuild server/collector.ts --bundle --platform=node --format=esm --outfile=server/collector.js
 
 FROM node:22-alpine
+RUN apk add --no-cache chromium
 ENV NODE_ENV=production
+ENV PRODUCT_BROWSER_EXECUTABLE=/usr/bin/chromium
 WORKDIR /app
 COPY --from=build /build/server/package*.json ./
 RUN npm ci --omit=dev --ignore-scripts

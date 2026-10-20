@@ -51,10 +51,21 @@ export function landingUrl(value) {
     return null;
   }
 }
-export async function fetchPublicPage(value, depth = 0, types = ['text/html']) {
+export async function fetchPublicPage(
+  value,
+  depth = 0,
+  types = ['text/html'],
+  options = {},
+) {
   const checked = landingUrl(value);
   if (!checked || depth > 5) throw new Error('落地页不是可验证的公开官网地址');
   const u = new URL(checked);
+  if (options.allowedDomain) {
+    const host = u.hostname.toLowerCase().replace(/^www\./, ''),
+      domain = options.allowedDomain.toLowerCase().replace(/^www\./, '');
+    if (host !== domain && !host.endsWith(`.${domain}`))
+      throw new Error('页面跳转到其他域名，未访问');
+  }
   const addresses = await lookup(u.hostname.replace(/^\[|\]$/g, ''), {
     all: true,
   });
@@ -119,6 +130,7 @@ export async function fetchPublicPage(value, depth = 0, types = ['text/html']) {
           resolve({
             html: Buffer.concat(chunks).toString('utf8'),
             url: u.toString(),
+            contentType: String(res.headers['content-type'] || ''),
           }),
         );
         res.on('error', reject);
@@ -132,6 +144,8 @@ export async function fetchPublicPage(value, depth = 0, types = ['text/html']) {
     req.on('error', reject);
   });
   return result.redirect
-    ? fetchPublicPage(result.redirect, depth + 1, types)
+    ? options.manualRedirect
+      ? result
+      : fetchPublicPage(result.redirect, depth + 1, types, options)
     : result;
 }

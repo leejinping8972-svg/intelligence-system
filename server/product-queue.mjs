@@ -3,6 +3,10 @@ import { pool, putDocument } from './database.mjs';
 import { saveCheckpoint } from './store.mjs';
 import { fetchPublicPage } from './safe-web.mjs';
 import {
+  fetchFallbackPage,
+  renderedPageNeeded,
+} from './site-page-fallbacks.mjs';
+import {
   extractJsonLdProducts,
   productFromJsonLd,
   productPageUrls,
@@ -102,8 +106,12 @@ function cleanProductQueue(work, site, addFallbacks = false) {
   ].filter(
     (u) =>
       !work.visited.includes(u) &&
-      !rejected.has(u) &&
-      !(work.catalogUnavailable && jsonCatalog(u)),
+      (!rejected.has(u) || work.methods?.[u] === 'hosted') &&
+      !(
+        work.catalogUnavailable &&
+        jsonCatalog(u) &&
+        work.methods?.[u] !== 'hosted'
+      ),
   );
 }
 export function initialProductWork(site) {
@@ -241,6 +249,10 @@ export function productProgress(cp, input) {
     requests: cp.requests || 0,
     requestLimit: input.maxRequests,
     previousRequests: cp.previousRequests || 0,
+    browserPages: cp.browserPages || 0,
+    browserPageLimit: input.maxBrowserPages || 0,
+    paidRequests: cp.paidRequests || 0,
+    paidRequestLimit: input.maxPaidRequests || 0,
     waiting: works.filter((w) => w.status === 'retry_wait').length,
     nextRunAt: cp.nextRunAt ? at(cp.nextRunAt) : '',
     rows: input.records.map((s, i) => {
@@ -440,6 +452,7 @@ export async function runProductsJob(job, overrides = {}) {
     ).rows[0]?.value;
   const io = {
     fetchPage: fetchPublicPage,
+    fetchFallback: fetchFallbackPage,
     saveCheckpoint,
     mergeBusiness,
     now: () => Date.now(),
@@ -491,6 +504,30 @@ export async function runProductsJob(job, overrides = {}) {
     perSite =
       v.maxRequestsPerSite ||
       Math.max(1, Math.ceil(v.maxRequests / v.records.length));
+  const browserLimit = v.collectionPolicyVersion ? v.maxBrowserPages || 0 : 0;
+  const paidLimit = v.collectionPolicyVersion ? v.maxPaidRequests || 0 : 0;
+  function fallback(
+    work,
+    url,
+    method,
+    until = io.now() + productPacing(io.random),
+  ) {
+    if (method === 'hosted' && (cp.paidRequests || 0) >= paidLimit)
+      return false;
+    if (method === 'browser' && (cp.browserPages || 0) >= browserLimit)
+      return false;
+    if (work.methodAttempts?.[url]?.includes(method)) return false;
+    (work.methods ||= {})[url] = method;
+    work.urls = [url, ...work.urls.filter((u) => u !== url)];
+    work.visited = work.visited.filter((u) => u !== url);
+    work.status = 'retry_wait';
+    work.nextRunAt = until;
+    work.message =
+      method === 'browser'
+        ? '动态页面待浏览器渲染；按站点间隔执行'
+        : '直连未成功，冷却后按本任务预算尝试托管备用';
+    return true;
+  }
   async function patch(i) {
     const w = cp.siteWork[i],
       collection = {
@@ -538,9 +575,12 @@ export async function runProductsJob(job, overrides = {}) {
         status: 'unknown',
         message: '服务中断，免费网页请求结果未知；稍后再试',
       });
-      w.status = 'retry_wait';
-      w.nextRunAt = io.now() + 60000;
-      w.message = '免费网页请求结果未知，等待恢复';
+      w.status = cp.inFlight.method === 'hosted' ? 'partial' : 'retry_wait';
+      w.nextRunAt = cp.inFlight.method === 'hosted' ? 0 : io.now() + 60000;
+      w.message =
+        cp.inFlight.method === 'hosted'
+          ? '托管请求结果未知，已保留次数，不自动重放；已有商品保留'
+          : '免费网页请求结果未知，等待恢复';
       cp.inFlight = null;
     }
     for (const [i, w] of cp.siteWork.entries())
@@ -596,19 +636,42 @@ export async function runProductsJob(job, overrides = {}) {
       return save();
     }
     const url = w.urls[0];
+    const method = w.methods?.[url] || 'direct';
+    if (
+      (method === 'browser' && (cp.browserPages || 0) >= browserLimit) ||
+      (method === 'hosted' && (cp.paidRequests || 0) >= paidLimit)
+    ) {
+      w.status = 'partial';
+      w.nextRunAt = 0;
+      w.message = '备用页面预算已用完，已有商品保留';
+      await patch(index);
+      return save();
+    }
     w.requests++;
     cp.requests++;
     w.attempts[url] = (w.attempts[url] || 0) + 1;
-    cp.inFlight = { index, url, at: at(io.now()), attempt: w.attempts[url] };
+    if (method === 'browser') cp.browserPages = (cp.browserPages || 0) + 1;
+    if (method === 'hosted') cp.paidRequests = (cp.paidRequests || 0) + 1;
+    ((w.methodAttempts ||= {})[url] ||= []).push(method);
+    cp.inFlight = {
+      index,
+      url,
+      at: at(io.now()),
+      attempt: w.attempts[url],
+      method,
+    };
     await io.saveCheckpoint(job, cp);
     let page, failure;
     try {
-      page = await io.fetchPage(url, 0, [
-        'text/html',
-        'application/xml',
-        'text/xml',
-        'application/json',
-      ]);
+      page =
+        method !== 'direct'
+          ? await io.fetchFallback(url, site, method)
+          : await io.fetchPage(
+              url,
+              0,
+              ['text/html', 'application/xml', 'text/xml', 'application/json'],
+              { allowedDomain: site.domain },
+            );
     } catch (e) {
       failure = e;
     }
@@ -644,17 +707,27 @@ export async function runProductsJob(job, overrides = {}) {
         const until =
           io.now() + cooldown + Math.floor(cooldown * 0.1 * io.random());
         await io.setHostGate(site, { until, reason: 'rate_limit' });
-        if (w.consecutive429 >= 3 || !w.urls.length) {
+        if (method === 'hosted') {
+          w.status = 'partial';
+          w.nextRunAt = 0;
+          w.message = '托管备用仍受限，停止本站，不自动重复收费；已有商品保留';
+        } else if (w.consecutive429 >= 3 || !w.urls.length) {
           w.status = 'blocked';
           w.nextRunAt = 0;
           w.message =
             '官网HTTP 429：多个公开入口被拒或已无可用入口，本站停止；已有商品保留';
+          fallback(w, url, 'hosted', until);
         } else {
           w.status = 'retry_wait';
           w.nextRunAt = until;
           w.message =
             '官网HTTP 429：已跳过被拒地址，冷却后尝试其他公开入口；不重复请求同一被拒地址';
         }
+      } else if (method === 'hosted') {
+        w.status = 'partial';
+        w.nextRunAt = 0;
+        w.failures++;
+        w.message = `${failure.message}；本站托管尝试停止，不自动重复收费`;
       } else if (retry && w.attempts[url] <= 3) {
         w.status = 'retry_wait';
         w.nextRunAt = io.now() + delay + Math.floor(delay * 0.1 * io.random());
@@ -665,6 +738,9 @@ export async function runProductsJob(job, overrides = {}) {
         w.nextRunAt = 0;
         w.failures++;
         w.message = `官网HTTP ${status}，需人工处理；其他站点继续`;
+        const until = io.now() + 1800000;
+        await io.setHostGate(site, { until, reason: 'forbidden' });
+        fallback(w, url, 'hosted', until);
       } else {
         w.failures++;
         w.visited.push(url);
@@ -672,6 +748,7 @@ export async function runProductsJob(job, overrides = {}) {
         w.status = 'pending';
         w.nextRunAt = io.now() + productPacing(io.random);
         w.message = failure.message;
+        if (method === 'browser') fallback(w, url, 'hosted');
         if (jsonCatalog(url)) {
           w.catalogUnavailable = true;
           cleanProductQueue(w, site, true);
@@ -730,6 +807,9 @@ export async function runProductsJob(job, overrides = {}) {
           w.noProductPages++;
       }
       const before = w.productIds.length;
+      if (method !== 'direct')
+        for (const p of list)
+          p.extractionMethod = `${p.extractionMethod || '官网商品字段提取'}；采集方式：${method === 'browser' ? '浏览器渲染' : 'Firecrawl托管备用'}`;
       await persistProducts(list, site, w, cp, io);
       entry.products = w.productIds.length - before;
       w.visited.push(url);
@@ -745,7 +825,18 @@ export async function runProductsJob(job, overrides = {}) {
       w.status = 'pending';
       w.nextRunAt = io.now() + productPacing(io.random);
       w.message = `已保存${w.productIds.length}件商品；本页新增${entry.products}件`;
-      if (w.noProductPages >= 4 && !w.productIds.length) {
+      if (method !== 'direct')
+        w.message = `${method === 'browser' ? '浏览器渲染' : '托管备用'}：${w.message}`;
+      if (page.resourceRequests) entry.resourceRequests = page.resourceRequests;
+      if (method === 'direct' && renderedPageNeeded(page, url, list, links))
+        fallback(w, url, 'browser');
+      else if (method === 'browser' && !list.length && !links.length)
+        fallback(w, url, 'hosted');
+      if (
+        w.noProductPages >= 4 &&
+        !w.productIds.length &&
+        w.status !== 'retry_wait'
+      ) {
         w.status = 'partial';
         w.nextRunAt = 0;
         w.message =

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { pool, lock, unlock } from './database.mjs';
 import { inferCategory } from './collector.js';
+import { collectionBudget, fetchConfiguration } from './site-fetch-config.mjs';
 export function siteHostAllowed(host, domain) {
   const root = String(domain)
     .toLowerCase()
@@ -109,7 +110,13 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     dataNature: 'collected',
   };
 }
-export async function submitProducts(input) {
+export async function submitProducts(input, user) {
+  const fallbackBudget = collectionBudget(input, user);
+  if (fallbackBudget.maxPaidRequests > 0) {
+    const config = await fetchConfiguration();
+    if (!config.paidEnabled || !config.apiKey)
+      throw new Error('请先在数据源与设置中配置并启用托管备用');
+  }
   if (
     !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(input.requestId) ||
     !Array.isArray(input.siteIds) ||
@@ -182,6 +189,7 @@ export async function submitProducts(input) {
           maxProducts,
           maxRequests,
           maxRequestsPerSite: perSite,
+          ...fallbackBudget,
         },
         { submittedAt: new Date().toISOString() },
       ],
