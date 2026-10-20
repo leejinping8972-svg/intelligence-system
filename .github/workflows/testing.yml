@@ -35,6 +35,10 @@ jobs:
           pnpm exec vitest run tests/product-decisions.test.ts tests/public-content.test.ts tests/platform-product-selection.test.ts tests/keyword-selection.test.ts tests/article-details.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
+      - name: Daily keyword discovery and newness rules (mocked providers)
+        run: |
+          node --test server/daily-discovery.test.mjs
+          pnpm exec vitest run tests/discovery-radar.test.ts
       - name: Task deduplication, delta sync and monitor tests (no provider calls)
         run: |
           node --test server/keyword-submit.test.mjs server/workspace-snapshot.test.mjs

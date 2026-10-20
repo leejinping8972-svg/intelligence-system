@@ -16,6 +16,7 @@ import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
 import { productProgress } from './product-queue.mjs';
 import { runPlatformProducts } from './platform-products-jobs.mjs';
 import { completionProgress } from './platform-product-completion.mjs';
+import { tickDailyDiscovery } from './daily-discovery.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   if (
@@ -33,7 +34,7 @@ export function jobTasks(job) {
       evidence_analysis: '需求语义分析',
       products: '站点商品采集',
       platform_products:
-        job.input.mode === 'enrich'
+        job.input.discoveryDay ? '每日关键词商品发现' : job.input.mode === 'enrich'
           ? '已有商品全量补全'
           : '平台商品发现与趋势补全',
     };
@@ -101,7 +102,7 @@ export function jobTasks(job) {
       market,
       mode: 'live',
       stage: 'sites',
-      title: `云端 · ${job.input.kind === 'ads' ? (job.input.includeSearchSites ? '广告与独立站双渠道采集' : '广告与关联独立站采集') : '独立站指标与评分'} · ${label[market]}`,
+      title: `云端 · ${job.input.kind === 'ads' ? (job.input.discoveryOnly ? '每日关键词广告发现' : job.input.includeSearchSites ? '广告与独立站双渠道采集' : '广告与关联独立站采集') : '独立站指标与评分'} · ${label[market]}`,
       status: job.cancelled ? 'cancelled' : job.status,
       created:
         job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
@@ -457,6 +458,9 @@ async function runLane(signal, trends = false) {
         // oxlint-disable-next-line unicorn/no-process-exit
         lostConnection = () => process.exit(1);
         connection.on('error', lostConnection);
+        if (!trends) await tickDailyDiscovery().catch((error) => {
+          console.error('Daily discovery unavailable:', error.code || error.name);
+        });
         const { rows } = await pool.query(
           sql(
             `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND COALESCE(checkpoint->>'trendQueueVersion','0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(checkpoint->>'nextRunAt','0') AS BIGINT) <= $1 ORDER BY updated_at LIMIT 20`,

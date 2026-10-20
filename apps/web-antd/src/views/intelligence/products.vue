@@ -20,6 +20,7 @@ import PageHeader from './components/PageHeader.vue';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
+import { discoveryDecision, discoveryFilters } from './discovery';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
 import ProductCompletionDialog from './components/ProductCompletionDialog.vue';
 import {
@@ -50,6 +51,7 @@ const favorites = ref(false);
 const benefitFilter = ref('ALL');
 const ingredientFilter = ref('ALL');
 const decisionFilter = ref('ALL');
+const newness = ref('ALL');
 const decisionRulesOpen = ref(false);
 const sourceFilter = ref('ALL');
 const sourceOptions = computed(() => [
@@ -163,6 +165,8 @@ const rows = computed(() =>
         productDataSource(p) === sourceFilter.value) &&
       (decisionFilter.value === 'ALL' ||
         productDecisions(p).some((tag) => tag.key === decisionFilter.value)) &&
+      (newness.value === 'ALL' || (newness.value === 'discovered' ? discoveryDecision(p, 'product').recentDiscovery
+        : (discoveryDecision(p, 'product').isNew === null ? 'unknown' : discoveryDecision(p, 'product').isNew ? 'yes' : 'no') === newness.value)) &&
       (!siteFilter.value || p.siteId === siteFilter.value) &&
       (!keywordFilter.value ||
         state.keywords
@@ -185,6 +189,7 @@ watch(
     benefitFilter,
     ingredientFilter,
     decisionFilter,
+    newness,
     sourceFilter,
     siteFilter,
     keywordFilter,
@@ -326,7 +331,7 @@ function toggleCompare(id: string) {
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
-        /><Select
+        /><label for="product-newness">商品新旧标签</label><Select id="product-newness" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /><Select
           v-model:value="decisionFilter"
           :options="productDecisionFilters"
           aria-label="按商品决策标签筛选"

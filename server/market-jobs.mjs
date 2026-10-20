@@ -11,6 +11,7 @@ import {
 import { fetchPublicPage } from './safe-web.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { runCombinedDiscovery } from './combined-discovery.mjs';
+import { observeDiscovery } from './discovery-newness.mjs';
 const readDoc = async (key) =>
   (
     await pool.query('SELECT value FROM workspace_documents WHERE name=$1', [
@@ -28,7 +29,7 @@ export async function mergeBusiness(key, patch) {
           [`business:${key}`],
         )
       ).rows[0]?.value || {};
-    const value = { ...old, ...patch };
+    let value = { ...old, ...patch };
     for (const field of ['sources', 'sourceEvidence', 'keywordIds', 'siteIds'])
       if (old[field] || patch[field])
         value[field] = [
@@ -43,6 +44,8 @@ export async function mergeBusiness(key, patch) {
     if (old.productId) value.productId = old.productId;
     if (old.metrics && !patch.metrics) value.metrics = old.metrics;
     if (key.startsWith('sites:')) value.assessment = scoreSite(value);
+    if (key.startsWith('ads:')) value = observeDiscovery(old, value, 'ad');
+    if (key.startsWith('products:')) value = observeDiscovery(old, value, 'product');
     await putDocument(
       'workspace_documents',
       `business:${key}`,
@@ -113,11 +116,12 @@ export function validateMarketJob(input) {
     adId: typeof input.adId === 'string' ? input.adId : undefined,
   };
 }
-export async function submitMarketJob(input) {
+export async function submitMarketJob(input, context = {}) {
   if (!/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(input.requestId))
     throw new Error('缺少提交编号');
   const v = validateMarketJob(input),
     c = await pool.connect();
+  if (context.daily) v.discoveryOnly = true;
   let locked = false,
     searchLocked = false;
   try {
@@ -438,8 +442,8 @@ export async function runMarketJob(job, overrides = {}) {
               return io.saveCheckpoint(job, cp, 'cancelled');
             const old = await io.readDoc(`ads:${ad.id}`);
             ad.siteIds = old?.siteIds || [];
-            ad.verification = [];
-            for (const url of ad.landingUrls) {
+            ad.verification = v.discoveryOnly ? old?.verification || [] : [];
+            for (const url of v.discoveryOnly ? [] : ad.landingUrls) {
               if (siteIds.size >= v.maxSites) break;
               try {
                 const domain = hostnameRoot(new URL(url).hostname),

@@ -44,6 +44,8 @@ import {
   cancelPlatformCompletion,
 } from './platform-products-jobs.mjs';
 import { protectPlatformClientEdit } from './platform-product-data.mjs';
+import { protectDiscoveryEdit } from './discovery-newness.mjs';
+import { dailyDiscoveryAction } from './daily-discovery.mjs';
 import { registerRelease, releaseHistory } from './release-history.mjs';
 import { serveAdMedia } from './ad-media.mjs';
 import {
@@ -63,6 +65,9 @@ async function api(input, user) {
   if (input.action?.startsWith('server_content_'))
     return publicContentAction(input, user);
   switch (input.action) {
+    case 'server_daily_discovery_status':
+    case 'server_daily_discovery_save':
+      return dailyDiscoveryAction(input, user);
     case 'server_youtube_config':
     case 'server_youtube_status':
       return youtubeAction(input, user);
@@ -166,14 +171,15 @@ async function api(input, user) {
                 [`business:${entry.key}`],
               );
           } else {
-            if (entry.key.startsWith('products:') && !input.importOnly) {
+            if (/^(products|ads):/.test(entry.key)) {
               const old = (
                 await connection.query(
                   'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
                   [`business:${entry.key}`],
                 )
               ).rows[0]?.value;
-              entry.value = protectPlatformClientEdit(old, entry.value);
+              if (entry.key.startsWith('products:') && !input.importOnly) entry.value = protectPlatformClientEdit(old, entry.value);
+              entry.value = protectDiscoveryEdit(old, entry.value);
             }
             await putDocument(
               'workspace_documents',

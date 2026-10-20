@@ -1,7 +1,9 @@
 import type { Ad, DemoState, Keyword, Market, Product } from './data';
 import type { FreeSourceData, PublicSignal } from './public-sources';
+import { discoveryDecision } from './discovery';
+import { validDiscoveryDate } from '../../../../../server/discovery-newness.mjs';
 
-export type RadarFindingType = 'concept' | 'ingredient' | 'product';
+export type RadarFindingType = 'ad' | 'concept' | 'ingredient' | 'product';
 export type RadarFindingStatus =
   | 'confirmed'
   | 'demo'
@@ -93,16 +95,9 @@ function clamp(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function safeDate(value?: string) {
-  const date = value ? new Date(`${value.slice(0, 10)}T00:00:00Z`) : new Date();
-  return Number.isNaN(date.getTime()) ? new Date() : date;
-}
-
 function daysSince(value?: string) {
-  return Math.max(
-    0,
-    Math.floor((Date.now() - safeDate(value).getTime()) / 86_400_000),
-  );
+  const time = validDiscoveryDate(value);
+  return time === undefined || Date.parse(value || '') > Date.now() ? Infinity : Math.floor((Date.now() - time) / 86_400_000);
 }
 
 function withinWindow(value: string | undefined, windowDays: number) {
@@ -137,7 +132,7 @@ function productEvidence(product: Product, ads: Ad[], keywords: Keyword[]) {
       id: `product-${product.id}`,
       kind: 'product',
       source:
-        product.dataNature === 'imported' ? '人工导入商品资料' : '官网商品页',
+        product.sourceProvider ? `${product.sourceProvider} · ${product.sourcePlatform || '平台商品'}` : product.dataNature === 'imported' ? '人工导入商品资料' : '官网商品页',
       detail: `${product.title} · ${product.ingredient} · ${product.dose}`,
       observedAt,
       url: product.evidenceUrl,
@@ -176,7 +171,9 @@ function productFindings(
   return state.products
     .filter((product) => includeDemo || product.dataNature !== 'demo')
     .filter((product) => withinWindow(product.firstSeenAt, windowDays))
+    .filter((product) => discoveryDecision(product, 'product').isNew !== false)
     .map<RadarFinding>((product) => {
+      const decision = discoveryDecision(product, 'product');
       const evidence = productEvidence(product, state.ads, state.keywords);
       const growth = keywordGrowth(
         state.keywords,
@@ -194,7 +191,7 @@ function productFindings(
           Math.min(20, Math.max(0, evidence.length - 1) * 8),
       );
       const gaps = [
-        product.publishedAt ? '' : '缺少官方发布时间，只能认定为近期新发现',
+        decision.isNew === true ? '' : '缺少有来源的有效上架日期，只能认定为近期新发现',
         '尚未接入MOQ、成本、交期和目标市场合规结论',
       ].filter(Boolean);
       const businessScore = clamp(
@@ -210,11 +207,11 @@ function productFindings(
         subtitle: `${product.brand} · ${product.form} · ${product.ingredient}`,
         category: product.category,
         market: product.market,
-        firstSeenAt: product.firstSeenAt || today(),
+        firstSeenAt: product.firstSeenAt!.slice(0, 10),
         status:
           product.dataNature === 'demo'
             ? 'demo'
-            : product.publishedAt
+            : decision.isNew === true
               ? 'confirmed'
               : 'newly-discovered',
         confidenceScore: confidence,
@@ -223,9 +220,8 @@ function productFindings(
         adoptionCount: 1,
         evidence,
         rationale: [
-          product.publishedAt
-            ? `官网发布时间为 ${product.publishedAt}`
-            : `最近 ${daysSince(product.firstSeenAt)} 天首次进入系统`,
+          decision.reason,
+          `最近 ${daysSince(product.firstSeenAt)} 天首次进入系统；最近发现 ${product.discovery?.lastSeenAt?.slice(0, 10) || '未知'}`,
           relatedAds
             ? `关联 ${relatedAds} 条近期广告信号`
             : '暂未发现关联广告信号',
@@ -418,6 +414,7 @@ export function buildRadarFindings(
   includeDemo = true,
 ) {
   return [
+    ...adFindings(state, windowDays, includeDemo),
     ...productFindings(state, windowDays, includeDemo),
     ...conceptFindings(state, windowDays, includeDemo),
     ...ingredientFindings(state, windowDays, includeDemo),
@@ -428,6 +425,27 @@ export function buildRadarFindings(
   );
 }
 
+function adFindings(state: DemoState, windowDays: number, includeDemo: boolean): RadarFinding[] {
+  return state.ads.filter((ad) => (includeDemo || ad.dataNature !== 'demo') && withinWindow(ad.firstSeenAt, windowDays))
+    .filter((ad) => discoveryDecision(ad, 'ad').isNew !== false)
+    .map((ad) => {
+      const decision = discoveryDecision(ad, 'ad');
+      const keywords = state.keywords.filter((k) => ad.keywordIds?.includes(k.id));
+      return {
+        id: `radar-ad-${ad.id}`, type: 'ad', title: ad.headline || ad.brand,
+        subtitle: `${ad.brand} · ${ad.platform} · ${decision.label}`, category: keywords[0]?.category || '待分类',
+        market: ad.market, firstSeenAt: ad.firstSeenAt!.slice(0, 10),
+        status: ad.dataNature === 'demo' ? 'demo' : decision.isNew === true ? 'confirmed' : 'newly-discovered',
+        confidenceScore: decision.isNew === true ? 80 : 45, businessScore: null, trendGrowth: null,
+        adoptionCount: keywords.length,
+        evidence: [{ id: `ad-evidence-${ad.id}`, kind: 'ad', source: ad.source || ad.platform, detail: ad.copy || ad.headline,
+          observedAt: ad.lastCollectedAt || ad.firstSeenAt!, url: ad.evidenceUrl }],
+        rationale: [decision.reason, `入选关键词：${keywords.map((k) => k.term).join('、') || ad.query || '尚未关联'}`],
+        gaps: [decision.isNew === null ? '缺少可核验的投放开始日期' : '', '广告传播不单独证明所售商品是新品'].filter(Boolean),
+      };
+    });
+}
+
 export function buildCollectedRadarFindings(
   collector: null | PublicCollectorData,
   windowDays: number,
@@ -435,11 +453,14 @@ export function buildCollectedRadarFindings(
   if (!collector) return [];
   return collector.observations
     .filter((item) => withinWindow(item.firstSeenAt, windowDays))
-    .map((item) => {
-      const published = item.publishedAt?.slice(0, 10);
+    .map((item) => ({ item, decision: discoveryDecision({ market: item.market, firstSeenAt: item.firstSeenAt,
+      decisionData: { listing: { date: item.publishedAt?.slice(0, 10), provider: '品牌官网', platform: '官网商品页', market: item.market,
+        collectedAt: item.capturedAt, evidenceUrl: item.url } } }, 'product') }))
+    .filter(({ decision }) => decision.isNew !== false)
+    .map(({ item, decision }) => {
       const observed = item.firstSeenAt.slice(0, 10);
       const confidence = clamp(
-        35 + 25 + Math.max(5, 20 - daysSince(observed)) + (published ? 20 : 8),
+        35 + 25 + Math.max(5, 20 - daysSince(observed)) + (decision.isNew === true ? 20 : 8),
       );
       return {
         id: `collector-${item.id}`,
@@ -449,7 +470,7 @@ export function buildCollectedRadarFindings(
         category: '待分类',
         market: item.market,
         firstSeenAt: observed,
-        status: published
+        status: decision.isNew === true
           ? ('confirmed' as const)
           : ('newly-discovered' as const),
         confidenceScore: confidence,
@@ -474,15 +495,13 @@ export function buildCollectedRadarFindings(
           },
         ],
         rationale: [
-          published
-            ? `官网页面提供发布时间 ${published}`
-            : `系统于 ${observed} 首次发现该商品`,
+          decision.reason,
           item.changeType === 'changed'
             ? '本次采集检测到页面内容变化'
             : '过去180天采集基线中没有相同商品指纹',
         ],
         gaps: [
-          published ? '' : '缺少官网确认发布时间，暂按近期新发现处理',
+          decision.isNew === true ? '' : '缺少官网确认发布时间，暂按近期新发现处理',
           '尚未关联广告、关键词、趋势和供应链数据，因此不计算商业机会分',
         ].filter(Boolean),
       };
@@ -624,7 +643,7 @@ export function buildSourceCoverage(
   freeData: FreeSourceData | null = null,
 ): RadarSourceCoverage[] {
   const latest = (values: (string | undefined)[]) =>
-    values.filter(Boolean).sort().reverse()[0] || '尚无数据';
+    values.filter(Boolean).map((value) => value!.slice(0, 10)).sort().reverse()[0] || '尚无数据';
   const collectedProducts = collector?.observations || [];
   const realProducts = state.products.filter(
     (item) => item.dataNature !== 'demo',
@@ -660,9 +679,10 @@ export function buildSourceCoverage(
           ? 'partial'
           : 'missing',
       automated:
+        realProducts.some((item) => Boolean(item.sourceProvider)) ||
         !!collector?.configuredSites ||
         state.sites.some((site) => site.collectorMode === 'automatic'),
-      note: '官网商品事实与NIH DSLD公开标签',
+      note: '平台商品、官网事实与NIH DSLD公开标签；支持每日入选词发现',
     },
     {
       key: 'ads',
@@ -670,8 +690,8 @@ export function buildSourceCoverage(
       count: realAds.length,
       lastUpdated: latest(realAds.map((item) => item.firstSeenAt)),
       status: realAds.length > 0 ? 'partial' : 'missing',
-      automated: false,
-      note: '传播动量信号；不单独证明新品',
+      automated: realAds.some((item) => item.dataNature === 'collected'),
+      note: '支持每日入选词发现；广告不单独证明新品',
     },
     {
       key: 'keywords',
@@ -738,6 +758,7 @@ export function buildRadarReport(
   const products = findings.filter((item) => item.type === 'product');
   const concepts = findings.filter((item) => item.type === 'concept');
   const ingredients = findings.filter((item) => item.type === 'ingredient');
+  const ads = findings.filter((item) => item.type === 'ad');
   const strongest = [...findings]
     .filter((item) => item.businessScore !== null)
     .sort((a, b) => (b.businessScore || 0) - (a.businessScore || 0))[0];
@@ -746,7 +767,7 @@ export function buildRadarReport(
     `市场：${marketLabel}`,
     `生成时间：${new Date().toLocaleString('zh-CN')}`,
     '',
-    `发现概况：${products.length}个新品/新发现商品候选，${concepts.length}个概念候选，${ingredients.length}个成分候选。`,
+    `发现概况：${products.length}个新品/新发现商品候选，${ads.length}条新广告线索，${concepts.length}个概念候选，${ingredients.length}个成分候选。`,
     strongest
       ? `当前综合优先项：${strongest.title}（新鲜度可信度${strongest.confidenceScore}，商业机会分${strongest.businessScore}）。`
       : '当前没有达到观察窗口和市场条件的候选。',
@@ -756,7 +777,7 @@ export function buildRadarReport(
     ...findings
       .slice(0, 10)
       .flatMap((item, index) => [
-        `${index + 1}. [${item.type === 'product' ? '商品' : item.type === 'concept' ? '概念' : '成分'}] ${item.title}`,
+        `${index + 1}. [${item.type === 'ad' ? '广告' : item.type === 'product' ? '商品' : item.type === 'concept' ? '概念' : '成分'}] ${item.title}`,
         `   ${item.subtitle}｜可信度 ${item.confidenceScore}｜机会分 ${item.businessScore ?? '数据不足'}`,
         `   依据：${item.rationale.join('；')}`,
         item.gaps.length > 0

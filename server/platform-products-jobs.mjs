@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { lock, unlock, pool, putDocument } from './database.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 import { mergePlatformProduct } from './platform-product-data.mjs';
+import { observeDiscovery } from './discovery-newness.mjs';
+import { readKeyword } from './enrichment-jobs.mjs';
 import { collectorEnv } from './local-provider.mjs';
 import { readSorftimeToken } from './collector.js';
 import {
@@ -77,9 +79,10 @@ export function validatePlatformProducts(input) {
     );
   return value;
 }
-export async function submitPlatformProducts(input) {
+export async function submitPlatformProducts(input, context = {}) {
   const value = validatePlatformProducts(input),
     c = await pool.connect();
+  if (context.discoveryDay) value.discoveryDay = context.discoveryDay;
   let locked = false;
   try {
     locked = await lock(c, 'platform-products-submit');
@@ -164,7 +167,7 @@ export async function upsertProduct(patch) {
       await c.query('COMMIT');
       return undefined;
     }
-    const value = mergePlatformProduct(old, patch);
+    const value = observeDiscovery(old, mergePlatformProduct(old, patch), 'product');
     await putDocument('workspace_documents', name, value, false, c);
     await c.query('COMMIT');
     return value;
@@ -382,6 +385,7 @@ export async function runPlatformProducts(job, overrides = {}) {
     readProduct,
     linkKeyword,
     now: () => Date.now(),
+    readKeyword,
     isCancelled: async () =>
       Boolean(
         (
@@ -469,6 +473,13 @@ export async function runPlatformProducts(job, overrides = {}) {
   }
   if (cp.index >= cp.work.length)
     return finish(cp.failures ? 'partial' : 'completed');
+  if (v.discoveryDay) {
+    const current = await Promise.all((v.keywordRecords || []).map((k) => io.readKeyword(k.id)));
+    if (!current.some((k) => k?.reviewStatus === 'selected' && k.market === v.market && v.seeds.includes(k.term))) {
+      cp.logs.push('入选关键词已移除或变更，停止本次每日商品发现');
+      return finish('cancelled');
+    }
+  }
   const w = cp.work[cp.index];
   const termKey = `${w.provider}:${w.term}`;
   cp.currentTerm = w.term || w.productId;
@@ -542,6 +553,7 @@ export async function runPlatformProducts(job, overrides = {}) {
           ...w,
           market: product?.market || v.market,
           refreshEmpty: v.mode === 'enrich',
+          discoveryDay: v.discoveryDay,
           limit: needsDiscovery ? limit : undefined,
           product,
         };
