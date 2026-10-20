@@ -22,6 +22,7 @@ import {
 
 import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
+import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import { download, marketName, state } from './data';
 import {
   buildCollectedRadarFindings,
@@ -61,6 +62,7 @@ const report = computed(() =>
   buildRadarReport(findings.value, windowDays.value, marketName(state.market)),
 );
 const counts = computed(() => ({
+  ad: findings.value.filter((item) => item.type === 'ad').length,
   product: findings.value.filter((item) => item.type === 'product').length,
   concept: findings.value.filter((item) => item.type === 'concept').length,
   ingredient: findings.value.filter((item) => item.type === 'ingredient')
@@ -92,7 +94,7 @@ const columns = [
 ];
 
 const statusLabel: Record<string, string> = {
-  confirmed: '确认近期上市',
+  confirmed: '来源确认近期新增',
   demo: '演示样本',
   'newly-discovered': '近期新发现',
   pending: '待交叉验证',
@@ -104,6 +106,7 @@ const statusColor: Record<string, string> = {
   pending: 'orange',
 };
 const typeLabel: Record<string, string> = {
+  ad: '新广告',
   product: '新品',
   concept: '新概念',
   ingredient: '新成分',
@@ -136,9 +139,9 @@ const activityOption = computed(() => {
       ).length;
     });
   return {
-    color: ['#198771', '#647cc4', '#dc9c43'],
+    color: ['#198771', '#647cc4', '#dc9c43', '#9c6ac4'],
     tooltip: { trigger: 'axis' },
-    legend: { data: ['新品', '新概念', '新成分'], bottom: 0 },
+    legend: { data: ['新品', '新概念', '新成分', '新广告'], bottom: 0 },
     grid: { left: 32, right: 14, top: 20, bottom: 42 },
     xAxis: {
       type: 'category',
@@ -151,6 +154,7 @@ const activityOption = computed(() => {
       splitLine: { lineStyle: { color: '#e9eef1', type: 'dashed' } },
     },
     series: [
+      { name: '新广告', type: 'bar', stack: 'total', data: series('ad') },
       { name: '新品', type: 'bar', stack: 'total', data: series('product') },
       { name: '新概念', type: 'bar', stack: 'total', data: series('concept') },
       {
@@ -175,6 +179,7 @@ const typeOption = computed(() => ({
       label: { formatter: '{b}\n{c}' },
       data: [
         { name: '新品', value: counts.value.product },
+        { name: '新广告', value: counts.value.ad },
         { name: '新概念', value: counts.value.concept },
         { name: '新成分', value: counts.value.ingredient },
       ],
@@ -194,6 +199,10 @@ function selectFinding(record: unknown) {
 }
 
 function openRelated(item: RadarFinding) {
+  if (item.type === 'ad') {
+    router.push({ path: '/ads', query: { ad: item.id.replace('radar-ad-', '') } });
+    return;
+  }
   if (item.type === 'product') {
     const productId = item.id.replace('radar-product-', '');
     router.push({ path: '/products', query: { product: productId } });
@@ -210,6 +219,7 @@ function openRelated(item: RadarFinding) {
       description="从商品事实、广告传播、关键词和趋势中识别变化，再用供应链条件判断是否值得行动。"
     >
       <Button @click="sourceOpen = true">数据来源</Button>
+      <DailyDiscoveryPlan />
       <Button @click="router.push('/signals')">公共情报源</Button>
       <Button @click="router.push('/imports')">导入真实数据</Button>
       <Button type="primary" @click="reportOpen = true">生成分析报告</Button>
@@ -244,6 +254,7 @@ function openRelated(item: RadarFinding) {
           :options="[
             { label: '全部类型', value: 'all' },
             { label: '新品', value: 'product' },
+            { label: '新广告', value: 'ad' },
             { label: '新概念', value: 'concept' },
             { label: '新成分', value: 'ingredient' },
           ]"
@@ -257,6 +268,11 @@ function openRelated(item: RadarFinding) {
     </div>
 
     <section class="hci-stats hci-radar-stats">
+      <button class="hci-stat" @click="findingType = 'ad'">
+        <div class="hci-stat-label"><span>新广告线索</span><Tag>投放证据</Tag></div>
+        <div class="hci-stat-value">{{ counts.ad }}</div>
+        <div class="hci-stat-foot">区分近期投放与首次发现</div>
+      </button>
       <button class="hci-stat" @click="findingType = 'product'">
         <div class="hci-stat-label">
           <span>新品候选</span><Tag>商品事实</Tag>
@@ -367,7 +383,7 @@ function openRelated(item: RadarFinding) {
             </template>
             <template v-else-if="column.key === 'adoption'">
               {{ record.adoptionCount }}
-              {{ record.type === 'product' ? '个商品' : '个品牌' }}
+              {{ record.type === 'ad' ? '个关键词' : record.type === 'product' ? '个商品' : '个品牌' }}
             </template>
             <template v-else-if="column.key === 'status'">
               <Tag :color="statusColor[record.status]">
@@ -542,3 +558,10 @@ function openRelated(item: RadarFinding) {
     </Drawer>
   </main>
 </template>
+<style scoped>
+@media (min-width: 1280px) {
+  .hci-radar-stats {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+</style>

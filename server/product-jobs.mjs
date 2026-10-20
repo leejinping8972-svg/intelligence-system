@@ -104,6 +104,7 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     reviewed: false,
     favorite: false,
     firstSeenAt: at,
+    lastCollectedAt: at,
     evidenceUrl: url.toString(),
     dataNature: 'collected',
   };

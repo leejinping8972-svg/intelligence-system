@@ -1,4 +1,5 @@
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
+import type { DiscoveryObservation } from './discovery';
 import type {
   ProductDecisionData,
   ProductCompletion,
@@ -121,6 +122,8 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  discovery?: DiscoveryObservation;
+  lastCollectedAt?: string;
   sourceMetrics?: {
     collectedAt?: string;
     rating?: number;
@@ -239,6 +242,7 @@ export interface Site {
   dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Ad {
+  discovery?: DiscoveryObservation;
   archiveId?: string;
   pageId?: string;
   keywordIds?: string[];

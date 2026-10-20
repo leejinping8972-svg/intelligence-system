@@ -45,6 +45,7 @@ describe('product decision labels use comparable product evidence', () => {
       platform: 'Amazon',
       market: 'US',
       collectedAt: '2026-10-18',
+      evidenceUrl: 'https://www.amazon.com/dp/B0EXAMPLE1',
     };
     expect(
       productDecisions({ market: 'US', decisionData: { listing } }, now).map(
@@ -56,6 +57,7 @@ describe('product decision labels use comparable product evidence', () => {
       { date: '2026-10-20' },
       { date: '2026-02-30' },
       { provider: '' },
+      { evidenceUrl: '' },
     ])
       expect(
         productDecisions(

@@ -19,11 +19,15 @@ import PageHeader from './components/PageHeader.vue';
 import AdsResearchPanel from './components/AdsResearchPanel.vue';
 import AdMedia from './components/AdMedia.vue';
 import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
+import DiscoveryTag from './components/DiscoveryTag.vue';
+import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
+import { discoveryDecision, discoveryFilters } from './discovery';
 import { inMarket, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
 const route = useRoute(),
   router = useRouter();
 const search = ref(''),
+  newness = ref('ALL'),
   status = ref('ALL'),
   selected = ref<Ad>(),
   open = ref(false),
@@ -52,6 +56,9 @@ const rows = computed(() =>
           .toLowerCase()
           .includes(search.value.toLowerCase()) &&
         (status.value === 'ALL' || a.status === status.value) &&
+        (newness.value === 'ALL' ||
+          (newness.value === 'discovered' ? discoveryDecision(a, 'ad').recentDiscovery
+            : String(discoveryDecision(a, 'ad').isNew === null ? 'unknown' : discoveryDecision(a, 'ad').isNew ? 'yes' : 'no') === newness.value)) &&
         (!route.query.keywordId ||
           a.keywordIds?.includes(String(route.query.keywordId))) &&
         (!route.query.site || a.siteIds?.includes(String(route.query.site))),
@@ -119,6 +126,9 @@ async function submit() {
   }
 }
 const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
+watch([() => route.query.ad, () => state.ads], () => {
+  if (route.query.ad) selected.value = state.ads.find((ad) => ad.id === String(route.query.ad));
+}, { immediate: true });
 </script>
 <template>
   <main class="hci-page">
@@ -128,7 +138,7 @@ const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
         >采集广告与独立站</Button
       ></PageHeader
     >
-    <div class="hci-toolbar"><CompetitorWatchPanel kind="advertiser" /></div>
+    <div class="hci-toolbar" style="margin-bottom: 16px"><CompetitorWatchPanel kind="advertiser" /><DailyDiscoveryPlan /><label for="ad-newness">广告新旧标签</label><Select id="ad-newness" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /></div>
     <AdsResearchPanel :ads="rows" />
     <section class="hci-panel">
       <div class="hci-toolbar">
@@ -164,6 +174,7 @@ const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
               }}</Tag>
             </div>
             <p>{{ ad.headline }}</p>
+            <DiscoveryTag :item="ad" kind="ad" />
             <p class="hci-ad-copy">{{ ad.copy || '未返回广告文案' }}</p>
             <p class="hci-subtle">
               {{ marketName(ad.market) }} · {{ ad.source || '人工导入' }} ·
@@ -192,6 +203,7 @@ const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
       <template v-if="selected"
         ><h2>{{ selected.brand }} · {{ selected.headline }}</h2>
         <AdMedia :ad="selected" expanded />
+        <DiscoveryTag :item="selected" kind="ad" details />
         <CompetitorWatchPanel v-if="selected.pageId" kind="advertiser" :ad-id="selected.id" />
         <p style="white-space: pre-wrap">{{ selected.copy }}</p>
         <dl class="hci-detail-grid">

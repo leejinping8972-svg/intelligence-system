@@ -21,6 +21,7 @@ import {
   syncCloudWorkspace,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import AdsCollectDialog from './components/AdsCollectDialog.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
 import { audit, filteredKeywords, marketName, state } from './data';
@@ -145,6 +146,7 @@ const time = (r: Keyword) =>
     >
       <Button @click="router.push('/research')">返回关键词研究</Button>
       <Button @click="router.push('/monitor')">查看后台任务</Button>
+      <DailyDiscoveryPlan />
     </PageHeader>
     <Alert
       type="info"

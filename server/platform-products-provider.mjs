@@ -44,6 +44,7 @@ export async function platformProductRequest(request, overrides = {}) {
     request.provider === 'semrush' ? request.limit : undefined,
     request.product?.sourceProductId,
   ];
+  if (discovery && request.discoveryDay) signatureParts.push('daily', request.discoveryDay);
   if (
     request.op === 'trend' &&
     request.trendType &&

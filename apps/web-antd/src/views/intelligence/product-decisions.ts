@@ -1,3 +1,5 @@
+import { discoveryDecision } from './discovery';
+
 export type ProductMetricKind =
   | 'sales_volume'
   | 'review_count'
@@ -65,7 +67,7 @@ export const productDecisionFilters = [
   { value: 'insufficient', label: '趋势待补充' },
   { value: 'stale', label: '趋势数据过旧' },
 ];
-export const PRODUCT_DECISION_VERSION = 'product-decisions-v2';
+export const PRODUCT_DECISION_VERSION = 'product-decisions-v3';
 export function productDataSource(product: {
   sourceProvider?: string;
   sourcePlatform?: string;
@@ -134,13 +136,7 @@ export function productDecisions(
   const data = product.decisionData;
   const listing = data?.listing;
   if (
-    listing?.provider &&
-    listing.platform &&
-    listing.market === product.market &&
-    Number.isFinite(Date.parse(listing.collectedAt)) &&
-    Date.parse(listing.collectedAt) <= now &&
-    day(listing.date) <= now &&
-    Math.floor((now - day(listing.date)) / DAY) <= 90
+    listing && discoveryDecision(product, 'product', now).isNew === true
   ) {
     result.push({
       key: 'new_product',

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { Button, Modal, Tag } from 'ant-design-vue';
 import type { Product } from '../data';
 import ProductHistory from './ProductHistory.vue';
+import DiscoveryTag from './DiscoveryTag.vue';
 import ProductCompletionDialog from './ProductCompletionDialog.vue';
 import {
   PRODUCT_DECISION_RULES,
@@ -12,6 +13,7 @@ import {
 const props = defineProps<{ product: Product; details?: boolean }>();
 const open = ref(false);
 const decisions = computed(() => productDecisions(props.product));
+const visibleDecisions = computed(() => decisions.value.filter((item) => item.key !== 'new_product'));
 const safeLink = (value?: string) => {
   try {
     const u = new URL(value || '');
@@ -26,9 +28,10 @@ const safeLink = (value?: string) => {
 };
 </script>
 <template>
+  <DiscoveryTag :item="product" kind="product" :details="details" />
   <div class="decision-tags" :aria-label="`${product.title}的决策标签`">
     <button
-      v-for="item in decisions"
+      v-for="item in visibleDecisions"
       :key="`${item.key}:${item.source}:${item.label}`"
       class="decision-tag"
       type="button"
