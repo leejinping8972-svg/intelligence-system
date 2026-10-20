@@ -211,7 +211,7 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
     expect(result.score).toBeNull();
     expect(result.status).toBe('pending');
     expect(result.recommendation).toContain('建议排除');
-    expect(result.version).toBe('keyword-research-v3.0');
+    expect(result.version).toBe('keyword-research-v3.1-30d');
     expect(row).toEqual(before);
     expect(
       assessKeyword(sample('omega-3 softgels', { metrics: undefined })).score,

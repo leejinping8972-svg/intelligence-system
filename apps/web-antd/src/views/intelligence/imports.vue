@@ -18,6 +18,7 @@ import * as XLSX from 'xlsx';
 import PageHeader from './components/PageHeader.vue';
 import { audit, exportCsv, marketName, stamp, state } from './data';
 import { parseCsv } from './import-utils';
+import { trendComparisons } from './trend-comparison';
 const step = ref(0);
 const type = ref('keywords');
 const source = ref('人工导入');
@@ -355,15 +356,18 @@ function commit() {
       keyword.dataNature = 'imported';
       if (!keyword.source.includes('趋势导入'))
         keyword.source = `${keyword.source} / 趋势导入`;
-      if (keyword.series.length >= 56) {
-        const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
-        const previous = sum(keyword.series.slice(-56, -28));
-        keyword.growth = previous
-          ? Math.round(
-              ((sum(keyword.series.slice(-28)) - previous) / previous) * 1000,
-            ) / 10
-          : null;
-      } else keyword.growth = null;
+      const stepDays = ordered.length > 1 ? (Date.parse(ordered[1]!.date) - Date.parse(ordered[0]!.date)) / 86_400_000 : 0;
+      const regular = ordered.every((point, i) => i === 0 || Date.parse(point.date) - Date.parse(ordered[i-1]!.date) === stepDays * 86_400_000);
+      keyword.trendResolution = regular && stepDays === 1 ? 'day' : regular && stepDays === 7 ? 'week' : 'unknown';
+      keyword.trendPoints = ordered.map(({date,value}) => ({date,value}));
+      keyword.trendCollectedAt = stamp();
+      keyword.trendPeriod = 'imported';
+      keyword.trendDailyPoints = keyword.trendResolution === 'day' ? keyword.trendPoints : [];
+      keyword.trendDailyCollectedAt = keyword.trendCollectedAt;
+      keyword.trendHistoryPoints = keyword.trendPoints;
+      keyword.trendHistoryResolution = keyword.trendResolution;
+      keyword.trendHistoryCollectedAt = keyword.trendCollectedAt;
+      keyword.growth = trendComparisons(keyword)[0]!.change;
       imported += ordered.length;
     }
     state.imports.unshift({
@@ -383,7 +387,7 @@ function commit() {
     );
     committed.value = true;
     step.value = 2;
-    message.success('趋势数据已写入本浏览器，并更新28天变化');
+    message.success('趋势数据已写入本浏览器，并按实际日期更新30天变化');
     return;
   }
   const batchKeys = new Set<string>();

@@ -430,7 +430,7 @@ export async function runJob(job, overrides = {}) {
       `Sorftime已确认${consumed.confirmed}次；结果未知并预留${consumed.reserved}次，未自动重复付费请求`,
     );
     cp.upstreamFailures = cp.failures;
-    await io.saveCheckpoint(job, initializeTrendQueue(cp, io.now()));
+    await io.saveCheckpoint(job, initializeTrendQueue(cp, io.now(), input.trendComparisonVersion));
   } catch (error) {
     let cancelled = false;
     try {

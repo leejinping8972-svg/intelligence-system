@@ -40,6 +40,10 @@ export const keywordFields = new Set([
   'trendDailyCollectedAt',
   'trendParts',
   'trendDailyPoints',
+  'trendHistoryPoints',
+  'trendHistoryResolution',
+  'trendHistoryCollectedAt',
+  'trendHistorySourceUrl',
   'trendMessage',
   'trendPeriod',
   'trendPoints',
@@ -97,6 +101,7 @@ export function validateJob(value) {
     limit: value.limit,
     sorftimeRequestLimit: 0,
     existingRecords: value.existingRecords?.map(cleanKeyword),
+    trendComparisonVersion: 2,
   };
   if (
     !Number.isInteger(input.limit) ||

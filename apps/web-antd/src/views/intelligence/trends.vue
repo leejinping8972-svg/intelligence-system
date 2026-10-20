@@ -14,6 +14,7 @@ import {
 
 import { trendOption } from './charts';
 import Chart from './components/Chart.vue';
+import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import PageHeader from './components/PageHeader.vue';
 import {
   audit,
@@ -24,6 +25,7 @@ import {
   state,
 } from './data';
 import { discoverSites, trendRecordFields } from './site-discovery';
+import { trendComparisons } from './trend-comparison';
 const route = useRoute();
 const router = useRouter();
 const selected = ref('');
@@ -49,14 +51,13 @@ const keyword = computed(
     filteredKeywords.value.find((k) => k.id === selected.value) ||
     filteredKeywords.value[0],
 );
-watch(() => state.market, () => {
-  if (!filteredKeywords.value.some((item) => item.id === selected.value))
-    selected.value = filteredKeywords.value[0]?.id || '';
-});
-const avg = (xs: number[]) =>
-  xs.length > 0
-    ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10
-    : 0;
+watch(
+  () => state.market,
+  () => {
+    if (!filteredKeywords.value.some((item) => item.id === selected.value))
+      selected.value = filteredKeywords.value[0]?.id || '';
+  },
+);
 const dailySeries = computed(() => {
   const record = keyword.value;
   if (!record) return [];
@@ -68,22 +69,29 @@ const dailySeries = computed(() => {
     ? record.series
     : [];
 });
+const comparison = computed(() =>
+  keyword.value ? trendComparisons(keyword.value)[0]! : null,
+);
 const recent = computed(() =>
-  dailySeries.value.length >= 28 ? avg(dailySeries.value.slice(-28)) : '—',
+  comparison.value?.currentMean === null || !comparison.value
+    ? '—'
+    : Math.round(comparison.value.currentMean * 10) / 10,
 );
 const previous = computed(() =>
-  dailySeries.value.length >= 56 ? avg(dailySeries.value.slice(-56, -28)) : '—',
+  comparison.value?.previousMean === null || !comparison.value
+    ? '—'
+    : Math.round(comparison.value.previousMean * 10) / 10,
+);
+const growth = computed(() =>
+  comparison.value?.change === null || !comparison.value
+    ? '—'
+    : comparison.value.change.toFixed(1),
 );
 const resolutionLabel = computed(
   () =>
     ({ day: '日', week: '周', month: '月', unknown: '未知' })[
       keyword.value?.trendResolution || 'unknown'
     ],
-);
-const growth = computed(() =>
-  typeof keyword.value?.growth === 'number'
-    ? keyword.value.growth.toFixed(1)
-    : '—',
 );
 const latest = computed(() => keyword.value?.series.at(-1) ?? 0);
 const peak = computed(() =>
@@ -94,32 +102,33 @@ const trough = computed(() =>
 );
 const trendConclusion = computed(() => {
   if (!keyword.value?.series.length) return '尚未采集真实趋势序列';
-  if (dailySeries.value.length < 56)
+  const change = comparison.value?.change ?? null;
+  if (dailySeries.value.length < 60)
     return (
       keyword.value.trendDailyMessage ||
-      '一年曲线已采集；有效日数据不足56天，暂不能计算28天变化'
+      '一年曲线已采集；有效日数据不足60天，暂不能计算30天变化'
     );
   if (keyword.value.series.every((value) => value === 0))
     return '过去一年相对热度均为0，Google Trends未观察到足够搜索样本';
   if (
-    keyword.value.growth === null &&
+    change === null &&
     previous.value === 0 &&
     typeof recent.value === 'number' &&
     recent.value > 0
   )
-    return '此前28天均值为0，最近28天已出现搜索信号，无法计算百分比变化';
-  if (keyword.value.growth === null && previous.value === 0)
-    return '此前28天基期为0，无法计算百分比变化';
-  if (keyword.value.growth === null) return '当前序列暂不能计算28天变化';
-  if (keyword.value.growth >= 20)
-    return '最近28天热度明显上升，建议优先核验供给与竞品动作';
-  if (keyword.value.growth >= 5)
-    return '最近28天热度温和上升，可继续观察商品和广告增量';
-  if (keyword.value.growth <= -20)
-    return '最近28天热度明显下降，应谨慎扩大选品投入';
-  if (keyword.value.growth <= -5)
-    return '最近28天热度有所回落，建议结合季节性继续验证';
-  return '最近两个28天窗口整体平稳';
+    return '此前30天均值为0，最近30天已出现搜索信号，无法计算百分比变化';
+  if (change === null && previous.value === 0)
+    return '此前30天基期为0，无法计算百分比变化';
+  if (change === null) return '当前序列暂不能计算30天变化';
+  if (change !== null && change >= 20)
+    return '最近30天热度明显上升，建议优先核验供给与竞品动作';
+  if (change !== null && change >= 5)
+    return '最近30天热度温和上升，可继续观察商品和广告增量';
+  if (change !== null && change <= -20)
+    return '最近30天热度明显下降，应谨慎扩大选品投入';
+  if (change !== null && change <= -5)
+    return '最近30天热度有所回落，建议结合季节性继续验证';
+  return '最近两个30天窗口整体平稳';
 });
 function exportTrend() {
   const record = keyword.value;
@@ -174,8 +183,8 @@ async function refreshTrend() {
       record.market,
     );
     if (trend.dailyPoints?.length)
-      message.success('已更新一年趋势，28天指标按独立日数据计算');
-    else message.warning('一年曲线已保存；28天日数据暂未返回，详见页面说明');
+      message.success('已更新一年趋势，30天指标按独立日数据计算');
+    else message.warning('一年曲线已保存；30天日数据暂未返回，详见页面说明');
   } catch (error) {
     record.trendStatus = 'failed';
     record.trendMessage =
@@ -273,11 +282,11 @@ async function refreshTrend() {
           "
         >
           <div>
-            <p class="hci-subtle">最近28天均值</p>
+            <p class="hci-subtle">最近30天均值</p>
             <div class="hci-stat-value">{{ recent }}</div>
           </div>
           <div>
-            <p class="hci-subtle">此前28天均值</p>
+            <p class="hci-subtle">此前30天均值</p>
             <div class="hci-stat-value">{{ previous }}</div>
           </div>
           <div>
@@ -285,13 +294,14 @@ async function refreshTrend() {
             <div
               class="hci-stat-value"
               :class="
-                (keyword.growth ?? 0) >= 0 ? 'hci-positive' : 'hci-negative'
+                (comparison?.change ?? 0) >= 0 ? 'hci-positive' : 'hci-negative'
               "
             >
-              {{ growth }}{{ keyword.growth === null ? '' : '%' }}
+              {{ growth }}{{ comparison?.change === null ? '' : '%' }}
             </div>
           </div>
         </div>
+        <KeywordTrendComparison :keyword="keyword" />
         <div v-if="keyword.series.length" class="hci-field-notes">
           <div>
             <b>趋势判断</b>
@@ -307,7 +317,7 @@ async function refreshTrend() {
     </section>
     <div class="hci-demo-note">
       0–100为同一查询中的相对热度，不代表搜索次数；不同国家与不同查询批次不能直接比较绝对需求。真实序列来自Google
-      Trends公开网页接口或官网导出的真实序列。过去一年通常返回周数据，按实际日期展示；28天指标另取日数据计算，日数据失败不会清除已采集的一年曲线。
+      Trends公开网页接口或官网导出的真实序列。过去一年通常返回周数据，按实际日期展示；30天指标另取日数据计算，日数据失败不会清除已采集的一年曲线。
     </div>
     <section class="hci-panel">
       <div class="hci-panel-head"><h2>把趋势带入下一步研究</h2></div>

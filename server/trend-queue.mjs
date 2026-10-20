@@ -1,6 +1,7 @@
 import { collect, pool, saveCheckpoint, saveKeyword } from './store.mjs';
 import { putDocument } from './database.mjs';
-import { calculate28DayGrowth, trendSeriesMessage } from './collector.js';
+import { trendSeriesMessage } from './collector.js';
+import { trendComparisons } from './model.js';
 
 export const RETRY_LIMIT = 5;
 export const TREND_WINDOW = 24 * 60 * 60 * 1000;
@@ -44,7 +45,11 @@ export function errorPolicy(error) {
     retryAfterSeconds: Number(error?.retryAfterSeconds) || 0,
   };
 }
-export function initializeTrendQueue(checkpoint, now = Date.now()) {
+export function initializeTrendQueue(
+  checkpoint,
+  now = Date.now(),
+  comparisonVersion = 0,
+) {
   const cp = structuredClone(checkpoint);
   if (cp.trendQueueVersion === 1) return cp;
   const legacyIndex = cp.trendIndex || 0,
@@ -53,7 +58,10 @@ export function initializeTrendQueue(checkpoint, now = Date.now()) {
   cp.trendStartedAt = now;
   cp.trendDeadlineAt = now + TREND_WINDOW;
   cp.trendWork = (cp.keywords || []).map((r, i) => {
-    const annual = r.series?.length > 0,
+    const annual =
+        comparisonVersion === 2
+          ? r.trendHistoryPoints?.length > 0
+          : r.series?.length > 0,
       daily = r.trendDailyPoints?.length > 0;
     const prior = r.trendParts;
     const part = (has) => ({
@@ -65,7 +73,13 @@ export function initializeTrendQueue(checkpoint, now = Date.now()) {
     const work = { annual: part(annual), daily: part(daily) };
     // Genuine empty responses are terminal data outcomes, including on later supplementation.
     for (const phase of ['annual', 'daily'])
-      if (prior?.[phase]?.status === 'empty') work[phase].status = 'empty';
+      if (
+        prior?.[phase]?.status === 'empty' &&
+        (phase !== 'annual' ||
+          comparisonVersion !== 2 ||
+          prior[phase].comparisonVersion === 2)
+      )
+        work[phase].status = 'empty';
     if (
       i === legacyIndex &&
       legacyRetries &&
@@ -175,7 +189,11 @@ export async function runTrendJob(job, overrides = {}) {
     },
     ...overrides,
   };
-  const cp = initializeTrendQueue(job.checkpoint, io.now());
+  const cp = initializeTrendQueue(
+    job.checkpoint,
+    io.now(),
+    job.input.trendComparisonVersion,
+  );
   cp.logs ||= [];
   try {
     await io.checkCancelled(job.id);
@@ -234,6 +252,7 @@ export async function runTrendJob(job, overrides = {}) {
           keywords: [record.term],
           markets: [record.market],
           trendPhase: phase,
+          trendComparisonVersion: job.input.trendComparisonVersion,
         },
       );
       if (data.status === 'error')
@@ -255,17 +274,26 @@ export async function runTrendJob(job, overrides = {}) {
         nextRunAt: 0,
         message: data.message || '',
         collectedAt: data.collectedAt,
+        comparisonVersion: job.input.trendComparisonVersion,
       });
       if (phase === 'annual')
         Object.assign(record, {
           series: data.points.map((p) => p.value),
           trendPoints: data.points,
-          trendPeriod: 'today 12-m',
+          trendPeriod: data.period || 'today 12-m',
           trendResolution: data.resolution,
           trendSourceUrl: data.sourceUrl,
           trendCollectedAt: data.collectedAt,
           trendStatus: data.points.length ? 'collected' : 'empty',
           trendMessage: data.message || '已采集一年趋势',
+          ...(Array.isArray(data.historyPoints)
+            ? {
+                trendHistoryPoints: data.historyPoints,
+                trendHistoryResolution: data.resolution,
+                trendHistoryCollectedAt: data.collectedAt,
+                trendHistorySourceUrl: data.sourceUrl,
+              }
+            : {}),
         });
       else
         Object.assign(record, {
@@ -273,8 +301,8 @@ export async function runTrendJob(job, overrides = {}) {
           trendDailyCollectedAt: data.collectedAt,
           trendDailyMessage:
             data.message || trendSeriesMessage(data.points.map((p) => p.value)),
-          growth: calculate28DayGrowth(data.points.map((p) => p.value)),
         });
+      record.growth = trendComparisons(record)[0].change;
       gate = {
         until: io.now() + 15000 + Math.floor(io.random() * 3000),
         reason: 'pacing',

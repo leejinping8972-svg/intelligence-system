@@ -1156,18 +1156,25 @@ export function calculate28DayGrowth(series) {
   return Math.round(((recent - previous) / previous) * 1000) / 10;
 }
 
+export function calculate30DayGrowth(series) {
+  if (!Array.isArray(series) || series.length < 60 || series.some(v => !Number.isFinite(v) || v < 0 || v > 100)) return null;
+  const sum = values => values.reduce((total, value) => total + value, 0);
+  const previous = sum(series.slice(-60, -30));
+  return previous > 0 ? Math.round((sum(series.slice(-30)) - previous) / previous * 1000) / 10 : null;
+}
+
 export function trendSeriesMessage(series) {
-  if (!Array.isArray(series) || series.length < 56)
-    return '有效日序列不足56天，暂不计算28天变化';
+  if (!Array.isArray(series) || series.length < 60)
+    return '有效日序列不足60天，暂不计算30天变化';
   const average = (values) =>
     values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
-  const previous = average(series.slice(-56, -28));
-  const recent = average(series.slice(-28));
+  const previous = average(series.slice(-60, -30));
+  const recent = average(series.slice(-30));
   if (series.every((value) => Number(value || 0) === 0))
     return '近90天相对热度均为0，Google Trends样本不足';
   if (previous <= 0 && recent > 0)
-    return '此前28天均值为0，最近28天已出现搜索信号，无法计算百分比变化';
-  if (previous <= 0) return '此前28天基期为0，无法计算百分比变化';
+    return '此前30天均值为0，最近30天已出现搜索信号，无法计算百分比变化';
+  if (previous <= 0) return '此前30天基期为0，无法计算百分比变化';
   return '';
 }
 
@@ -1355,7 +1362,20 @@ export async function collectGoogleTrendsBatch(keywords, market) {
     let rateLimited = false;
     let retryAfterSeconds = 0;
     try {
-      [annual] = await fetchGoogleTrendsBatch([keyword], market);
+      const end = new Date();
+      const start = new Date(end);
+      start.setUTCFullYear(start.getUTCFullYear() - 2);
+      start.setUTCDate(start.getUTCDate() - 8);
+      const period = `${start.toISOString().slice(0, 10)} ${end.toISOString().slice(0, 10)}`;
+      [annual] = await fetchGoogleTrendsBatch([keyword], market, period);
+      if (annual?.points.length) {
+        annual.historyPoints = annual.points;
+        const cutoff = new Date(end);
+        cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+        cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+        annual.points = annual.points.filter(p => Date.parse(p.date) >= cutoff.getTime());
+        annual.series = annual.points.map(p => p.value);
+      }
     } catch (error) {
       annualError =
         error instanceof Error ? error.message : 'Google Trends采集失败';
@@ -1401,7 +1421,7 @@ export async function collectGoogleTrendsBatch(keywords, market) {
       });
       continue;
     }
-    // Annual results are normally weekly. Query daily data separately for 28-day metrics.
+    // Annual results are normally weekly. Query daily data separately for 30-day metrics.
     try {
       const [daily] = await fetchGoogleTrendsBatch(
         [keyword],
@@ -1413,13 +1433,14 @@ export async function collectGoogleTrendsBatch(keywords, market) {
           ? daily.points.filter((point) => !point.isPartial)
           : [];
       annual.dailyPoints = dailyPoints;
+      annual.dailyCollectedAt = daily.collectedAt;
       const dailySeries = dailyPoints.map((point) => point.value);
-      annual.growth = calculate28DayGrowth(dailySeries);
+      annual.growth = calculate30DayGrowth(dailySeries);
       annual.dailyMessage = trendSeriesMessage(dailySeries);
     } catch (error) {
       annual.dailyPoints = [];
       annual.growth = null;
-      annual.dailyMessage = `一年曲线已保存；28天日数据查询失败：${
+      annual.dailyMessage = `一年曲线已保存；30天日数据查询失败：${
         error instanceof Error ? error.message : '接口异常'
       }`;
       annual.rateLimited = error?.status === 429;

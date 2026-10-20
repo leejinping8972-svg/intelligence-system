@@ -6,6 +6,7 @@ import worker, {
   amazonSuggestUrl,
   braveSearchRequest,
   calculate28DayGrowth,
+  calculate30DayGrowth,
   classifyStore,
   collectGoogleTrendsBatch,
   extractJsonLdProducts,
@@ -254,10 +255,10 @@ test('builds and calculates Google Trends series', () => {
   );
   assert.equal(
     trendSeriesMessage([
-      ...Array.from({ length: 28 }, () => 0),
-      ...Array.from({ length: 28 }, () => 4),
+      ...Array.from({ length: 30 }, () => 0),
+      ...Array.from({ length: 30 }, () => 4),
     ]),
-    '此前28天均值为0，最近28天已出现搜索信号，无法计算百分比变化',
+    '此前30天均值为0，最近30天已出现搜索信号，无法计算百分比变化',
   );
 });
 
@@ -418,4 +419,10 @@ test('stage one refuses discovery sources and works without a Brave credential',
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('active growth uses two complete 30-day windows instead of the legacy 28-day helper', () => {
+  assert.equal(calculate30DayGrowth([...Array(30).fill(50), ...Array(30).fill(75)]), 50);
+  assert.equal(calculate30DayGrowth(Array(59).fill(20)), null);
+  assert.equal(calculate30DayGrowth([...Array(30).fill(0), ...Array(30).fill(10)]), null);
 });

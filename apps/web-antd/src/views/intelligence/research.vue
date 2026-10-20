@@ -23,6 +23,7 @@ import {
 import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
+import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import { keywordChineseName } from './keyword-names';
 import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
@@ -75,10 +76,13 @@ function clearSelection() {
   selectionSnapshots.value = new Map();
 }
 const detailId = ref('');
-watch(() => state.market, () => {
-  detailId.value = '';
-  tagFilter.value = [];
-});
+watch(
+  () => state.market,
+  () => {
+    detailId.value = '';
+    tagFilter.value = [];
+  },
+);
 const pageSize = ref(10);
 const currentPage = ref(1);
 const gradeColors: Record<string, string> = {
@@ -130,7 +134,12 @@ const allRows = computed(() =>
       ...record,
       assessment: {
         ...assessment,
-        tags: [...new Set([...assessment.tags, ...researchSourceTags(record.source)])],
+        tags: [
+          ...new Set([
+            ...assessment.tags,
+            ...researchSourceTags(record.source),
+          ]),
+        ],
       },
     };
   }),
@@ -218,8 +227,11 @@ let selectingAllRows = false;
 const rowSelection = computed(() => ({
   onSelectAll: (checked: boolean) => {
     selectingAllRows = true;
-    if (checked) selectFiltered(); else clearSelection();
-    queueMicrotask(() => { selectingAllRows = false; });
+    if (checked) selectFiltered();
+    else clearSelection();
+    queueMicrotask(() => {
+      selectingAllRows = false;
+    });
   },
   preserveSelectedRowKeys: true,
   selectedRowKeys: selection.value.tableKeys,
@@ -260,7 +272,7 @@ const columns = [
       (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
   },
   { title: '分析标签', key: 'tags', width: 240 },
-  { title: '一年趋势 / 28天变化', key: 'trend', width: 170 },
+  { title: '趋势热度 / 周期变化', key: 'trend', width: 215 },
   { title: '来源', key: 'source', width: 180 },
   {
     title: '抓取时间',
@@ -720,7 +732,12 @@ function saveMetrics() {
           重置筛选
         </Button>
       </div>
-      <div class="hci-toolbar"><ScoreRangeFilter v-model="scoreFilter" label="关键词" /><KeywordNamesDialog :ids="selectedIds" /></div>
+      <div class="hci-toolbar">
+        <ScoreRangeFilter
+          v-model="scoreFilter"
+          label="关键词"
+        /><KeywordNamesDialog :ids="selectedIds" />
+      </div>
       <div class="hci-toolbar">
         <span class="hci-subtle"
           >已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span
@@ -736,7 +753,7 @@ function saveMetrics() {
           >清空选择</Button
         >
         <Tooltip
-          title="依次补充 Semrush 搜索量、自然搜索KD与意图，采集一年趋势及28天变化，再统一重评。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
+          title="依次补充 Semrush 搜索量、自然搜索KD与意图，采集一年趋势及30天变化，再统一重评。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
         >
           <span>
             <Button
@@ -801,7 +818,14 @@ function saveMetrics() {
             <button class="hci-link keyword-term" @click="openDetail(record)">
               {{ record.term }}
             </button>
-            <p class="hci-subtle">{{ record.termZh ? '中文' : '中文参考' }}：{{ keywordChineseName({ term: record.term, termZh: record.termZh }) || '待补充' }}</p>
+            <p class="hci-subtle">
+              {{ record.termZh ? '中文' : '中文参考' }}：{{
+                keywordChineseName({
+                  term: record.term,
+                  termZh: record.termZh,
+                }) || '待补充'
+              }}
+            </p>
             <p class="hci-subtle">种子：{{ record.seedTerm || '历史记录' }}</p>
           </template>
           <template v-else-if="column.key === 'market'">
@@ -855,20 +879,7 @@ function saveMetrics() {
                 }}
               </Tag>
             </Tooltip>
-            <p
-              v-if="record.growth !== null"
-              :class="record.growth >= 0 ? 'hci-positive' : 'hci-negative'"
-            >
-              28天 {{ record.growth > 0 ? '+' : '' }}{{ record.growth }}%
-            </p>
-            <Tooltip
-              v-else
-              :title="
-                record.trendDailyMessage || '缺少有效日数据或基期为0，暂不计算'
-              "
-            >
-              <p class="hci-subtle">28天变化待补证据</p>
-            </Tooltip>
+            <KeywordTrendComparison :keyword="record as Keyword" />
           </template>
           <template v-else-if="column.key === 'source'">
             <div class="keyword-tags">
@@ -899,7 +910,11 @@ function saveMetrics() {
             </Tag>
           </template>
           <template v-else-if="column.key === 'actions'">
-            <PublicContentLauncher :query="record.term" :market="record.market" :keyword-ids="[record.id]" />
+            <PublicContentLauncher
+              :query="record.term"
+              :market="record.market"
+              :keyword-ids="[record.id]"
+            />
             <Button type="link" @click="openDetail(record)">评分详情</Button
             ><Button type="link" @click="toggleFavorite(record)">
               {{ record.favorite ? '已收藏' : '收藏' }}
@@ -1023,7 +1038,7 @@ function saveMetrics() {
         <Form.Item label="趋势与评分">
           <p>
             每个入库关键词均单独查询过去一年 Google
-            Trends，并尝试补齐28天日数据；勾选 Semrush
+            Trends，并尝试补齐30天日数据；勾选 Semrush
             后同步补搜索量、KD、意图，再计算五维评分、评级和标签。
           </p>
         </Form.Item>
@@ -1088,8 +1103,14 @@ function saveMetrics() {
       @close="detailId = ''"
     >
       <template v-if="detail && assessment">
-        <h2 class="keyword-detail-title hci-resource-title">{{ detail.term }}</h2>
-        <p>{{ detail.termZh ? '中文名称' : '中文参考' }}：{{ keywordChineseName(detail) || '待补充' }}</p>
+        <h2 class="keyword-detail-title hci-resource-title">
+          {{ detail.term }}
+        </h2>
+        <p>
+          {{ detail.termZh ? '中文名称' : '中文参考' }}：{{
+            keywordChineseName(detail) || '待补充'
+          }}
+        </p>
         <p class="hci-subtle">
           {{ marketName(detail.market) }} · {{ detail.category }} ·
           {{ assessment.version }}
@@ -1118,24 +1139,24 @@ function saveMetrics() {
           <Tag v-for="tag in assessment.tags" :key="tag">{{ tag }}</Tag>
         </div>
         <div class="hci-dimension-grid">
-        <div
-          v-for="dimension in assessment.dimensions"
-          :key="dimension.key"
-          class="keyword-dimension hci-dimension-card"
-        >
-          <div>
-            <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b
-            ><strong
-              >{{ dimension.score ?? '待补充'
-              }}{{ dimension.score === null ? '' : ' / 100' }}</strong
+          <div
+            v-for="dimension in assessment.dimensions"
+            :key="dimension.key"
+            class="keyword-dimension hci-dimension-card"
+          >
+            <div>
+              <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b
+              ><strong
+                >{{ dimension.score ?? '待补充'
+                }}{{ dimension.score === null ? '' : ' / 100' }}</strong
+              >
+            </div>
+            <p class="hci-subtle">{{ dimension.evidence }}</p>
+            <span class="hci-subtle"
+              >已覆盖权重 {{ dimension.coveredWeight }} /
+              {{ dimension.weight }}</span
             >
           </div>
-          <p class="hci-subtle">{{ dimension.evidence }}</p>
-          <span class="hci-subtle"
-            >已覆盖权重 {{ dimension.coveredWeight }} /
-            {{ dimension.weight }}</span
-          >
-        </div>
         </div>
         <p class="hci-subtle">
           关键词抓取：{{ formatTime(detail.collectedAt) }}<br />趋势抓取：{{

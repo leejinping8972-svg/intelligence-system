@@ -123,7 +123,7 @@ function assessSupplementRelevance(keyword) {
 }
 
 // apps/web-antd/src/views/intelligence/keyword-scoring.ts
-var KEYWORD_MODEL_VERSION = "keyword-research-v3.0";
+var KEYWORD_MODEL_VERSION = "keyword-research-v3.1-30d";
 var clamp = (value) => Math.round(Math.max(0, Math.min(100, value)));
 function gradeForScore(score) {
   if (score >= 80) return "A";
@@ -156,7 +156,7 @@ function assessKeyword(keyword) {
       (p) => !p.isPartial && Number.isFinite(p.value) && p.value >= 0 && p.value <= 100 && Number.isFinite(Date.parse(p.date))
     ).toSorted((a, b) => Date.parse(a.date) - Date.parse(b.date));
     const dailySpan = daily.length > 1 ? (Date.parse(daily.at(-1).date) - Date.parse(daily[0].date)) / 864e5 : 0;
-    const windowPoints = daily.length >= 56 && dailySpan >= 55 ? daily : points;
+    const windowPoints = daily.length >= 60 && dailySpan >= 59 ? daily : points;
     const dailyUsed = windowPoints === daily;
     const step = dailyUsed ? 1 : Math.min(31, Math.max(1, Math.round(span / (points.length - 1))));
     const end = Date.parse(windowPoints.at(-1).date) + step * 864e5;
@@ -174,10 +174,10 @@ function assessKeyword(keyword) {
         sum += p.value * overlap;
         days += overlap;
       }
-      return days >= 27 ? sum / days : null;
+      return days >= 30 ? sum / days : null;
     };
-    const previous = avgWindow(end - 56 * 864e5, end - 28 * 864e5);
-    const recent = avgWindow(end - 28 * 864e5, end);
+    const previous = avgWindow(end - 60 * 864e5, end - 30 * 864e5);
+    const recent = avgWindow(end - 30 * 864e5, end);
     const continuity = annualSeries.filter((v) => v > 0).length / annualSeries.length;
     let momentum = 50;
     if (recent !== null && previous !== null) {
@@ -199,7 +199,7 @@ function assessKeyword(keyword) {
       else if (continuity >= 0.7) tags.add("\u8D70\u52BF\u5E73\u7A33");
     }
     if (continuity < 0.2) tags.add("\u4F4E\u6837\u672C\u4FE1\u53F7");
-    trendEvidence = `\u4E00\u5E74\u8D8B\u52BF\u6301\u7EED\u602765% + \u8FD128\u5929\u76F8\u5BF9\u6B64\u524D28\u5929\u52A8\u91CF35%\uFF1B${dailyUsed ? "\u65E5\u6570\u636E" : "\u6309\u539F\u59CB\u65F6\u70B9\u8986\u76D6\u5929\u6570\u52A0\u6743"}\uFF0C\u6709\u6548\u70B9${points.length}\u4E2A\uFF0C\u8986\u76D6${Math.round(span)}\u5929\uFF1B\u5C16\u5CF0\u964D\u6743\uFF0C\u4E0D\u4EE3\u8868\u641C\u7D22\u91CF`;
+    trendEvidence = `\u4E00\u5E74\u8D8B\u52BF\u6301\u7EED\u602765% + \u8FD130\u5929\u76F8\u5BF9\u6B64\u524D30\u5929\u52A8\u91CF35%\uFF1B${dailyUsed ? "\u65E5\u6570\u636E" : "\u6309\u539F\u59CB\u65F6\u70B9\u8986\u76D6\u5929\u6570\u52A0\u6743"}\uFF0C\u6709\u6548\u70B9${points.length}\u4E2A\uFF0C\u8986\u76D6${Math.round(span)}\u5929\uFF1B\u5C16\u5CF0\u964D\u6743\uFF0C\u4E0D\u4EE3\u8868\u641C\u7D22\u91CF`;
   } else tags.add(points.length > 0 ? "\u8D8B\u52BF\u6837\u672C\u4E0D\u8DB3\u6216\u8FC7\u671F" : "\u5F85\u8865\u8D8B\u52BF");
   const metrics = keyword.metrics;
   const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;
@@ -311,6 +311,123 @@ function assessKeyword(keyword) {
   };
 }
 
+// apps/web-antd/src/views/intelligence/trend-comparison.ts
+var DAY = 864e5;
+var day = (value) => Math.floor(value / DAY) * DAY;
+var date = (value) => new Date(value).toISOString().slice(0, 10);
+var round = (value) => Math.round(value * 10) / 10;
+function monthsBefore(end, months) {
+  const original = new Date(end);
+  const target = new Date(
+    Date.UTC(original.getUTCFullYear(), original.getUTCMonth() - months, 1)
+  );
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  target.setUTCDate(Math.min(original.getUTCDate(), lastDay));
+  return target.getTime();
+}
+function intervals(points = [], resolution = "unknown", collectedAt) {
+  const valid = [
+    ...new Map(
+      points.filter(
+        (p) => !p.isPartial && Number.isFinite(Date.parse(p.date)) && Number.isFinite(p.value) && p.value >= 0 && p.value <= 100
+      ).map((p) => [day(Date.parse(p.date)), p.value])
+    ).entries()
+  ].toSorted((a, b) => a[0] - b[0]);
+  let step = 0;
+  if (resolution === "day") step = 1;
+  if (resolution === "week") step = 7;
+  if (!step || valid.length === 0) return [];
+  const captured = Date.parse(collectedAt || "");
+  const cutoff = Number.isFinite(captured) ? day(captured) : Infinity;
+  return valid.map(([start, value], i) => ({
+    start,
+    end: Math.min(start + step * DAY, valid[i + 1]?.[0] ?? Infinity, cutoff),
+    value
+  })).filter((p) => p.end > p.start);
+}
+function compare(key, label, source, months = 0) {
+  const result = {
+    key,
+    label,
+    heat: null,
+    change: null,
+    currentMean: null,
+    previousMean: null,
+    reason: "\u7F3A\u5C11\u5B8C\u6574\u8D8B\u52BF\u65F6\u5E8F"
+  };
+  const lastPoint = source.at(-1);
+  if (!lastPoint) return result;
+  const end = lastPoint.end;
+  const start = months ? monthsBefore(end, months) : end - 30 * DAY;
+  const previousStart = months ? monthsBefore(end, months * 2) : start - 30 * DAY;
+  Object.assign(result, {
+    start: date(start),
+    end: date(end - DAY),
+    previousStart: date(previousStart)
+  });
+  const average = (from, to) => {
+    let coverage = 0;
+    let total = 0;
+    let first = Infinity;
+    let last = -Infinity;
+    const tolerance = source.some((p) => p.end - p.start > DAY) ? 7 * DAY : 0;
+    for (const p of source) {
+      const overlap = Math.max(
+        0,
+        Math.min(to, p.end) - Math.max(from, p.start)
+      );
+      if (!overlap) continue;
+      coverage += overlap;
+      total += p.value * overlap;
+      first = Math.min(first, Math.max(from, p.start));
+      last = Math.max(last, Math.min(to, p.end));
+    }
+    return coverage > 0 && coverage === last - first && coverage >= to - from - tolerance ? { mean: total / coverage } : null;
+  };
+  const current = average(start, end);
+  if (!current) return result;
+  result.currentMean = current.mean;
+  result.heat = Math.round(current.mean);
+  const previous = average(previousStart, start);
+  if (!previous) {
+    result.reason = "\u7F3A\u5C11\u6B64\u524D\u7B49\u957F\u5468\u671F\uFF0C\u5F85\u8865\u5BF9\u6BD4";
+    return result;
+  }
+  result.previousMean = previous.mean;
+  if (previous.mean === 0) {
+    result.reason = current.mean > 0 ? "\u6B64\u524D\u57FA\u671F\u4E3A0\uFF0C\u65B0\u51FA\u73B0\u4FE1\u53F7\uFF0C\u4E0D\u80FD\u8BA1\u7B97\u767E\u5206\u6BD4" : "\u57FA\u671F\u4E3A0\uFF0C\u641C\u7D22\u6837\u672C\u4E0D\u8DB3\uFF0C\u4E0D\u80FD\u8BA1\u7B97\u767E\u5206\u6BD4";
+    return result;
+  }
+  result.change = round((current.mean - previous.mean) / previous.mean * 100);
+  if (Object.is(result.change, -0)) result.change = 0;
+  result.reason = "\u4E0E\u6B64\u524D\u7B49\u957F\u5468\u671F\u5E73\u5747\u70ED\u5EA6\u6BD4\u8F83";
+  return result;
+}
+function trendComparisons(record) {
+  const daily = intervals(
+    record.trendDailyPoints,
+    "day",
+    record.trendDailyCollectedAt
+  );
+  const annual = intervals(
+    record.trendPoints,
+    record.trendResolution,
+    record.trendCollectedAt
+  );
+  const history = intervals(
+    record.trendHistoryPoints,
+    record.trendHistoryResolution,
+    record.trendHistoryCollectedAt
+  );
+  return [
+    compare("month", "\u8FD130\u5929", daily),
+    compare("halfYear", "\u8FD1\u534A\u5E74", history.length > 0 ? history : annual, 6),
+    compare("year", "\u8FD1\u4E00\u5E74", history.length > 0 ? history : annual, 12)
+  ];
+}
+
 // apps/web-antd/src/views/intelligence/site-discovery.ts
 function trendRecordFields(trend) {
   return {
@@ -318,6 +435,11 @@ function trendRecordFields(trend) {
     series: trend.series,
     trendPoints: trend.points,
     trendDailyPoints: trend.dailyPoints || [],
+    trendDailyCollectedAt: trend.dailyCollectedAt,
+    trendHistoryPoints: trend.historyPoints || [],
+    trendHistoryResolution: trend.resolution,
+    trendHistoryCollectedAt: trend.historyPoints?.length ? trend.collectedAt : void 0,
+    trendHistorySourceUrl: trend.historyPoints?.length ? trend.sourceUrl : void 0,
     trendResolution: trend.resolution || "unknown",
     trendPeriod: trend.period,
     trendSourceUrl: trend.sourceUrl,
@@ -358,5 +480,6 @@ function classifyKeyword(...values) {
 export {
   assessKeyword,
   classifyKeyword,
+  trendComparisons,
   trendRecordFields
 };
