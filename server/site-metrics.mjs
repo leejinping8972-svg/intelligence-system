@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
+
 import { pool, putDocument } from './database.mjs';
-import { client, mcpPayload, reportRows } from './semrush-reports.mjs';
 import { safeSemrushError } from './semrush-mcp.mjs';
+import { client, mcpPayload, reportRows } from './semrush-reports.mjs';
 export function domainMetrics(row, market, domain, at) {
   const m = {
     domain,
@@ -24,17 +25,17 @@ export function domainMetrics(row, market, domain, at) {
   return m;
 }
 export async function collectSiteMetrics(request) {
-  const { domain, market } = request,
-    at = new Date().toISOString();
-  if (!/^[a-z0-9.-]+$/i.test(domain) || !['US', 'MX', 'VN'].includes(market))
+  const at = new Date().toISOString();
+    const { domain, market } = request;
+  if (!/^[a-z0-9.-]+$/i.test(domain) || !['MX', 'US', 'VN'].includes(market))
     throw new Error('站点域名或市场不正确');
   const name = `site:semrush:${market}:${createHash('sha256').update(domain).digest('hex')}`;
   const cached = (
     await pool.query('SELECT value FROM provider_configs WHERE name=$1', [name])
   ).rows[0]?.value;
-  if (cached && Date.now() - Date.parse(cached.cachedAt) < 30 * 86400000)
+  if (cached && Date.now() - Date.parse(cached.cachedAt) < 30 * 86_400_000)
     return { ...cached.result, cached: true, apiUnits: 0 };
-  const { c, key } = await client();
+  const { c, key, semrushKeyId } = await client();
   try {
     const schema = mcpPayload(
       await c.rpc('tools/call', {
@@ -82,8 +83,8 @@ export async function collectSiteMetrics(request) {
         : 'Semrush 未收录此域名，保留未知',
     };
     await putDocument('provider_configs', name, { cachedAt: at, result });
-    return result;
-  } catch (e) {
-    throw new Error(safeSemrushError(e, key));
+    return { ...result, semrushKeyId };
+  } catch (error) {
+    throw new Error(safeSemrushError(error, key), { cause: e });
   }
 }

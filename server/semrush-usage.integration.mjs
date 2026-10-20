@@ -6,7 +6,8 @@ import { semrushUsage } from './semrush-usage.mjs';
 
 // Called by the explicitly isolated PostgreSQL/MySQL monitor integration only.
 export async function verifySemrushUsage(connection) {
-  const before = await semrushUsage(connection);
+  const options = { currentKeyId: 'usage-current-key', keyConfigured: true };
+  const before = await semrushUsage(options, connection);
   const jobId = randomUUID();
   const input = {
     kind: 'platform_products',
@@ -24,17 +25,49 @@ export async function verifySemrushUsage(connection) {
     [jobId, randomUUID(), input, checkpoint],
   );
   const records = [
-    ['sem-metric:0', 'done', { apiUnits: 10 }],
+    [
+      'sem-metric:0',
+      'done',
+      { apiUnits: 10, semrushKeyId: options.currentKeyId },
+    ],
     ['sem-metric:1', 'done', { apiUnits: 0, cached: true }],
-    ['sem-metric:2', 'failed', null],
-    ['domain:0', 'done', { apiUnits: 20 }],
-    ['site-score:qa', 'done', { apiUnits: 5 }],
-    ['platform:0', 'done', { apiUnits: 30 }],
+    ['sem-metric:2', 'failed', { semrushKeyId: options.currentKeyId }],
+    ['domain:0', 'done', { apiUnits: 20, semrushKeyId: options.currentKeyId }],
+    [
+      'site-score:qa',
+      'done',
+      { apiUnits: 5, semrushKeyId: options.currentKeyId },
+    ],
+    [
+      'platform:0',
+      'done',
+      { apiUnits: 30, semrushKeyId: options.currentKeyId },
+    ],
     ['platform:1', 'done', { apiUnits: 5000 }],
-    ['platform:2', 'done', {}],
-    ['sem-discover:0', 'done', { apiUnits: 40 }],
-    ['sem-discover:1', 'done', { apiUnits: 50, semrushUnknownCharges: 0 }],
-    ['sem-discover:2', 'done', { apiUnits: 0, semrushUnknownCharges: 1 }],
+    ['platform:2', 'done', { semrushKeyId: options.currentKeyId }],
+    [
+      'sem-discover:0',
+      'done',
+      { apiUnits: 40, semrushKeyId: options.currentKeyId },
+    ],
+    [
+      'sem-discover:1',
+      'done',
+      {
+        apiUnits: 50,
+        semrushUnknownCharges: 0,
+        semrushKeyId: options.currentKeyId,
+      },
+    ],
+    [
+      'sem-discover:2',
+      'done',
+      {
+        apiUnits: 0,
+        semrushUnknownCharges: 1,
+        semrushKeyId: options.currentKeyId,
+      },
+    ],
     ['ad:0', 'done', { apiUnits: 9999 }],
   ];
   for (const [step, status, response] of records)
@@ -49,12 +82,12 @@ export async function verifySemrushUsage(connection) {
       status: 'completed',
       at: new Date().toISOString(),
       step: 'semrush:qa',
-      response: { apiUnits: 60 },
+      response: { apiUnits: 60, semrushKeyId: options.currentKeyId },
     },
     false,
     connection,
   );
-  const after = await semrushUsage(connection);
+  const after = await semrushUsage(options, connection);
   assert.equal(after.confirmedUnits - before.confirmedUnits, 215);
   assert.equal(after.cachedRecords - before.cachedRecords, 1);
   assert.equal(after.unknownRecords - before.unknownRecords, 4);
@@ -63,7 +96,7 @@ export async function verifySemrushUsage(connection) {
       before.breakdown.find((g) => g.id === 'products').confirmedUnits,
     30,
   );
-  const repeated = await semrushUsage(connection);
+  const repeated = await semrushUsage(options, connection);
   assert.deepEqual({ ...repeated, checkedAt: after.checkedAt }, after);
   // oxlint-disable-next-line no-console -- Isolated integration proof, no credentials.
   console.log(

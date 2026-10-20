@@ -1,21 +1,22 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { validateJob } from './domain.mjs';
 import { runEnrichment, validateEnrichment } from './enrichment-jobs.mjs';
+import { assessKeyword } from './model.js';
+import { jobTasks, runJob } from './runner.mjs';
 import {
   csvRows,
+  mcpPayload,
   reportRows,
   rowMetrics,
-  mcpPayload,
 } from './semrush-reports.mjs';
-import { runJob, jobTasks } from './runner.mjs';
 import { runTrendJob } from './trend-queue.mjs';
-import { assessKeyword } from './model.js';
-import { validateJob } from './domain.mjs';
 
 test('one supplementation job refreshes Semrush and Trends without expansion or repeating metrics after a cooldown', async () => {
   const at = new Date().toISOString();
   const points = Array.from({ length: 53 }, (_, i) => ({
-    date: new Date(Date.now() - (52 - i) * 7 * 86400000)
+    date: new Date(Date.now() - (52 - i) * 7 * 86_400_000)
       .toISOString()
       .slice(0, 10),
     value: 50,
@@ -46,9 +47,9 @@ test('one supplementation job refreshes Semrush and Trends without expansion or 
     }),
     checkpoint: {},
   };
-  let now = Date.now(),
-    gate = { until: now + 60000 },
-    saved;
+  let now = Date.now();
+    let gate = { until: now + 60_000 };
+    let saved;
   const calls = [];
   const io = {
     now: () => now,
@@ -72,7 +73,7 @@ test('one supplementation job refreshes Semrush and Trends without expansion or 
             market: 'US',
             source: 'Semrush MCP',
             collectedAt: at,
-            monthlySearchVolume: 60500,
+            monthlySearchVolume: 60_500,
             difficulty: 29,
           },
           apiUnits: 0,
@@ -137,10 +138,10 @@ const job = (records, kind = 'sites', checkpoint = {}) => ({
   checkpoint,
 });
 function harness(records) {
-  const changes = [],
-    sites = [],
-    saves = [],
-    calls = [];
+  const calls = [];
+    const changes = [];
+    const saves = [];
+    const sites = [];
   return {
     changes,
     sites,
@@ -267,7 +268,7 @@ test('official CSV header maps KD accurately, while advertising competition and 
     data: 'Keyword;Search Volume;Keyword Difficulty Index;CPC;Competition;Intent\ncreatine gummies;60500;29;2.36;1;\n',
   });
   const metrics = rowMetrics(row, 'US', '2026-10-16');
-  assert.equal(metrics.monthlySearchVolume, 60500);
+  assert.equal(metrics.monthlySearchVolume, 60_500);
   assert.equal(metrics.difficulty, 29);
   assert.equal(metrics.advertisingCompetition, 1);
   assert.equal(metrics.intent, undefined);
@@ -308,9 +309,9 @@ test('research pipeline merges Semrush and free suggestions with hard limit, the
     },
     checkpoint: {},
   };
-  const calls = [],
-    saved = [],
-    patches = [];
+  const calls = [];
+    const saved = [];
+    const patches = [];
   let checkpoint;
   await runJob(j, {
     collect: async (_j, step, r) => {
@@ -360,7 +361,7 @@ test('research pipeline merges Semrush and free suggestions with hard limit, the
     },
     usage: async () => ({ confirmed: 0, reserved: 0 }),
     checkCancelled: async () => {},
-    getGate: async () => ({ until: Date.now() + 60000 }),
+    getGate: async () => ({ until: Date.now() + 60_000 }),
     setGate: async () => {},
   });
   assert.equal(checkpoint.keywords.length, 3);
@@ -376,7 +377,7 @@ test('research pipeline merges Semrush and free suggestions with hard limit, the
 test('v3 scoring still requires volume and trends, KD alone completes competition, no Similarweb placeholder required', () => {
   const at = new Date().toISOString();
   const points = Array.from({ length: 53 }, (_, i) => ({
-    date: new Date(Date.now() - (52 - i) * 7 * 86400000)
+    date: new Date(Date.now() - (52 - i) * 7 * 86_400_000)
       .toISOString()
       .slice(0, 10),
     value: 50,
@@ -389,12 +390,12 @@ test('v3 scoring still requires volume and trends, KD alone completes competitio
       market: 'US',
       source: 'Semrush MCP',
       collectedAt: at,
-      monthlySearchVolume: 60500,
+      monthlySearchVolume: 60_500,
       difficulty: 29,
     },
   };
   const a = assessKeyword(k);
-  assert.equal(a.version, 'keyword-research-v3.0');
+  assert.equal(a.version, 'keyword-research-v3.1-30d');
   assert.equal(a.coverage, 100);
   assert.equal(a.status, 'rated');
   assert.equal(a.dimensions.find((d) => d.key === 'competition').score, 71);

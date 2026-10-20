@@ -1,9 +1,10 @@
 import process from 'node:process';
 
 import { engine, pool, sql } from './database.mjs';
-export { pool } from './database.mjs';
-
 import { cleanKeyword, naturalKey } from './domain.mjs';
+import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
+
+export { pool } from './database.mjs';
 
 export async function migrate() {
   if (engine === 'mysql') {
@@ -61,7 +62,15 @@ export async function saveKeyword(value, importOnly = false, client = pool) {
           ? {
               ...record,
               ...Object.fromEntries(
-                ['id', 'favorite', 'reviewStatus', 'reviewNote', 'termZh', 'metrics', 'productIds']
+                [
+                  'id',
+                  'favorite',
+                  'reviewStatus',
+                  'reviewNote',
+                  'termZh',
+                  'metrics',
+                  'productIds',
+                ]
                   .filter((key) => old[key] !== undefined)
                   .map((key) => [key, old[key]]),
               ),
@@ -111,15 +120,49 @@ export async function collect(job, step, request) {
   );
   if (cached.rows[0]) {
     const row = cached.rows[0];
-    if (row.status === 'done') return row.response;
+    if (row.status === 'done') {
+      const { semrushKeyId: _internalSemrushKeyId, ...publicResult } =
+        row.response || {};
+      return publicResult;
+    }
     throw new Error(
       row.error ||
         '上次请求结果未知，已保留调用额度，不自动重复请求；可新建免费趋势补齐任务',
     );
   }
+  const semrushRequest =
+    request.sources?.includes('semrush') ||
+    request.sources?.includes('site_metrics') ||
+    (request.sources?.includes('platform_products') &&
+      request.provider === 'semrush');
+  let semrushKeyId;
+  if (semrushRequest) {
+    try {
+      const config = await pool.query(
+        'SELECT value FROM provider_configs WHERE name=$1',
+        ['provider:semrush:mcp:v1'],
+      );
+      const stored = config.rows[0]?.value;
+      if (stored) {
+        const secret = process.env.PROVIDER_CONFIG_ENCRYPTION_KEY;
+        semrushKeyId = semrushKeyIdentifier(
+          decryptSemrushKey(stored, secret),
+          secret,
+        );
+      }
+    } catch {
+      // A missing/unreadable key must not block the request journal; its cost
+      // will remain unattributed rather than being assigned to a guessed key.
+    }
+  }
   await pool.query(
-    "INSERT INTO research_requests(job_id,step,paid_allowance,status) VALUES($1,$2,$3,'started')",
-    [job.id, step, request.sorftimeRequestLimit || 0],
+    "INSERT INTO research_requests(job_id,step,paid_allowance,status,response) VALUES($1,$2,$3,'started',$4)",
+    [
+      job.id,
+      step,
+      request.sorftimeRequestLimit || 0,
+      semrushKeyId ? { semrushKeyId } : null,
+    ],
   );
   try {
     const provider = process.env.COLLECTOR_URL
@@ -196,11 +239,19 @@ export async function collect(job, step, request) {
     const result = await response.json();
     if (!response.ok)
       throw new Error(result.error || `采集服务HTTP ${response.status}`);
+    const persistedResult = {
+      ...result,
+      ...(result.semrushKeyId || semrushKeyId
+        ? { semrushKeyId: result.semrushKeyId || semrushKeyId }
+        : {}),
+    };
     await pool.query(
       "UPDATE research_requests SET status='done',response=$3 WHERE job_id=$1 AND step=$2",
-      [job.id, step, result],
+      [job.id, step, persistedResult],
     );
-    return result;
+    const { semrushKeyId: _internalSemrushKeyId, ...publicResult } =
+      persistedResult;
+    return publicResult;
   } catch (error) {
     await pool.query(
       "UPDATE research_requests SET status='failed',error=$3 WHERE job_id=$1 AND step=$2",

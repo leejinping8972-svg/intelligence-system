@@ -1,4 +1,5 @@
-import { fetchPublicPage } from './safe-web.mjs';
+import { setTimeout as pause } from 'node:timers/promises';
+
 import { collectAds } from './ads-provider.mjs';
 import {
   extractJsonLdProducts,
@@ -12,6 +13,8 @@ import {
   productFromMetadata,
   shopifyCatalogProducts,
 } from './product-queue.mjs';
+import { fetchPublicPage } from './safe-web.mjs';
+import { safeSemrushError } from './semrush-mcp.mjs';
 import {
   client,
   mcpPayload,
@@ -19,8 +22,6 @@ import {
   rowMetrics,
   rowTerm,
 } from './semrush-reports.mjs';
-import { safeSemrushError } from './semrush-mcp.mjs';
-import { setTimeout as pause } from 'node:timers/promises';
 
 export async function scanSite(
   site,
@@ -37,10 +38,10 @@ export async function scanSite(
       : []),
     ...fallbackProductUrls(site),
   ];
-  const visited = new Set(progress?.visited || []),
-    attempted = new Set(),
-    products = new Map(),
-    errors = [];
+  const attempted = new Set();
+    const errors = [];
+    const products = new Map();
+    const visited = new Set(progress?.visited || []);
   let truncated = progress?.truncated === true;
   while (attempted.size < limit) {
     const index = queue.findIndex((url) => !attempted.has(url));
@@ -138,10 +139,10 @@ export async function scanAdvertiser(
   progress = null,
 ) {
   const ads = new Map();
-  const cursors = new Set(progress?.cursors || []),
-    errors = [];
-  let cursor = progress?.cursor || '',
-    pages = 0;
+  const cursors = new Set(progress?.cursors || []);
+    const errors = [];
+  let cursor = progress?.cursor || '';
+    let pages = 0;
   do {
     try {
       const result = await request(`ads:${cursor || 'first'}`, () =>
@@ -190,7 +191,7 @@ export async function fetchHotwordSeed(
   request,
   connect = client,
 ) {
-  const { c, key } = await connect();
+  const { c, key, semrushKeyId } = await connect();
   try {
     const report = 'phrase_fullsearch';
     const schema = mcpPayload(
@@ -248,10 +249,13 @@ export async function fetchHotwordSeed(
         apiUnits: Number.isFinite(payload.metadata?.usage?.api_units)
           ? payload.metadata.usage.api_units
           : null,
+        semrushKeyId,
       };
     });
   } catch (error) {
-    throw new Error(safeSemrushError(error, key), { cause: error });
+    const safe = new Error(safeSemrushError(error, key), { cause: error });
+    if (semrushKeyId) safe.semrushKeyId = semrushKeyId;
+    throw safe;
   } finally {
     await c.close?.();
   }

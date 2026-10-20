@@ -1,23 +1,24 @@
 /* eslint-disable unicorn/no-await-expression-member -- Match SQL cache access in existing adapters. */
-import { collectorEnv } from './local-provider.mjs';
 import { createHash } from 'node:crypto';
-import { pool, putDocument } from './database.mjs';
+
 import { connectSorftime, readSorftimeToken } from './collector.js';
+import { pool, putDocument } from './database.mjs';
+import { collectorEnv } from './local-provider.mjs';
 import {
-  client as semrushClient,
-  mcpPayload,
-  reportRows,
-} from './semrush-reports.mjs';
-import { safeSemrushError } from './semrush-mcp.mjs';
-import {
-  payload,
-  records,
+  matchesProductTerm,
   normalizeAmazon,
-  normalizeShopping,
   normalizeAmazonContent,
   normalizeAmazonTrend,
-  matchesProductTerm,
+  normalizeShopping,
+  payload,
+  records,
 } from './platform-product-data.mjs';
+import { safeSemrushError } from './semrush-mcp.mjs';
+import {
+  mcpPayload,
+  reportRows,
+  client as semrushClient,
+} from './semrush-reports.mjs';
 
 export async function platformProductRequest(request, overrides = {}) {
   const cache =
@@ -33,7 +34,7 @@ export async function platformProductRequest(request, overrides = {}) {
             ).rows[0]?.value,
           write: (name, value) => putDocument('provider_configs', name, value),
         };
-  const discovery = ['search', 'domains', 'shopping'].includes(request.op);
+  const discovery = ['domains', 'search', 'shopping'].includes(request.op);
   const signatureParts = [
     request.provider,
     request.op,
@@ -44,7 +45,8 @@ export async function platformProductRequest(request, overrides = {}) {
     request.provider === 'semrush' ? request.limit : undefined,
     request.product?.sourceProductId,
   ];
-  if (discovery && request.discoveryDay) signatureParts.push('daily', request.discoveryDay);
+  if (discovery && request.discoveryDay)
+    signatureParts.push('daily', request.discoveryDay);
   if (
     request.op === 'trend' &&
     request.trendType &&
@@ -61,7 +63,7 @@ export async function platformProductRequest(request, overrides = {}) {
         previous.result.series?.points?.length === 0) ||
       (request.op === 'content' && emptyContent(previous.result.patch)));
   let ttl = 86_400_000;
-  if (['detail', 'content'].includes(request.op)) ttl = 7 * 86_400_000;
+  if (['content', 'detail'].includes(request.op)) ttl = 7 * 86_400_000;
   if (emptyTrend) ttl = 15 * 60_000;
   if (
     previous &&
@@ -70,8 +72,12 @@ export async function platformProductRequest(request, overrides = {}) {
   )
     return { ...previous.result, cached: true, apiUnits: 0, providerCalls: 0 };
   const result = await collectProductData(request, overrides);
-  if (JSON.stringify(result).length < 250_000)
-    await cache?.write(name, { cachedAt: new Date().toISOString(), result });
+  const { semrushKeyId: _semrushKeyId, ...cacheResult } = result;
+  if (JSON.stringify(cacheResult).length < 250_000)
+    await cache?.write(name, {
+      cachedAt: new Date().toISOString(),
+      result: cacheResult,
+    });
   return result;
 }
 const clients = new Map();
@@ -116,8 +122,8 @@ async function collectProductData(request, overrides = {}) {
         content: 'product_content',
         trend: 'product_trend',
       };
-      const name = names[request.op],
-        tool = c.tools.find((t) => t.name === name);
+      const name = names[request.op];
+        const tool = c.tools.find((t) => t.name === name);
       if (!tool) throw new Error(`Sorftime MCP 未开放 ${name} 工具`);
       const args =
         request.op === 'search'
@@ -199,8 +205,8 @@ async function collectProductData(request, overrides = {}) {
         return { product, providerCalls: 1 };
       }
       if (request.op === 'content') {
-        const patch = normalizeAmazonContent(value, request.product, at),
-          empty = emptyContent(patch);
+        const patch = normalizeAmazonContent(value, request.product, at);
+          const empty = emptyContent(patch);
         return {
           patch: empty ? undefined : patch,
           empty,
@@ -227,7 +233,7 @@ async function collectProductData(request, overrides = {}) {
     } catch (error) {
       clients.clear();
       // Never attach the raw cause, which can contain the MCP token.
-      // eslint-disable-next-line preserve-caught-error
+
       throw new Error(
         String(error.message)
           .replaceAll(token || '\u0000', '[已隐藏]')
@@ -239,7 +245,9 @@ async function collectProductData(request, overrides = {}) {
     }
   }
   if (request.provider !== 'semrush') throw new Error('不支持的商品平台');
-  const { c, key } = await (overrides.semrushClient || semrushClient)();
+  const { c, key, semrushKeyId } = await (
+    overrides.semrushClient || semrushClient
+  )();
   try {
     const report =
       request.op === 'domains' ? 'phrase_adwords' : 'domain_shopping';
@@ -291,8 +299,8 @@ async function collectProductData(request, overrides = {}) {
         arguments: { report, params },
       }),
     );
-    const rows = reportRows(value),
-      apiUnits = value.metadata?.usage?.api_units;
+    const apiUnits = value.metadata?.usage?.api_units;
+      const rows = reportRows(value);
     if (request.op === 'domains')
       return {
         domains: [
@@ -307,15 +315,22 @@ async function collectProductData(request, overrides = {}) {
           ),
         ],
         apiUnits,
+        semrushKeyId,
       };
     const products = rows
       .map((r) => normalizeShopping(r, request.market, at))
       .filter(Boolean)
       .filter((p) => matchesProductTerm(p, request.term));
-    return { products, sourceRows: rows.length, apiUnits, collectedAt: at };
+    return {
+      products,
+      sourceRows: rows.length,
+      apiUnits,
+      collectedAt: at,
+      semrushKeyId,
+    };
   } catch (error) {
     // Never attach the raw cause: provider errors can contain authentication URLs.
-    // eslint-disable-next-line preserve-caught-error
+
     throw new Error(safeSemrushError(error, key));
   }
 }

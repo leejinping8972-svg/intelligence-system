@@ -1,5 +1,10 @@
 import { Buffer } from 'node:buffer';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+} from 'node:crypto';
 import process from 'node:process';
 
 import { requireAdmin } from './auth.mjs';
@@ -45,6 +50,13 @@ export function decryptSemrushKey(value, secret) {
     decipher.final(),
   ]).toString('utf8');
 }
+// Internal attribution label only: it cannot authenticate to Semrush and is
+// never returned by the API or displayed in the UI.
+export function semrushKeyIdentifier(apiKey, secret) {
+  return createHmac('sha256', Buffer.from(secret || '', 'base64'))
+    .update(apiKey, 'utf8')
+    .digest('hex');
+}
 export async function semrushAction(input, user, overrides = {}) {
   if (
     input.action === 'server_semrush_config' ||
@@ -68,7 +80,21 @@ export async function semrushAction(input, user, overrides = {}) {
     usage: semrushUsage,
     ...overrides,
   };
-  if (input.action === 'server_semrush_usage') return io.usage();
+  if (input.action === 'server_semrush_usage') {
+    const stored = await io.read();
+    let currentKeyId = null;
+    if (stored) {
+      try {
+        currentKeyId = semrushKeyIdentifier(
+          decryptSemrushKey(stored, io.secret),
+          io.secret,
+        );
+      } catch {
+        // Keep historical totals visible, but don't guess attribution.
+      }
+    }
+    return io.usage({ currentKeyId, keyConfigured: Boolean(stored) });
+  }
   const stored = await io.read();
   if (input.action === 'server_semrush_balance') {
     if (!stored) return { configured: false, balance: null };

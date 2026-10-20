@@ -16,6 +16,11 @@ interface Connection {
 const apiKey = ref('');
 const busy = ref(false);
 interface Usage {
+  keyConfigured: boolean;
+  currentKeyAvailable: boolean;
+  currentKey: UsageTotals;
+  otherKeys: UsageTotals;
+  unassigned: UsageTotals;
   confirmedUnits: number;
   confirmedRecords: number;
   unknownRecords: number;
@@ -23,6 +28,13 @@ interface Usage {
   unclassifiedRecords: number;
   firstRecordedAt: null | string;
   checkedAt: string;
+  breakdown: UsageTotals['breakdown'];
+}
+interface UsageTotals {
+  confirmedUnits: number;
+  confirmedRecords: number;
+  unknownRecords: number;
+  cachedRecords: number;
   breakdown: Array<{
     id: string;
     label: string;
@@ -160,9 +172,11 @@ onUnmounted(() => {
       <div>
         <span>系统已记录消耗积分</span>
         <strong>{{
-          usage ? usage.confirmedUnits.toLocaleString('zh-CN') : '—'
+          usage?.currentKeyAvailable
+            ? usage.currentKey.confirmedUnits.toLocaleString('zh-CN')
+            : '—'
         }}</strong>
-        <small>Semrush API units · 仅已确认扣费</small>
+        <small>当前 Key 的 Semrush API units · 仅已确认扣费</small>
       </div>
       <Button
         :loading="usageBusy"
@@ -173,21 +187,35 @@ onUnmounted(() => {
       </Button>
       <template v-if="usage">
         <p class="hci-subtle">
-          已确认 {{ usage.confirmedRecords }} 条记录 · 扣费未确认
-          {{ usage.unknownRecords }} 条 · 缓存命中 {{ usage.cachedRecords }} 条
+          当前 Key：已确认 {{ usage.currentKey.confirmedRecords }} 条 ·
+          扣费未确认 {{ usage.currentKey.unknownRecords }} 条
+          <span
+            v-if="
+              usage.otherKeys.confirmedRecords || usage.otherKeys.unknownRecords
+            "
+          >
+            · 其他 Key：已确认
+            {{ usage.otherKeys.confirmedUnits.toLocaleString('zh-CN') }}
+            units，未确认 {{ usage.otherKeys.unknownRecords }} 条</span>
+          · 未归属历史：已确认
+          {{ usage.unassigned.confirmedUnits.toLocaleString('zh-CN') }}
+          units，未确认 {{ usage.unassigned.unknownRecords }} 条 · 缓存命中
+          {{ usage.cachedRecords }} 条（不重复计费）
           <span v-if="usage.unclassifiedRecords">
             · 平台来源待核验 {{ usage.unclassifiedRecords }} 条</span>
         </p>
         <div class="hci-toolbar">
-          <Tag v-for="group in usage.breakdown" :key="group.id">
-            {{ group.label }}：{{
+          <Tag v-for="group in usage.currentKey.breakdown" :key="group.id">
+            当前 Key · {{ group.label }}：{{
               group.confirmedUnits.toLocaleString('zh-CN')
             }}
             <span v-if="group.unknownRecords">（{{ group.unknownRecords }} 条扣费未确认）</span>
           </Tag>
         </div>
         <p class="hci-subtle">
-          全部已保存任务，包含历史 Key。统计截至
+          仅统计系统从本功能上线后记录并能归属当前 Key 的请求；更换 Key 后，旧
+          Key 的消耗会移入“其他
+          Key”。上线前的历史记录无法回溯归属，单列“未归属历史”。统计截至
           {{
             new Date(usage.checkedAt).toLocaleString('zh-CN', {
               hour12: false,
@@ -197,6 +225,13 @@ onUnmounted(() => {
           此数值不是账户余额或完整账单，刷新仅查询本地记录，不消耗 Semrush
           积分。
         </p>
+        <Alert
+          v-if="usage.keyConfigured && !usage.currentKeyAvailable"
+          type="warning"
+          show-icon
+          message="当前 Key 归属暂时无法确认"
+          description="当前密钥配置无法解密；已保留历史统计，但不会把其他 Key 的记录误算为当前 Key。"
+        />
       </template>
       <Alert
         v-if="usageError"

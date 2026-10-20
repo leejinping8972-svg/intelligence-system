@@ -1,14 +1,11 @@
 /* eslint-disable unicorn/no-await-expression-member -- Document SQL follows existing server query conventions. */
 /* eslint-disable unicorn/prefer-ternary -- Each scheduler branch supplies a separate set of IO callbacks. */
-import { setTimeout as pause } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
-import { pool, putDocument, lock, unlock } from './database.mjs';
-import { requireAdmin } from './auth.mjs';
-import { cleanKeyword, naturalKey } from './domain.mjs';
-import { saveKeyword } from './store.mjs';
-import { maintenance } from './database-admin.mjs';
-import { saveSiteBatch } from './competitor-batch.mjs';
+import { setTimeout as pause } from 'node:timers/promises';
+
 import { saveAdvertiserBatch } from './advertiser-monitor-batch.mjs';
+import { requireAdmin } from './auth.mjs';
+import { saveSiteBatch } from './competitor-batch.mjs';
 import {
   dayKey,
   digest,
@@ -26,6 +23,10 @@ import {
   scanAdvertiser,
   scanSite,
 } from './competitor-monitor-providers.mjs';
+import { maintenance } from './database-admin.mjs';
+import { lock, pool, putDocument, unlock } from './database.mjs';
+import { cleanKeyword, naturalKey } from './domain.mjs';
+import { saveKeyword } from './store.mjs';
 
 const PREFIX = 'competitor:';
 export function createMonitorStore(connection = pool) {
@@ -93,7 +94,7 @@ export async function competitorAction(input, user) {
       return saveAdvertiserBatch(input, db, c);
     if (input.action === 'server_competitor_save') {
       const schedule = validateSchedule(input);
-      let site, ad;
+      let ad, site;
       if (input.siteId)
         site = await db.read(
           `business:sites:${String(input.siteId).slice(0, 160)}`,
@@ -101,13 +102,13 @@ export async function competitorAction(input, user) {
       if (input.adId)
         ad = await db.read(`business:ads:${String(input.adId).slice(0, 160)}`);
       if (
-        !['site', 'advertiser'].includes(input.kind) ||
+        !['advertiser', 'site'].includes(input.kind) ||
         (input.kind === 'site' ? !site : !ad?.pageId)
       )
         throw new Error('请选择有效站点或含Page ID的广告主');
       const market = input.kind === 'site' ? site.market : ad.market;
       if (
-        !['US', 'MX', 'VN'].includes(market) ||
+        !['MX', 'US', 'VN'].includes(market) ||
         (site && site.market !== market)
       )
         throw new Error('关联站点与广告主须属于同一市场');
@@ -147,14 +148,19 @@ export async function competitorAction(input, user) {
     }
     const hot = input.kind === 'hotwords';
     const id = hot ? String(input.market) : String(input.id);
-    if (hot ? !['US', 'MX', 'VN'].includes(id) : !/^[a-f\d]{32}$/.test(id))
+    if (hot ? !['MX', 'US', 'VN'].includes(id) : !/^[a-f\d]{32}$/.test(id))
       throw new Error('监控编号无效');
     const name = `${PREFIX}${hot ? 'hot-config' : 'target'}:${id}`;
     const config = await db.read(name);
     if (!config) throw new Error('监控配置不存在');
     if (input.action === 'server_competitor_update' && !hot) {
       const schedule = validateSchedule({ ...config, ...input });
-      await db.write(name, { ...config, ...schedule, requested: schedule.enabled ? config.requested === true : false, updatedAt: new Date().toISOString() });
+      await db.write(name, {
+        ...config,
+        ...schedule,
+        requested: schedule.enabled ? config.requested === true : false,
+        updatedAt: new Date().toISOString(),
+      });
       return { saved: true };
     }
     if (input.action === 'server_competitor_remove' && !hot) {
@@ -267,18 +273,18 @@ export async function persistObservation(c, target, kind, item, event, at) {
 
 export async function competitorTick(c, providers = {}) {
   if (maintenance) return;
-  const db = createMonitorStore(c),
-    now = Date.now(),
-    at = new Date(now).toISOString(),
-    day = dayKey(now);
+  const now = Date.now();
+    const at = new Date(now).toISOString();
+    const day = dayKey(now);
+    const db = createMonitorStore(c);
   const targets = [
     ...(await db.list(`${PREFIX}target:`)),
     ...(await db.list(`${PREFIX}hot-config:`)),
   ];
   // One target per tick lets pause/configuration requests obtain the same lock.
   for (const entry of targets) {
-    const config = entry.value,
-      hot = entry.name.includes('hot-config:');
+    const config = entry.value;
+      const hot = entry.name.includes('hot-config:');
     const id = hot ? `hot-${config.market}` : config.id;
     const runName = `${PREFIX}run:${id}`;
     const last = await db.read(runName);
@@ -294,18 +300,32 @@ export async function competitorTick(c, providers = {}) {
     const request = async (step, call) => {
       const name = `${PREFIX}request:${day}:${id}:${digest(step)}`;
       const journal = await db.read(name);
-      if (journal?.status === 'completed') return journal.response;
+      if (journal?.status === 'completed') {
+        const { semrushKeyId: _keyId, ...response } = journal.response || {};
+        return response;
+      }
       if (journal) throw new Error('该请求已尝试但结果未确认，本日不重复调用');
       await db.write(name, { status: 'started', at, step });
       try {
         const response = await call();
-        await db.write(name, { status: 'completed', at, step, response });
-        return response;
+        const { semrushKeyId, ...publicResponse } = response || {};
+        await db.write(name, {
+          status: 'completed',
+          at,
+          step,
+          response: semrushKeyId
+            ? { ...publicResponse, semrushKeyId }
+            : publicResponse,
+        });
+        return publicResponse;
       } catch (error) {
         await db.write(name, {
           status: 'failed',
           at,
           step,
+          ...(error.semrushKeyId
+            ? { response: { semrushKeyId: error.semrushKeyId } }
+            : {}),
           error: error.message,
         });
         throw error;

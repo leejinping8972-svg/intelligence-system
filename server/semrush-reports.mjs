@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import process from 'node:process';
 
 import { pool, putDocument } from './database.mjs';
-import { decryptSemrushKey } from './semrush-config.mjs';
+import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { connectSemrush, safeSemrushError } from './semrush-mcp.mjs';
 
 export function mcpPayload(result) {
@@ -32,8 +32,8 @@ export function csvRows(text) {
   const delimiter = text.split('\n')[0].includes(';') ? ';' : ',';
   const rows = [];
   let cell = '';
-    let quoted = false;
-    let row = [];
+  let quoted = false;
+  let row = [];
   for (let i = 0; i <= text.length; i++) {
     const c = text[i];
     if (c === '"') {
@@ -123,10 +123,20 @@ export async function client() {
     rows[0].value,
     process.env.PROVIDER_CONFIG_ENCRYPTION_KEY,
   );
+  const semrushKeyId = semrushKeyIdentifier(
+    key,
+    process.env.PROVIDER_CONFIG_ENCRYPTION_KEY,
+  );
   try {
-    return { c: await connectSemrush(key), key };
+    return {
+      c: await connectSemrush(key),
+      key,
+      semrushKeyId,
+    };
   } catch (error) {
-    throw new Error(safeSemrushError(error, key), { cause: e });
+    const safe = new Error(safeSemrushError(error, key), { cause: error });
+    safe.semrushKeyId = semrushKeyId;
+    throw safe;
   }
 }
 async function execute(c, report, params) {
@@ -158,8 +168,8 @@ async function execute(c, report, params) {
 }
 export async function collectSemrush(request) {
   const at = new Date().toISOString();
-    const market = request.markets[0];
-    const term = request.keywords[0];
+  const market = request.markets[0];
+  const term = request.keywords[0];
   const name = cacheName(term, market);
   if (request.semExpansion !== true) {
     const { rows } = await pool.query(
@@ -175,11 +185,11 @@ export async function collectSemrush(request) {
         message: `使用30天内 Semrush 缓存，未重复调用；指标采集日期保留原值。${cached.result.message || ''}`,
       };
   }
-  const { c, key } = await client();
+  const { c, key, semrushKeyId } = await client();
   try {
     if (request.semExpansion === true) {
       const items = new Map();
-        const sources = [];
+      const sources = [];
       let apiUnits = 0;
       let semrushUnknownCharges = 0;
       const reports = [
@@ -248,6 +258,7 @@ export async function collectSemrush(request) {
         ],
         apiUnits,
         semrushUnknownCharges,
+        semrushKeyId,
       };
     }
     const payload = await execute(c, 'phrase_this', {
@@ -274,8 +285,8 @@ export async function collectSemrush(request) {
         : 'Semrush 未收录该关键词，不能当成搜索量为0',
     };
     await putDocument('provider_configs', name, { cachedAt: at, result });
-    return result;
+    return { ...result, semrushKeyId };
   } catch (error) {
-    throw new Error(safeSemrushError(error, key), { cause: e });
+    throw new Error(safeSemrushError(error, key), { cause: error });
   }
 }
