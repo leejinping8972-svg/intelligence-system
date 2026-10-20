@@ -11,6 +11,7 @@ import { contentDate, contentRequest } from '../public-content';
 
 const props = defineProps<{
   item: { id: string; title: string; source: string; type: string };
+  showAbstract?: boolean;
 }>();
 const headingId = useId();
 const document = ref<ArticleDocument | null>(null);
@@ -186,7 +187,12 @@ onUnmounted(() => {
         show-icon
         message="正文或表格达到保留上限，请同时查看原文"
       />
-      <p v-if="document.abstract"><b>来源摘要：</b>{{ document.abstract }}</p>
+      <p
+        v-if="document.abstract && showAbstract !== false"
+        class="article-abstract"
+      >
+        <b>来源摘要：</b>{{ document.abstract }}
+      </p>
       <div class="hci-toolbar">
         <Button size="small" @click="toggleAll">{{
           allExpanded ? '全部收起' : '全部展开'
@@ -306,7 +312,8 @@ onUnmounted(() => {
 
 .article-paragraph {
   margin: 12px 0;
-  line-height: 1.85;
+  font-size: 15px;
+  line-height: 1.95;
   overflow-wrap: anywhere;
 }
 

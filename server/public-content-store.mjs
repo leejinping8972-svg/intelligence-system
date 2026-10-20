@@ -15,6 +15,7 @@ import {
   validJobId,
 } from './public-content-domain.mjs';
 import { executeContentJob, newContentJob } from './public-content-engine.mjs';
+import { historyDetailsAction } from './public-content-enrichment.mjs';
 import { readYoutubeKey } from './youtube-config.mjs';
 
 const get = async (name) => {
@@ -191,6 +192,32 @@ export async function withPublicContentIdle(callback) {
   return result;
 }
 export async function publicContentAction(input, user) {
+  if (
+    [
+      'server_content_history_preview',
+      'server_content_history_submit',
+    ].includes(input.action)
+  ) {
+    const result = await historyDetailsAction(input, user, {
+      ...io,
+      listJobs,
+      allItems: async (ids) => {
+        if (Array.isArray(ids) && ids.length === 0) return [];
+        const records = await pool.query(
+          `SELECT value FROM workspace_documents WHERE name LIKE 'content:item:%'${ids ? ` AND name IN (${ids.map((_, index) => `$${index + 1}`).join(',')})` : ''} LIMIT 1001`,
+          ids?.map((id) => `content:item:${id}`) || [],
+        );
+        if (records.rows.length > 1000)
+          throw new Error('历史超过1000条，请分批处理');
+        return records.rows.map((row) => row.value);
+      },
+      submitLease: (callback) =>
+        lease('public-content-submit', 89_761_032, callback),
+    });
+    if (result === null)
+      throw new Error('正在提交其他公共内容任务，请稍后再试');
+    return result;
+  }
   if (
     ['server_content_article_get', 'server_content_article_submit'].includes(
       input.action,

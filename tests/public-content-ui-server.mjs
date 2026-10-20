@@ -155,6 +155,36 @@ globalThis.fetch = async (value) => {
         },
       ],
     });
+  if (
+    u.hostname === 'www.googleapis.com' &&
+    u.pathname === '/youtube/v3/videos'
+  )
+    return json({
+      items: [
+        {
+          id: u.searchParams.get('id'),
+          snippet: {
+            description:
+              'Creatine gummies: full description from the isolated source.\n\nThis second paragraph describes nutrition research and consumer questions.\n\nThis fixture does not connect to a real data provider.',
+          },
+        },
+      ],
+    });
+  if (
+    u.hostname === 'api.scrapecreators.com' &&
+    u.pathname === '/v1/reddit/post'
+  ) {
+    const id = new URL(u.searchParams.get('url')).pathname.match(
+      /\/comments\/([^/]+)/,
+    )?.[1];
+    return json({
+      success: true,
+      credits_charged: 1,
+      id,
+      selftext:
+        'Creatine gummies discussion.\n\nA complete synthetic post body for isolated verification.',
+    });
+  }
   if (u.hostname === 'www.googleapis.com')
     return json({
       items: Array.from({ length: 8 }, (_, i) => ({

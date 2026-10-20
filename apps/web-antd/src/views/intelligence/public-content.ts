@@ -87,6 +87,10 @@ export interface ContentItem {
   productIds: string[];
   favorite: boolean;
   textAvailability: string;
+  detailEnrichment?: Record<
+    string,
+    { status: string; reason: string; attemptedAt: string }
+  >;
   doi?: string;
   fullTextUrl?: string;
   publicationType?: string[];

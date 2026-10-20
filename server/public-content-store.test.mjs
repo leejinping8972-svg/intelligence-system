@@ -383,6 +383,33 @@ test(
         afterBody.items.find((entry) => entry.id === paperId).productIds,
         ['product-qa'],
       );
+      const enrichmentPreview = await api(
+        { action: 'server_content_history_preview', includePaid: true },
+        user,
+      );
+      assert.equal(enrichmentPreview.total, 3);
+      assert.equal(enrichmentPreview.paidRequests, 2);
+      const selectedPreview = await api(
+        { action: 'server_content_history_preview', itemIds: [paperId] },
+        user,
+      );
+      assert.equal(selectedPreview.total, 1);
+      assert.equal(selectedPreview.paidRequests, 0);
+      const enrichment = await api(
+        {
+          action: 'server_content_history_submit',
+          requestId: randomUUID(),
+          includePaid: true,
+        },
+        user,
+      );
+      assert.equal(enrichment.job.mode, 'enrichment');
+      assert.equal(enrichment.job.itemIds.length, 3);
+      await api(
+        { action: 'server_content_cancel', jobId: enrichment.job.id },
+        user,
+      );
+      assert.equal(await withPublicContentIdle(async () => true), true);
       console.log(
         'Isolated PostgreSQL API verification: submit, history, cancel, favorites, associations, transcript and article body queues/cache; zero provider calls.',
       );

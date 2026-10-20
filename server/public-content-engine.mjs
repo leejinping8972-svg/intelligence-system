@@ -11,6 +11,7 @@ import {
   validateContentSearch,
   validJobId,
 } from './public-content-domain.mjs';
+import { enrichContentStep } from './public-content-enrichment.mjs';
 import {
   ContentProviderError,
   fetchContentComments,
@@ -56,7 +57,8 @@ export async function executeContentJob(job, io) {
       step.message = '服务重启时请求结果未确认，未自动重复调用';
       if (!step.accounted) {
         job.requests++;
-        if (paidContentSource(step.source)) job.unknownChargeRequests++;
+        if (step.paid || paidContentSource(step.source))
+          job.unknownChargeRequests++;
         step.accounted = true;
       }
     }
@@ -82,6 +84,12 @@ export async function executeContentJob(job, io) {
     await save();
     if (step.kind === 'article_detail') {
       await collectArticleStep(job, step, io);
+      if (io.leaseSignal?.aborted) return;
+      await save();
+      continue;
+    }
+    if (['detail_metadata', 'detail_transcript'].includes(step.kind)) {
+      await enrichContentStep(job, step, io);
       if (io.leaseSignal?.aborted) return;
       await save();
       continue;
@@ -201,7 +209,8 @@ export async function executeContentJob(job, io) {
       ) {
         job.requests++;
         step.accounted = true;
-        if (paidContentSource(step.source)) job.unknownChargeRequests++;
+        if (step.paid || paidContentSource(step.source))
+          job.unknownChargeRequests++;
       }
       if (
         ['blocked', 'rate_limited', 'unconfigured', 'unsupported'].includes(
@@ -263,8 +272,11 @@ export async function executeContentJob(job, io) {
   }
   if (await isCancelled()) return;
   const failures =
-    job.steps.some((s) => !['skipped', 'success'].includes(s.status)) ||
-    ['failed', 'unknown'].includes(job.aiStatus);
+    job.steps.some(
+      (s) =>
+        !['skipped', 'success'].includes(s.status) ||
+        (job.mode === 'enrichment' && s.status === 'skipped'),
+    ) || ['failed', 'unknown'].includes(job.aiStatus);
   const failureStatus = job.itemIds.length > 0 ? 'partial' : 'failed';
   job.status = failures ? failureStatus : 'completed';
   job.finishedAt = new Date().toISOString();
