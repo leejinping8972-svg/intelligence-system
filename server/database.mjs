@@ -58,40 +58,30 @@ export const rawMysql = config ? mysqlPool(config) : null;
 export const pool = rawMysql
   ? wrap(rawMysql, true)
   : new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 6 });
+const advisoryLocks = new Map([
+  ['keyword-submit', 89_761_032],
+  ['enrichment-submit', 89_761_018],
+  ['runner', 89_761_016],
+  ['trend-runner', 89_761_019],
+]);
+function lockKey(name) {
+  if (engine === 'mysql') return `intelligence:${name}`;
+  return advisoryLocks.get(name) ?? 89_761_017;
+}
 export async function lock(connection, name = 'runner') {
   const { rows } = await connection.query(
     sql(
       'SELECT pg_try_advisory_lock($1) AS locked',
       'SELECT GET_LOCK($1,0) AS locked',
     ),
-    [
-      engine === 'mysql'
-        ? `intelligence:${name}`
-        : name === 'enrichment-submit'
-          ? 89761018
-          : name === 'runner'
-            ? 89761016
-            : name === 'trend-runner'
-              ? 89761019
-              : 89761017,
-    ],
+    [lockKey(name)],
   );
   return Boolean(rows[0].locked);
 }
 export async function unlock(connection, name = 'runner') {
   await connection.query(
     sql('SELECT pg_advisory_unlock($1)', 'SELECT RELEASE_LOCK($1)'),
-    [
-      engine === 'mysql'
-        ? `intelligence:${name}`
-        : name === 'enrichment-submit'
-          ? 89761018
-          : name === 'runner'
-            ? 89761016
-            : name === 'trend-runner'
-              ? 89761019
-              : 89761017,
-    ],
+    [lockKey(name)],
   );
 }
 export async function putDocument(

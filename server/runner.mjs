@@ -145,6 +145,7 @@ export function jobTasks(job) {
         ...(job.checkpoint.logs || ['已提交后台，关闭页面不影响执行']),
       ],
     }));
+  const progress = jobProgress(job, assessKeyword);
   return job.input.markets.map((market) => ({
     id: `${job.id}:${market}`,
     cloudJobId: job.id,
@@ -157,7 +158,7 @@ export function jobTasks(job) {
       job.checkpoint.submittedAt ||
       job.checkpoint.startedAt ||
       new Date(job.created_at).toISOString(),
-    progress: jobProgress(job, assessKeyword),
+    progress,
     steps: job.checkpoint.logs || [
       '已保存到腾讯云，等待后台执行；关闭浏览器不影响任务',
     ],
