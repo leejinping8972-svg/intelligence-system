@@ -1,5 +1,7 @@
 import type { Keyword, Market } from './data';
 
+import { assessSupplementRelevance } from './keyword-relevance';
+
 export type KeywordGrade = 'A' | 'B' | 'C' | 'D';
 export interface KeywordMetrics {
   market: Market;
@@ -32,7 +34,7 @@ export interface KeywordAssessment {
     evidence: string;
   }>;
 }
-export const KEYWORD_MODEL_VERSION = 'keyword-research-v2.0';
+export const KEYWORD_MODEL_VERSION = 'keyword-research-v3.0';
 export const KEYWORD_MODEL_WEIGHTS = [
   { key: 'relevance', label: '业务相关性', weight: 25 },
   { key: 'demand', label: '需求规模', weight: 20 },
@@ -48,55 +50,11 @@ export function gradeForScore(score: number): KeywordGrade {
   return 'D';
 }
 export function assessKeyword(keyword: Keyword): KeywordAssessment {
-  const text = keyword.term.toLocaleLowerCase();
-  const tags = new Set<string>();
+  const business = assessSupplementRelevance(keyword);
+  const { relevance, offTopic, brand } = business;
+  const tags = new Set<string>(business.tags);
   if (keyword.source.includes('Sorftime')) tags.add('Amazon站内来源');
-  const offTopic =
-    /\b(hospital|clinic|doctor|jobs?|salary|magazine|badge reel|services?|partners|specialists?)\b|bệnh viện|tuyển dụng|招聘|医院/.test(
-      text,
-    );
-  const ingredient =
-    /magnesium|glycinate|collagen|creatine|probiotic|prebiotic|inositol|ashwagandha|berberine|melatonin|omega|vitamin|protein|electrolyte|inulin|psyllium|colágeno|probiótico|men vi sinh|chất xơ|胶原|益生菌/.test(
-      text,
-    );
-  const form =
-    /gumm|capsul|powder|softgel|tablet|liquid|cápsula|polvo|\bbột\b|viên|软糖|胶囊|粉剂/.test(
-      text,
-    );
-  const commercial =
-    /supplement|buy|price|shop|comprar|precio|suplemento|bổ sung|mua|giá|保健品|购买/.test(
-      text,
-    );
-  const brand =
-    /\b(amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/.test(
-      text,
-    );
-  const classified = Boolean(
-    keyword.category && !['待分类', '未分类'].includes(keyword.category),
-  );
-  if (ingredient) tags.add('成分词');
-  if (form) tags.add('剂型词');
-  if (commercial || ingredient || form) tags.add('商品需求词');
-  if (/women|female|menopause|prenatal|phụ nữ|mujer|女性/.test(text))
-    tags.add('人群词');
-  if (brand) tags.add('品牌导航词');
-  if (offTopic) tags.add('非商品需求');
-  if (
-    /how|what|benefits|side effects|cách|là gì|cómo|para qué|功效|副作用/.test(
-      text,
-    )
-  )
-    tags.add('内容研究词');
-
-  let relevance = 30;
-  if (ingredient) relevance = 80;
-  if (classified) relevance = 85;
-  if (offTopic) relevance = 10;
-  let product = offTopic
-    ? 10
-    : clamp(
-        25 + (ingredient ? 30 : 0) + (form ? 25 : 0) + (commercial ? 20 : 0),
-      );
+  let product = business.product;
   const normalized = new Map(
     (keyword.trendPoints || [])
       .filter(
@@ -241,7 +199,8 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
   const purchaseIntent =
     /(?:^|[,;\s])(2|3)(?:$|[,;\s])|commercial|transactional/i.test(intent);
   const navigationIntent = /^1$|^navigational$/i.test(intent.trim());
-  if (purchaseIntent && !offTopic) product = clamp(product + 10);
+  const purchaseBonus = purchaseIntent && !offTopic && business.scoreCap > 49;
+  if (purchaseBonus) product = clamp(product + 10);
   if (volume === 0) tags.add('平台搜索量为0');
   const dimensions: KeywordAssessment['dimensions'] = [
     {
@@ -250,9 +209,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       weight: 25,
       coveredWeight: 25,
       score: relevance,
-      evidence: offTopic
-        ? '命中医院、服务、招聘或媒体等非商品表达规则'
-        : '结合关键词、种子词上下文和研究品类的规则判断',
+      evidence: business.evidence,
     },
     {
       key: 'demand',
@@ -281,7 +238,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       weight: 20,
       coveredWeight: 20,
       score: product,
-      evidence: `成分、剂型与商品表达的规则评分${purchaseIntent ? '；Semrush 商业或交易意图加10分（本维度封顶100）' : ''}；不代表销量或利润`,
+      evidence: `保健品成分、剂型、剂量、人群与商品表达的规则评分${purchaseBonus ? '；Semrush 商业或交易意图加10分（本维度封顶100）' : ''}；不代表销量或利润`,
     },
     {
       key: 'competition',
@@ -310,7 +267,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       )
     : null;
   if (score !== null) {
-    if (offTopic) score = Math.min(score, 39);
+    score = Math.min(score, business.scoreCap);
     if (brand || navigationIntent) score = Math.min(score, 64);
     if (volume === 0) score = Math.min(score, 49);
   }
@@ -323,6 +280,14 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     C: '继续观察，优先补充缺失证据',
     D: '暂缓深入研究，检查相关性和需求信号',
   };
+  let recommendation = grade
+    ? recommendations[grade]
+    : '先补齐有效趋势与关键指标，再进行评级';
+  if (tags.has('泛词降权'))
+    recommendation = '泛词优先细化成分、剂型、剂量或人群，再评估商品机会';
+  if (tags.has('同名歧义待核验'))
+    recommendation = '先核验是否指Omega-3保健品，明确成分后再研究';
+  if (offTopic) recommendation = '不属于目标保健品商品需求，建议排除或人工核验';
   return {
     version: KEYWORD_MODEL_VERSION,
     assessedAt:
@@ -336,9 +301,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     score,
     coverage,
     tags: [...tags],
-    recommendation: grade
-      ? recommendations[grade]
-      : '先补齐有效趋势与关键指标，再进行评级',
+    recommendation,
     dimensions,
   };
 }
