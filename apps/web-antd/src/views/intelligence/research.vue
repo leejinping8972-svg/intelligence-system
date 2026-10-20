@@ -22,6 +22,8 @@ import {
 
 import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
+import { researchSourceTags } from './competitor-monitor';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
 import {
   audit,
@@ -112,10 +114,16 @@ watch(open, (value) => {
   }
 });
 const allRows = computed(() =>
-  filteredKeywords.value.map((record) => ({
-    ...record,
-    assessment: assessKeyword(record),
-  })),
+  filteredKeywords.value.map((record) => {
+    const assessment = assessKeyword(record);
+    return {
+      ...record,
+      assessment: {
+        ...assessment,
+        tags: [...new Set([...assessment.tags, ...researchSourceTags(record.source)])],
+      },
+    };
+  }),
 );
 const tagOptions = computed(() =>
   [...new Set(allRows.value.flatMap((record) => record.assessment.tags))]
@@ -168,7 +176,9 @@ const detail = computed(() =>
   state.keywords.find((record) => record.id === detailId.value),
 );
 const assessment = computed(() =>
-  detail.value ? assessKeyword(detail.value) : undefined,
+  detail.value
+    ? allRows.value.find((row) => row.id === detail.value?.id)?.assessment
+    : undefined,
 );
 const summary = computed(() => ({
   total: allRows.value.length,
@@ -532,6 +542,7 @@ function saveMetrics() {
         已入选关键词（{{ summary.selected }}）
       </Button>
       <Button @click="modelOpen = true">评分模型</Button>
+      <SemrushHotwordsSidebar />
       <Button :disabled="!rows.length" @click="exportKeywords">导出结果</Button>
       <Button
         type="primary"

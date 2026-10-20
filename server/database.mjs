@@ -59,6 +59,7 @@ export const pool = rawMysql
   ? wrap(rawMysql, true)
   : new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 6 });
 const advisoryLocks = new Map([
+  ['competitor-runner', 89_761_033],
   ['keyword-submit', 89_761_032],
   ['enrichment-submit', 89_761_018],
   ['runner', 89_761_016],

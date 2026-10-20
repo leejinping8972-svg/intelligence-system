@@ -35,6 +35,8 @@ jobs:
           pnpm exec vitest run tests/product-decisions.test.ts tests/public-content.test.ts tests/platform-product-selection.test.ts tests/keyword-selection.test.ts tests/article-details.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
+      - name: Competitor monitoring and Semrush ranking tests (mocked providers)
+        run: node --test server/competitor-monitor.test.mjs
       - name: Task deduplication, delta sync and monitor tests (no provider calls)
         run: |
           node --test server/keyword-submit.test.mjs server/workspace-snapshot.test.mjs
@@ -82,10 +84,26 @@ jobs:
           docker run --rm --network platform-products-qa-net --memory=256m \
             -e PRODUCT_COMPLETION_QA=disposable-only -e QA_MYSQL_HOST=product-completion-qa-db \
             --entrypoint node intelligence-platform-products-qa platform-product-completion.integration.mjs
+      - name: Isolated competitor monitor integration (synthetic data only)
+        run: |
+          docker run -d --name competitor-monitor-qa-db --network platform-products-qa-net \
+            --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
+            -e MYSQL_DATABASE=competitor_monitor_qa -e MYSQL_USER=qa \
+            -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
+            --innodb-buffer-pool-size=64M --performance-schema=OFF
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec competitor-monitor-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+          docker run --rm --network platform-products-qa-net --memory=256m \
+            -e COMPETITOR_MONITOR_QA=disposable-only -e QA_MYSQL_HOST=competitor-monitor-qa-db \
+            --entrypoint node intelligence-platform-products-qa competitor-monitor.integration.mjs
       - name: Clean disposable database
         if: always()
         run: |
-          docker rm -f platform-products-qa-db product-completion-qa-db || true
+          docker rm -f platform-products-qa-db product-completion-qa-db competitor-monitor-qa-db || true
           docker network rm platform-products-qa-net || true
       - name: Upload test frontend build
         uses: actions/upload-artifact@v4
