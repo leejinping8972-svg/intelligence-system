@@ -342,6 +342,58 @@ let adWrites=0;
 await assert.rejects(()=>saveAdvertiserBatch({adIds:['ad-r1','ad-r2']},{...db,write:async(name,value)=>{if(++adWrites===2)throw new Error('synthetic advertiser transaction failure');await db.write(name,value);}},c),/synthetic advertiser/);
 assert.deepEqual(await db.list('competitor:target:'),beforeAdvertiserFailure);
 console.log('Advertiser integration passed: exact identity, market separation, researcher read/admin write, overview, schedule update, preservation and rollback.');
+// Public recovery is same-day, budget preserving, and can never replay paid channels.
+for (const row of [...await db.list('competitor:target:'), ...await db.list('competitor:hot-config:')])
+  await db.write(row.name, {...row.value,enabled:false,requested:false,publicRetryRequested:false});
+const recoverySite={id:'recovery-site',domain:'recovery.example.test',market:'US'};
+await db.write(`business:sites:${recoverySite.id}`,recoverySite);
+const recoveryTarget=(await competitorAction({action:'server_competitor_save',kind:'site',siteId:recoverySite.id,pageId:'555',enabled:false,hour:0,maxRequests:10},admin)).target;
+const recoveryRunName=`competitor:run:${recoveryTarget.id}`;
+const recoveryProgressName=`competitor:crawl:${recoveryTarget.id}:products`;
+const recoveryLast={id:recoveryTarget.id,day:dayKey(),status:'failed',requests:2,added:0,errors:['官网返回 HTTP 429'],finishedAt:new Date(Date.now()-7200000).toISOString(),channels:[{kind:'products',status:'failed'},{kind:'ads',status:'completed'}]};
+await db.write(recoveryRunName,recoveryLast);
+await db.write(recoveryProgressName,{queue:['https://recovery.example.test/sitemap.xml'],visited:[],nextRunAt:Date.now()-1000});
+await assert.rejects(()=>competitorAction({action:'server_competitor_retry_site',id:recoveryTarget.id},{role:'researcher'}),/管理员/);
+await competitorAction({action:'server_competitor_retry_site',id:recoveryTarget.id},admin);
+let publicCalls=0,paidCalls=0;
+await competitorTick(c,{
+  scanSite:async(_site,request,limit)=>{assert.equal(limit,8);await request('public-xml',async()=>{publicCalls++;return{html:'<urlset/>'};});return{items:[],complete:true,errors:[]};},
+  scanAdvertiser:async()=>{paidCalls++;throw new Error('paid channel must never replay');},
+  fetchHotwordSeed:async()=>{paidCalls++;throw new Error('paid channel must never replay');},
+});
+assert.equal(publicCalls,1);assert.equal(paidCalls,0);
+const recovered=await db.read(recoveryRunName);
+assert.equal(recovered.requests,3);assert.equal(recovered.publicRecoveryAttempts,1);
+assert.equal(recovered.channels.find((channel)=>channel.kind==='ads').status,'completed');
+assert.equal((await db.read(`competitor:target:${recoveryTarget.id}`)).enabled,false);
+assert.equal((await db.read(`competitor:target:${recoveryTarget.id}`)).publicRetryRequested,false);
+const coolingUntil=Date.now()+3600000;
+await db.write(recoveryRunName,{...recoveryLast,nextRunAt:coolingUntil});
+await db.write(recoveryProgressName,{queue:['https://recovery.example.test/sitemap.xml'],visited:[],nextRunAt:coolingUntil});
+await assert.rejects(()=>competitorAction({action:'server_competitor_retry_site',id:recoveryTarget.id},admin),/冷却/);
+const coolingOverview=await competitorAction({action:'server_competitor_overview'},admin);
+assert.equal(coolingOverview.runs.find((run)=>run.id===recoveryTarget.id).publicRecovery.ready,false);
+await db.write(recoveryRunName,{...recoveryLast,requests:10});
+await assert.rejects(()=>competitorAction({action:'server_competitor_retry_site',id:recoveryTarget.id},admin),/预算/);
+// Enabled targets recover automatically and write a shared host cooldown on 429.
+await db.write(`competitor:target:${recoveryTarget.id}`,{...recoveryTarget,enabled:true});
+await db.write(recoveryRunName,recoveryLast);
+await db.write(recoveryProgressName,{queue:['https://recovery.example.test/sitemap.xml'],visited:[],nextRunAt:Date.now()-1000});
+await competitorTick(c,{
+  scanSite:async(_site,request,limit)=>{
+    assert.equal(limit,8);
+    await request('public-auto',async()=>{publicCalls++;return{};});
+    return {items:[],complete:false,errors:['HTTP 429'],retryAt:coolingUntil,progress:{queue:['https://recovery.example.test/sitemap.xml'],nextRunAt:coolingUntil}};
+  },
+  scanAdvertiser:async()=>{paidCalls++;throw new Error('paid replay');},
+});
+const autoRecovered=await db.read(recoveryRunName);
+assert.equal(autoRecovered.requests,3);assert.equal(autoRecovered.status,'retry_wait');
+assert.equal((await db.list('competitor:host:')).at(-1).value.nextRunAt,coolingUntil);
+await competitorTick(c,{scanSite:async()=>{throw new Error('cooldown must prevent scan');}});
+assert.deepEqual(await db.read(recoveryRunName),autoRecovered);
+assert.equal(publicCalls,2);assert.equal(paidCalls,0);
+console.log('Public recovery integration passed: same-day automatic/manual recovery, cumulative budget, shared host cooldown, admin scope, one-shot paused targets, zero advertisement/Semrush calls.');
 c.release();
 await memory?.close();
 await pool.end();

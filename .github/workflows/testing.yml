@@ -46,7 +46,7 @@ jobs:
       - name: Site collection fallbacks (synthetic, no paid calls)
         run: node --test server/site-page-fallbacks.test.mjs server/product-queue.test.mjs
       - name: Competitor monitoring and Semrush ranking tests (mocked providers)
-        run: node --test server/competitor-monitor.test.mjs
+        run: node --test server/competitor-monitor.test.mjs server/monitor-public-recovery.test.mjs
       - name: Compact resources, bulk monitoring and Semrush balance (synthetic data)
         run: |
           node --test server/competitor-batch.test.mjs server/semrush-balance.test.mjs

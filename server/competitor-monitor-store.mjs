@@ -9,6 +9,7 @@ import { saveKeyword } from './store.mjs';
 import { maintenance } from './database-admin.mjs';
 import { saveSiteBatch } from './competitor-batch.mjs';
 import { saveAdvertiserBatch } from './advertiser-monitor-batch.mjs';
+import { publicRecoveryPlan } from './monitor-public-recovery.mjs';
 import {
   dayKey,
   digest,
@@ -67,9 +68,14 @@ export async function withCompetitorIdle(callback) {
 export async function competitorAction(input, user) {
   if (input.action === 'server_competitor_overview') {
     const db = createMonitorStore();
+    const targets = (await db.list(`${PREFIX}target:`)).map((row) => row.value);
+    const runs = (await db.list(`${PREFIX}run:`)).map((row) => row.value);
     return {
-      targets: (await db.list(`${PREFIX}target:`)).map((row) => row.value),
-      runs: (await db.list(`${PREFIX}run:`)).map((row) => row.value),
+      targets,
+      runs: runs.map((run) => {
+        const target = targets.find((t) => t.id === run.id);
+        return target ? { ...run, publicRecovery: publicRecoveryPlan(target, run, { nextRunAt: run.nextRunAt, manualRequired: run.manualRequired, queue: run.publicPending ? ['pending'] : [] }) } : run;
+      }),
     };
   }
   if (input.action === 'server_competitor_snapshot') {
@@ -152,9 +158,18 @@ export async function competitorAction(input, user) {
     const name = `${PREFIX}${hot ? 'hot-config' : 'target'}:${id}`;
     const config = await db.read(name);
     if (!config) throw new Error('监控配置不存在');
+    if (input.action === 'server_competitor_retry_site' && !hot) {
+      const run = await db.read(`${PREFIX}run:${id}`);
+      const progress = await db.read(`${PREFIX}crawl:${id}:products`);
+      const plan = publicRecoveryPlan(config, run, progress);
+      if (!plan.eligible) throw new Error(plan.reason || '当前没有可恢复的官网任务');
+      if (!plan.ready) throw new Error(`官网正在冷却，请等到${new Date(plan.nextRunAt).toISOString()}后再恢复`);
+      await db.write(name, { ...config, publicRetryRequested: true });
+      return { queued: true, mode: 'public-only', remaining: plan.remaining };
+    }
     if (input.action === 'server_competitor_update' && !hot) {
       const schedule = validateSchedule({ ...config, ...input });
-      await db.write(name, { ...config, ...schedule, requested: schedule.enabled ? config.requested === true : false, updatedAt: new Date().toISOString() });
+      await db.write(name, { ...config, ...schedule, requested: schedule.enabled ? config.requested === true : false, publicRetryRequested: schedule.enabled ? config.publicRetryRequested === true : false, updatedAt: new Date().toISOString() });
       return { saved: true };
     }
     if (input.action === 'server_competitor_remove' && !hot) {
@@ -169,7 +184,7 @@ export async function competitorAction(input, user) {
       return { removed: true };
     }
     if (input.action === 'server_competitor_pause') {
-      await db.write(name, { ...config, enabled: false, requested: false });
+      await db.write(name, { ...config, enabled: false, requested: false, publicRetryRequested: false });
       return { saved: true };
     }
     if (input.action === 'server_competitor_check') {
@@ -282,17 +297,21 @@ export async function competitorTick(c, providers = {}) {
     const id = hot ? `hot-${config.market}` : config.id;
     const runName = `${PREFIX}run:${id}`;
     const last = await db.read(runName);
+    const recoveryProgress = !hot && config.siteId ? await db.read(`${PREFIX}crawl:${id}:products`) : null;
+    const plan = !hot ? publicRecoveryPlan(config, last, recoveryProgress, now) : null;
+    const publicOnly = !hot && plan.ready && (config.enabled || config.publicRetryRequested);
     if (last?.status === 'running')
       await db.write(runName, {
         ...last,
         status: 'interrupted',
         errors: [...(last.errors || []), '进程中断，本日不自动重放未确认请求'],
       });
-    if (last?.day === day || (!config.requested && !due(config, last, now)))
+    if (!publicOnly && (last?.day === day || (!config.requested && !due(config, last, now))))
       continue;
-    await db.write(entry.name, { ...config, requested: false });
+    await db.write(entry.name, { ...config, requested: publicOnly ? config.requested : false, publicRetryRequested: false });
     const request = async (step, call) => {
-      const name = `${PREFIX}request:${day}:${id}:${digest(step)}`;
+      const journalStep = publicOnly ? `public-recovery-${(last.publicRecoveryAttempts || 0) + 1}:${step}` : step;
+      const name = `${PREFIX}request:${day}:${id}:${digest(journalStep)}`;
       const journal = await db.read(name);
       if (journal?.status === 'completed') return journal.response;
       if (journal) throw new Error('该请求已尝试但结果未确认，本日不重复调用');
@@ -307,6 +326,8 @@ export async function competitorTick(c, providers = {}) {
           at,
           step,
           error: error.message,
+          httpStatus: error.status || null,
+          retryAfterSeconds: error.retryAfterSeconds || 0,
         });
         throw error;
       }
@@ -358,6 +379,8 @@ export async function competitorTick(c, providers = {}) {
     else
       await executeMonitor(config, {
         ...io,
+        publicOnly,
+        previousRun: publicOnly ? last : null,
         baseline: (kind) => db.read(`${PREFIX}baseline:${id}:${kind}`),
         setBaseline: (kind) =>
           db.write(`${PREFIX}baseline:${id}:${kind}`, { at }),
@@ -384,13 +407,18 @@ export async function competitorTick(c, providers = {}) {
             );
           const site = await db.read(`business:sites:${config.siteId}`);
           if (!site) throw new Error('监控站点已删除');
-          return (providers.scanSite || scanSite)(
+          const hostName = `${PREFIX}host:${digest(site.domain.toLowerCase().replace(/^www\./, ''))}`;
+          const gate = await db.read(hostName);
+          const siteProgress = { ...progress, nextRunAt: Math.max(progress?.nextRunAt || 0, gate?.nextRunAt || 0) };
+          const result = await (providers.scanSite || scanSite)(
             site,
             req,
             remaining,
             undefined,
-            progress,
+            siteProgress,
           );
+          if (result.retryAt) await db.write(hostName, { nextRunAt: result.retryAt });
+          return result;
         },
       });
     return;

@@ -5,15 +5,18 @@ import {
 } from './competitor-monitor-domain.mjs';
 
 export async function executeMonitor(target, io) {
+  const previous = io.publicOnly ? io.previousRun : null;
   const run = {
     day: io.day,
     status: 'running',
-    startedAt: io.at,
-    requests: 0,
-    added: 0,
-    keywords: 0,
-    errors: [],
-    channels: [],
+    startedAt: previous?.startedAt || io.at,
+    requests: previous?.requests || 0,
+    added: previous?.added || 0,
+    keywords: previous?.keywords || 0,
+    errors: previous?.channels?.filter((c) => c.kind !== 'products' && c.status === 'failed').flatMap((c) => c.errors || ['广告上次失败，本轮仅恢复官网']) || [],
+    channels: previous?.channels?.filter((c) => c.kind !== 'products') || [],
+    publicRecoveryAttempts: (previous?.publicRecoveryAttempts || 0) + (io.publicOnly ? 1 : 0),
+    resumedAt: io.publicOnly ? io.at : undefined,
   };
   await io.saveRun(run);
   const request = async (key, call) => {
@@ -24,12 +27,13 @@ export async function executeMonitor(target, io) {
     return io.request(key, call);
   };
   for (const kind of ['products', 'ads']) {
+    if (io.publicOnly && kind !== 'products') continue;
     if (kind === 'products' ? !target.siteId : !target.pageId) continue;
     const baseline = await io.baseline(kind);
     try {
       const remaining = target.maxRequests - run.requests;
       const channelLimit =
-        kind === 'products' && target.pageId
+        kind === 'products' && target.pageId && !io.publicOnly
           ? Math.max(1, Math.floor(remaining / 2))
           : remaining;
       const result = await io.scan(kind, request, channelLimit);
@@ -77,7 +81,14 @@ export async function executeMonitor(target, io) {
         baseline: !baseline,
         observed: result.items.length,
         added,
+        errors: result.errors,
       });
+      if (kind === 'products') {
+        run.nextRunAt = result.retryAt || 0;
+        run.manualRequired = result.manualRequired === true;
+        run.browserPages = result.browserPages || 0;
+        run.publicPending = (result.progress?.queue?.length || 0) > 0;
+      }
       run.errors.push(...result.errors);
     } catch (error) {
       run.channels.push({ kind, status: 'failed' });
@@ -89,6 +100,8 @@ export async function executeMonitor(target, io) {
     : 'failed';
   if (run.channels.every((c) => c.status === 'completed'))
     run.status = 'completed';
+  if (run.manualRequired) run.status = 'blocked';
+  else if (run.nextRunAt > (io.now?.() || Date.now()) && run.requests < target.maxRequests && run.publicRecoveryAttempts < 3) run.status = 'retry_wait';
   run.finishedAt = new Date().toISOString();
   await io.saveRun(run);
   return run;
