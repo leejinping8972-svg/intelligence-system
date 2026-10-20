@@ -41,6 +41,10 @@ jobs:
         run: pnpm --filter @vben/web-antd run typecheck
       - name: Competitor monitoring and Semrush ranking tests (mocked providers)
         run: node --test server/competitor-monitor.test.mjs
+      - name: Compact resources, bulk monitoring and Semrush balance (synthetic data)
+        run: |
+          node --test server/competitor-batch.test.mjs server/semrush-balance.test.mjs
+          pnpm exec vitest run tests/resource-list.test.ts apps/web-antd/src/views/intelligence/__tests__/compact-tags.test.ts
       - name: Daily keyword discovery and newness rules (mocked providers)
         run: |
           node --test server/daily-discovery.test.mjs

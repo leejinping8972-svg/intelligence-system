@@ -22,6 +22,9 @@ import {
 
 import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import CompactTags from './components/CompactTags.vue';
+import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
+import { emptyScoreFilter, matchesScore } from './resource-list';
 import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
 import { researchSourceTags } from './competitor-monitor';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
@@ -58,6 +61,7 @@ const search = ref('');
 const category = ref('ALL');
 const rating = ref('ALL');
 const ratingStatus = ref('ALL');
+const scoreFilter = ref(emptyScoreFilter());
 const tagFilter = ref<string[]>([]);
 const timeRange = ref('ALL');
 const reviewFilter = ref('ALL');
@@ -146,6 +150,7 @@ const rows = computed(() =>
       )}`
         .toLocaleLowerCase()
         .includes(search.value.toLocaleLowerCase()) &&
+      matchesScore(record.assessment.score, scoreFilter.value) &&
       (category.value === 'ALL' || record.category === category.value) &&
       (rating.value === 'ALL' ||
         (rating.value === 'UNRATED'
@@ -169,10 +174,6 @@ const selection = computed(() =>
 const selected = computed(() => selection.value.records);
 function selectFiltered() {
   const records = rows.value.filter((r) => r.dataNature !== 'demo');
-  if (records.length > 100) {
-    message.warning('当前筛选结果超过100个，请缩小筛选范围后再全选');
-    return;
-  }
   selectedIds.value = records.map((r) => r.id);
   selectionSnapshots.value = rememberSelection(selectedIds.value, records);
 }
@@ -199,6 +200,7 @@ watch(
     category,
     rating,
     ratingStatus,
+    scoreFilter,
     tagFilter,
     timeRange,
     reviewFilter,
@@ -210,10 +212,17 @@ watch(
     clearSelection();
   },
 );
+let selectingAllRows = false;
 const rowSelection = computed(() => ({
+  onSelectAll: (checked: boolean) => {
+    selectingAllRows = true;
+    if (checked) selectFiltered(); else clearSelection();
+    queueMicrotask(() => { selectingAllRows = false; });
+  },
   preserveSelectedRowKeys: true,
   selectedRowKeys: selection.value.tableKeys,
   onChange: (keys: (number | string)[], records: Keyword[]) => {
+    if (selectingAllRows) return;
     selectedIds.value = keys.map(String);
     selectionSnapshots.value = rememberSelection(
       selectedIds.value,
@@ -698,6 +707,7 @@ function saveMetrics() {
             category = 'ALL';
             rating = 'ALL';
             ratingStatus = 'ALL';
+            scoreFilter = emptyScoreFilter();
             tagFilter = [];
             timeRange = 'ALL';
             reviewFilter = 'ALL';
@@ -707,6 +717,7 @@ function saveMetrics() {
           重置筛选
         </Button>
       </div>
+      <div class="hci-toolbar"><ScoreRangeFilter v-model="scoreFilter" label="关键词" /></div>
       <div class="hci-toolbar">
         <span class="hci-subtle"
           >已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span
@@ -714,7 +725,7 @@ function saveMetrics() {
         <Button
           :disabled="!rows.length || supplementSubmitting"
           @click="selectFiltered"
-          >全选筛选结果</Button
+          >全选筛选结果（跨页）</Button
         >
         <Button
           :disabled="!selectedIds.length || supplementSubmitting"
@@ -775,6 +786,8 @@ function saveMetrics() {
       <Table
         :data-source="rows"
         :columns="columns"
+        class="hci-resource-table"
+        size="small"
         :row-selection="rowSelection"
         row-key="id"
         :pagination="pagination"
@@ -813,11 +826,7 @@ function saveMetrics() {
             <p class="hci-subtle">覆盖 {{ record.assessment.coverage }}%</p>
           </template>
           <template v-else-if="column.key === 'tags'">
-            <div class="keyword-tags">
-              <Tag v-for="tag in record.assessment.tags" :key="tag">
-                {{ tag }}
-              </Tag>
-            </div>
+            <CompactTags :items="record.assessment.tags" label="分析标签" />
           </template>
           <template v-else-if="column.key === 'trend'">
             <button
@@ -1070,11 +1079,12 @@ function saveMetrics() {
     <Drawer
       :open="!!detail"
       title="关键词评分与人工决策"
-      :width="720"
+      root-class-name="hci-resource-drawer"
+      width="min(940px, 100vw)"
       @close="detailId = ''"
     >
       <template v-if="detail && assessment">
-        <h2 class="keyword-detail-title">{{ detail.term }}</h2>
+        <h2 class="keyword-detail-title hci-resource-title">{{ detail.term }}</h2>
         <p class="hci-subtle">
           {{ marketName(detail.market) }} · {{ detail.category }} ·
           {{ assessment.version }}
@@ -1102,10 +1112,11 @@ function saveMetrics() {
         <div class="keyword-tags" style="margin: 16px 0">
           <Tag v-for="tag in assessment.tags" :key="tag">{{ tag }}</Tag>
         </div>
+        <div class="hci-dimension-grid">
         <div
           v-for="dimension in assessment.dimensions"
           :key="dimension.key"
-          class="keyword-dimension"
+          class="keyword-dimension hci-dimension-card"
         >
           <div>
             <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b
@@ -1119,6 +1130,7 @@ function saveMetrics() {
             >已覆盖权重 {{ dimension.coveredWeight }} /
             {{ dimension.weight }}</span
           >
+        </div>
         </div>
         <p class="hci-subtle">
           关键词抓取：{{ formatTime(detail.collectedAt) }}<br />趋势抓取：{{
