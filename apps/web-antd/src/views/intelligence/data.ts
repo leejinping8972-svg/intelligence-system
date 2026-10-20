@@ -63,6 +63,7 @@ export interface Keyword {
   };
   id: string;
   term: string;
+  termZh?: string;
   market: Market;
   category: string;
   source: string;

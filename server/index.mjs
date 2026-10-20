@@ -19,6 +19,7 @@ import { assessKeyword } from './model.js';
 import { jobTasks, runQueue } from './runner.mjs';
 import { retryRecords } from './job-progress.mjs';
 import { semrushAction } from './semrush-config.mjs';
+import { keywordNamesAction } from './keyword-names.mjs';
 import { youtubeAction } from './youtube-config.mjs';
 import { publicBranding } from './public-branding.mjs';
 import { workspaceSnapshot } from './workspace-snapshot.mjs';
@@ -74,6 +75,8 @@ async function api(input, user) {
   if (input.action?.startsWith('server_content_'))
     return publicContentAction(input, user);
   switch (input.action) {
+    case 'server_keyword_names':
+      return keywordNamesAction(input, user);
     case 'server_site_fetch_status':
     case 'server_site_fetch_config':
       return siteFetchConfig(input, user);

@@ -6,6 +6,8 @@ import { Button, Drawer, Progress, Tag } from 'ant-design-vue';
 
 import { marketName, state } from '../data';
 import CompactTags from './CompactTags.vue';
+import CollectionTime from './CollectionTime.vue';
+import { siteCollectedAt } from '../resource-metadata';
 import ProductCollectDialog from './ProductCollectDialog.vue';
 
 const props = defineProps<{ id?: string }>();
@@ -82,7 +84,7 @@ function go(path: string, query: Record<string, string>) {
           <dt>发现关键词</dt>
           <dd>{{ site.keyword || '未记录' }}</dd>
           <dt>最近采集</dt>
-          <dd>{{ site.lastCollectedAt || '未记录' }}</dd>
+          <dd><CollectionTime :at="siteCollectedAt(site)" /></dd>
           <dt>验证置信度</dt>
           <dd>{{ site.confidence ?? '未记录' }}</dd>
           <dt>档案性质</dt>

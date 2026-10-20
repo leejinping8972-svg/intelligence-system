@@ -17,6 +17,8 @@ import {
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
+import CollectionTime from './components/CollectionTime.vue';
+import { collectionTimeOrder, productCollectedAt } from './resource-metadata';
 import CompactTags from './components/CompactTags.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
@@ -45,7 +47,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const search = ref('');
-const viewMode = ref<'cards' | 'list'>('cards');
+const viewMode = ref<'cards' | 'list'>('list');
 const page = ref(1),
   pageSize = ref(20);
 const failedImages = ref(new Set<string>());
@@ -267,6 +269,7 @@ function toggleCompare(id: string) {
               数据来源: [p.sourceProvider, p.sourcePlatform]
                 .filter(Boolean)
                 .join(' · '),
+              采集时间: productCollectedAt(p) || '',
               决策标签: productDecisions(p)
                 .map((item) => item.label)
                 .join('、'),
@@ -409,6 +412,7 @@ function toggleCompare(id: string) {
             {{ product.title }}
           </button>
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
+          <p class="hci-subtle">采集：<CollectionTime :at="productCollectedAt(product)" /></p>
           <ProductDecisionTags :product="product" />
           <div class="hci-product-meta">
             <Tag>{{ product.category }}</Tag
@@ -498,6 +502,7 @@ function toggleCompare(id: string) {
       :columns="[
         { title: '商品', key: 'product', width: 320, fixed: 'left' },
         { title: '市场 / 品类', key: 'category', width: 150 },
+        { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
         { title: '决策标签（点击看依据）', key: 'decisions', width: 280 },
         { title: '规格 / 剂型', key: 'spec', width: 170 },
         { title: '配方与成分', key: 'ingredient', width: 240 },
@@ -534,6 +539,9 @@ function toggleCompare(id: string) {
             </div>
           </div></template
         >
+        <template v-else-if="column.key === 'collectedAt'">
+          <CollectionTime :at="productCollectedAt(record)" />
+        </template>
         <template v-else-if="column.key === 'decisions'">
           <ProductDecisionTags :product="record as Product" />
         </template>

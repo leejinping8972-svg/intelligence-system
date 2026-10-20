@@ -21,6 +21,8 @@ import {
   syncCloudWorkspace,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
+import { keywordChineseName } from './keyword-names';
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
@@ -64,7 +66,7 @@ const rows = computed(() =>
       (k) =>
         (status.value === 'ALL' ||
           (k.siteCollection?.status || 'pending') === status.value) &&
-        `${k.term} ${k.seedTerm || ''} ${k.category}`
+        `${k.term} ${keywordChineseName(k)} ${k.seedTerm || ''} ${k.category}`
           .toLowerCase()
           .includes(search.value.toLowerCase()),
     )
@@ -202,7 +204,7 @@ const time = (r: Keyword) =>
           ]"
         />
       </div>
-      <SelectionBar :count="ids.length" :total="selectable.length" @all="selectAll" @clear="clear" />
+      <SelectionBar :count="ids.length" :total="selectable.length" @all="selectAll" @clear="clear"><KeywordNamesDialog :ids="ids" /></SelectionBar>
       <Table
         class="hci-resource-table"
         size="small"
@@ -226,6 +228,7 @@ const time = (r: Keyword) =>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'term'">
             <b>{{ record.term }}</b>
+            <p class="hci-subtle">{{ record.termZh ? '中文' : '中文参考' }}：{{ keywordChineseName({ term: record.term, termZh: record.termZh }) || '待补充' }}</p>
             <p class="hci-subtle">种子：{{ record.seedTerm || '—' }}</p>
           </template>
           <template v-else-if="column.key === 'market'">
