@@ -78,10 +78,10 @@ jobs:
         run: |
           node --test server/daily-discovery.test.mjs
           pnpm exec vitest run tests/discovery-radar.test.ts
-      - name: Task deduplication, delta sync and monitor tests (no provider calls)
-        run: |
-          node --test server/keyword-submit.test.mjs server/workspace-snapshot.test.mjs
-          pnpm exec vitest run tests/task-list.test.ts tests/cloud-workspace.test.ts apps/web-antd/src/views/intelligence/__tests__/resource-market.test.ts
+      - name: Task deduplication and delta sync tests (no provider calls)
+        run: node --test server/keyword-submit.test.mjs server/workspace-snapshot.test.mjs
+      - name: Task list and resource market UI tests (synthetic data)
+        run: pnpm exec vitest run tests/task-list.test.ts tests/cloud-workspace.test.ts apps/web-antd/src/views/intelligence/__tests__/resource-market.test.ts
       - name: Build server frontend
         env:
           VITE_HCI_SERVER: 'true'
