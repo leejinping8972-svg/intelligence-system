@@ -33,6 +33,11 @@ is.luckdate.com {
       header_up -X-Server-Key
     }
   }
+  @rootAssets path /_app-config-*.js /favicon.ico /hci-logo.svg /js/* /jse/* /css/* /maps/*
+  handle @rootAssets {
+    root * /srv
+    file_server
+  }
   redir / /admin/ 308
   redir /admin /admin/ 308
   handle_path /admin/* {
