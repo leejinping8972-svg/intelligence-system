@@ -11,7 +11,9 @@ import {
   refreshSession,
   serverMode,
   session,
+  startSso,
 } from '#/views/intelligence/session';
+import { shouldStartSso } from '#/views/intelligence/sso-navigation';
 
 import { generateAccess } from './access';
 
@@ -66,6 +68,10 @@ function setupAccessGuard(router: Router) {
       }
       if (!session.user) {
         accessStore.setAccessToken('');
+        if (shouldStartSso(session.ssoEnabled, session.setupRequired, to.query.sso)) {
+          startSso(to.fullPath);
+          return false;
+        }
         return to.path === LOGIN_PATH
           ? true
           : { path: LOGIN_PATH, replace: true };

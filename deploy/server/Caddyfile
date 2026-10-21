@@ -19,6 +19,11 @@ is.luckdate.com {
     Referrer-Policy strict-origin-when-cross-origin
     Strict-Transport-Security "max-age=31536000"
   }
+  @sso path /api/sso/*
+  header @sso {
+    >Referrer-Policy no-referrer
+    >Cache-Control no-store
+  }
   handle /health {
     respond "ok" 200
   }

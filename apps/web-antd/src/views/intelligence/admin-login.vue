@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { Alert, Button, Form, Input } from 'ant-design-vue';
 
 import { state } from './data';
-import { adminRequest, refreshSession, session } from './session';
+import { adminRequest, refreshSession, session, startSso } from './session';
 
 const router = useRouter();
+const route = useRoute();
 const heroImage=`${import.meta.env.BASE_URL}health-research.jpg`;
 const busy = ref(false);
-const error = ref('');
+const error = ref(route.query.sso === 'failed'
+  ? '单点登录未完成，请使用账号密码登录，或联系管理员检查账号绑定。'
+  : '');
 const form = reactive({
   username: '',
   displayName: '',
@@ -171,6 +174,15 @@ async function submit() {
           {{ setup ? '创建管理员并进入' : '登录' }}
         </Button>
       </Form>
+      <Button
+        v-if="session.ssoEnabled && !setup"
+        block
+        size="large"
+        style="margin-top: 12px"
+        @click="startSso()"
+      >
+        使用全球电商AI经营平台登录
+      </Button>
       <div class="admin-login-foot">
         HTTPS 安全连接 · 登录有效期最长12小时 · 闲置30分钟自动退出
       </div>

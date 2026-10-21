@@ -1,5 +1,7 @@
 import { reactive } from 'vue';
 
+import { ssoStartUrl } from './sso-navigation';
+
 export interface AdminUser {
   id: string;
   username: string;
@@ -13,6 +15,7 @@ export const serverMode = import.meta.env.VITE_HCI_SERVER === 'true';
 export const session = reactive({
   checked: false,
   setupRequired: false,
+  ssoEnabled: false,
   user: null as AdminUser | null,
 });
 export async function adminRequest<T = Record<string, unknown>>(
@@ -37,6 +40,7 @@ export async function adminRequest<T = Record<string, unknown>>(
 export async function refreshSession() {
   const result = await adminRequest<{
     setupRequired: boolean;
+    ssoEnabled: boolean;
     user: AdminUser | null;
   }>('auth_status');
   Object.assign(session, result, { checked: true });
@@ -60,7 +64,10 @@ function startUserActivity() {
 }
 export function leaveSession() {
   localStorage.removeItem('hci-demo-state-v1');
-  location.replace(`${import.meta.env.BASE_URL}auth/login`);
+  location.replace(`${import.meta.env.BASE_URL}auth/login?sso=skip`);
+}
+export function startSso(routePath = '/overview') {
+  location.replace(ssoStartUrl(routePath, import.meta.env.BASE_URL));
 }
 export async function logout() {
   await adminRequest('auth_logout');
