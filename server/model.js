@@ -347,7 +347,7 @@ function intervals(points = [], resolution = "unknown", collectedAt) {
     value
   })).filter((p) => p.end > p.start);
 }
-function compare(key, label, source, months = 0) {
+function compare(key, label, source, months = 0, bounds) {
   const result = {
     key,
     label,
@@ -359,9 +359,13 @@ function compare(key, label, source, months = 0) {
   };
   const lastPoint = source.at(-1);
   if (!lastPoint) return result;
-  const end = lastPoint.end;
-  const start = months ? monthsBefore(end, months) : end - 30 * DAY;
-  const previousStart = months ? monthsBefore(end, months * 2) : start - 30 * DAY;
+  const end = bounds?.end ?? lastPoint.end;
+  const start = bounds?.start ?? (months ? monthsBefore(end, months) : end - 30 * DAY);
+  const previousStart = bounds?.previousStart ?? (months ? monthsBefore(end, months * 2) : start - 30 * DAY);
+  if (end <= start) {
+    result.reason = "\u672C\u5468\u671F\u5C1A\u65E0\u5B8C\u6574\u65E5\u6570\u636E";
+    return result;
+  }
   Object.assign(result, {
     start: date(start),
     end: date(end - DAY),
@@ -390,7 +394,7 @@ function compare(key, label, source, months = 0) {
   if (!current) return result;
   result.currentMean = current.mean;
   result.heat = Math.round(current.mean);
-  const previous = average(previousStart, start);
+  const previous = average(previousStart, bounds?.previousEnd ?? start);
   if (!previous) {
     result.reason = "\u7F3A\u5C11\u6B64\u524D\u7B49\u957F\u5468\u671F\uFF0C\u5F85\u8865\u5BF9\u6BD4";
     return result;

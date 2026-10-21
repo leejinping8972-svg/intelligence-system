@@ -686,6 +686,8 @@ console.log(
   'Public recovery integration passed: same-day automatic/manual recovery, cumulative budget, shared host cooldown, admin scope, one-shot paused targets, zero advertisement/Semrush calls.',
 );
 await (await import('./consumer-reports.integration.mjs')).consumerReportsIntegration();
+const { verifyKeywordTrends } = await import('./keyword-trends.integration.mjs');
+await verifyKeywordTrends(c);
 c.release();
 await memory?.close();
 await pool.end();

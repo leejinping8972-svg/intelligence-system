@@ -78,6 +78,12 @@ function compare(
   label: string,
   source: ReturnType<typeof intervals>,
   months = 0,
+  bounds?: {
+    start: number;
+    end: number;
+    previousStart: number;
+    previousEnd: number;
+  },
 ): TrendComparison {
   const result: TrendComparison = {
     key,
@@ -90,11 +96,16 @@ function compare(
   };
   const lastPoint = source.at(-1);
   if (!lastPoint) return result;
-  const end = lastPoint.end;
-  const start = months ? monthsBefore(end, months) : end - 30 * DAY;
-  const previousStart = months
-    ? monthsBefore(end, months * 2)
-    : start - 30 * DAY;
+  const end = bounds?.end ?? lastPoint.end;
+  const start =
+    bounds?.start ?? (months ? monthsBefore(end, months) : end - 30 * DAY);
+  const previousStart =
+    bounds?.previousStart ??
+    (months ? monthsBefore(end, months * 2) : start - 30 * DAY);
+  if (end <= start) {
+    result.reason = '本周期尚无完整日数据';
+    return result;
+  }
   Object.assign(result, {
     start: date(start),
     end: date(end - DAY),
@@ -132,7 +143,7 @@ function compare(
   // Keep the original Google query scale. Never splice/re-normalize independently
   // fetched series; period changes must share the same scale within each pair.
   result.heat = Math.round(current.mean);
-  const previous = average(previousStart, start);
+  const previous = average(previousStart, bounds?.previousEnd ?? start);
   if (!previous) {
     result.reason = '缺少此前等长周期，待补对比';
     return result;
@@ -149,6 +160,51 @@ function compare(
   if (Object.is(result.change, -0)) result.change = 0;
   result.reason = '与此前等长周期平均热度比较';
   return result;
+}
+// Calendar week/month to the last complete UTC day; compare the matching
+// elapsed part of the previous week/month. Legacy scoring keeps its 30d metric.
+export function fourPeriodComparisons(record: TrendRecord): TrendComparison[] {
+  const daily = intervals(
+    record.trendDailyPoints,
+    'day',
+    record.trendDailyCollectedAt,
+  );
+  const history = intervals(
+    record.trendHistoryPoints,
+    record.trendHistoryResolution,
+    record.trendHistoryCollectedAt,
+  );
+  const annual = intervals(
+    record.trendPoints,
+    record.trendResolution,
+    record.trendCollectedAt,
+  );
+  const captured = Date.parse(record.trendDailyCollectedAt || '');
+  const end = Number.isFinite(captured)
+    ? day(captured)
+    : (daily.at(-1)?.end ??
+      day(Date.parse(record.trendCollectedAt || new Date().toISOString())));
+  const d = new Date(end);
+  const weekStart = end - ((d.getUTCDay() + 6) % 7) * DAY;
+  const monthStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  const priorMonth = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1);
+  const long = history.length ? history : annual;
+  return [
+    compare('week', '本周', daily, 0, {
+      start: weekStart,
+      end,
+      previousStart: weekStart - 7 * DAY,
+      previousEnd: end - 7 * DAY,
+    }),
+    compare('month', '本月', daily, 0, {
+      start: monthStart,
+      end,
+      previousStart: priorMonth,
+      previousEnd: Math.min(monthStart, priorMonth + end - monthStart),
+    }),
+    compare('quarter', '近3个月', long, 3),
+    compare('halfYear', '近6个月', long, 6),
+  ];
 }
 export function trendComparisons(
   record: TrendRecord,

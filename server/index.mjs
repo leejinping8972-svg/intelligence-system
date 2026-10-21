@@ -34,6 +34,7 @@ import {
 } from './insight-jobs.mjs';
 import { retryRecords } from './job-progress.mjs';
 import { keywordNamesAction } from './keyword-names.mjs';
+import { keywordTrendsAction } from './keyword-trends-store.mjs';
 import { submitKeywordJob } from './keyword-submit.mjs';
 import { localCollect, migrateCredentials } from './local-provider.mjs';
 import { submitMarketJob } from './market-jobs.mjs';
@@ -79,6 +80,8 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_keyword_trends_'))
+    return keywordTrendsAction(input, user);
   if (input.action?.startsWith('server_competitor_'))
     return competitorAction(input, user);
   if (input.action?.startsWith('server_content_'))

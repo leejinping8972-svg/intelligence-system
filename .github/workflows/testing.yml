@@ -52,6 +52,10 @@ jobs:
         run: |
           node --test server/admin-sso.test.mjs server/password-policy.test.mjs
           pnpm exec vitest run tests/admin-sso.test.ts
+      - name: Four-source keyword trend windows and daily budgets (synthetic only)
+        run: |
+          node --test server/keyword-trends.test.mjs
+          pnpm exec vitest run tests/four-period-trends.test.ts tests/trend-comparison.test.ts
       - name: Focused monitors and advertiser batch selection (synthetic data)
         run: |
           node --test server/advertiser-monitor-batch.test.mjs

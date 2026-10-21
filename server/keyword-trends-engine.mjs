@@ -1,0 +1,327 @@
+/* eslint-disable unicorn/no-await-expression-member -- Document IO follows the existing monitor-store convention. */
+import {
+  buildTrendWork,
+  defaultTrendPlan,
+  socialWindows,
+  summarizeSocial,
+  trendDay,
+  trendDigest,
+  validateTrendPlan,
+} from './keyword-trends-domain.mjs';
+
+export const TREND_PREFIX = 'keyword-trends:';
+const P = TREND_PREFIX;
+const identity = (a, b) =>
+  a?.id === b?.keywordId && a.term === b.term && a.market === b.market;
+export function trendSnapshotName(keywordId, source, day) {
+  return `${P}snapshot:${trendDigest(keywordId)}:${source}:${day}`;
+}
+export async function enqueueTrendWork(db, words, plan, now, trigger) {
+  const day = trendDay(now),
+    name = `${P}run:${day}`;
+  const run = (await db.read(name)) || {
+    day,
+    createdAt: new Date(now).toISOString(),
+    work: [],
+  };
+  const added = buildTrendWork(words, plan);
+  const keys = new Set(run.work.map((w) => w.key));
+  for (const w of added)
+    if (!keys.has(w.key))
+      run.work.push({ ...w, trigger, maxPages: plan.maxPages });
+  // Request budget is shared by manual and scheduled work for the entire day.
+  run.maxRequests = plan.maxRequests;
+  await db.write(name, run);
+  return {
+    accepted: added.length,
+    reused: added.filter((w) => keys.has(w.key)).length,
+    day,
+  };
+}
+export async function trendAction(input, user, io) {
+  const { db, now = Date.now() } = io;
+  if (input.action === 'server_keyword_trends_snapshot') {
+    const words = await io.keywords(),
+      byId = new Map(words.map((k) => [k.id, k]));
+    const summaries = (await db.list(`${P}summary:`))
+      .map((r) => r.value)
+      .filter((s) => identity(byId.get(s.keywordId), s));
+    const run = await db.read(`${P}run:${trendDay(now)}`);
+    return {
+      plan: (await db.read(`${P}plan`)) || defaultTrendPlan,
+      summaries,
+      run: run
+        ? {
+            day: run.day,
+            total: run.work.length,
+            pending: run.work.filter((w) => w.status === 'pending').length,
+            work: run.work.slice(-40),
+            usedRequests: (await db.list(`${P}request:${run.day}:`)).length,
+          }
+        : null,
+    };
+  }
+  if (user?.role !== 'admin') throw new Error('仅管理员可配置或提交趋势采集');
+  if (input.action === 'server_keyword_trends_save') {
+    const plan = validateTrendPlan(input.plan || {});
+    await db.write(`${P}plan`, plan);
+    if (!plan.enabled) {
+      const name = `${P}run:${trendDay(now)}`,
+        run = await db.read(name);
+      if (run) {
+        for (const w of run.work)
+          if (w.trigger === 'daily' && w.status === 'pending')
+            Object.assign(w, { status: 'skipped', reason: '每日计划已暂停' });
+        await db.write(name, run);
+      }
+    }
+    return { plan };
+  }
+  if (input.action !== 'server_keyword_trends_collect')
+    throw new Error('未知趋势操作');
+  const ids = input.keywordIds;
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    ids.length > 100 ||
+    ids.some((id) => typeof id !== 'string') ||
+    new Set(ids).size !== ids.length
+  )
+    throw new Error('请选择1至100个不同关键词');
+  if (input.budgetAcknowledged !== true)
+    throw new Error('请确认本次采集的来源额度预算');
+  const plan = validateTrendPlan({
+    ...((await db.read(`${P}plan`)) || defaultTrendPlan),
+    ...input.plan,
+    enabled: false,
+  });
+  const all = await io.keywords(),
+    words = ids.map((id) => all.find((w) => w.id === id));
+  if (
+    words.some(
+      (w) =>
+        !w || w.dataNature === 'demo' || !['US', 'MX', 'VN'].includes(w.market),
+    )
+  )
+    throw new Error(
+      '关键词已删除、无效或为演示数据，请刷新后重新选择；未提交部分名单',
+    );
+  return enqueueTrendWork(db, words, plan, now, 'manual');
+}
+export async function advanceTrendQueue(io) {
+  const { db, now = Date.now() } = io;
+  const day = trendDay(now),
+    runName = `${P}run:${day}`;
+  const plan = await db.read(`${P}plan`);
+  // Never catch up missed paid runs, nor create work from legacy research jobs.
+  const time = new Date(now + 8 * 3_600_000).toISOString().slice(11, 16);
+  if (
+    plan?.enabled &&
+    time >= plan.time &&
+    !(await db.read(`${P}scheduled:${day}`))
+  ) {
+    const words = (await io.keywords()).filter(
+      (k) =>
+        k.reviewStatus === 'selected' &&
+        k.dataNature !== 'demo' &&
+        plan.markets.includes(k.market),
+    );
+    words.sort((a, b) =>
+      trendDigest(`${day}:${a.id}`).localeCompare(
+        trendDigest(`${day}:${b.id}`),
+      ),
+    );
+    await enqueueTrendWork(db, words, plan, now, 'daily');
+    await db.write(`${P}scheduled:${day}`, {
+      at: new Date(now).toISOString(),
+      selectedCount: words.length,
+    });
+  }
+  const run = await db.read(runName);
+  if (!run) return;
+  const entry = run.work.find((w) => w.status === 'pending');
+  if (!entry) return;
+  const finish = async (status, reason) => {
+    Object.assign(entry, { status, reason, at: new Date(now).toISOString() });
+    if (entry.source !== 'google' && status !== 'completed') {
+      const name = `${P}summary:${trendDigest(entry.keywordId)}:${entry.source}`;
+      const prior = await db.read(name);
+      const summary =
+        prior &&
+        identity(
+          { id: entry.keywordId, term: entry.term, market: entry.market },
+          prior,
+        )
+          ? prior
+          : {
+              keywordId: entry.keywordId,
+              term: entry.term,
+              market: entry.market,
+              source: entry.source,
+              periods: [],
+            };
+      await db.write(name, { ...summary, status, attemptMessage: reason });
+    }
+    await db.write(runName, run);
+  };
+  const word = (await io.keywords()).find((k) => k.id === entry.keywordId);
+  if (
+    !identity(word, entry) ||
+    (entry.trigger === 'daily' &&
+      (word.reviewStatus !== 'selected' || !plan?.enabled))
+  )
+    return finish('skipped', '关键词或计划已变更');
+  if (entry.source === 'google') {
+    // Stable request IDs and the existing Google queue preserve its global
+    // cooldown, deployment locks and retry policy. No direct parallel GT calls.
+    const hash = trendDigest(`${day}:${entry.key}`);
+    const requestId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20)}`;
+    try {
+      const result = await io.submitGoogle(word, requestId);
+      entry.jobId = result.id;
+      return finish(
+        'submitted',
+        '已进入现有Google趋势队列，结果沿用关键词趋势字段',
+      );
+    } catch {
+      return finish('failed', 'Google趋势排队失败，请检查现有任务队列');
+    }
+  }
+  const journalName = `${P}request:${day}:${entry.key}`;
+  const journal = await db.read(journalName);
+  if (journal?.status === 'completed')
+    return finish('completed', '已有本日采集记录，不重复请求');
+  if (journal) {
+    await db.write(`${P}gate:${day}`, {
+      reason: '上次请求结果未完成确认，不自动重放收费请求',
+    });
+    return finish('unknown', '请求结果待人工核对，本日不重放');
+  }
+  const gate = await db.read(`${P}gate:${day}`);
+  if (gate) return finish('skipped', gate.reason);
+  const used = (await db.list(`${P}request:${day}:`)).length;
+  if (used >= Math.min(run.maxRequests, plan?.maxRequests ?? run.maxRequests))
+    return finish('skipped', '已达本日共享社媒请求预算');
+  let key;
+  try {
+    key = await io.key();
+  } catch {
+    return finish('failed', 'ScrapeCreators配置不可用');
+  }
+  if (!key)
+    return finish('failed', '请先在数据源与设置中配置ScrapeCreators Key');
+  await db.write(journalName, {
+    status: 'started',
+    source: entry.source,
+    at: new Date(now).toISOString(),
+  });
+  try {
+    const result = await io.fetch(entry, key);
+    const name = trendSnapshotName(word.id, entry.source, day);
+    const previous = await db.read(name);
+    const snapshot =
+      previous && identity(word, previous)
+        ? previous
+        : {
+            keywordId: word.id,
+            term: word.term,
+            market: word.market,
+            source: entry.source,
+            items: [],
+            completedWindows: [],
+          };
+    const items = new Map(snapshot.items.map((i) => [i.id, i]));
+    for (const item of result.items) {
+      const old = items.get(item.id);
+      items.set(
+        item.id,
+        old
+          ? {
+              ...old,
+              ...Object.fromEntries(
+                Object.entries(item).filter(([, v]) => v !== null && v !== ''),
+              ),
+            }
+          : item,
+      );
+    }
+    snapshot.items = [...items.values()];
+    snapshot.at = new Date(now).toISOString();
+    snapshot.coverage = result.coverage;
+    const completed = {
+      tiktok: {
+        'this-week': ['week'],
+        'this-month': ['month'],
+        'last-3-months': ['quarter'],
+        'last-6-months': ['halfYear'],
+      }[entry.window],
+      instagram: {
+        'last-week': ['week'],
+        'last-month': ['month'],
+        'last-year': ['quarter', 'halfYear'],
+      }[entry.window],
+      facebook: ['all'],
+    }[entry.source];
+    snapshot.completedWindows = [
+      ...new Set([...snapshot.completedWindows, ...completed]),
+    ];
+    snapshot.truncated = result.hasMore;
+    const baselines = {};
+    for (const w of socialWindows(now)) {
+      const b = await db.read(
+        trendSnapshotName(word.id, entry.source, w.start),
+      );
+      if (b && identity(word, b)) baselines[w.start] = b;
+    }
+    const summaryName = `${P}summary:${trendDigest(word.id)}:${entry.source}`;
+    const priorSummary = await db.read(summaryName);
+    const summary = summarizeSocial(snapshot, baselines);
+    if (priorSummary && identity(word, priorSummary))
+      summary.periods = summary.periods.map((period) => {
+        const old = priorSummary.periods?.find((p) => p.key === period.key);
+        return period.count === null && Number.isFinite(old?.count)
+          ? { ...old, stale: true }
+          : period;
+      });
+    // A completed journal is committed together with the data. If saving fails,
+    // leave it started; a restart will stop instead of repeating the paid call.
+    await db.commitResult(async () => {
+      await db.write(name, snapshot);
+      await db.write(summaryName, summary);
+      await db.write(journalName, {
+        status: 'completed',
+        source: entry.source,
+        at: snapshot.at,
+        creditsCharged: result.creditsCharged,
+        count: result.items.length,
+      });
+      if (result.creditsCharged === null)
+        await db.write(`${P}gate:${day}`, {
+          reason: '本次扣费未明确返回，暂停本日后续社媒调用；请核对供应商账单',
+        });
+      if (result.hasMore && entry.page < entry.maxPages) {
+        const next = {
+          ...entry,
+          page: entry.page + 1,
+          cursor: result.cursor,
+          status: 'pending',
+        };
+        next.key = `${trendDigest(`${word.id}:${entry.source}`)}:${entry.window}:${next.page}`;
+        if (!run.work.some((w) => w.key === next.key))
+          run.work.splice(run.work.indexOf(entry) + 1, 0, next);
+      }
+      Object.assign(entry, {
+        status: 'completed',
+        reason: `${result.items.length}条样本${result.hasMore ? '；仍有更多结果，受分页/预算限制' : ''}`,
+        at: snapshot.at,
+      });
+      await db.write(runName, run);
+    });
+  } catch (error) {
+    const reason = error.status
+      ? `社媒接口HTTP ${error.status}，本日停止自动调用`
+      : '社媒采集或保存结果未知，本日不自动重放';
+    await db.write(`${P}gate:${day}`, { reason });
+    await finish('failed', reason);
+  }
+}
