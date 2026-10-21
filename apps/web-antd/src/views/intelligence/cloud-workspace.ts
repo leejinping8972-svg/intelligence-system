@@ -154,7 +154,15 @@ export async function cloudRequest<T>(
   action: string,
   input: Record<string, unknown> = {},
 ): Promise<T> {
-  if (serverMode) return adminRequest<T>(action, input);
+  // A first workspace sync can contain years of products and evidence. The
+  // gateway compresses the response, but a slower connection may still need
+  // longer than the default interactive request timeout.
+  if (serverMode)
+    return adminRequest<T>(
+      action,
+      input,
+      action === 'server_workspace_delta' ? 90_000 : 30_000,
+    );
   const { researchApiUrl, researchAccessKey } = state.settings;
   if (!researchApiUrl || !researchAccessKey)
     throw new Error('请先配置研究服务地址和访问码');

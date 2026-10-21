@@ -13,6 +13,7 @@ https://43.172.66.45 {
 }
 
 is.luckdate.com {
+  encode zstd gzip
   header {
     X-Content-Type-Options nosniff
     X-Frame-Options DENY
