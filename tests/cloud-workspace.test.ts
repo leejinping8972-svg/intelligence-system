@@ -80,6 +80,7 @@ describe('workspace delta synchronization', () => {
     expect(mock.request).toHaveBeenCalledExactlyOnceWith(
       'server_workspace_delta',
       { revisions: initial().revisions },
+      90_000,
     );
     resolve({ revisions: initial().revisions, generatedAt: 'next' });
     await a;
@@ -160,7 +161,7 @@ describe('workspace delta synchronization', () => {
     expect(cloud.cloudWorkspace.error).toBe('');
     expect(mock.request).toHaveBeenLastCalledWith('server_workspace_delta', {
       revisions: initial().revisions,
-    });
+    }, 90_000);
   });
   it('restores matching cached revisions so a reload keeps list data and requests only deltas', async () => {
     await setup();
@@ -186,6 +187,7 @@ describe('workspace delta synchronization', () => {
     expect(mock.request).toHaveBeenCalledExactlyOnceWith(
       'server_workspace_delta',
       { revisions: initial().revisions },
+      90_000,
     );
     resolve({ revisions: initial().revisions, generatedAt: 'next' });
     await pending;
@@ -204,6 +206,7 @@ describe('workspace delta synchronization', () => {
     expect(mock.request).toHaveBeenCalledExactlyOnceWith(
       'server_workspace_delta',
       { revisions: {} },
+      90_000,
     );
   });
 });
