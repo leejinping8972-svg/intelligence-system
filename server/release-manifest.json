@@ -3,13 +3,15 @@
   "changes": [
     "Includes feature commit 5721e4ad689f62923ec115d79a0372951db9ce4e.",
     "Add bounded country-market collection plans for VN, US and MX using existing evidence providers.",
-    "Add frozen weekly, monthly and quarterly market reports with evidence export and configurable model analysis."
+    "Add frozen weekly, monthly and quarterly market reports with evidence export and configurable model analysis.",
+    "Retain the 90-second initial workspace sync timeout, response compression and root asset routing."
   ],
   "files": [
     "apps/web-antd/src/views/intelligence/components/CountryMarketReportDialog.vue",
     "apps/web-antd/src/views/intelligence/components/MarketCollectionDialog.vue",
     "apps/web-antd/src/views/intelligence/consumer-insights.vue",
     "apps/web-antd/src/views/intelligence/consumer-report.vue",
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
     "apps/web-antd/src/views/intelligence/report-document.ts",
     "apps/web-antd/src/views/intelligence/research-reports.ts",
     "server/ai-prompt-defaults.mjs",
@@ -23,10 +25,11 @@
     "server/market-research-domain.mjs",
     "server/market-research.mjs",
     "server/market-research.test.mjs",
-    "server/runner.mjs"
+    "server/runner.mjs",
+    "deploy/server/Caddyfile"
   ],
-  "id": "20261021113712-de57713a",
-  "builtAt": "2026-10-21T11:37:12.517Z",
-  "sourceDigest": "de57713a247a72295c05f07a268483581f2bf0ea340f4dfcd19fb70e3e3ee22e",
+  "id": "20261021120118-8e46a764",
+  "builtAt": "2026-10-21T12:01:18.830Z",
+  "sourceDigest": "8e46a764227541a6b0a36309bc903b51028504fb1fdcf42c3f775df559107630",
   "operator": "Codex"
 }
