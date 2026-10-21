@@ -21,16 +21,15 @@ import {
 } from 'ant-design-vue';
 
 import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
-import PageHeader from './components/PageHeader.vue';
+import { researchSourceTags } from './competitor-monitor';
+import CompactTags from './components/CompactTags.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
-import { keywordChineseName } from './keyword-names';
-import CompactTags from './components/CompactTags.vue';
-import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
-import { emptyScoreFilter, matchesScore } from './resource-list';
-import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
-import { researchSourceTags } from './competitor-monitor';
+import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
+import PageHeader from './components/PageHeader.vue';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
+import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
+import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
 import {
   audit,
   categories,
@@ -41,6 +40,7 @@ import {
   state,
 } from './data';
 import { keywordJob, startKeywordJob, stopKeywordJob } from './keyword-jobs';
+import { keywordChineseName } from './keyword-names';
 import {
   assessKeyword,
   KEYWORD_MODEL_VERSION,
@@ -48,9 +48,10 @@ import {
 } from './keyword-scoring';
 import {
   rememberSelection,
-  resolveSelection,
   requireCompleteSelection,
+  resolveSelection,
 } from './keyword-selection';
+import { emptyScoreFilter, matchesScore } from './resource-list';
 import { keywordSourceStatus } from './site-discovery';
 
 const route = useRoute();
@@ -169,7 +170,7 @@ const rows = computed(() =>
           : record.assessment.grade === rating.value)) &&
       (ratingStatus.value === 'ALL' ||
         record.assessment.status === ratingStatus.value) &&
-      (!tagFilter.value.length ||
+      (tagFilter.value.length === 0 ||
         tagFilter.value.some((tag) => record.assessment.tags.includes(tag))) &&
       (timeRange.value === 'ALL' ||
         (age >= 0 && age <= Number(timeRange.value))) &&
@@ -588,8 +589,7 @@ function saveMetrics() {
       }}</b>
       <span>
         ·
-        提交成功后可关闭浏览器；本机已有关键词会自动迁移，收藏和人工筛选会同步保存。</span
-      >
+        提交成功后可关闭浏览器；本机已有关键词会自动迁移，收藏和人工筛选会同步保存。</span>
       <Button
         size="small"
         :loading="cloudWorkspace.syncing"
@@ -604,8 +604,7 @@ function saveMetrics() {
       </p>
     </div>
     <div class="hci-demo-note keyword-stage-note">
-      <b>1 关键词研究与评级</b><span>→ 人工选词</span><span>2 独立站研究</span
-      ><span>→ 人工选站</span><span>3 商品研究</span>
+      <b>1 关键词研究与评级</b><span>→ 人工选词</span><span>2 独立站研究</span><span>→ 人工选站</span><span>3 商品研究</span>
     </div>
     <Alert
       v-if="keywordJob.running"
@@ -739,19 +738,19 @@ function saveMetrics() {
         /><KeywordNamesDialog :ids="selectedIds" />
       </div>
       <div class="hci-toolbar">
-        <span class="hci-subtle"
-          >已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span
-        >
+        <span class="hci-subtle">已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span>
         <Button
           :disabled="!rows.length || supplementSubmitting"
           @click="selectFiltered"
-          >全选筛选结果（跨页）</Button
         >
+          全选筛选结果（跨页）
+        </Button>
         <Button
           :disabled="!selectedIds.length || supplementSubmitting"
           @click="clearSelection"
-          >清空选择</Button
         >
+          清空选择
+        </Button>
         <Tooltip
           title="依次补充 Semrush 搜索量、自然搜索KD与意图，采集一年趋势及30天变化，再统一重评。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
         >
@@ -792,9 +791,7 @@ function saveMetrics() {
         >
           标为排除
         </Button>
-        <span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 条筛选结果</span
-        >
+        <span class="hci-toolbar-end hci-subtle">{{ rows.length }} 条筛选结果</span>
       </div>
       <Alert
         v-if="selection.missing.length"
@@ -812,6 +809,9 @@ function saveMetrics() {
         row-key="id"
         :pagination="pagination"
         :scroll="{ x: 1770 }"
+        :loading="
+          cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
+        "
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'term'">
@@ -857,15 +857,10 @@ function saveMetrics() {
             <CompactTags :items="record.assessment.tags" label="分析标签" />
           </template>
           <template v-else-if="column.key === 'trend'">
-            <button
+            <KeywordTrendDialog
               v-if="record.series.length"
-              class="hci-link"
-              @click="
-                router.push({ path: '/trends', query: { keyword: record.id } })
-              "
-            >
-              查看一年曲线
-            </button>
+              :keyword="record as Keyword"
+            />
             <Tooltip v-else :title="record.trendMessage || '尚未采集趋势'">
               <Tag
                 :color="record.trendStatus === 'failed' ? 'orange' : 'default'"
@@ -889,8 +884,7 @@ function saveMetrics() {
             </div>
           </template>
           <template v-else-if="column.key === 'collectedAt'">
-            <span>{{ formatTime(record.collectedAt) }}</span
-            ><Tooltip :title="formatTime(record.trendCollectedAt)">
+            <span>{{ formatTime(record.collectedAt) }}</span><Tooltip :title="formatTime(record.trendCollectedAt)">
               <p class="hci-subtle">
                 趋势日期 {{ record.trendCollectedAt?.slice(0, 10) || '未记录' }}
               </p>
@@ -915,8 +909,7 @@ function saveMetrics() {
               :market="record.market"
               :keyword-ids="[record.id]"
             />
-            <Button type="link" @click="openDetail(record)">评分详情</Button
-            ><Button type="link" @click="toggleFavorite(record)">
+            <Button type="link" @click="openDetail(record)">评分详情</Button><Button type="link" @click="toggleFavorite(record)">
               {{ record.favorite ? '已收藏' : '收藏' }}
             </Button>
           </template>
@@ -925,17 +918,11 @@ function saveMetrics() {
     </section>
     <div class="hci-field-notes">
       <div>
-        <b>分阶段决策</b
-        ><span
-          >本页扩词、补齐平台指标与趋势后评分。标为入选后，在「已入选关键词」中发起独立站采集。</span
-        >
+        <b>分阶段决策</b><span>本页扩词、补齐平台指标与趋势后评分。标为入选后，在「已入选关键词」中发起独立站采集。</span>
       </div>
       <div>
-        <b>评级与证据</b
-        ><span
-          >A ≥80，B 65～79，C 50～64，D
-          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span
-        >
+        <b>评级与证据</b><span>A ≥80，B 65～79，C 50～64，D
+          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span>
       </div>
     </div>
 
@@ -1071,8 +1058,7 @@ function saveMetrics() {
         :key="dimension.key"
         class="hci-market-row"
       >
-        <b>{{ dimension.label }}</b
-        ><span>{{ dimension.weight }}%</span>
+        <b>{{ dimension.label }}</b><span>{{ dimension.weight }}%</span>
       </div>
       <div class="hci-evidence">
         A ≥80，B 65～79，C 50～64，D
@@ -1120,8 +1106,7 @@ function saveMetrics() {
             {{ assessment.grade || '待评级'
             }}{{ assessment.status === 'provisional' ? ' · 暂评' : '' }}
           </Tag>
-          <b>{{ assessment.score ?? '—' }} / 100</b
-          ><span>数据覆盖 {{ assessment.coverage }}%</span>
+          <b>{{ assessment.score ?? '—' }} / 100</b><span>数据覆盖 {{ assessment.coverage }}%</span>
         </div>
         <Alert
           :message="assessment.recommendation"
@@ -1145,17 +1130,12 @@ function saveMetrics() {
             class="keyword-dimension hci-dimension-card"
           >
             <div>
-              <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b
-              ><strong
-                >{{ dimension.score ?? '待补充'
-                }}{{ dimension.score === null ? '' : ' / 100' }}</strong
-              >
+              <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b><strong>{{ dimension.score ?? '待补充'
+                }}{{ dimension.score === null ? '' : ' / 100' }}</strong>
             </div>
             <p class="hci-subtle">{{ dimension.evidence }}</p>
-            <span class="hci-subtle"
-              >已覆盖权重 {{ dimension.coveredWeight }} /
-              {{ dimension.weight }}</span
-            >
+            <span class="hci-subtle">已覆盖权重 {{ dimension.coveredWeight }} /
+              {{ dimension.weight }}</span>
           </div>
         </div>
         <p class="hci-subtle">
@@ -1243,10 +1223,7 @@ function saveMetrics() {
           </Form.Item>
         </Form>
         <div class="hci-toolbar">
-          <Button type="primary" @click="saveMetrics">保存依据并重评</Button
-          ><Button @click="markRecords([detail], 'selected')">标为入选</Button
-          ><Button @click="markRecords([detail], 'excluded')">标为排除</Button
-          ><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
+          <Button type="primary" @click="saveMetrics">保存依据并重评</Button><Button @click="markRecords([detail], 'selected')">标为入选</Button><Button @click="markRecords([detail], 'excluded')">标为排除</Button><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
         </div>
       </template>
     </Drawer>

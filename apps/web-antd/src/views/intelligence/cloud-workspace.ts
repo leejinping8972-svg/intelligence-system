@@ -57,6 +57,55 @@ function businessEntries() {
 }
 const applying = ref(false);
 let revisions: Record<string, string> = {};
+const revisionCacheKey = 'intelligence-workspace-revisions-v1';
+function workspaceFingerprint() {
+  const content = JSON.stringify([
+    state.keywords.filter((record) => record.dataNature !== 'demo'),
+    [...businessEntries()],
+  ]);
+  let hash = 2_166_136_261;
+  for (const character of content) {
+    hash ^= character.codePointAt(0) || 0;
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(36);
+}
+const workspaceShape = () => ({
+  ads: state.ads.length,
+  audit: state.audit.length,
+  imports: state.imports.length,
+  keywords: state.keywords.length,
+  monitors: state.monitors.length,
+  products: state.products.length,
+  reviews: state.reviews.length,
+  sites: state.sites.length,
+  tasks: state.tasks.length,
+  fingerprint: workspaceFingerprint(),
+});
+function restoreCachedRevisions(scope: string) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(revisionCacheKey) || 'null');
+    if (
+      cached?.scope === scope &&
+      cached.revisions &&
+      JSON.stringify(cached.shape) === JSON.stringify(workspaceShape())
+    )
+      return cached.revisions as Record<string, string>;
+  } catch {
+    // A corrupt or unavailable cache only causes a full safe refresh.
+  }
+  return {};
+}
+function storeCachedRevisions(scope: string) {
+  try {
+    localStorage.setItem(
+      revisionCacheKey,
+      JSON.stringify({ scope, revisions, shape: workspaceShape() }),
+    );
+  } catch {
+    // The workspace itself remains usable when browser storage is unavailable.
+  }
+}
 const syncFlight = new RequestFlight<void>();
 const submissionFlights = new Map<string, Promise<ResearchSubmission>>();
 interface ResearchSubmission {
@@ -160,7 +209,7 @@ async function runCloudSync() {
       ? `server:${session.user?.id || ''}`
       : `${state.settings.researchApiUrl}|${state.settings.researchAccessKey}`;
     if (initialized !== scope) {
-      await cloudRequest('server_status');
+      if (!serverMode) await cloudRequest('server_status');
       let clientId = localStorage.getItem('intelligence-cloud-client-id');
       if (!clientId) {
         clientId = crypto.randomUUID();
@@ -194,7 +243,16 @@ async function runCloudSync() {
           importOnly: true,
         });
       initialized = scope;
-      revisions = {};
+      known.clear();
+      businessKnown.clear();
+      revisions = restoreCachedRevisions(scope);
+      if (Object.keys(revisions).length > 0) {
+        for (const record of state.keywords)
+          known.set(record.id, JSON.stringify(editable(record)));
+        for (const [key, value] of businessEntries())
+          businessKnown.set(key, JSON.stringify(value));
+        cloudWorkspace.ready = true;
+      }
     }
     if (pending.size > 0) {
       const updates = [...pending]
@@ -323,6 +381,7 @@ async function runCloudSync() {
         );
       }
       revisions = snapshot.revisions;
+      storeCachedRevisions(scope);
     } finally {
       applying.value = false;
     }
@@ -473,8 +532,8 @@ export async function clearCloudKeywords() {
 let lastPoll = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
 export function startCloudSync() {
-  if (timer) return;
   void syncCloudWorkspace().catch(() => {});
+  if (timer) return;
   timer = setInterval(() => {
     if (document.visibilityState === 'hidden') return;
     const idle =

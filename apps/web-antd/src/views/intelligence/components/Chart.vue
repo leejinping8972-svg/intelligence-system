@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import {
-  onMounted,
-  onBeforeUnmount,
+  nextTick,
   onActivated,
+  onBeforeUnmount,
+  onMounted,
   ref,
   watch,
-  nextTick,
 } from 'vue';
+
 import { echarts } from '@vben/plugins/echarts';
 import { usePreferences } from '@vben/preferences';
-const props = defineProps<{ options: Record<string, any>; map?: boolean }>();
+const props = withDefaults(
+  defineProps<{
+    ariaLabel?: string;
+    map?: boolean;
+    options: Record<string, any>;
+  }>(),
+  { ariaLabel: '数据图表', map: false },
+);
 const emit = defineEmits<{ select: [name: string] }>();
 const el = ref<HTMLDivElement>();
 const error = ref('');
@@ -69,5 +77,5 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div v-if="error" class="hci-empty">{{ error }}</div>
-  <div ref="el" class="hci-chart" role="img" aria-label="演示数据图表" />
+  <div ref="el" class="hci-chart" role="img" :aria-label="ariaLabel"></div>
 </template>

@@ -1157,10 +1157,17 @@ export function calculate28DayGrowth(series) {
 }
 
 export function calculate30DayGrowth(series) {
-  if (!Array.isArray(series) || series.length < 60 || series.some(v => !Number.isFinite(v) || v < 0 || v > 100)) return null;
-  const sum = values => values.reduce((total, value) => total + value, 0);
+  if (
+    !Array.isArray(series) ||
+    series.length < 60 ||
+    series.some((v) => !Number.isFinite(v) || v < 0 || v > 100)
+  )
+    return null;
+  const sum = (values) => values.reduce((total, value) => total + value, 0);
   const previous = sum(series.slice(-60, -30));
-  return previous > 0 ? Math.round((sum(series.slice(-30)) - previous) / previous * 1000) / 10 : null;
+  return previous > 0
+    ? Math.round(((sum(series.slice(-30)) - previous) / previous) * 1000) / 10
+    : null;
 }
 
 export function trendSeriesMessage(series) {
@@ -1266,18 +1273,101 @@ async function fetchGoogleTrendsEndpoint(url, market, cookie) {
 }
 
 export function googleTrendsHttpError(response, endpoint) {
-  const error = new Error(`Google Trends${endpoint}接口返回HTTP ${response.status}`);
+  const error = new Error(
+    `Google Trends${endpoint}接口返回HTTP ${response.status}`,
+  );
   error.status = response.status;
   const retry = response.headers.get('retry-after');
   const seconds = Number(retry);
-  error.retryAfterSeconds = retry ? (Number.isFinite(seconds) ? Math.max(0, seconds) : Math.max(0, (Date.parse(retry) - Date.now()) / 1000) || 0) : 0;
+  error.retryAfterSeconds = 0;
+  if (retry)
+    error.retryAfterSeconds = Number.isFinite(seconds)
+      ? Math.max(0, seconds)
+      : Math.max(0, (Date.parse(retry) - Date.now()) / 1000) || 0;
   return error;
+}
+
+export function parseGoogleTrendRegions(payload, keywordIndex = 0) {
+  return (payload?.default?.geoMapData || [])
+    .map((item) => {
+      let raw = item.value;
+      if (Array.isArray(raw)) raw = raw[keywordIndex];
+      const value = Number(raw);
+      const formatted = Array.isArray(item.formattedValue)
+        ? item.formattedValue[keywordIndex]
+        : item.formattedValue;
+      return {
+        code: String(item.geoCode || item.geo || '').slice(0, 32),
+        name: String(item.geoName || item.geoCode || item.geo || '').slice(
+          0,
+          160,
+        ),
+        value,
+        ...(formatted
+          ? { formattedValue: String(formatted).slice(0, 80) }
+          : {}),
+      };
+    })
+    .filter(
+      (item) =>
+        item.code &&
+        item.name &&
+        Number.isFinite(item.value) &&
+        item.value >= 0 &&
+        item.value <= 100,
+    )
+    .toSorted((a, b) => b.value - a.value)
+    .slice(0, 25);
+}
+
+export function parseGoogleTrendRelated(payload) {
+  const lists = payload?.default?.rankedList || [];
+  const parse = (list) =>
+    (list?.rankedKeyword || [])
+      .map((item) => {
+        const number = Number(item.value);
+        const formattedValue = String(
+          item.formattedValue ?? (Number.isFinite(number) ? number : ''),
+        ).slice(0, 80);
+        return {
+          query: String(item.query || '')
+            .trim()
+            .slice(0, 255),
+          value: Number.isFinite(number) ? number : null,
+          formattedValue,
+          ...(item.hasData?.[0] === false ? { value: null } : {}),
+          ...(/breakout|đột phá|突破/i.test(formattedValue)
+            ? { breakout: true }
+            : {}),
+        };
+      })
+      .filter((item) => item.query)
+      .slice(0, 25);
+  return {
+    top: parse(lists[0]),
+    rising: parse(lists[1]),
+  };
+}
+
+async function fetchGoogleTrendsWidget(widget, endpoint, market, cookie) {
+  if (!widget?.token || !widget?.request) return null;
+  const url = new URL(
+    `https://trends.google.com/trends/api/widgetdata/${endpoint}`,
+  );
+  url.searchParams.set('hl', MARKET_OPTIONS[market].language);
+  url.searchParams.set('tz', '0');
+  url.searchParams.set('req', JSON.stringify(widget.request));
+  url.searchParams.set('token', widget.token);
+  const response = await fetchGoogleTrendsEndpoint(url, market, cookie);
+  if (!response.ok) throw googleTrendsHttpError(response, endpoint);
+  return parseGoogleTrendsPayload(await response.text());
 }
 
 export async function fetchGoogleTrendsBatch(
   keywords,
   market,
   period = 'today 12-m',
+  options = {},
 ) {
   const cookie = await googleTrendsSession(market).catch(() => '');
   const exploreResponse = await fetchGoogleTrendsEndpoint(
@@ -1285,8 +1375,7 @@ export async function fetchGoogleTrendsBatch(
     market,
     cookie,
   );
-  if (!exploreResponse.ok)
-    throw googleTrendsHttpError(exploreResponse, '探索');
+  if (!exploreResponse.ok) throw googleTrendsHttpError(exploreResponse, '探索');
   const explore = parseGoogleTrendsPayload(await exploreResponse.text());
   const widget = (explore.widgets || []).find(
     (item) => item.id === 'TIMESERIES',
@@ -1310,6 +1399,58 @@ export async function fetchGoogleTrendsBatch(
     throw googleTrendsHttpError(timelineResponse, '时间序列');
   const timeline = parseGoogleTrendsPayload(await timelineResponse.text());
   const timelineData = timeline.default?.timelineData || [];
+  let insights = {
+    regions: [],
+    relatedTop: [],
+    relatedRising: [],
+    insightsStatus: 'empty',
+    insightsMessage:
+      keywords.length === 1 && options.includeInsights !== false
+        ? 'Google Trends本次未返回区域和相关查询组件'
+        : '区域和相关查询仅在单关键词采样时获取',
+  };
+  if (keywords.length === 1 && options.includeInsights !== false) {
+    const geoWidget = (explore.widgets || []).find(
+      (item) => item.id === 'GEO_MAP',
+    );
+    const relatedWidget = (explore.widgets || []).find(
+      (item) => item.id === 'RELATED_QUERIES',
+    );
+    const [geoResult, relatedResult] = await Promise.allSettled([
+      fetchGoogleTrendsWidget(geoWidget, 'comparedgeo', market, cookie),
+      fetchGoogleTrendsWidget(relatedWidget, 'relatedsearches', market, cookie),
+    ]);
+    const regions =
+      geoResult.status === 'fulfilled'
+        ? parseGoogleTrendRegions(geoResult.value)
+        : [];
+    const related =
+      relatedResult.status === 'fulfilled'
+        ? parseGoogleTrendRelated(relatedResult.value)
+        : { top: [], rising: [] };
+    const failures = [
+      ...(geoResult.status === 'rejected'
+        ? [`区域热度：${geoResult.reason?.message || '请求失败'}`]
+        : []),
+      ...(relatedResult.status === 'rejected'
+        ? [`相关查询：${relatedResult.reason?.message || '请求失败'}`]
+        : []),
+    ];
+    const hasData =
+      regions.length > 0 || related.top.length > 0 || related.rising.length > 0;
+    let insightsStatus = hasData ? 'collected' : 'empty';
+    if (failures.length > 0) insightsStatus = hasData ? 'partial' : 'failed';
+    insights = {
+      regions,
+      relatedTop: related.top,
+      relatedRising: related.rising,
+      insightsStatus,
+      insightsMessage:
+        failures.join('；') ||
+        (hasData ? '' : 'Google Trends本次未返回可用的区域或相关查询数据'),
+      insightsPeriod: period,
+    };
+  }
   return keywords.map((keyword, keywordIndex) => {
     const points = timelineData
       .map((item) => ({
@@ -1332,6 +1473,9 @@ export async function fetchGoogleTrendsBatch(
       series,
       source: 'Google Trends',
       status: series.some((value) => value > 0) ? 'success' : 'empty',
+      ...(keywords.length === 1 && options.includeInsights !== false
+        ? insights
+        : {}),
     };
   });
 }
@@ -1373,8 +1517,10 @@ export async function collectGoogleTrendsBatch(keywords, market) {
         const cutoff = new Date(end);
         cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
         cutoff.setUTCDate(cutoff.getUTCDate() - 7);
-        annual.points = annual.points.filter(p => Date.parse(p.date) >= cutoff.getTime());
-        annual.series = annual.points.map(p => p.value);
+        annual.points = annual.points.filter(
+          (p) => Date.parse(p.date) >= cutoff.getTime(),
+        );
+        annual.series = annual.points.map((p) => p.value);
       }
     } catch (error) {
       annualError =
@@ -1427,6 +1573,7 @@ export async function collectGoogleTrendsBatch(keywords, market) {
         [keyword],
         market,
         'today 3-m',
+        { includeInsights: false },
       );
       const dailyPoints =
         daily.resolution === 'day'
@@ -1680,11 +1827,43 @@ export default {
     try {
       const input = await request.json();
       if (internal && input.action === 'server_migrate_credentials') {
-        const key = await crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.SERVER_BRIDGE_KEY)), 'AES-GCM', false, ['encrypt']);
+        const key = await crypto.subtle.importKey(
+          'raw',
+          await crypto.subtle.digest(
+            'SHA-256',
+            new TextEncoder().encode(env.SERVER_BRIDGE_KEY),
+          ),
+          'AES-GCM',
+          false,
+          ['encrypt'],
+        );
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const credentials = { RESEARCH_ACCESS_KEY: env.RESEARCH_ACCESS_KEY, BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY || '', SORFTIME_MCP_TOKEN: await readSorftimeToken(env) };
-        const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode('intelligence-server-migration-v1') }, key, new TextEncoder().encode(JSON.stringify(credentials)));
-        return json({ iv: btoa(String.fromCodePoint(...iv)), ciphertext: btoa(String.fromCodePoint(...new Uint8Array(encrypted))) }, 200, originState.origin);
+        const credentials = {
+          RESEARCH_ACCESS_KEY: env.RESEARCH_ACCESS_KEY,
+          BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY || '',
+          SORFTIME_MCP_TOKEN: await readSorftimeToken(env),
+        };
+        const encrypted = await crypto.subtle.encrypt(
+          {
+            name: 'AES-GCM',
+            iv,
+            additionalData: new TextEncoder().encode(
+              'intelligence-server-migration-v1',
+            ),
+          },
+          key,
+          new TextEncoder().encode(JSON.stringify(credentials)),
+        );
+        return json(
+          {
+            iv: btoa(String.fromCodePoint(...iv)),
+            ciphertext: btoa(
+              String.fromCodePoint(...new Uint8Array(encrypted)),
+            ),
+          },
+          200,
+          originState.origin,
+        );
       }
       if (internal && input.action !== 'server_collect')
         throw new Error('服务端凭证仅允许关键词采集');
@@ -1692,7 +1871,10 @@ export default {
         throw new Error('仅后台任务可执行此操作');
       if (SERVER_ACTIONS.has(input.action))
         return json(await serverRelay(input, env), 200, originState.origin);
-      if (input.action === 'server_collect') input.action = input.sources?.includes('site_discovery') ? 'site_research' : 'keyword_research';
+      if (input.action === 'server_collect')
+        input.action = input.sources?.includes('site_discovery')
+          ? 'site_research'
+          : 'keyword_research';
       if (input.action === 'keyword_sources_config')
         return json(
           await saveSorftimeToken(input, env),

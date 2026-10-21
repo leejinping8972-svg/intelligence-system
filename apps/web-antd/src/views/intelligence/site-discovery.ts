@@ -117,7 +117,7 @@ export interface TrendGroup {
   collectedAt?: string;
   dailyMessage?: string;
   dailyCollectedAt?: string;
-  historyPoints?: Array<{date:string; value:number; isPartial?:boolean}>;
+  historyPoints?: Array<{ date: string; value: number; isPartial?: boolean }>;
   dailyPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
   growth: null | number;
   keyword: string;
@@ -127,6 +127,12 @@ export interface TrendGroup {
   period?: string;
   resolution?: 'day' | 'month' | 'unknown' | 'week';
   sourceUrl?: string;
+  regions?: Keyword['trendRegions'];
+  relatedTop?: Keyword['trendRelatedTop'];
+  relatedRising?: Keyword['trendRelatedRising'];
+  insightsStatus?: Keyword['trendInsightsStatus'];
+  insightsMessage?: string;
+  insightsPeriod?: string;
   series: number[];
   source: string;
   status: 'empty' | 'error' | 'success';
@@ -157,8 +163,12 @@ export function trendRecordFields(trend: TrendGroup) {
     trendDailyCollectedAt: trend.dailyCollectedAt,
     trendHistoryPoints: trend.historyPoints || [],
     trendHistoryResolution: trend.resolution,
-    trendHistoryCollectedAt: trend.historyPoints?.length ? trend.collectedAt : undefined,
-    trendHistorySourceUrl: trend.historyPoints?.length ? trend.sourceUrl : undefined,
+    trendHistoryCollectedAt: trend.historyPoints?.length
+      ? trend.collectedAt
+      : undefined,
+    trendHistorySourceUrl: trend.historyPoints?.length
+      ? trend.sourceUrl
+      : undefined,
     trendResolution: trend.resolution || 'unknown',
     trendPeriod: trend.period,
     trendSourceUrl: trend.sourceUrl,
@@ -166,6 +176,12 @@ export function trendRecordFields(trend: TrendGroup) {
     trendDailyMessage: trend.dailyMessage,
     trendStatus: trend.series.length > 0 ? 'collected' : 'failed',
     trendMessage: trend.message || trend.dailyMessage || '已采集一年趋势',
+    trendRegions: trend.regions || [],
+    trendRelatedTop: trend.relatedTop || [],
+    trendRelatedRising: trend.relatedRising || [],
+    trendInsightsStatus: trend.insightsStatus,
+    trendInsightsMessage: trend.insightsMessage,
+    trendInsightsPeriod: trend.insightsPeriod,
   } satisfies Partial<Keyword>;
 }
 

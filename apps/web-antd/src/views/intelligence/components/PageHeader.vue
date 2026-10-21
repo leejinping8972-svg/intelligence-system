@@ -32,4 +32,12 @@ startCloudSync();
   <div v-else-if="cloudWorkspace.error" class="hci-demo-note" role="alert">
     云端保存尚未成功：{{ cloudWorkspace.error }}。本机缓存仍保留。
   </div>
+  <div
+    v-else-if="cloudWorkspace.syncing && !cloudWorkspace.ready"
+    class="hci-demo-note"
+    role="status"
+    aria-live="polite"
+  >
+    正在读取最新数据；如有上次成功内容会继续显示，不会先清空再刷新。
+  </div>
 </template>

@@ -20,18 +20,19 @@ import {
   cloudWorkspace,
   syncCloudWorkspace,
 } from './cloud-workspace';
-import PageHeader from './components/PageHeader.vue';
-import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
-import { keywordChineseName } from './keyword-names';
-import SelectionBar from './components/SelectionBar.vue';
-import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
-import { useFilteredSelection } from './resource-list';
-import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import AdsCollectDialog from './components/AdsCollectDialog.vue';
+import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
+import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
+import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
+import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
+import PageHeader from './components/PageHeader.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
+import SelectionBar from './components/SelectionBar.vue';
 import { audit, filteredKeywords, marketName, state } from './data';
+import { keywordChineseName } from './keyword-names';
 import { assessKeyword } from './keyword-scoring';
 import { platformProductSelection } from './platform-product-selection';
+import { useFilteredSelection } from './resource-list';
 
 const router = useRouter();
 const ids = ref<string[]>([]);
@@ -127,8 +128,8 @@ async function remove(r: Keyword) {
   try {
     await syncCloudWorkspace();
     message.success('已移出入选列表，采集结果保留');
-  } catch (e) {
-    message.error((e as Error).message);
+  } catch (error) {
+    message.error((error as Error).message);
   }
 }
 async function cancel(r: Keyword) {
@@ -139,8 +140,8 @@ async function cancel(r: Keyword) {
     ]);
     for (const id of jobIds) await cancelCloudJob(id);
     message.success('已取消该批次未完成任务');
-  } catch (e) {
-    message.error((e as Error).message);
+  } catch (error) {
+    message.error((error as Error).message);
   }
 }
 const time = (r: Keyword) =>
@@ -166,11 +167,8 @@ const time = (r: Keyword) =>
     />
     <section class="hci-panel">
       <div class="selected-summary">
-        <b>当前市场入选 {{ selected.length }} 个词</b
-        ><span
-          >已完成 {{ completed }} 个 · 等待或采集中
-          {{ selected.filter(active).length }} 个</span
-        >
+        <b>当前市场入选 {{ selected.length }} 个词</b><span>已完成 {{ completed }} 个 · 等待或采集中
+          {{ selected.filter(active).length }} 个</span>
       </div>
       <div class="selected-toolbar">
         <PlatformProductsDialog
@@ -214,13 +212,17 @@ const time = (r: Keyword) =>
         :total="selectable.length"
         @all="selectAll"
         @clear="clear"
-        ><KeywordNamesDialog :ids="ids"
-      /></SelectionBar>
+      >
+        <KeywordNamesDialog :ids="ids" />
+      </SelectionBar>
       <Table
         class="hci-resource-table"
         size="small"
         :columns="columns"
         :data-source="rows"
+        :loading="
+          cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
+        "
         row-key="id"
         :scroll="{ x: 1600 }"
         :row-selection="rowSelection"
@@ -285,32 +287,27 @@ const time = (r: Keyword) =>
               {{ record.siteIds?.length || 0 }} 家站点
             </Button>
           </template>
-          <template v-else-if="column.key === 'ads'"
-            ><Tag :color="colors[record.adCollection?.status || 'pending']">{{
-              labels[record.adCollection?.status || 'pending']
-            }}</Tag
-            ><Button
+          <template v-else-if="column.key === 'ads'">
+            <Tag :color="colors[record.adCollection?.status || 'pending']">
+              {{ labels[record.adCollection?.status || 'pending'] }}
+</Tag><Button
               type="link"
               @click="
                 router.push({ path: '/ads', query: { keywordId: record.id } })
               "
-              >{{
+            >
+              {{
                 state.ads.filter((ad) => ad.keywordIds?.includes(record.id))
                   .length
               }}
-              条广告</Button
-            ></template
-          >
+              条广告
+            </Button>
+          </template>
           <template v-else-if="column.key === 'trend'">
-            <button
+            <KeywordTrendDialog
               v-if="record.series.length"
-              class="hci-link"
-              @click="
-                router.push({ path: '/trends', query: { keyword: record.id } })
-              "
-            >
-              查看一年曲线
-            </button>
+              :keyword="record as Keyword"
+            />
             <KeywordTrendComparison :keyword="record as Keyword" />
           </template>
           <template v-else-if="column.key === 'time'">
@@ -344,9 +341,9 @@ const time = (r: Keyword) =>
               v-if="active(record as Keyword) || adActive(record as Keyword)"
               title="将取消同一批次中所有尚未完成的关键词采集"
             >
-              <Button type="link" @click="cancel(record as Keyword)"
-                >取消该批次</Button
-              >
+              <Button type="link" @click="cancel(record as Keyword)">
+                取消该批次
+              </Button>
             </Tooltip>
             <Button
               type="link"
@@ -375,14 +372,16 @@ const time = (r: Keyword) =>
 .selected-summary,
 .selected-toolbar {
   display: flex;
-  align-items: center;
-  gap: 16px;
   flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
   margin-bottom: 20px;
 }
+
 .selected-summary {
   justify-content: space-between;
 }
+
 .selected-summary span {
   color: #7b8794;
 }

@@ -63,4 +63,25 @@ describe('chinese keyword reading aid', () => {
       keywordChineseName({ term: 'what is magnesium glycinate good for' }),
     ).toBe('甘氨酸镁有什么作用');
   });
+  it('shows useful local Chinese references for common Vietnamese Omega-3 queries without a model call', () => {
+    expect(keywordChineseName({ term: 'omega 3' })).toBe('Omega-3脂肪酸');
+    expect(keywordChineseName({ term: 'omega 3 có tác dụng gì' })).toBe(
+      'Omega-3脂肪酸有什么作用',
+    );
+    expect(keywordChineseName({ term: 'uống mấy viên omega 3 mỗi ngày' })).toBe(
+      '每天服用几粒 Omega-3脂肪酸',
+    );
+    expect(keywordChineseName({ term: 'thuốc omega 3' })).toBe(
+      'Omega-3脂肪酸制剂',
+    );
+    expect(keywordChineseName({ term: 'dầu cá omega 3' })).toBe(
+      '鱼油 Omega-3脂肪酸',
+    );
+    expect(keywordChineseName({ term: 'tác dụng của omega 3' })).toBe(
+      'Omega-3脂肪酸的作用',
+    );
+    expect(keywordChineseName({ term: 'omega 3 6 9' })).toBe(
+      'Omega-3-6-9脂肪酸',
+    );
+  });
 });

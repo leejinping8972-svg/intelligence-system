@@ -20,6 +20,8 @@ import worker, {
   inferTrendResolution,
   isCandidateUrl,
   mergeSuggestionItems,
+  parseGoogleTrendRegions,
+  parseGoogleTrendRelated,
   parseGoogleTrendsPayload,
   productFromJsonLd,
   productPageUrl,
@@ -38,13 +40,24 @@ test('Google Trends 429 stops immediate retries and preserves Retry-After for th
       : new Response('');
   };
   try {
-    const [result] = await collectGoogleTrendsBatch(['qa-429-no-snapshot'], 'US');
+    const [result] = await collectGoogleTrendsBatch(
+      ['qa-429-no-snapshot'],
+      'US',
+    );
     assert.equal(result.rateLimited, true);
     assert.equal(result.retryAfterSeconds, 180);
-    assert.equal(calls.filter(url => url.includes('/api/')).length, 1);
+    assert.equal(calls.filter((url) => url.includes('/api/')).length, 1);
     assert.equal(result.series.length, 0);
-    assert.equal(googleTrendsHttpError(new Response('', { status: 429, headers: { 'retry-after': '120' } }), '探索').retryAfterSeconds, 120);
-  } finally { globalThis.fetch = original; }
+    assert.equal(
+      googleTrendsHttpError(
+        new Response('', { status: 429, headers: { 'retry-after': '120' } }),
+        '探索',
+      ).retryAfterSeconds,
+      120,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test('builds localized Google suggestion requests', () => {
@@ -262,6 +275,66 @@ test('builds and calculates Google Trends series', () => {
   );
 });
 
+test('parses Google regional interest and top/rising related queries', () => {
+  assert.deepEqual(
+    parseGoogleTrendRegions({
+      default: {
+        geoMapData: [
+          {
+            geoCode: 'VN-HN',
+            geoName: '河内',
+            value: [100],
+            formattedValue: ['100'],
+          },
+          {
+            geoCode: 'VN-HP',
+            geoName: '海防',
+            value: [42],
+            formattedValue: ['42'],
+          },
+        ],
+      },
+    }),
+    [
+      { code: 'VN-HN', name: '河内', value: 100, formattedValue: '100' },
+      { code: 'VN-HP', name: '海防', value: 42, formattedValue: '42' },
+    ],
+  );
+  assert.deepEqual(
+    parseGoogleTrendRelated({
+      default: {
+        rankedList: [
+          {
+            rankedKeyword: [
+              { query: 'uống omega 3', value: 100, formattedValue: '100' },
+            ],
+          },
+          {
+            rankedKeyword: [
+              {
+                query: 'omega 3 nhật',
+                value: 5000,
+                formattedValue: 'Breakout',
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    {
+      top: [{ query: 'uống omega 3', value: 100, formattedValue: '100' }],
+      rising: [
+        {
+          query: 'omega 3 nhật',
+          value: 5000,
+          formattedValue: 'Breakout',
+          breakout: true,
+        },
+      ],
+    },
+  );
+});
+
 test('keeps only cookie pairs for a Google Trends session', () => {
   assert.equal(
     googleCookieHeader('NID=abc; Path=/; Secure, CONSENT=yes; Path=/'),
@@ -422,7 +495,13 @@ test('stage one refuses discovery sources and works without a Brave credential',
 });
 
 test('active growth uses two complete 30-day windows instead of the legacy 28-day helper', () => {
-  assert.equal(calculate30DayGrowth([...Array(30).fill(50), ...Array(30).fill(75)]), 50);
+  assert.equal(
+    calculate30DayGrowth([...Array(30).fill(50), ...Array(30).fill(75)]),
+    50,
+  );
   assert.equal(calculate30DayGrowth(Array(59).fill(20)), null);
-  assert.equal(calculate30DayGrowth([...Array(30).fill(0), ...Array(30).fill(10)]), null);
+  assert.equal(
+    calculate30DayGrowth([...Array(30).fill(0), ...Array(30).fill(10)]),
+    null,
+  );
 });
