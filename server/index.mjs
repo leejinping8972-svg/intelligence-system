@@ -50,6 +50,7 @@ import {
   withPublicContentIdle,
 } from './public-content-store.mjs';
 import { registerRelease, releaseHistory } from './release-history.mjs';
+import { aiPromptAction } from './ai-prompt-config.mjs';
 import { reportPromptAction } from './report-prompts.mjs';
 import { jobTasks, runQueue } from './runner.mjs';
 import { semrushAction } from './semrush-config.mjs';
@@ -74,6 +75,8 @@ async function api(input, user) {
   if (input.action?.startsWith('server_content_'))
     return publicContentAction(input, user);
   switch (input.action) {
+    case 'server_ai_prompts':
+    case 'server_ai_prompt_save': { return aiPromptAction(input, user); }
     case 'server_keyword_names': {
       return keywordNamesAction(input, user);
     }

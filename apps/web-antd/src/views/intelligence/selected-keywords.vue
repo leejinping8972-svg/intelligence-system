@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import type { Keyword } from './data';
+import type { ResearchReport } from './research-reports';
 
-import { computed, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from 'vue';
 import { useRouter } from 'vue-router';
 
 import {
@@ -17,10 +26,12 @@ import {
 
 import {
   cancelCloudJob,
+  cloudRequest,
   cloudWorkspace,
   syncCloudWorkspace,
 } from './cloud-workspace';
 import AdsCollectDialog from './components/AdsCollectDialog.vue';
+import ConsumerReportDialog from './components/ConsumerReportDialog.vue';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
@@ -28,6 +39,11 @@ import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
 import PageHeader from './components/PageHeader.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
 import SelectionBar from './components/SelectionBar.vue';
+import {
+  latestKeywordReports,
+  reportStatus,
+  reportTopics,
+} from './consumer-reports';
 import { audit, filteredKeywords, marketName, state } from './data';
 import { keywordChineseName } from './keyword-names';
 import { assessKeyword } from './keyword-scoring';
@@ -62,6 +78,41 @@ const colors: Record<string, string> = {
 const selected = computed(() =>
   filteredKeywords.value.filter((k) => k.reviewStatus === 'selected'),
 );
+const reportError = ref('');
+const reports = ref<ResearchReport[]>([]);
+const keywordReports = computed(() => latestKeywordReports(reports.value));
+let reportActive = true;
+let reportLoading = false;
+let reportTimer: ReturnType<typeof setTimeout> | undefined;
+async function loadReports() {
+  if (!cloudWorkspace.ready || reportLoading) return;
+  reportLoading = true;
+  if (reportTimer) clearTimeout(reportTimer);
+  try {
+    reports.value = (
+      await cloudRequest<{ reports: ResearchReport[] }>(
+        'server_insight_snapshot',
+        {
+          summary: true,
+          kind: 'consumer',
+          latestByKeyword: true,
+          keywordIds: selected.value.map((k) => k.id),
+        },
+      )
+    ).reports;
+    reportError.value = '';
+  } catch (error) {
+    reportError.value =
+      error instanceof Error ? error.message : '洞察摘要读取失败';
+  } finally {
+    reportLoading = false;
+    if (reportActive) reportTimer = setTimeout(() => void loadReports(), 15000);
+  }
+}
+function stopReports() {
+  reportActive = false;
+  if (reportTimer) clearTimeout(reportTimer);
+}
 const rows = computed(() =>
   selected.value
     .filter(
@@ -97,6 +148,17 @@ const completed = computed(
     selected.value.filter((k) => k.siteCollection?.status === 'completed')
       .length,
 );
+onMounted(() => void loadReports());
+onActivated(() => {
+  reportActive = true;
+  void loadReports();
+});
+onDeactivated(stopReports);
+onUnmounted(stopReports);
+watch(
+  () => [cloudWorkspace.ready, selected.value.map((k) => k.id).join(',')],
+  () => void loadReports(),
+);
 watch([search, status, () => state.market], () => {
   page.value = 1;
   ids.value = [];
@@ -116,6 +178,7 @@ const columns = [
       (a.score ?? -1) - (b.score ?? -1),
   },
   { title: '趋势热度 / 周期变化', key: 'trend', width: 215 },
+  { title: '消费者重点话题 / 样本热度', key: 'consumer', width: 290 },
   { title: '站点采集状态', key: 'status', width: 145 },
   { title: '广告采集状态', key: 'ads', width: 145 },
   { title: '关联站点', key: 'sites', width: 100 },
@@ -170,7 +233,13 @@ const time = (r: Keyword) =>
         <b>当前市场入选 {{ selected.length }} 个词</b><span>已完成 {{ completed }} 个 · 等待或采集中
           {{ selected.filter(active).length }} 个</span>
       </div>
+      <Alert v-if="reportError" type="error" :message="reportError" show-icon />
       <div class="selected-toolbar">
+        <ConsumerReportDialog
+          :keywords="collectionSelection"
+          :disabled="!ids.length || !cloudWorkspace.ready"
+          @submitted="loadReports"
+        />
         <PlatformProductsDialog
           :terms="platformSelection.terms"
           :market="platformSelection.market"
@@ -224,7 +293,7 @@ const time = (r: Keyword) =>
           cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
         "
         row-key="id"
-        :scroll="{ x: 1600 }"
+        :scroll="{ x: 1890 }"
         :row-selection="rowSelection"
         :pagination="{
           current: page,
@@ -264,6 +333,45 @@ const time = (r: Keyword) =>
                   : '含缺项，仅供筛选'
               }}
             </p>
+          </template>
+          <template v-else-if="column.key === 'consumer'">
+            <template v-if="keywordReports.get(record.id)">
+              <div
+                v-for="topic in reportTopics(
+                  keywordReports.get(record.id)!,
+                ).slice(0, 3)"
+                :key="topic.key"
+              >
+                <b>{{ topic.label }}</b> · {{ topic.count }}条
+                <span v-if="topic.share !== null"> ({{ topic.share }}%)</span>
+              </div>
+              <p
+                v-if="!reportTopics(keywordReports.get(record.id)!).length"
+                class="hci-subtle"
+              >
+                {{ reportStatus(keywordReports.get(record.id)!.status) }} ·
+                暂无话题摘要
+              </p>
+              <Button
+                type="link"
+                size="small"
+                @click="
+                  router.push(
+                    `/consumer-insights/reports/${keywordReports.get(record.id)!.id}`,
+                  )
+                "
+              >
+                查看报告 ·
+                {{ reportStatus(keywordReports.get(record.id)!.status) }}
+              </Button>
+            </template>
+            <span v-else class="hci-subtle">尚未生成洞察</span>
+            <ConsumerReportDialog
+              compact
+              label="生成报告"
+              :keywords="[record as Keyword]"
+              @submitted="loadReports"
+            />
           </template>
           <template v-else-if="column.key === 'status'">
             <Tag :color="colors[record.siteCollection?.status || 'pending']">

@@ -1,6 +1,7 @@
 /* oxlint-disable vitest/no-import-node-test -- Server test suite uses Node. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { aiPromptSnapshot } from './ai-prompt-defaults.mjs';
 import { keywordNamesAction, validateNames } from './keyword-names.mjs';
 import { cleanKeyword, editableKeywordPatch } from './domain.mjs';
 
@@ -57,6 +58,7 @@ test('only explicit admin requests make one configured-model call; missing recor
   let calls = 0;
   const io = {
     records: async () => [record],
+    prompt: async () => aiPromptSnapshot('keyword_translation'),
     config: async () => ({ model: 'synthetic-model' }),
     post: async (_config, messages) => {
       calls++;
@@ -108,6 +110,7 @@ test('timeouts and truncated responses never retry the model automatically', asy
   let calls = 0;
   const io = {
     records: async () => [record],
+    prompt: async () => aiPromptSnapshot('keyword_translation'),
     config: async () => ({}),
     post: async () => {
       calls++;

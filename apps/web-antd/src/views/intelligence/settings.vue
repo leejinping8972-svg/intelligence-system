@@ -17,7 +17,7 @@ import SemrushSettings from './components/SemrushSettings.vue';
 import SiteCollectionSettings from './components/SiteCollectionSettings.vue';
 import YouTubeSettings from './components/YouTubeSettings.vue';
 import AdsSettings from './components/AdsSettings.vue';
-import AnalysisSettings from './components/AnalysisSettings.vue';
+import { useRouter } from 'vue-router';
 import {
   audit,
   clearWorkspaceResults,
@@ -32,6 +32,7 @@ import {
   saveSorftimeConfiguration,
 } from './site-discovery';
 
+const router = useRouter();
 const draft = reactive({ ...state.settings });
 const brandingDraft = reactive({ ...state.branding });
 const logoInput = ref<HTMLInputElement>();
@@ -313,7 +314,13 @@ function handleLogo(event: Event) {
     <SiteCollectionSettings v-if="serverMode" />
     <YouTubeSettings v-if="serverMode" />
     <AdsSettings v-if="serverMode" />
-    <AnalysisSettings v-if="serverMode" />
+    <section v-if="serverMode" class="hci-panel">
+      <h2>AI 配置</h2>
+      <p class="hci-subtle">
+        模型接口与消费者洞察、广告报告、公共内容整理、关键词翻译提示词已集中管理。
+      </p>
+      <Button @click="router.push('/ai-config')">打开 AI 配置</Button>
+    </section>
     <section class="hci-panel" id="keyword-providers">
       <div class="hci-panel-head">
         <h2>关键词数据源 · Sorftime MCP</h2>

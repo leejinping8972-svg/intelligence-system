@@ -7,6 +7,7 @@ export const sourceKinds = {
     path: '/v1/reddit/post/comments',
     hosts: ['reddit.com'],
   },
+  facebook_comments: { platform: 'Facebook', path: '/v1/facebook/post/comments', hosts: ['facebook.com'] },
   youtube_comments: {
     platform: 'YouTube',
     path: '/v1/youtube/video/comments',
@@ -76,6 +77,7 @@ export function normalizeEvidence(payload, request) {
     const postedAt =
       raw.publishedTime ||
       raw.created_at_iso ||
+      raw.created_at ||
       (Number(epoch) > 0
         ? new Date(Number(epoch) * 1000).toISOString()
         : undefined);
@@ -88,7 +90,7 @@ export function normalizeEvidence(payload, request) {
       kind: request.kind === 'reddit_search' ? 'post' : 'comment',
       postedAt,
       collectedAt: new Date().toISOString(),
-      likes: Number(raw.score ?? raw.digg_count ?? raw.engagement?.likes) || 0,
+      likes: Number(raw.score ?? raw.digg_count ?? raw.engagement?.likes ?? raw.reaction_count) || 0,
       market: request.market,
       marketBasis: '研究目标市场；未证明评论者所在地',
       keywordIds: request.keywordIds || [],

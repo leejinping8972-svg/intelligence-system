@@ -685,6 +685,7 @@ assert.equal(paidCalls, 0);
 console.log(
   'Public recovery integration passed: same-day automatic/manual recovery, cumulative budget, shared host cooldown, admin scope, one-shot paused targets, zero advertisement/Semrush calls.',
 );
+await (await import('./consumer-reports.integration.mjs')).consumerReportsIntegration();
 c.release();
 await memory?.close();
 await pool.end();
