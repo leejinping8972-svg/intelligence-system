@@ -15,6 +15,8 @@ import {
   withCompetitorIdle,
 } from './competitor-monitor-store.mjs';
 import { dailyDiscoveryAction } from './daily-discovery.mjs';
+import { marketResearchAction } from './market-research.mjs';
+import { submitMarketReport } from './market-report-jobs.mjs';
 import { databaseAction, maintenance } from './database-admin.mjs';
 import {
   currentDatabase,
@@ -86,6 +88,8 @@ async function api(input, user) {
     return competitorAction(input, user);
   if (input.action?.startsWith('server_content_'))
     return publicContentAction(input, user);
+  if (input.action?.startsWith('server_market_collection_'))
+    return marketResearchAction(input, user);
   switch (input.action) {
     case 'server_ai_prompts':
     case 'server_ai_prompt_save': { return aiPromptAction(input, user); }
@@ -123,6 +127,10 @@ async function api(input, user) {
     }
     case 'server_submit_insight': {
       const job = await submitInsight(input);
+      return { jobId: job.id, tasks: jobTasks(job) };
+    }
+    case 'server_submit_market_report': {
+      const job = await submitMarketReport(input);
       return { jobId: job.id, tasks: jobTasks(job) };
     }
     case 'server_submit_products': {

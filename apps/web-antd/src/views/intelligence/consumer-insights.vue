@@ -16,6 +16,8 @@ import { Alert, Button, Input, Select, Table, Tag } from 'ant-design-vue';
 
 import { cloudRequest } from './cloud-workspace';
 import ConsumerReportDialog from './components/ConsumerReportDialog.vue';
+import CountryMarketReportDialog from './components/CountryMarketReportDialog.vue';
+import MarketCollectionDialog from './components/MarketCollectionDialog.vue';
 import PageHeader from './components/PageHeader.vue';
 import { reportStatus, reportTopics } from './consumer-reports';
 import { marketName, state } from './data';
@@ -32,6 +34,7 @@ const associatedIds = ref<string[]>([]);
   const pageSize = ref(10);
   const reports = ref<ResearchReport[]>([]);
   const review = ref('ALL');
+  const reportType = ref('ALL');
   const search = ref('');
   const topic = ref('');
   const topicOptions = ref<string[]>([]);
@@ -80,6 +83,7 @@ async function load() {
       topic: topic.value,
       search: search.value,
       review: review.value,
+      reportType: reportType.value,
       page: page.value,
       pageSize: pageSize.value,
     });
@@ -100,7 +104,7 @@ async function load() {
     if (t === token) busy.value = false;
   }
 }
-watch([keyword, topic, review, () => state.market, pageSize], () => {
+watch([keyword, topic, review, reportType, () => state.market, pageSize], () => {
   page.value = 1;
   void load();
 });
@@ -145,6 +149,7 @@ function reset() {
   keyword.value = '';
   topic.value = '';
   review.value = 'ALL';
+  reportType.value = 'ALL';
   page.value = 1;
   void load();
 }
@@ -172,6 +177,13 @@ AI 配置
         label="新建消费者洞察报告"
         @submitted="load"
       />
+      <MarketCollectionDialog
+        v-if="session.user?.role === 'admin'"
+        @submitted="load"
+      />
+      <CountryMarketReportDialog
+        @submitted="(id) => router.push(`/consumer-insights/reports/${id}`)"
+      />
     </PageHeader>
     <Alert
       v-if="!serverMode"
@@ -187,6 +199,15 @@ AI 配置
           placeholder="搜索报告或话题"
           aria-label="搜索报告或话题"
           allow-clear
+        />
+        <Select
+          v-model:value="reportType"
+          :options="[
+            { label: '全部报告类型', value: 'ALL' },
+            { label: '国家市场报告', value: 'market' },
+            { label: '消费者话题报告', value: 'consumer' },
+          ]"
+          aria-label="报告类型筛选"
         />
         <Select
           v-model:value="keyword"
@@ -249,6 +270,15 @@ AI 配置
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'title'">
 <b>{{ record.title }}</b>
+            <Tag v-if="record.reportType === 'market'" color="blue">
+              国家{{
+                record.period === 'week'
+                  ? '周报'
+                  : record.period === 'quarter'
+                    ? '季报'
+                    : '月报'
+              }}
+            </Tag>
             <p class="hci-subtle">
               {{
                 (record.keywordIds || [])
@@ -288,9 +318,15 @@ AI 配置
               }}</span>
 </template>
           <template v-else-if="column.key === 'scope'">
-{{ record.evidenceIds.length }} 条文本 ·
-            {{ record.sourceCount ?? 0 }} 个页面
+{{ record.evidenceIds.length }} 条证据 ·
+            {{ record.sourceCount ?? 0 }} 个来源
             <p class="hci-subtle">
+              <template v-if="record.reportType === 'market'">
+                商品 {{ record.marketSnapshot?.coverage?.products || 0 }} · 广告
+                {{ record.marketSnapshot?.coverage?.activeMetaAds || 0 }} · 内容
+                {{ record.marketSnapshot?.coverage?.tiktokContent || 0 }}
+              </template>
+              <template v-else>
               {{
                 [
                   ...new Set(
@@ -300,6 +336,7 @@ AI 配置
                   ),
                 ].join('、') || '来源见报告'
               }}
+              </template>
             </p>
 </template>
           <template v-else-if="column.key === 'status'">

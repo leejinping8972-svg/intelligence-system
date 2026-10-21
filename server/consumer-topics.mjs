@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+
 import { sourceUrl } from './research-evidence.mjs';
 
 export function consumerModelInput(records) {
@@ -74,6 +75,9 @@ export function insightSummary(r) {
     kind: r.kind,
     reportType: r.reportType,
     market: r.market,
+    period: r.period,
+    endDate: r.endDate,
+    marketSnapshot: r.marketSnapshot,
     createdAt: r.createdAt,
     finishedAt: r.finishedAt,
     status: r.status,

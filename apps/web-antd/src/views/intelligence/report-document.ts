@@ -65,6 +65,40 @@ export function reportDocument(
   );
   if (report.researchFocus)
     add('text', `本次研究重点：${report.researchFocus}`);
+  if (report.reportType === 'market' && report.marketSnapshot) {
+    const snapshot = report.marketSnapshot;
+    add('heading', '市场覆盖与冻结口径');
+    add(
+      'text',
+      `统计窗口 ${snapshot.startAt.slice(0, 10)} 至 ${snapshot.endAt.slice(0, 10)}；快照冻结时间 ${new Date(snapshot.frozenAt).toLocaleString('zh-CN')}。`,
+    );
+    add(
+      'text',
+      `商品 ${snapshot.coverage.products} 件（TikTok Shop ${snapshot.coverage.tiktokShopProducts} 件、独立站 ${snapshot.coverage.independentSiteProducts} 件）；Meta在投广告 ${snapshot.coverage.activeMetaAds} 条；独立站 ${snapshot.coverage.independentSites} 家；TikTok内容 ${snapshot.coverage.tiktokContent} 条；消费者评论 ${snapshot.coverage.consumerComments} 条。`,
+    );
+    add('heading', '高信号商品与配方');
+    for (const item of snapshot.topProducts.slice(0, 20))
+      add(
+        'text',
+        `${item.title}｜${item.brand || '品牌未记录'}｜${item.source}｜平台展示销量 ${item.reportedSales}｜评论 ${item.reviewCount}｜评分 ${item.rating || '未记录'}`,
+      );
+    if (snapshot.topIngredients.length > 0)
+      add(
+        'text',
+        `常见配方信号：${snapshot.topIngredients
+          .slice(0, 15)
+          .map((item) => `${item.name}（${item.count}件）`)
+          .join('、')}。`,
+      );
+    if (snapshot.topAdvertisers.length > 0) {
+      add('heading', 'Meta在投广告主');
+      for (const item of snapshot.topAdvertisers.slice(0, 15))
+        add(
+          'text',
+          `${item.name}：${item.ads}条在投广告，关联${item.landingSites}个落地站。`,
+        );
+    }
+  }
   add('heading', '研究范围与数据来源');
   const brands = [...new Set(evidence.map((e) => e.brand).filter(Boolean))];
   add(
@@ -147,7 +181,12 @@ export function reportDocument(
       for (const url of landing) link('已记录落地链接', url);
     }
   }
-  add('heading', '主题统计与研究局限');
+  add(
+    'heading',
+    report.reportType === 'market'
+      ? '统计方法与研究局限'
+      : '主题统计与研究局限',
+  );
   add(
     'text',
     `${report.statistics?.method || '暂无规则统计'}。主题可能重叠，计数是本次样本命中数，不能推算市场份额。`,
