@@ -4,6 +4,9 @@ import { collect, saveCheckpoint } from './store.mjs';
 import { openAdsKey, scrapeRequest } from './ads-provider.mjs';
 import { normalizeAdTranscript, transcriptSummary } from './ad-transcript.mjs';
 import { currentAdPrompt } from './report-prompts.mjs';
+import { currentAiPrompt } from './ai-prompt-config.mjs';
+import { consumerTopics, insightSummary } from './consumer-topics.mjs';
+import { sampleRedditComments } from './consumer-comment-sample.mjs';
 import {
   sourceKinds,
   sourceUrl,
@@ -113,9 +116,13 @@ export function validateInsight(input) {
     value.title = String(input.title || '广告策略分析').slice(0, 160);
     value.fetchTranscript = input.fetchTranscript === true;
   } else if (input.kind === 'consumer_research') {
-    if (!sourceKinds[input.sourceKind])
+    if (!Object.hasOwn(sourceKinds, input.sourceKind))
       throw new Error('请选择支持的公开数据来源');
     value.sourceKind = input.sourceKind;
+    value.autoComments = input.sourceKind === 'reddit_search' && input.autoComments === true;
+    value.maxDiscussionPosts = Number(input.maxDiscussionPosts ?? 3);
+    if (!Number.isInteger(value.maxDiscussionPosts) || value.maxDiscussionPosts < 1 || value.maxDiscussionPosts > 5)
+      throw new Error('评论取样帖子数需为1～5');
     value.query = String(input.query || '')
       .trim()
       .slice(0, 300);
@@ -181,7 +188,7 @@ export async function submitInsight(input) {
                 await c.query(
                   'SELECT data FROM research_keywords WHERE natural_key IS NOT NULL',
                 )
-              ).rows.some((r) => r.data.id === id)
+              ).rows.some((r) => r.data.id === id && r.data.market === value.market)
             : await read(`${field === 'siteIds' ? 'sites' : 'products'}:${id}`);
         if (!found) throw new Error('关联对象已不存在，请刷新重新选择');
       }
@@ -219,6 +226,7 @@ export async function submitInsight(input) {
     }
     if (value.analysisKind === 'ad_analysis' && value.analyze)
       value.prompt = await currentAdPrompt();
+    else if (value.analyze) value.prompt = await currentAiPrompt('consumer_report');
     if (
       value.analyze &&
       !(
@@ -251,6 +259,9 @@ export async function submitInsight(input) {
       status: 'queued',
       createdAt: new Date().toISOString(),
       evidenceIds: [],
+      keywordIds: value.keywordIds,
+      siteIds: value.siteIds,
+      productIds: value.productIds,
       parentReportId: value.parentReportId,
       prompt: value.prompt,
       researchFocus: value.researchFocus,
@@ -264,25 +275,7 @@ export async function submitInsight(input) {
   }
 }
 export async function insightSnapshot(input = {}) {
-  const summarize = (r) => ({
-    id: r.id,
-    revision: r.revision,
-    title: r.title,
-    kind: r.kind,
-    reportType: r.reportType,
-    market: r.market,
-    createdAt: r.createdAt,
-    status: r.status,
-    evidenceIds: r.evidenceIds,
-    sourceCount: r.statistics?.sourceCount,
-    confidence: r.statistics?.confidence,
-    hasModelAnalysis: Boolean(r.modelAnalysis),
-    modelName: r.modelAnalysis?.model,
-    promptVersion: r.modelAnalysis?.prompt?.version || r.prompt?.version,
-    reviewStatus: r.reviewStatus,
-    parentReportId: r.parentReportId,
-    message: r.message,
-  });
+  const summarize = insightSummary;
   let reports = (
     await pool.query(
       "SELECT value,revision FROM workspace_documents WHERE name LIKE 'business:insightReports:%'",
@@ -290,6 +283,20 @@ export async function insightSnapshot(input = {}) {
   ).rows
     .map((r) => ({ ...r.value, revision: r.revision }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (input.kind === 'consumer') reports = reports.filter((r) => r.kind !== 'ad_analysis' && r.reportType !== 'ad');
+  if (input.keywordId) reports = reports.filter((r) => r.keywordIds?.includes(input.keywordId));
+  if (input.latestByKeyword) {
+    if (!Array.isArray(input.keywordIds) || input.keywordIds.length > 2000) throw new Error('关键词筛选范围过大');
+    const wanted = new Set(input.keywordIds), seen = new Set();
+    reports = reports.filter((r) => {
+      const ids = (r.keywordIds || []).filter((id) => wanted.has(id) && !seen.has(id));
+      ids.forEach((id) => seen.add(id));
+      return ids.length > 0;
+    });
+    return { reports: reports.map(summarize) };
+  }
+  const topicOptions = [...new Set(reports.flatMap((r) => (r.topicSummary || consumerTopics(r)).map((t) => t.label)))].sort();
+  const keywordIds = [...new Set(reports.flatMap((r) => r.keywordIds || []))];
   if (!input.paginated)
     return {
       reports: input.summary
@@ -307,10 +314,12 @@ export async function insightSnapshot(input = {}) {
     .slice(0, 160);
   if (query)
     reports = reports.filter((r) =>
-      `${r.title} ${r.id}`.toLowerCase().includes(query),
+      `${r.title} ${r.id} ${(r.topicSummary || consumerTopics(r)).map((t) => t.label).join(' ')}`.toLowerCase().includes(query),
     );
   if (input.status && input.status !== 'ALL')
     reports = reports.filter((r) => r.status === input.status);
+  if (input.topic) reports = reports.filter((r) => (r.topicSummary || consumerTopics(r)).some((t) => t.label === input.topic));
+  if (input.review && input.review !== 'ALL') reports = reports.filter((r) => (r.reviewStatus || 'pending') === input.review);
   const total = reports.length,
     page = Math.max(1, Math.floor(Number(input.page) || 1)),
     pageSize = Math.max(
@@ -319,6 +328,8 @@ export async function insightSnapshot(input = {}) {
     );
   return {
     total,
+    topicOptions,
+    keywordIds,
     page,
     pageSize,
     reports: reports
@@ -352,6 +363,7 @@ export async function insightDetails(input) {
       );
   }
   const evidence = ids.map((id) => records.get(id)).filter(Boolean);
+  if (report.reportType !== 'ad' && report.kind !== 'ad_analysis' && !report.topicSummary) report.topicSummary = consumerTopics(report, evidence);
   return { report, evidence };
 }
 export async function reviewInsight(input) {
@@ -361,7 +373,7 @@ export async function reviewInsight(input) {
     `insightReports:${String(input.reportId).slice(0, 50)}`,
   );
   if (!report) throw new Error('报告不存在');
-  if (report.status === 'running')
+  if (['queued', 'running'].includes(report.status))
     throw new Error('请等待分析结束后再保存人工审阅结果');
   await putDocument(
     'workspace_documents',
@@ -549,6 +561,7 @@ export async function runInsightJob(job, overrides = {}) {
           break;
       }
     }
+    await sampleRedditComments(job, io, cp, remember, check);
     await check();
     const evidence = [];
     for (const id of cp.evidenceIds) {
@@ -581,6 +594,7 @@ export async function runInsightJob(job, overrides = {}) {
         cp.logs.push(e.message);
       }
     }
+    if (report.reportType === 'consumer') report.topicSummary = consumerTopics(report, evidence);
     report.status = cp.failures || cp.limited ? 'partial' : 'completed';
     report.message = !cp.evidenceIds.length
       ? '接口未返回可用文本；不代表没有市场需求'

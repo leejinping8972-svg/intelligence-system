@@ -68,6 +68,16 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    name: 'HciConsumerReport', path: '/consumer-insights/reports/:id',
+    component: () => import('#/views/intelligence/consumer-report.vue'),
+    meta: { title: '消费者洞察报告', hideInMenu: true, activePath: '/consumer-insights' },
+  },
+  {
+    name: 'HciAiConfig', path: '/ai-config',
+    component: () => import('#/views/intelligence/ai-config.vue'),
+    meta: { title: 'AI 配置', icon: 'lucide:bot', order: 12.5, authority: ['super'] },
+  },
+  {
     name: 'HciSignals',
     path: '/signals',
     component: () => import('#/views/intelligence/signals.vue'),

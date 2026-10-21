@@ -7,7 +7,8 @@ import { openAdsKey } from './ads-provider.mjs';
 import { pool, putDocument, sql } from './database.mjs';
 import { modelReportText, postModel } from './model-provider.mjs';
 import { articleAction } from './public-article-details.mjs';
-import { PUBLIC_CONTENT_PROMPT } from './public-content-ai.mjs';
+import { currentAiPrompt } from './ai-prompt-config.mjs';
+import { aiSystemText } from './ai-prompt-defaults.mjs';
 import {
   CONTENT_SOURCES,
   contentPlan,
@@ -90,8 +91,9 @@ async function organize(sample) {
   const stored = await credentials('provider:analysis:v1');
   if (!stored) throw new Error('尚未配置模型');
   const config = JSON.parse(openAdsKey(stored));
+  const prompt = await currentAiPrompt('public_content');
   const result = await postModel(config, [
-    { role: 'system', content: PUBLIC_CONTENT_PROMPT },
+    { role: 'system', content: aiSystemText(prompt) },
     { role: 'user', content: JSON.stringify({ items: sample }) },
   ]);
   let parsed;
@@ -104,7 +106,7 @@ async function organize(sample) {
   } catch {
     throw new Error('模型返回不完整或不是JSON');
   }
-  return { parsed, usage: result.usage || null, model: config.model };
+  return { parsed, usage: result.usage || null, model: config.model, promptVersion: prompt.version };
 }
 const io = {
   getJob,

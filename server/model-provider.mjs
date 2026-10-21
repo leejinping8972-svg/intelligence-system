@@ -10,8 +10,11 @@ import {
   adModelInput,
   AD_REPORT_CONTRACT,
   LEGACY_RESEARCH_PROMPT,
+  promptVersion,
   promptSnapshot,
 } from './ad-report-prompt.mjs';
+import { consumerModelInput } from './consumer-topics.mjs';
+import { aiSystemText } from './ai-prompt-defaults.mjs';
 const NAME = 'provider:analysis:v1';
 export function modelEndpoint(value) {
   const u = new URL(String(value));
@@ -192,18 +195,19 @@ export async function analyzeRecords(records, kind, context = {}) {
   const prepared = isAd ? adModelInput(records) : null;
   const sample =
     prepared?.evidence ||
-    records.slice(0, 80).map((r) => ({
+    consumerModelInput(records).map((r) => ({
       id: r.id,
       text: r.text.slice(0, 1000),
       kind: r.kind,
       platform: r.platform,
+      sourceUrl: r.sourceUrl || r.url,
     }));
   if (!sample.length) throw new Error('没有可分析的文本证据');
-  const prompt = isAd ? context.prompt || promptSnapshot() : null;
+  const prompt = context.prompt || (isAd ? promptSnapshot() : { text: LEGACY_RESEARCH_PROMPT, systemContract: '', version: promptVersion(LEGACY_RESEARCH_PROMPT), schemaVersion: 1 });
   const config = JSON.parse(openAdsKey(stored));
   const systemPrompt = isAd
     ? `${prompt.text}\n${prompt.systemContract || AD_REPORT_CONTRACT}\n摘要不超过200字，每条结论正文尽量不超过180字，遵守本次输出预算。`
-    : LEGACY_RESEARCH_PROMPT;
+    : aiSystemText(prompt);
   const result = await postModel(config, [
     {
       role: 'system',
@@ -218,7 +222,7 @@ export async function analyzeRecords(records, kind, context = {}) {
         coverage: prepared?.coverage,
         inputLimits: { maxOutputTokens: config.maxTokens },
         availableData:
-          '广告文案及已有转写和采集元数据；未输入视频画面、落地页正文、消费者评论、Semrush指标或投放绩效',
+          isAd ? '广告文案及已有转写和采集元数据；未输入视频画面、落地页正文、消费者评论、Semrush指标或投放绩效' : '公开讨论帖及评论文本的限定样本；未证明评论者国家，不代表市场总体。',
       }),
     },
   ]);
@@ -237,6 +241,8 @@ export async function analyzeRecords(records, kind, context = {}) {
     inputEvidenceCount: sample.length,
     totalEvidenceCount: records.length,
     usage: result.usage || null,
+    prompt,
+    systemPrompt,
     ...(isAd
       ? {
           schemaVersion: 2,

@@ -251,6 +251,7 @@ export async function executeContentJob(job, io) {
           job.aiStatus = 'completed';
           job.aiCount = records.length;
           job.aiModel = result.model;
+          job.aiPromptVersion = result.promptVersion;
           await save();
         }
         if (sample.length > 0) {
@@ -261,6 +262,7 @@ export async function executeContentJob(job, io) {
           job.aiCount = updates.size;
           job.aiUsage = result.usage;
           job.aiModel = result.model;
+          job.aiPromptVersion = result.promptVersion;
         }
       } catch (error) {
         job.aiStatus = 'failed';

@@ -1,3 +1,4 @@
+import type { ConsumerTopic } from './consumer-reports';
 import type { Market } from './data';
 export interface ResearchEvidence {
   id: string;
@@ -9,6 +10,7 @@ export interface ResearchEvidence {
   postedAt?: string;
   collectedAt?: string;
   likes?: number;
+  sourceUrl?: string;
   query?: string;
   brand?: string;
   transcript?: string;
@@ -19,6 +21,9 @@ export interface ResearchEvidence {
   status?: string;
 }
 export interface ResearchReport {
+  topicSummary?: ConsumerTopic[];
+  sourceCount?: number;
+  confidence?: string;
   revision?: number;
   id: string;
   kind: string;
