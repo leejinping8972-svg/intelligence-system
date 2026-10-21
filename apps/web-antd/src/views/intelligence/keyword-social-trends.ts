@@ -11,11 +11,19 @@ export interface SocialPeriod {
   end: string;
   count: null | number;
   change: null | number;
-  matchedCount: number;
-  baselineAt: string;
+  previousStart?: string;
+  previousEnd?: string;
+  previousCount?: number;
+  currentMean?: null | number;
+  previousMean?: null | number;
+  currentComplete?: boolean;
+  previousComplete?: boolean;
+  state?: string;
   reason: string;
 }
 export interface SocialSummary {
+  comparisonVersion?: number;
+  metric?: string;
   keywordId: string;
   term: string;
   market: string;
@@ -29,6 +37,7 @@ export interface SocialSummary {
   attemptMessage?: string;
 }
 export interface TrendPlan {
+  comparisonVersion: number;
   enabled: boolean;
   time: string;
   sources: string[];
@@ -37,6 +46,7 @@ export interface TrendPlan {
   maxPages: number;
 }
 export interface TrendSnapshot {
+  requiresPlanReview?: boolean;
   plan: TrendPlan;
   summaries: SocialSummary[];
   run: null | {

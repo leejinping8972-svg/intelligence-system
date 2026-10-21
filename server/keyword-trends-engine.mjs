@@ -1,12 +1,15 @@
 /* eslint-disable unicorn/no-await-expression-member -- Document IO follows the existing monitor-store convention. */
 import {
   buildTrendWork,
+  currentTrendPlan,
   defaultTrendPlan,
+  presentSocialSummary,
   socialWindows,
   summarizeSocial,
   trendDay,
   trendDigest,
   validateTrendPlan,
+  updateHistory,
 } from './keyword-trends-domain.mjs';
 
 export const TREND_PREFIX = 'keyword-trends:';
@@ -14,7 +17,7 @@ const P = TREND_PREFIX;
 const identity = (a, b) =>
   a?.id === b?.keywordId && a.term === b.term && a.market === b.market;
 export function trendSnapshotName(keywordId, source, day) {
-  return `${P}snapshot:${trendDigest(keywordId)}:${source}:${day}`;
+  return `${P}snapshot:v2:${trendDigest(keywordId)}:${source}:${day}`;
 }
 export async function enqueueTrendWork(db, words, plan, now, trigger) {
   const day = trendDay(now),
@@ -24,11 +27,58 @@ export async function enqueueTrendWork(db, words, plan, now, trigger) {
     createdAt: new Date(now).toISOString(),
     work: [],
   };
-  const added = buildTrendWork(words, plan);
+  const added = buildTrendWork(words, plan, now);
+  for (const old of run.work)
+    if (old.status === 'pending' && old.comparisonVersion !== 2)
+      Object.assign(old, {
+        status: 'skipped',
+        reason: '旧版步骤不自动升级或重放，请使用历史比对方案',
+      });
   const keys = new Set(run.work.map((w) => w.key));
   for (const w of added)
     if (!keys.has(w.key))
       run.work.push({ ...w, trigger, maxPages: plan.maxPages });
+  // An explicit resubmission may continue NEW pages after a user raises the
+  // budget/cap. Completed or uncertain requests are never repeated.
+  if (trigger === 'manual')
+    for (const w of added) {
+      const tail = run.work.findLast(
+        (e) =>
+          e.keywordId === w.keywordId &&
+          e.source === w.source &&
+          e.comparisonVersion === 2,
+      );
+      if (
+        tail?.status === 'partial' &&
+        tail.nextCursor !== undefined &&
+        tail.page <
+          Math.min(plan.maxPages, tail.source === 'instagram' ? 11 : 100)
+      ) {
+        const next = {
+          ...tail,
+          page: tail.page + 1,
+          cursor: tail.nextCursor,
+          status: 'pending',
+          trigger,
+          maxPages: plan.maxPages,
+        };
+        next.key = tail.key.replace(/:\d+$/, `:${next.page}`);
+        delete next.nextCursor;
+        if (!run.work.some((e) => e.key === next.key)) run.work.push(next);
+      } else if (
+        tail &&
+        ['skipped', 'failed'].includes(tail.status) &&
+        !(await db.read(`${P}request:${day}:${tail.key}`)) &&
+        tail.comparisonVersion === 2
+      ) {
+        Object.assign(tail, {
+          status: 'pending',
+          reason: '',
+          trigger,
+          maxPages: plan.maxPages,
+        });
+      }
+    }
   // Request budget is shared by manual and scheduled work for the entire day.
   run.maxRequests = plan.maxRequests;
   await db.write(name, run);
@@ -45,10 +95,13 @@ export async function trendAction(input, user, io) {
       byId = new Map(words.map((k) => [k.id, k]));
     const summaries = (await db.list(`${P}summary:`))
       .map((r) => r.value)
-      .filter((s) => identity(byId.get(s.keywordId), s));
+      .filter((s) => identity(byId.get(s.keywordId), s))
+      .map((summary) => presentSocialSummary(summary));
     const run = await db.read(`${P}run:${trendDay(now)}`);
+    const savedPlan = await db.read(`${P}plan`);
     return {
-      plan: (await db.read(`${P}plan`)) || defaultTrendPlan,
+      plan: currentTrendPlan(savedPlan),
+      requiresPlanReview: !!savedPlan && savedPlan.comparisonVersion !== 2,
       summaries,
       run: run
         ? {
@@ -112,7 +165,8 @@ export async function advanceTrendQueue(io) {
   const { db, now = Date.now() } = io;
   const day = trendDay(now),
     runName = `${P}run:${day}`;
-  const plan = await db.read(`${P}plan`);
+  const savedPlan = await db.read(`${P}plan`);
+  const plan = currentTrendPlan(savedPlan);
   // Never catch up missed paid runs, nor create work from legacy research jobs.
   const time = new Date(now + 8 * 3_600_000).toISOString().slice(11, 16);
   if (
@@ -158,12 +212,16 @@ export async function advanceTrendQueue(io) {
               term: entry.term,
               market: entry.market,
               source: entry.source,
+              comparisonVersion: entry.comparisonVersion,
+              metric: 'publication_daily_rate',
               periods: [],
             };
       await db.write(name, { ...summary, status, attemptMessage: reason });
     }
     await db.write(runName, run);
   };
+  if (entry.comparisonVersion !== 2)
+    return finish('skipped', '旧版步骤不自动升级或重放，请重新提交历史回查');
   const word = (await io.keywords()).find((k) => k.id === entry.keywordId);
   if (
     !identity(word, entry) ||
@@ -199,9 +257,24 @@ export async function advanceTrendQueue(io) {
   }
   const gate = await db.read(`${P}gate:${day}`);
   if (gate) return finish('skipped', gate.reason);
-  const used = (await db.list(`${P}request:${day}:`)).length;
-  if (used >= Math.min(run.maxRequests, plan?.maxRequests ?? run.maxRequests))
-    return finish('skipped', '已达本日共享社媒请求预算');
+  const dayRequests = await db.list(`${P}request:${day}:`);
+  if (
+    dayRequests.some(
+      (r) =>
+        r.value.status !== 'completed' ||
+        !Number.isFinite(r.value.creditsCharged),
+    )
+  ) {
+    await db.write(`${P}gate:${day}`, {
+      reason: '本日已有结果或扣费未确认的请求（含旧版），不继续收费调用',
+    });
+    return finish('unknown', '本日已有未确认请求，请先核对供应商账单');
+  }
+  const used = dayRequests.length;
+  const dayBudget = savedPlan
+    ? Math.min(run.maxRequests, plan.maxRequests)
+    : run.maxRequests;
+  if (used >= dayBudget) return finish('skipped', '已达本日共享社媒请求预算');
   let key;
   try {
     key = await io.key();
@@ -220,7 +293,7 @@ export async function advanceTrendQueue(io) {
     const name = trendSnapshotName(word.id, entry.source, day);
     const previous = await db.read(name);
     const snapshot =
-      previous && identity(word, previous)
+      previous && previous.comparisonVersion === 2 && identity(word, previous)
         ? previous
         : {
             keywordId: word.id,
@@ -228,9 +301,11 @@ export async function advanceTrendQueue(io) {
             market: word.market,
             source: entry.source,
             items: [],
-            completedWindows: [],
+            comparisonVersion: 2,
+            anchorAt: entry.anchorAt,
           };
     const items = new Map(snapshot.items.map((i) => [i.id, i]));
+    const previousIds = new Set(items.keys());
     for (const item of result.items) {
       const old = items.get(item.id);
       items.set(
@@ -248,38 +323,40 @@ export async function advanceTrendQueue(io) {
     snapshot.items = [...items.values()];
     snapshot.at = new Date(now).toISOString();
     snapshot.coverage = result.coverage;
-    const completed = {
-      tiktok: {
-        'this-week': ['week'],
-        'this-month': ['month'],
-        'last-3-months': ['quarter'],
-        'last-6-months': ['halfYear'],
-      }[entry.window],
-      instagram: {
-        'last-week': ['week'],
-        'last-month': ['month'],
-        'last-year': ['quarter', 'halfYear'],
-      }[entry.window],
-      facebook: ['all'],
-    }[entry.source];
-    snapshot.completedWindows = [
-      ...new Set([...snapshot.completedWindows, ...completed]),
-    ];
-    snapshot.truncated = result.hasMore;
-    const baselines = {};
-    for (const w of socialWindows(now)) {
-      const b = await db.read(
-        trendSnapshotName(word.id, entry.source, w.start),
-      );
-      if (b && identity(word, b)) baselines[w.start] = b;
-    }
+    snapshot.history = updateHistory(
+      snapshot,
+      { ...result, items: result.items.filter((i) => !previousIds.has(i.id)) },
+      entry,
+    );
+    const oldestNeeded = socialWindows(Date.parse(snapshot.anchorAt)).at(
+      -1,
+    ).previousStartAt;
+    const reached =
+      snapshot.history.chronological &&
+      Number.isFinite(snapshot.history.oldestAt) &&
+      snapshot.history.oldestAt <= oldestNeeded;
+    const maxPages = Math.min(
+      entry.maxPages,
+      entry.source === 'instagram' ? 11 : 100,
+    );
+    const budget = dayBudget;
+    const continuing =
+      result.hasMore && !reached && entry.page < maxPages && used + 1 < budget;
+    if (result.hasMore && !reached && !continuing)
+      snapshot.history.stopReason =
+        used + 1 >= budget
+          ? '已达本日请求预算，可提高预算后手动续查未请求的新分页'
+          : `已达${maxPages}页上限${entry.source === 'instagram' && maxPages === 11 ? '（INS接口最多11页）' : '，可提高页数后手动续查'}`;
     const summaryName = `${P}summary:${trendDigest(word.id)}:${entry.source}`;
     const priorSummary = await db.read(summaryName);
-    const summary = summarizeSocial(snapshot, baselines);
-    if (priorSummary && identity(word, priorSummary))
+    const summary = summarizeSocial(snapshot);
+    const historyIncomplete = summary.periods.some(
+      (p) => p.state === 'coverage_insufficient',
+    );
+    if (priorSummary?.comparisonVersion === 2 && identity(word, priorSummary))
       summary.periods = summary.periods.map((period) => {
         const old = priorSummary.periods?.find((p) => p.key === period.key);
-        return period.count === null && Number.isFinite(old?.count)
+        return !period.previousComplete && Number.isFinite(old?.change)
           ? { ...old, stale: true }
           : period;
       });
@@ -299,22 +376,30 @@ export async function advanceTrendQueue(io) {
         await db.write(`${P}gate:${day}`, {
           reason: '本次扣费未明确返回，暂停本日后续社媒调用；请核对供应商账单',
         });
-      if (result.hasMore && entry.page < entry.maxPages) {
+      if (continuing) {
         const next = {
           ...entry,
           page: entry.page + 1,
           cursor: result.cursor,
           status: 'pending',
         };
-        next.key = `${trendDigest(`${word.id}:${entry.source}`)}:${entry.window}:${next.page}`;
+        next.key = entry.key.replace(/:\d+$/, `:${next.page}`);
         if (!run.work.some((w) => w.key === next.key))
           run.work.splice(run.work.indexOf(entry) + 1, 0, next);
       }
+      let explanation = '继续回查历史分页';
+      if (reached) explanation = '已回查至一年对比起点';
+      if (result.exhausted)
+        explanation = '已翻至公开结果末页，可直接计算两期环比';
+      if (snapshot.history.stopReason)
+        explanation = snapshot.history.stopReason;
       Object.assign(entry, {
-        status: 'completed',
-        reason: `${result.items.length}条样本${result.hasMore ? '；仍有更多结果，受分页/预算限制' : ''}`,
+        status: !continuing && historyIncomplete ? 'partial' : 'completed',
+        reason: `${snapshot.items.length}条去重样本；${explanation}`,
         at: snapshot.at,
       });
+      if (result.hasMore && !reached && !continuing && !result.paginationIssue)
+        entry.nextCursor = result.cursor ?? entry.page + 1;
       await db.write(runName, run);
     });
   } catch (error) {

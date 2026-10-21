@@ -36,13 +36,15 @@ const busy = ref(false);
 const loaded = ref(false);
 const open = ref(false);
 const run = ref<TrendSnapshot['run']>(null);
+const requiresReview = ref(false);
 const plan = reactive<TrendPlan>({
+  comparisonVersion: 2,
   enabled: false,
   time: '09:00',
   sources: ['google', 'tiktok', 'instagram', 'facebook'],
   markets: ['US', 'MX', 'VN'],
   maxRequests: 100,
-  maxPages: 1,
+  maxPages: 11,
 });
 const sources = [
   { label: '谷歌趋势', value: 'google' },
@@ -55,10 +57,12 @@ const admin = computed(() => session.user?.role === 'admin');
 const searchPages = computed(
   () =>
     props.ids.length *
-    plan.maxPages *
     plan.sources.reduce(
       (n, s) =>
-        n + ({ google: 0, tiktok: 4, instagram: 3, facebook: 1 }[s] ?? 0),
+        n +
+        (s === 'google'
+          ? 0
+          : Math.min(plan.maxPages, s === 'instagram' ? 11 : 100)),
       0,
     ),
 );
@@ -66,6 +70,7 @@ const statusLabels: Record<string, string> = {
   pending: '等待采集',
   submitted: '已进入Google队列',
   completed: '已采集',
+  partial: '历史覆盖不足',
   skipped: '未执行',
   failed: '采集失败',
   unknown: '结果待核对',
@@ -77,6 +82,7 @@ async function refresh(reset = false) {
   try {
     const value = await loadSocialTrends();
     run.value = value.run;
+    requiresReview.value = value.requiresPlanReview === true;
     if (reset || !loaded.value) {
       Object.assign(plan, value.plan);
       acknowledged.value = false;
@@ -160,7 +166,13 @@ async function submit(kind: 'collect' | 'save') {
       type="info"
       show-icon
       message="统一周期：本周、本月、近3个月、近6个月"
-      description="Google显示相对搜索热度与前期变化；社媒显示采集内容条数及共同样本播放增长。首次补抓只能获得旧内容和当前累计互动，历史增长从快照开始积累。"
+      description="直接回查前后期历史：本周对上周同期，本月查两个月，近3个月查六个月，近6个月查一年。社媒按真实发布时间统计内容样本，以日均发布量计算环比；历史取全后立即出结果，取不全则说明缺口。Google保留相对搜索热度口径。"
+    />
+    <Alert
+      v-if="requiresReview"
+      type="warning"
+      show-icon
+      message="旧版每日计划不再自动执行，请确认历史回查预算并保存新方案。旧请求不会重放。"
     />
     <Form layout="vertical" class="trend-plan-form">
       <Form.Item label="采集来源">
@@ -180,11 +192,11 @@ async function submit(kind: 'collect' | 'save') {
             :disabled="!admin || busy"
           />
         </Form.Item>
-        <Form.Item label="每次检索最多页数">
+        <Form.Item label="每个来源回查最多页数（INS最多11页）">
           <InputNumber
             v-model:value="plan.maxPages"
             :min="1"
-            :max="5"
+            :max="100"
             :disabled="!admin || busy"
           />
         </Form.Item>
@@ -192,7 +204,7 @@ async function submit(kind: 'collect' | 'save') {
       <p class="hci-subtle">
         当前勾选 {{ ids.length }} 个词，按所选来源最多安排
         {{ searchPages }}
-        次社媒搜索请求，实际执行受每日上限约束。Google进入现有趋势队列；INS和FB的历史覆盖取决于公开返回结果。
+        次社媒搜索请求，实际执行受每日上限约束。Google进入原趋势队列；INS/FB为公开样本。达到预算或自设页数上限后，可提高上限并重新提交，从未请求的新分页续查；提高已保存的每日预算需先保存计划。INS接口最多11页。
       </p>
       <Checkbox v-if="admin" v-model:checked="acknowledged">
         确认按上述预算消耗已配置ScrapeCreators额度

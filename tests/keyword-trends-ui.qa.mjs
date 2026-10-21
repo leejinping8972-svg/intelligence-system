@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { mkdir, readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
+import { summarizeSocial } from '../server/keyword-trends-domain.mjs';
 
 const base = resolve('.artifacts/web-dist'),
   calls = [],
@@ -36,38 +37,54 @@ const words = ['synthetic creatine gummies', 'synthetic magnesium'].map(
     trendHistoryCollectedAt: '2026-10-21T02:00:00Z',
   }),
 );
-const periods = ['本周', '本月', '近3个月', '近6个月'].map((label, i) => ({
-  key: String(i),
-  label,
-  count: [12, 50, 120, 200][i],
-  change: i ? null : 25,
-  matchedCount: i ? 0 : 8,
-  start: '2026-10-19',
-  end: '2026-10-21',
-  baselineAt: i ? '' : '2026-10-19T01:00:00Z',
-  reason: i ? '待积累周期起点快照' : '共同样本播放增长',
-}));
-const summaries = ['tiktok', 'instagram', 'facebook'].map((source) => ({
-  keywordId: words[0].id,
-  term: words[0].term,
-  market: 'US',
-  source,
-  collectedAt: '2026-10-21T02:00:00Z',
-  coverage: '合成接口样本；不代表全站搜索量',
-  sampleCount: 200,
-  undatedCount: 1,
-  periods:
-    source === 'facebook'
-      ? periods.map((p) => ({ ...p, count: 0, change: null }))
-      : periods,
-}));
+const archive = [];
+for (
+  let at = Date.parse('2025-10-20T16:00:00Z');
+  at < end - 8 * 3_600_000;
+  at += 86_400_000
+)
+  for (let n = 0; n < (at >= Date.parse('2026-07-20T16:00:00Z') ? 2 : 1); n++)
+    archive.push({
+      id: `${at}-${n}`,
+      publishedAt: new Date(at + 3_600_000).toISOString(),
+    });
+const summaries = ['tiktok', 'instagram', 'facebook'].map((source) =>
+  summarizeSocial({
+    keywordId: words[0].id,
+    term: words[0].term,
+    market: 'US',
+    source,
+    comparisonVersion: 2,
+    at: '2026-10-21T02:00:00Z',
+    anchorAt: '2026-10-21T02:00:00Z',
+    coverage: '合成接口样本；不代表全站搜索量',
+    items: source === 'facebook' ? [] : archive,
+    history:
+      source === 'instagram'
+        ? {
+            exhausted: false,
+            chronological: false,
+            stopReason: 'INS接口最多11页',
+          }
+        : { exhausted: true },
+  }),
+);
+summaries.push({
+  ...summaries[0],
+  keywordId: words[1].id,
+  term: words[1].term,
+  comparisonVersion: 1,
+  metric: 'playback_snapshot',
+  periods: summaries[0].periods.map((p) => ({ ...p, change: 999 })),
+});
 let plan = {
+  comparisonVersion: 2,
   enabled: false,
   time: '09:00',
   sources: ['google', 'tiktok', 'instagram', 'facebook'],
   markets: ['US', 'MX', 'VN'],
   maxRequests: 100,
-  maxPages: 1,
+  maxPages: 11,
 };
 let failSnapshot = false,
   role = 'admin';
@@ -108,7 +125,7 @@ const server = createServer(async (req, res) => {
       data = { plan };
     }
     if (v.action === 'server_keyword_trends_collect')
-      data = { accepted: 9, reused: 0, day: '2026-10-21' };
+      data = { accepted: 4, reused: 0, day: '2026-10-21' };
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify(data));
     return;
@@ -159,7 +176,7 @@ try {
   );
   assert.ok(
     (await page.locator('.social-trend-cell').first().innerText()).includes(
-      '12条(+25%)',
+      '4条(0%)',
     ),
   );
   assert.ok(
@@ -168,9 +185,31 @@ try {
     ),
   );
   assert.ok(
-    (await page.locator('.social-trend-cell').nth(3).innerText()).includes(
-      '待采集',
+    (await page.locator('.social-trend-cell').nth(4).innerText()).includes(
+      '待回查',
     ),
+  );
+  const firstCell = await page
+    .locator('.social-trend-cell')
+    .first()
+    .innerText();
+  assert.ok(firstCell.includes('184条(+100%)'));
+  assert.ok(firstCell.includes('275条(+50.3%)'));
+  assert.ok(
+    (await page.locator('.social-trend-cell').nth(1).innerText()).includes(
+      '历史不足',
+    ),
+  );
+  assert.ok(
+    (await page.locator('.social-trend-cell').nth(3).innerText()).includes(
+      '需回查',
+    ),
+  );
+  assert.ok(
+    !(await page.locator('.ant-table-tbody').innerText()).includes('待积累'),
+  );
+  assert.ok(
+    !(await page.locator('.ant-table-tbody').innerText()).includes('+999%'),
   );
   await page.locator('.ant-table-content').evaluate((el) => {
     el.scrollLeft = 330;
@@ -216,6 +255,8 @@ try {
     'facebook',
   ]);
   assert.equal(submitted.plan.maxRequests, 100);
+  assert.equal(submitted.plan.maxPages, 11);
+  assert.equal(submitted.plan.comparisonVersion, 2);
   assert.equal(submitted.budgetAcknowledged, true);
   await modal.getByRole('switch').click();
   await modal.locator('input[type="time"]').fill('14:20');
@@ -235,7 +276,7 @@ try {
   await modal.getByText('合成读取失败', { exact: true }).waitFor();
   assert.ok(
     (await page.locator('.social-trend-cell').first().innerText()).includes(
-      '12条',
+      '4条(0%)',
     ),
   );
   failSnapshot = false;
@@ -275,7 +316,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    'UI QA passed: four columns and four periods on both lists; zero/missing data; complete selection and source/budget payload; pause/time settings; failed reads preserve data; mobile bounds; researcher read-only; zero page errors.',
+    'UI QA passed: four columns and four periods on both lists; immediate historical comparisons; partial history and zero/missing data; old playback percentages hidden; complete selection and source/budget payload; pause/time settings; failed reads preserve data; mobile bounds; researcher read-only; zero page errors.',
   );
 } finally {
   await browser.close();
