@@ -51,7 +51,6 @@ import {
 import { audit, filteredKeywords, marketName, state } from './data';
 import { assessKeyword } from './keyword-scoring';
 import { platformProductSelection } from './platform-product-selection';
-import { useFilteredSelection } from './resource-list';
 
 const router = useRouter();
 const ids = ref<string[]>([]);

@@ -61,7 +61,7 @@
     "workers/site-discovery/test.mjs"
   ],
   "operator": "Codex release session",
-  "id": "20261021075345-2ac0c771",
-  "builtAt": "2026-10-21T07:53:45.644Z",
-  "sourceDigest": "2ac0c771a389f38bdb19ed9dd37a61eef282f1007c4e6abc27c38fd34d91c248"
+  "id": "20261021075710-2ad78efc",
+  "builtAt": "2026-10-21T07:57:10.498Z",
+  "sourceDigest": "2ad78efca3b0e8a5f08cd4383310e225237cf13069839a43c4f73a6982ae5ef6"
 }
