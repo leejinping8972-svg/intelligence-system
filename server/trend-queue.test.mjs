@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+
+import { jobProgress, trendNeedsRetry } from './job-progress.mjs';
+import { collectTrendPart } from './trend-provider.mjs';
 import {
   initializeTrendQueue,
   nextTrendPart,
@@ -8,8 +11,6 @@ import {
   runTrendJob,
   TREND_WINDOW,
 } from './trend-queue.mjs';
-import { collectTrendPart } from './trend-provider.mjs';
-import { jobProgress, trendNeedsRetry } from './job-progress.mjs';
 
 test('new submissions collect comparison history while existing queues keep their saved steps', () => {
   const checkpoint = {
@@ -35,12 +36,13 @@ test('annual comparison collection preserves two-year history in one request and
   let calls = 0;
   const at = Date.parse('2026-10-20T00:00:00Z');
   const history = Array.from({ length: 106 }, (_, i) => ({
-    date: new Date(at - (106 - i) * 7 * 86400000).toISOString().slice(0, 10),
+    date: new Date(at - (106 - i) * 7 * 86_400_000).toISOString().slice(0, 10),
     value: 50,
   }));
-  const fetcher = async (_terms, _market, period) => {
+  const fetcher = async (_terms, _market, period, options) => {
     calls++;
     assert.equal(period, '2024-10-12 2026-10-20');
+    assert.equal(options.includeInsights, true);
     return [
       {
         points: history,
@@ -66,8 +68,9 @@ test('annual comparison collection preserves two-year history in one request and
   let legacyPeriod;
   await collectTrendPart(
     { keywords: ['a'], markets: ['US'], trendPhase: 'annual' },
-    async (_a, _b, p) => {
+    async (_a, _b, p, options) => {
       legacyPeriod = p;
+      assert.equal(options.includeInsights, true);
       return [{ points: [], resolution: 'week' }];
     },
     at,
@@ -76,11 +79,11 @@ test('annual comparison collection preserves two-year history in one request and
 });
 
 function harness(terms = ['a', 'b']) {
-  let clock = Date.now(),
-    gate = {},
-    saved;
-  const requests = [],
-    records = new Map();
+  let clock = Date.now();
+    let gate = {};
+    let saved;
+  const records = new Map();
+    const requests = [];
   const job = {
     id: 'test',
     status: 'running',
@@ -116,6 +119,23 @@ function harness(terms = ['a', 'b']) {
     collectedAt: new Date(clock).toISOString(),
     message: '',
     sourceUrl: 'https://trends.google.com/',
+    ...(req.trendPhase === 'annual'
+      ? {
+          regions: [{ code: 'US-CA', name: 'California', value: 100 }],
+          relatedTop: [
+            { query: 'creatine benefits', value: 100, formattedValue: '100' },
+          ],
+          relatedRising: [
+            {
+              query: 'creatine gummies',
+              value: 120,
+              formattedValue: '+120%',
+            },
+          ],
+          insightsStatus: 'collected',
+          insightsMessage: '',
+        }
+      : {}),
   });
   const io = {
     now: () => clock,
@@ -165,13 +185,13 @@ function harness(terms = ['a', 'b']) {
 test('Retry-After is a minimum; jitter never causes an early request', () => {
   assert.equal(
     retryDelay(1, 600, () => 0),
-    600000,
+    600_000,
   );
   assert.equal(
     retryDelay(2, 0, () => 0),
-    300000,
+    300_000,
   );
-  assert.ok(retryDelay(1, 600, () => 0.5) > 600000);
+  assert.ok(retryDelay(1, 600, () => 0.5) > 600_000);
   assert.ok(Number.isFinite(retryDelay(1, Infinity)));
 });
 test('429 queues only the failed step; no request during provider cooldown; other pending work advances first', async () => {
@@ -194,7 +214,7 @@ test('429 queues only the failed step; no request during provider cooldown; othe
   assert.equal(h.saved.status, 'running');
   assert.equal(h.saved.checkpoint.trendWork[0].annual.status, 'retry_wait');
   assert.equal(h.saved.checkpoint.waitReason, 'rate_limit');
-  assert.equal(h.gate.until, h.now + 180000);
+  assert.equal(h.gate.until, h.now + 180_000);
   await runTrendJob(h.saved, h.io);
   assert.equal(h.requests.length, 1);
   h.advance();
@@ -238,6 +258,11 @@ test('successful annual series is not fetched again after daily retry or process
   await runTrendJob(h.saved, h.io);
   assert.equal(h.saved.checkpoint.trendWork[0].daily.status, 'retry_wait');
   assert.equal(h.saved.checkpoint.keywords[0].series.length, 1);
+  assert.equal(h.saved.checkpoint.keywords[0].trendRegions[0].code, 'US-CA');
+  assert.equal(
+    h.saved.checkpoint.keywords[0].trendRelatedRising[0].query,
+    'creatine gummies',
+  );
   h.advance();
   await runTrendJob(structuredClone(h.saved), h.io);
   assert.equal(h.saved.status, 'awaiting_review');
@@ -320,8 +345,9 @@ test('migrating the existing 100-word task preserves 12 completed words and all 
 test('provider makes one period request, excludes partial days and preserves 429 metadata', async () => {
   const request = { keywords: ['a'], markets: ['US'], trendPhase: 'daily' };
   const periods = [];
-  const got = await collectTrendPart(request, async (k, m, period) => {
+  const got = await collectTrendPart(request, async (k, m, period, options) => {
     periods.push(period);
+    assert.equal(options.includeInsights, false);
     return [
       {
         points: [
@@ -367,19 +393,37 @@ test('zero or empty real responses finish without retry; wrong resolution needs 
 test('new queue persists comparison history and calculates30-day growth without refetching annual after resume', async () => {
   const h = harness(['a']);
   h.job.input.trendComparisonVersion = 2;
-  const end = Math.floor(h.now / 86400000) * 86400000;
-  const point = (count, step, value) => Array.from({length:count}, (_,i)=>({date:new Date(end-(count-i)*step*86400000).toISOString().slice(0,10),value:typeof value==='function'?value(i):value}));
-  const history = point(106,7,40);
-  h.io.collect = async (_job,key,req) => {
-    h.requests.push({key,req});
-    return {...h.result(req),points:req.trendPhase==='annual'?history.slice(-53):point(60,1,i=>i<30?40:60),...(req.trendPhase==='annual'?{historyPoints:history,period:'synthetic-two-year-range'}:{})};
+  const end = Math.floor(h.now / 86_400_000) * 86_400_000;
+  const point = (count, step, value) =>
+    Array.from({ length: count }, (_, i) => ({
+      date: new Date(end - (count - i) * step * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
+      value: typeof value === 'function' ? value(i) : value,
+    }));
+  const history = point(106, 7, 40);
+  h.io.collect = async (_job, key, req) => {
+    h.requests.push({ key, req });
+    return {
+      ...h.result(req),
+      points:
+        req.trendPhase === 'annual'
+          ? history.slice(-53)
+          : point(60, 1, (i) => (i < 30 ? 40 : 60)),
+      ...(req.trendPhase === 'annual'
+        ? { historyPoints: history, period: 'synthetic-two-year-range' }
+        : {}),
+    };
   };
-  await runTrendJob(h.job,h.io);
-  assert.equal(h.records.get('a').trendHistoryPoints.length,106);
-  assert.equal(h.requests[0].req.trendComparisonVersion,2);
+  await runTrendJob(h.job, h.io);
+  assert.equal(h.records.get('a').trendHistoryPoints.length, 106);
+  assert.equal(h.requests[0].req.trendComparisonVersion, 2);
   h.advance();
-  await runTrendJob(h.saved,h.io);
-  assert.equal(h.records.get('a').growth,50);
-  assert.equal(h.requests.filter(r=>r.req.trendPhase==='annual').length,1);
-  assert.equal(h.saved.status,'awaiting_review');
+  await runTrendJob(h.saved, h.io);
+  assert.equal(h.records.get('a').growth, 50);
+  assert.equal(
+    h.requests.filter((r) => r.req.trendPhase === 'annual').length,
+    1,
+  );
+  assert.equal(h.saved.status, 'awaiting_review');
 });

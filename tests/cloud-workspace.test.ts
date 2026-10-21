@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mock = vi.hoisted(() => ({ state: null as any, request: vi.fn() }));
+const mock = vi.hoisted(() => ({
+  request: vi.fn(),
+  seed: null as any,
+  state: null as any,
+}));
 vi.mock('../apps/web-antd/src/views/intelligence/session', () => ({
   serverMode: true,
   session: { user: { id: 'qa', role: 'admin' } },
@@ -8,19 +12,21 @@ vi.mock('../apps/web-antd/src/views/intelligence/session', () => ({
 }));
 vi.mock('../apps/web-antd/src/views/intelligence/data', async () => {
   const { reactive } = await import('vue');
-  mock.state = reactive({
-    keywords: [],
-    tasks: [],
-    sites: [],
-    products: [],
-    ads: [],
-    reviews: [],
-    monitors: [],
-    imports: [],
-    audit: [],
-    branding: {},
-    settings: {},
-  });
+  mock.state = reactive(
+    mock.seed || {
+      keywords: [],
+      tasks: [],
+      sites: [],
+      products: [],
+      ads: [],
+      reviews: [],
+      monitors: [],
+      imports: [],
+      audit: [],
+      branding: {},
+      settings: {},
+    },
+  );
   return { state: mock.state };
 });
 const initial = () => ({
@@ -42,6 +48,7 @@ const initial = () => ({
 beforeEach(() => {
   vi.resetModules();
   mock.request.mockReset();
+  mock.seed = null;
   localStorage.clear();
 });
 async function setup() {
@@ -154,5 +161,49 @@ describe('workspace delta synchronization', () => {
     expect(mock.request).toHaveBeenLastCalledWith('server_workspace_delta', {
       revisions: initial().revisions,
     });
+  });
+  it('restores matching cached revisions so a reload keeps list data and requests only deltas', async () => {
+    await setup();
+    const savedState = JSON.parse(JSON.stringify(mock.state));
+    const cached = localStorage.getItem('intelligence-workspace-revisions-v1');
+    expect(cached).toContain('"keywords":"k1"');
+    vi.resetModules();
+    mock.seed = savedState;
+    mock.request.mockReset();
+    let resolve!: (value: unknown) => void;
+    mock.request.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const cloud =
+      await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    const pending = cloud.syncCloudWorkspace();
+    await Promise.resolve();
+    expect(cloud.cloudWorkspace.ready).toBe(true);
+    expect(mock.state.keywords).toHaveLength(1);
+    expect(mock.request).toHaveBeenCalledExactlyOnceWith(
+      'server_workspace_delta',
+      { revisions: initial().revisions },
+    );
+    resolve({ revisions: initial().revisions, generatedAt: 'next' });
+    await pending;
+  });
+  it('falls back to a full refresh when cached content changed without changing list counts', async () => {
+    await setup();
+    mock.state.keywords[0].favorite = true;
+    const savedState = JSON.parse(JSON.stringify(mock.state));
+    vi.resetModules();
+    mock.seed = savedState;
+    mock.request.mockReset();
+    mock.request.mockResolvedValue(initial());
+    const cloud =
+      await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    await cloud.syncCloudWorkspace();
+    expect(mock.request).toHaveBeenCalledExactlyOnceWith(
+      'server_workspace_delta',
+      { revisions: {} },
+    );
   });
 });

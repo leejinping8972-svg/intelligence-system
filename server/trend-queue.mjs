@@ -1,7 +1,7 @@
-import { collect, pool, saveCheckpoint, saveKeyword } from './store.mjs';
-import { putDocument } from './database.mjs';
 import { trendSeriesMessage } from './collector.js';
+import { putDocument } from './database.mjs';
 import { trendComparisons } from './model.js';
+import { collect, pool, saveCheckpoint, saveKeyword } from './store.mjs';
 
 export const RETRY_LIMIT = 5;
 export const TREND_WINDOW = 24 * 60 * 60 * 1000;
@@ -52,8 +52,8 @@ export function initializeTrendQueue(
 ) {
   const cp = structuredClone(checkpoint);
   if (cp.trendQueueVersion === 1) return cp;
-  const legacyIndex = cp.trendIndex || 0,
-    legacyRetries = cp.rateLimitRetries || 0;
+  const legacyIndex = cp.trendIndex || 0;
+    const legacyRetries = cp.rateLimitRetries || 0;
   cp.trendQueueVersion = 1;
   cp.trendStartedAt = now;
   cp.trendDeadlineAt = now + TREND_WINDOW;
@@ -61,8 +61,8 @@ export function initializeTrendQueue(
     const annual =
         comparisonVersion === 2
           ? r.trendHistoryPoints?.length > 0
-          : r.series?.length > 0,
-      daily = r.trendDailyPoints?.length > 0;
+          : r.series?.length > 0;
+      const daily = r.trendDailyPoints?.length > 0;
     const prior = r.trendParts;
     const part = (has) => ({
       status: has ? 'done' : 'pending',
@@ -100,7 +100,7 @@ export function initializeTrendQueue(
     cp.trendBaseFailures =
       Number(Boolean(cp.semBlocked)) +
       (cp.keywords || []).filter((r) =>
-        ['failed', 'partial', 'empty'].includes(r.semrushCollection?.status),
+        ['empty', 'failed', 'partial'].includes(r.semrushCollection?.status),
       ).length;
   cp.legacyTrendIndex = legacyIndex;
   cp.nextRunAt = 0;
@@ -110,13 +110,13 @@ export function initializeTrendQueue(
   return cp;
 }
 export function nextTrendPart(cp, now = Date.now()) {
-  const pending = [],
-    retries = [],
-    recover = [];
+  const pending = [];
+    const retries = [];
+    const recover = [];
   for (const [index, work] of cp.trendWork.entries())
     for (const phase of ['annual', 'daily']) {
-      const p = work[phase],
-        v = { index, phase, part: p };
+      const p = work[phase];
+        const v = { index, phase, part: p };
       if (p.status === 'running') recover.push(v);
       else if (p.status === 'pending') pending.push(v);
       else if (p.status === 'retry_wait' && p.nextRunAt <= now) retries.push(v);
@@ -142,14 +142,14 @@ export function refreshTrendCheckpoint(cp, gate = {}, now = Date.now()) {
   ).length;
   const active = all.filter((p) => !finishedPart(p));
   cp.failures = cp.trendBaseFailures + cp.trendAttention;
-  if (!active.length) {
+  if (active.length === 0) {
     cp.nextRunAt = 0;
     cp.waitReason = '';
     cp.currentTerm = '';
     cp.finishedAt = new Date(now).toISOString();
     return cp.failures ? 'partial' : 'awaiting_review';
   }
-  const due = active.some((p) => ['running', 'pending'].includes(p.status))
+  const due = active.some((p) => ['pending', 'running'].includes(p.status))
     ? now
     : Math.min(...active.map((p) => p.nextRunAt));
   cp.nextRunAt = Math.min(
@@ -230,8 +230,8 @@ export async function runTrendJob(job, overrides = {}) {
         cp,
         refreshTrendCheckpoint(cp, gate, io.now()),
       );
-    const { index, phase, part } = item,
-      record = cp.keywords[index];
+    const { index, phase, part } = item;
+      const record = cp.keywords[index];
     if (part.status !== 'running') {
       part.attempts++;
       part.status = 'running';
@@ -261,7 +261,7 @@ export async function runTrendJob(job, overrides = {}) {
           retryAfterSeconds: data.retryAfterSeconds,
         });
       if (
-        !['success', 'empty'].includes(data.status) ||
+        !['empty', 'success'].includes(data.status) ||
         !Array.isArray(data.points) ||
         data.phase !== phase ||
         data.market !== record.market ||
@@ -269,7 +269,7 @@ export async function runTrendJob(job, overrides = {}) {
       )
         throw new Error('趋势接口返回内容不匹配，需人工核对');
       Object.assign(part, {
-        status: data.points.length ? 'done' : 'empty',
+        status: data.points.length > 0 ? 'done' : 'empty',
         httpStatus: 0,
         nextRunAt: 0,
         message: data.message || '',
@@ -284,8 +284,14 @@ export async function runTrendJob(job, overrides = {}) {
           trendResolution: data.resolution,
           trendSourceUrl: data.sourceUrl,
           trendCollectedAt: data.collectedAt,
-          trendStatus: data.points.length ? 'collected' : 'empty',
+          trendStatus: data.points.length > 0 ? 'collected' : 'empty',
           trendMessage: data.message || '已采集一年趋势',
+          trendRegions: data.regions || [],
+          trendRelatedTop: data.relatedTop || [],
+          trendRelatedRising: data.relatedRising || [],
+          trendInsightsStatus: data.insightsStatus || 'empty',
+          trendInsightsMessage: data.insightsMessage || '',
+          trendInsightsPeriod: data.insightsPeriod || data.period || '',
           ...(Array.isArray(data.historyPoints)
             ? {
                 trendHistoryPoints: data.historyPoints,
@@ -304,7 +310,7 @@ export async function runTrendJob(job, overrides = {}) {
         });
       record.growth = trendComparisons(record)[0].change;
       gate = {
-        until: io.now() + 15000 + Math.floor(io.random() * 3000),
+        until: io.now() + 15_000 + Math.floor(io.random() * 3000),
         reason: 'pacing',
         consecutive429: 0,
       };
@@ -323,8 +329,8 @@ export async function runTrendJob(job, overrides = {}) {
           policy.retryAfterSeconds,
           io.random,
           policy.limited,
-        ),
-        next = io.now() + delay;
+        );
+        const next = io.now() + delay;
       const retry =
         policy.retry &&
         part.attempts <= RETRY_LIMIT &&

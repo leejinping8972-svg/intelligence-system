@@ -14,6 +14,7 @@ import {
 
 import { trendOption } from './charts';
 import Chart from './components/Chart.vue';
+import GoogleTrendInsights from './components/GoogleTrendInsights.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import PageHeader from './components/PageHeader.vue';
 import {
@@ -270,6 +271,7 @@ async function refreshTrend() {
         /><Chart
           v-else
           :options="trendOption(keyword, days)"
+          :aria-label="`${keyword.term} Google Trends 相对搜索热度曲线`"
           class="hci-chart-large"
         />
         <div
@@ -313,6 +315,7 @@ async function refreshTrend() {
               {{ keyword.series.length }} 个时点</span>
           </div>
         </div>
+        <GoogleTrendInsights :keyword="keyword" style="margin-top: 20px" />
       </template>
     </section>
     <div class="hci-demo-note">

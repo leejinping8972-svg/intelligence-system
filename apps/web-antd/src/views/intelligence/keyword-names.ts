@@ -7,8 +7,11 @@ const glossary: Record<string, string> = {
   'magnesium citrate': '柠檬酸镁',
   'creatine monohydrate': '一水肌酸',
   'fish oil': '鱼油',
-  'omega 3': 'Omega-3',
-  'omega-3': 'Omega-3',
+  'omega 3': 'Omega-3脂肪酸',
+  'omega-3': 'Omega-3脂肪酸',
+  'long châu': 'Long Châu药房',
+  'dầu cá': '鱼油',
+  nhật: '日本',
   'side effects': '副作用',
   'sugar free': '无糖',
   'sugar-free': '无糖',
@@ -99,7 +102,21 @@ const patterns = Object.entries(glossary)
 export function keywordChineseName(record: Pick<Keyword, 'term' | 'termZh'>) {
   if (record.termZh?.trim()) return record.termZh.trim();
   let text = record.term.normalize('NFKC').trim();
-  if (/^what is (.+) good for\??$/i.test(text))
+  if (/^omega[- ]?3\s+6\s+9$/i.test(text)) return 'Omega-3-6-9脂肪酸';
+  if (/^uống mấy viên (.+) mỗi ngày\??$/iu.test(text))
+    text = text.replace(
+      /^uống mấy viên (.+) mỗi ngày\??$/iu,
+      '每天服用几粒 $1',
+    );
+  else if (/^(.+) có tác dụng gì\??$/iu.test(text))
+    text = text.replace(/^(.+) có tác dụng gì\??$/iu, '$1 有什么作用');
+  else if (/^tác dụng của (.+)$/iu.test(text))
+    text = text.replace(/^tác dụng của (.+)$/iu, '$1 的作用');
+  else if (/^tác dụng (.+)$/iu.test(text))
+    text = text.replace(/^tác dụng (.+)$/iu, '$1 的作用');
+  else if (/^thuốc (.+)$/iu.test(text))
+    text = text.replace(/^thuốc (.+)$/iu, '$1 制剂');
+  else if (/^what is (.+) good for\??$/i.test(text))
     text = text.replace(/^what is (.+) good for\??$/i, '$1 有什么作用');
   else if (/^how much (.+) should i take\??$/i.test(text))
     text = text.replace(/^how much (.+) should i take\??$/i, '$1 应摄入多少');

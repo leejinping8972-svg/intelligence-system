@@ -1,14 +1,14 @@
-import { trendComparisons } from './trend-comparison';
-import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
 import type { DiscoveryObservation } from './discovery';
+import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
 import type {
-  ProductDecisionData,
   ProductCompletion,
+  ProductDecisionData,
 } from './product-decisions';
 
 import { computed, reactive, watch } from 'vue';
 
 import officialTrendSnapshots from '../../../../../workers/site-discovery/data/trends-snapshots.json';
+import { trendComparisons } from './trend-comparison';
 
 export type Market = 'MX' | 'US' | 'VN';
 export type MarketFilter = 'ALL' | Market;
@@ -77,7 +77,11 @@ export interface Keyword {
   reviewStatus?: 'excluded' | 'pending' | 'selected';
   reviewNote?: string;
   trendPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
-  trendHistoryPoints?: Array<{ date: string; isPartial?: boolean; value: number }>;
+  trendHistoryPoints?: Array<{
+    date: string;
+    isPartial?: boolean;
+    value: number;
+  }>;
   trendHistoryResolution?: 'day' | 'month' | 'unknown' | 'week';
   trendHistoryCollectedAt?: string;
   trendHistorySourceUrl?: string;
@@ -94,6 +98,12 @@ export interface Keyword {
   trendDailyMessage?: string;
   trendStatus?: 'collected' | 'empty' | 'failed' | 'pending';
   trendMessage?: string;
+  trendRegions?: TrendRegion[];
+  trendRelatedTop?: TrendRelatedQuery[];
+  trendRelatedRising?: TrendRelatedQuery[];
+  trendInsightsStatus?: 'collected' | 'empty' | 'failed' | 'partial';
+  trendInsightsMessage?: string;
+  trendInsightsPeriod?: string;
   discoveryStatus?: 'collected' | 'failed' | 'pending';
   discoveryMessage?: string;
   siteCollection?: CollectionState;
@@ -103,6 +113,18 @@ export interface Keyword {
   siteIds: string[];
   updatedAt?: string;
   dataNature?: 'collected' | 'demo' | 'imported';
+}
+export interface TrendRegion {
+  code: string;
+  name: string;
+  value: number;
+  formattedValue?: string;
+}
+export interface TrendRelatedQuery {
+  query: string;
+  value: null | number;
+  formattedValue: string;
+  breakout?: boolean;
 }
 export interface CollectionState {
   jobId?: string;
@@ -190,7 +212,7 @@ export interface Product {
 }
 export interface SiteAssessment {
   version: string;
-  score: number | null;
+  score: null | number;
   coverage: number;
   status: string;
   grade: string;
@@ -199,7 +221,7 @@ export interface SiteAssessment {
     key: string;
     label: string;
     weight: number;
-    value: number | null;
+    value: null | number;
     evidence: string;
   }[];
 }

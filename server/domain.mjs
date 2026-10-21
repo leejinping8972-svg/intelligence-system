@@ -11,10 +11,11 @@ const markets = new Set(['MX', 'US', 'VN']);
 const sources = new Set([
   'amazon_autocomplete',
   'google_autocomplete',
-  'sorftime',
   'semrush',
+  'sorftime',
 ]);
 export const keywordFields = new Set([
+  'adCollection',
   'category',
   'collectedAt',
   'dataNature',
@@ -27,26 +28,31 @@ export const keywordFields = new Set([
   'reviewNote',
   'reviewStatus',
   'seedTerm',
-  'series',
-  'siteIds',
-  'siteCollection',
-  'adCollection',
   'semrushCollection',
+  'series',
+  'siteCollection',
+  'siteIds',
   'source',
   'term',
   'termZh',
   'trendCollectedAt',
-  'trendDailyMessage',
   'trendDailyCollectedAt',
-  'trendParts',
+  'trendDailyMessage',
   'trendDailyPoints',
+  'trendHistoryCollectedAt',
   'trendHistoryPoints',
   'trendHistoryResolution',
-  'trendHistoryCollectedAt',
   'trendHistorySourceUrl',
+  'trendInsightsMessage',
+  'trendInsightsPeriod',
+  'trendInsightsStatus',
   'trendMessage',
+  'trendParts',
   'trendPeriod',
   'trendPoints',
+  'trendRegions',
+  'trendRelatedRising',
+  'trendRelatedTop',
   'trendResolution',
   'trendSourceUrl',
   'trendStatus',
@@ -59,7 +65,8 @@ export function cleanKeyword(value) {
     Object.entries(value).filter(([key]) => keywordFields.has(key)),
   );
   record.term = normalizeTerm(record.term);
-  if (typeof record.termZh === 'string') record.termZh = normalizeTerm(record.termZh).slice(0, 255);
+  if (typeof record.termZh === 'string')
+    record.termZh = normalizeTerm(record.termZh).slice(0, 255);
   else delete record.termZh;
   if (
     !record.term ||
@@ -153,7 +160,8 @@ export function validateJob(value) {
 }
 export function editableKeywordPatch(patch) {
   const result = {};
-  if (typeof patch.termZh === 'string') result.termZh = normalizeTerm(patch.termZh).slice(0, 255);
+  if (typeof patch.termZh === 'string')
+    result.termZh = normalizeTerm(patch.termZh).slice(0, 255);
   if (typeof patch.favorite === 'boolean') result.favorite = patch.favorite;
   if (['excluded', 'pending', 'selected'].includes(patch.reviewStatus))
     result.reviewStatus = patch.reviewStatus;
@@ -188,7 +196,7 @@ export function editableKeywordPatch(patch) {
           typeof number === 'number' &&
           Number.isFinite(number) &&
           number >= 0 &&
-          (['monthlySearchVolume', 'cpc'].includes(key) ||
+          (['cpc', 'monthlySearchVolume'].includes(key) ||
             number <= (key === 'advertisingCompetition' ? 1 : 100))
         )
           result.metrics[key] = number;

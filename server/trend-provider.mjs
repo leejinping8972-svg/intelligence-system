@@ -14,8 +14,8 @@ export async function collectTrendPart(
     request.markets?.length !== 1
   )
     throw new Error('趋势步骤参数无效');
-  const keyword = request.keywords[0],
-    market = request.markets[0];
+  const keyword = request.keywords[0];
+    const market = request.markets[0];
   const extended = phase === 'annual' && request.trendComparisonVersion === 2;
   const captured = new Date(now);
   const start = new Date(now);
@@ -25,7 +25,9 @@ export async function collectTrendPart(
   if (extended)
     period = `${start.toISOString().slice(0, 10)} ${captured.toISOString().slice(0, 10)}`;
   try {
-    const rows = await fetchBatch([keyword], market, period);
+    const rows = await fetchBatch([keyword], market, period, {
+      includeInsights: phase === 'annual',
+    });
     const row = rows?.[0];
     if (!row || !Array.isArray(row.points))
       throw new Error('Google Trends返回结构异常，需人工核对');
@@ -67,6 +69,18 @@ export async function collectTrendPart(
       resolution: row.resolution,
       collectedAt: row.collectedAt || new Date().toISOString(),
       sourceUrl: `https://trends.google.com/trends/explore?geo=${encodeURIComponent(market)}&date=${encodeURIComponent(period)}&q=${encodeURIComponent(keyword)}`,
+      ...(phase === 'annual'
+        ? {
+            regions: Array.isArray(row.regions) ? row.regions : [],
+            relatedTop: Array.isArray(row.relatedTop) ? row.relatedTop : [],
+            relatedRising: Array.isArray(row.relatedRising)
+              ? row.relatedRising
+              : [],
+            insightsStatus: row.insightsStatus || 'empty',
+            insightsMessage: row.insightsMessage || '',
+            insightsPeriod: row.insightsPeriod || period,
+          }
+        : {}),
       message,
     };
   } catch (error) {
