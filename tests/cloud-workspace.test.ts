@@ -136,7 +136,7 @@ describe('workspace delta synchronization', () => {
           patch: expect.objectContaining({ favorite: true }),
         }),
       ],
-    });
+    }, 30_000);
     expect(mock.request).toHaveBeenCalledWith('server_workspace_sync', {
       entries: [
         expect.objectContaining({
@@ -144,7 +144,7 @@ describe('workspace delta synchronization', () => {
           value: expect.objectContaining({ title: 'edited' }),
         }),
       ],
-    });
+    }, 30_000);
   });
   it('keeps the last good data and revision after a failure, then retries successfully', async () => {
     const cloud = await setup();
