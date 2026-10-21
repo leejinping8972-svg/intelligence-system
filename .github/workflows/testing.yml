@@ -46,6 +46,8 @@ jobs:
         run: |
           node --test server/consumer-reports.test.mjs server/research-insights.test.mjs server/ad-report.test.mjs
           pnpm exec vitest run tests/consumer-reports.test.ts
+      - name: Country market research and frozen reports (synthetic data)
+        run: node --test server/market-research.test.mjs
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
       - name: Administrator SSO protocol and navigation (synthetic accounts, no external requests)
