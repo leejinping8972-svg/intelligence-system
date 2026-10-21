@@ -11,6 +11,21 @@ const points = (n: number, step = 1) =>
     value: 50,
   }));
 describe('four calendar trend periods', () => {
+  it('compares immediately after fetching both periods instead of waiting for later snapshots', () => {
+    const record = (dailyDays: number, historyDays: number) => ({
+      trendDailyPoints: points(dailyDays),
+      trendDailyCollectedAt: '2026-10-21T02:00:00Z',
+      trendHistoryPoints: points(historyDays),
+      trendHistoryResolution: 'day',
+      trendHistoryCollectedAt: '2026-10-21T02:00:00Z',
+    });
+    expect(fourPeriodComparisons(record(20, 92))[1]?.change).toBeNull();
+    expect(fourPeriodComparisons(record(60, 184))[1]?.change).toBe(0);
+    expect(fourPeriodComparisons(record(60, 92))[2]?.change).toBeNull();
+    expect(fourPeriodComparisons(record(60, 184))[2]?.change).toBe(0);
+    expect(fourPeriodComparisons(record(60, 183))[3]?.change).toBeNull();
+    expect(fourPeriodComparisons(record(60, 365))[3]?.change).toBe(0);
+  });
   it('uses Monday and month start with matching elapsed previous-week/month periods', () => {
     const r = fourPeriodComparisons({
       trendDailyPoints: points(80),

@@ -1,5 +1,6 @@
 /* eslint-disable unicorn/no-await-expression-member, no-console -- Disposable SQL fixture assertions and test result output. */
 import assert from 'node:assert/strict';
+import { socialWindows } from './keyword-trends-domain.mjs';
 
 import {
   keywordTrendsAction,
@@ -53,28 +54,32 @@ export async function verifyKeywordTrends(c) {
     {
       action: 'server_keyword_trends_collect',
       keywordIds: [k.id],
-      plan: { sources: ['tiktok'], maxRequests: 2, maxPages: 1 },
+      plan: { sources: ['tiktok'], maxRequests: 2, maxPages: 2 },
       budgetAcknowledged: true,
     },
     admin,
   );
   let calls = 0;
+  const quarter = socialWindows(Date.now())[2];
   const io = keywordTrendIO(c, {
     key: async () => 'synthetic-only-not-a-real-key',
-    fetch: async () => {
+    fetch: async (work) => {
       calls++;
       return {
-        items: [
-          {
-            id: 'one',
-            url: 'https://www.tiktok.com/@qa/video/1234567890123',
-            publishedAt: new Date(Date.now() - 86_400_000).toISOString(),
-            views: 100,
-            likes: 0,
-            comments: null,
-          },
-        ],
-        hasMore: false,
+        items: Array.from({ length: work.page === 1 ? 4 : 2 }, (_, i) => ({
+          id: `${work.page}-${i}`,
+          url: 'https://www.tiktok.com/@qa/video/1234567890123',
+          publishedAt: new Date(
+            (work.page === 1 ? quarter.startAt : quarter.previousStartAt) +
+              86_400_000,
+          ).toISOString(),
+          views: 100,
+          likes: 0,
+          comments: null,
+        })),
+        hasMore: work.page === 1,
+        cursor: 2,
+        exhausted: work.page === 2,
         creditsCharged: 1,
         coverage: '合成隔离样本',
       };
@@ -88,9 +93,19 @@ export async function verifyKeywordTrends(c) {
   );
   assert.equal(value.run.usedRequests, 2);
   assert.equal(value.summaries.length, 1);
-  assert.equal(value.summaries[0].sampleCount, 1);
+  assert.equal(value.summaries[0].sampleCount, 6);
   assert.equal(value.summaries[0].periods[0].change, null);
-  assert.equal(value.summaries[0].periods[2].count, null);
+  assert.equal(value.summaries[0].periods[2].count, 4);
+  assert.equal(value.summaries[0].periods[2].previousCount, 2);
+  assert.equal(
+    value.summaries[0].periods[2].change,
+    Math.round(
+      ((2 * (quarter.previousEndAt - quarter.previousStartAt)) /
+        (quarter.endAt - quarter.startAt) -
+        1) *
+        1000,
+    ) / 10,
+  );
   await keywordTrendsAction(
     {
       action: 'server_keyword_trends_collect',

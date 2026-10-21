@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { Keyword } from '../data';
+import type { SocialPeriod } from '../keyword-social-trends';
 
 import { computed } from 'vue';
 
 import { Tooltip } from 'ant-design-vue';
 
 import { socialTrends } from '../keyword-social-trends';
+import { formatSocialPeriod, socialPeriodTitle } from '../social-trend-format';
 
 const props = defineProps<{ keyword: Keyword; source: string }>();
 const summary = computed(() =>
@@ -17,19 +19,26 @@ const summary = computed(() =>
       s.source === props.source,
   ),
 );
-const periods = computed(() =>
+const periods = computed<SocialPeriod[]>(() =>
   summary.value?.periods?.length
-    ? summary.value.periods
+    ? summary.value.periods.map((p) =>
+        summary.value?.comparisonVersion === 2
+          ? p
+          : {
+              ...p,
+              change: null,
+              state: 'legacy',
+              reason: '旧版播放结果，需重新回查历史内容',
+            },
+      )
     : ['本周', '本月', '近3个月', '近6个月'].map((label) => ({
         key: label,
         label,
         count: null,
         change: null,
-        matchedCount: 0,
         reason: summary.value?.attemptMessage || '尚未采集此来源',
         start: '',
         end: '',
-        baselineAt: '',
       })),
 );
 </script>
@@ -38,7 +47,7 @@ const periods = computed(() =>
     <Tooltip
       :title="
         summary
-          ? `${summary.attemptMessage || ''}；${summary.coverage || ''}；${summary.collectedAt ? `截至${summary.collectedAt}，未提供有效发布时间${summary.undatedCount}条` : '尚无成功采集'}。条数为采集样本；百分比为共同样本累计播放增长，不是平台搜索量或前期环比。`
+          ? `${summary.attemptMessage || ''}；${summary.coverage || ''}；${summary.collectedAt ? `截至${summary.collectedAt}，未提供有效发布时间${summary.undatedCount}条` : '尚无成功采集'}。按发布时间回查两期内容样本，以日均发布量计算环比；不把累计播放量当历史热度或平台搜索量。`
           : socialTrends.error || '使用趋势采集按钮选择来源并提交'
       "
     >
@@ -48,36 +57,25 @@ const periods = computed(() =>
             ? '更新未完成，保留已采集值'
             : '未完成采集'
           : summary
-            ? '内容样本 / 播放增长'
+            ? summary.comparisonVersion === 2
+              ? '内容样本 / 发布量环比'
+              : '旧版数据，需回查'
             : socialTrends.error
               ? '读取失败，可刷新'
               : '等待采集'
       }}</span>
     </Tooltip>
-    <Tooltip
-      v-for="p in periods"
-      :key="p.key"
-      :title="`${p.start ? `${p.start} 至 ${p.end}（北京时间）` : ''}；${p.reason}；可比${p.matchedCount}条${p.baselineAt ? `，起点快照${p.baselineAt}` : ''}${'collectedAt' in p ? `；更新于${p.collectedAt}` : ''}${'stale' in p && p.stale ? '；本次尚未更新，保留上次结果' : ''}`"
-    >
+    <Tooltip v-for="p in periods" :key="p.key" :title="socialPeriodTitle(p)">
       <p
         :class="
-          ('stale' in p && p.stale) || p.change === null
+          p.stale || p.change === null
             ? 'hci-subtle'
             : p.change >= 0
               ? 'hci-positive'
               : 'hci-negative'
         "
       >
-        {{ p.label }}：{{ p.count === null ? '—（待采集）' : `${p.count}条`
-        }}<template v-if="p.count !== null">
-          {{
-            'stale' in p && p.stale
-              ? '（上次）'
-              : p.change === null
-                ? '（待积累）'
-                : `(${p.change > 0 ? '+' : ''}${p.change}%)`
-          }}
-        </template>
+        {{ formatSocialPeriod(p) }}
       </p>
     </Tooltip>
     <span v-if="summary?.collectedAt" class="hci-subtle">

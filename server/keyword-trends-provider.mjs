@@ -33,7 +33,7 @@ export function socialRequest(work) {
       params: {
         query: work.term,
         region: work.market,
-        date_posted: work.window,
+        date_posted: work.window === 'history-v2' ? 'all-time' : work.window,
         sort_by: 'date-posted',
         ...(work.cursor ? { cursor: work.cursor } : {}),
       },
@@ -43,7 +43,7 @@ export function socialRequest(work) {
       path: '/v2/instagram/reels/search',
       params: {
         query: `${work.term} ${{ US: 'United States', MX: 'Mexico', VN: 'Vietnam' }[work.market]}`,
-        date_posted: work.window,
+        date_posted: work.window === 'history-v2' ? 'last-year' : work.window,
         page: work.page,
       },
     };
@@ -67,6 +67,7 @@ export function parseSocialResult(work, payload) {
   if (!Array.isArray(rows))
     throw new Error('趋势接口返回结构异常，未作为空结果保存');
   const map = new Map();
+  let discardedCount = Math.max(0, rows.length - 250);
   for (const raw of rows.slice(0, 250)) {
     const r = raw.aweme_info || raw;
     let id, url, date, author, stats;
@@ -104,7 +105,10 @@ export function parseSocialResult(work, payload) {
       };
     }
     url = publicUrl(url, source);
-    if (!id || !url) continue;
+    if (!id || !url) {
+      discardedCount++;
+      continue;
+    }
     map.set(id, {
       id: id.slice(0, 300),
       url,
@@ -115,17 +119,33 @@ export function parseSocialResult(work, payload) {
       ),
     });
   }
-  const cursor =
-    payload.has_more === false || payload.has_more === 0
-      ? null
-      : (payload.cursor ?? null);
+  const more = payload.has_more ?? payload.hasMore;
+  const cursor = payload.cursor ?? null;
+  let hasMore = false,
+    exhausted = false,
+    paginationIssue = '';
+  if (
+    more === false ||
+    more === 0 ||
+    (rows.length === 0 && more !== true && more !== 1)
+  )
+    exhausted = true;
+  else if (source === 'instagram') hasMore = true;
+  else if (cursor !== null && cursor !== '' && cursor !== 0) {
+    if (cursor === work.cursor)
+      paginationIssue = '上游重复分页游标，无法确认历史覆盖';
+    else hasMore = true;
+  } else if (more === true || more === 1)
+    paginationIssue = '上游声明仍有结果但缺少可用分页游标';
+  else if ('cursor' in payload) exhausted = true;
+  else paginationIssue = '上游未返回分页结束标记，无法确认历史覆盖';
   return {
     items: [...map.values()],
     cursor,
-    hasMore:
-      source === 'instagram'
-        ? rows.length > 0
-        : Boolean(cursor) && cursor !== work.cursor,
+    hasMore,
+    exhausted,
+    paginationIssue,
+    discardedCount,
     creditsCharged: count(payload.credits_charged),
     coverage: {
       tiktok:

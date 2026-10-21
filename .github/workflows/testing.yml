@@ -55,7 +55,7 @@ jobs:
       - name: Four-source keyword trend windows and daily budgets (synthetic only)
         run: |
           node --test server/keyword-trends.test.mjs
-          pnpm exec vitest run tests/four-period-trends.test.ts tests/trend-comparison.test.ts
+          pnpm exec vitest run tests/four-period-trends.test.ts tests/trend-comparison.test.ts tests/social-trend-format.test.ts
       - name: Focused monitors and advertiser batch selection (synthetic data)
         run: |
           node --test server/advertiser-monitor-batch.test.mjs
