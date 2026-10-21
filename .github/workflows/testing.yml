@@ -44,6 +44,10 @@ jobs:
           pnpm exec vitest run tests/product-decisions.test.ts tests/public-content.test.ts tests/platform-product-selection.test.ts tests/keyword-selection.test.ts tests/article-details.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
+      - name: Four-source keyword trend windows and daily budgets (synthetic only)
+        run: |
+          node --test server/keyword-trends.test.mjs
+          pnpm exec vitest run tests/four-period-trends.test.ts tests/trend-comparison.test.ts
       - name: Focused monitors and advertiser batch selection (synthetic data)
         run: |
           node --test server/advertiser-monitor-batch.test.mjs

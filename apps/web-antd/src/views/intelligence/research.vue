@@ -24,6 +24,8 @@ import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
+import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
+import SocialTrendCell from './components/SocialTrendCell.vue';
 import { keywordChineseName } from './keyword-names';
 import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
@@ -272,7 +274,10 @@ const columns = [
       (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
   },
   { title: '分析标签', key: 'tags', width: 240 },
-  { title: '趋势热度 / 周期变化', key: 'trend', width: 215 },
+  { title: '谷歌趋势', key: 'trend', width: 200 },
+  { title: 'TK趋势', key: 'tiktok', width: 185 },
+  { title: 'INS趋势', key: 'instagram', width: 185 },
+  { title: 'FB趋势', key: 'facebook', width: 185 },
   { title: '来源', key: 'source', width: 180 },
   {
     title: '抓取时间',
@@ -737,6 +742,7 @@ function saveMetrics() {
           v-model="scoreFilter"
           label="关键词"
         /><KeywordNamesDialog :ids="selectedIds" />
+        <KeywordTrendsControl :ids="selectedIds" />
       </div>
       <div class="hci-toolbar">
         <span class="hci-subtle"
@@ -811,7 +817,7 @@ function saveMetrics() {
         :row-selection="rowSelection"
         row-key="id"
         :pagination="pagination"
-        :scroll="{ x: 1770 }"
+        :scroll="{ x: 2310 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'term'">
@@ -880,6 +886,9 @@ function saveMetrics() {
               </Tag>
             </Tooltip>
             <KeywordTrendComparison :keyword="record as Keyword" />
+          </template>
+          <template v-else-if="['tiktok', 'instagram', 'facebook'].includes(String(column.key))">
+            <SocialTrendCell :keyword="record as Keyword" :source="String(column.key)" />
           </template>
           <template v-else-if="column.key === 'source'">
             <div class="keyword-tags">

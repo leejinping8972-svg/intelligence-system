@@ -25,6 +25,8 @@ import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import { keywordChineseName } from './keyword-names';
 import SelectionBar from './components/SelectionBar.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
+import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
+import SocialTrendCell from './components/SocialTrendCell.vue';
 import { useFilteredSelection } from './resource-list';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import AdsCollectDialog from './components/AdsCollectDialog.vue';
@@ -114,7 +116,10 @@ const columns = [
     sorter: (a: { score: null | number }, b: { score: null | number }) =>
       (a.score ?? -1) - (b.score ?? -1),
   },
-  { title: '趋势热度 / 周期变化', key: 'trend', width: 215 },
+  { title: '谷歌趋势', key: 'trend', width: 200 },
+  { title: 'TK趋势', key: 'tiktok', width: 185 },
+  { title: 'INS趋势', key: 'instagram', width: 185 },
+  { title: 'FB趋势', key: 'facebook', width: 185 },
   { title: '站点采集状态', key: 'status', width: 145 },
   { title: '广告采集状态', key: 'ads', width: 145 },
   { title: '关联站点', key: 'sites', width: 100 },
@@ -157,6 +162,7 @@ const time = (r: Keyword) =>
       <Button @click="router.push('/research')">返回关键词研究</Button>
       <Button @click="router.push('/monitor')">查看后台任务</Button>
       <DailyDiscoveryPlan />
+      <KeywordTrendsControl :ids="ids" />
     </PageHeader>
     <Alert
       type="info"
@@ -222,7 +228,7 @@ const time = (r: Keyword) =>
         :columns="columns"
         :data-source="rows"
         row-key="id"
-        :scroll="{ x: 1600 }"
+        :scroll="{ x: 2140 }"
         :row-selection="rowSelection"
         :pagination="{
           current: page,
@@ -312,6 +318,9 @@ const time = (r: Keyword) =>
               查看一年曲线
             </button>
             <KeywordTrendComparison :keyword="record as Keyword" />
+          </template>
+          <template v-else-if="['tiktok', 'instagram', 'facebook'].includes(String(column.key))">
+            <SocialTrendCell :keyword="record as Keyword" :source="String(column.key)" />
           </template>
           <template v-else-if="column.key === 'time'">
             <span>{{

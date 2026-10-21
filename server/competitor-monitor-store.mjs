@@ -28,6 +28,7 @@ import { maintenance } from './database-admin.mjs';
 import { lock, pool, putDocument, unlock } from './database.mjs';
 import { cleanKeyword, naturalKey } from './domain.mjs';
 import { saveKeyword } from './store.mjs';
+import { tickKeywordTrends } from './keyword-trends-store.mjs';
 
 const PREFIX = 'competitor:';
 export function createMonitorStore(connection = pool) {
@@ -488,7 +489,10 @@ export async function competitorTick(c, providers = {}) {
 export async function runCompetitorQueue(signal) {
   while (!signal.aborted) {
     try {
-      await withCompetitorIdle((c) => competitorTick(c));
+      await withCompetitorIdle(async (c) => {
+        await competitorTick(c);
+        await tickKeywordTrends(c);
+      });
     } catch (error) {
       if (!/正在执行/.test(error.message))
         console.error('竞品监控：', error.message);
