@@ -172,3 +172,17 @@ jobs:
           name: admin-testing-${{ github.sha }}
           path: apps/web-antd/dist
           retention-days: 7
+      - name: Build production admin frontend
+        env:
+          VITE_HCI_SERVER: 'true'
+          VITE_HCI_DEMO: 'false'
+          VITE_BASE: /admin/
+          VITE_ROUTER_HISTORY: history
+          VITE_APP_NAMESPACE: intelligence-production
+        run: pnpm --filter @vben/web-antd exec vite build --mode production --base=/admin/
+      - name: Upload production frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-production-${{ github.sha }}
+          path: apps/web-antd/dist
+          retention-days: 7
