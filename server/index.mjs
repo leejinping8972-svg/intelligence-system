@@ -230,13 +230,16 @@ async function api(input, user) {
       }
     }
     case 'server_status': {
-      const { rows } = await pool.query(
-        "SELECT count(*)::integer AS active FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
-      );
+      const { rows } = await pool.query("SELECT input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false");
+      const activeCounts = {};
+      for (const row of rows) { const kind = row.input?.kind || 'unknown'; activeCounts[kind] = (activeCounts[kind] || 0) + 1; }
+      const activeByKind = Object.fromEntries(Object.entries(activeCounts).toSorted(([a], [b]) => a.localeCompare(b)));
       return {
         ready: true,
         stage: 'keywords',
-        activeJobs: rows[0].active,
+        activeJobs: rows.length,
+        activeByKind,
+        capacity: { activeTaskLimit: 20, independentSiteBatchDefault: 20, independentSiteBatchHard: 100, directRunnerConcurrency: 1, browserRunnerConcurrency: 1, paidRunnerConcurrency: 1, siteCandidateConcurrency: 4, siteCandidatePerDomainConcurrency: 1, platformRunnerConcurrency: 1 },
         storage: currentDatabase().engine,
         execution: 'server',
         message: '关键词任务在腾讯云后台执行，关闭浏览器后继续运行',

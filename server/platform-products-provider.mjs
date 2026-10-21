@@ -95,6 +95,10 @@ function emptyContent(patch) {
 }
 async function collectProductData(request, overrides = {}) {
   const at = new Date().toISOString();
+  if (request.provider === 'tiktok_shop') {
+    const { collectTikTokShop } = await import('./tiktok-shop-provider.mjs');
+    return collectTikTokShop(request, overrides);
+  }
   if (request.provider === 'sorftime') {
     const env = await (overrides.collectorEnv || collectorEnv)();
     const token = await (overrides.readSorftimeToken || readSorftimeToken)(env);

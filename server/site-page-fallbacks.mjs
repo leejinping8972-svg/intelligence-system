@@ -129,7 +129,7 @@ export async function renderProductPage(url, site, overrides = {}) {
         !['document', 'script', 'stylesheet', 'xhr', 'fetch'].includes(
           request.resourceType(),
         ) ||
-        count >= 12
+        count >= 24
       )
         return route.abort();
       if (
@@ -160,7 +160,7 @@ export async function renderProductPage(url, site, overrides = {}) {
             headers: { location: page.redirect },
           });
         bytes += Buffer.byteLength(page.html);
-        if (bytes > 6_000_000) throw new Error('渲染资源超过上限');
+        if (bytes > 10_000_000) throw new Error('渲染资源超过上限');
         await route.fulfill({
           status: 200,
           contentType: page.contentType || 'text/html',
@@ -176,7 +176,7 @@ export async function renderProductPage(url, site, overrides = {}) {
     const timer = setTimeout(() => {
       fatal ||= new Error('浏览器渲染超时');
       void context.close().catch(() => {});
-    }, 30_000);
+    }, 45_000);
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
       await page.waitForTimeout(1200);

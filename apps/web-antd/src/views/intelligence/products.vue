@@ -28,6 +28,7 @@ import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import { discoveryDecision, discoveryFilters } from './discovery';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
 import ProductCompletionDialog from './components/ProductCompletionDialog.vue';
+import FormulaInsights from './components/FormulaInsights.vue';
 import {
   productDecisions,
   productDecisionFilters,
@@ -244,6 +245,7 @@ function toggleCompare(id: string) {
       title="商品情报库"
       description="从配方、规格到市场定位，建立可追溯的商品认知。"
     >
+      <FormulaInsights />
       <PlatformProductsDialog />
       <ProductCompletionDialog :product-ids="rows.map((p) => p.id)" />
       <Button

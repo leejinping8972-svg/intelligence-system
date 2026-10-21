@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Alert, Button, Modal } from 'ant-design-vue';
+import { Alert, Button, InputNumber, Modal } from 'ant-design-vue';
 
 import {
   cloudRequest,
@@ -15,6 +15,7 @@ const props = defineProps<{ productIds: string[]; compact?: boolean }>();
 const busy = ref(false);
 const error = ref('');
 const open = ref(false);
+const maxRequests = ref(1);
 const router = useRouter();
 let requestId = '';
 const supported = computed(
@@ -36,7 +37,7 @@ async function submit() {
     requestId ||= crypto.randomUUID();
     const result = await cloudRequest<{ jobId: string }>(
       'server_complete_platform_products',
-      { requestId, productIds: [...props.productIds] },
+      { requestId, productIds: [...props.productIds], maxRequests: maxRequests.value },
     );
     await syncCloudWorkspace();
     open.value = false;
@@ -55,6 +56,7 @@ async function submit() {
     :disabled="!serverMode || !cloudWorkspace.ready || productIds.length === 0"
     @click="
       open = true;
+      maxRequests = Math.max(1, supported * 5);
       error = '';
       requestId = '';
     "
@@ -64,7 +66,7 @@ async function submit() {
   <Modal
     v-model:open="open"
     title="补全已抓取商品的数据"
-    ok-text="提交全部商品补全"
+    ok-text="提交补全任务"
     :confirm-loading="busy"
     :closable="!busy"
     :mask-closable="!busy"
@@ -75,20 +77,28 @@ async function submit() {
       {{
         productIds.length
       }}
-      件商品。批量入口包括当前筛选的全部记录，不限当前页；不重新搜索商品，也不只补前几件。
+      件商品。批量入口包括当前筛选的全部记录，不限当前页；不重新搜索商品。
     </p>
     <p>
       其中 {{ supported }} 件可通过 Sorftime 查询详情、图片/属性、当前 ASIN
-      月销量、大类排名和评论数历史，最多约
+      月销量、大类排名和评论数历史，完整执行最多约
       {{
         supported * 5
       }}
       次数据请求。有效结果与缓存优先复用；失败、取消或空历史可以再次补全。
     </p>
+    <label for="completion-request-limit">本任务共用请求上限</label>
+    <InputNumber
+      id="completion-request-limit"
+      v-model:value="maxRequests"
+      :min="1"
+      :max="100000"
+      style="display: block; width: 100%; margin: 8px 0 12px"
+    />
     <Alert
       type="info"
       show-icon
-      message="按队列请求至全部商品处理结束，可在监控与任务中取消。消耗已配置平台的现有额度，不自动购买额度。"
+      :message="`详情、属性和历史共用 ${maxRequests} 次请求预算；预算耗尽后保留部分完成状态和未补全原因。可在监控与任务中取消。消耗已配置平台的现有额度，不自动购买额度。`"
     />
     <p
       v-if="supported < productIds.length"

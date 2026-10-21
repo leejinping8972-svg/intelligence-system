@@ -27,6 +27,7 @@ const form = reactive({
   maxPages: 3,
   maxAds: 100,
   maxSites: 10,
+  siteSearchPages: 1,
   maxRequests: 3,
   adStatus: 'ACTIVE',
   includeSearchSites: true,
@@ -75,8 +76,8 @@ async function submit() {
     message.success('广告与Brave独立站双渠道采集已提交后台');
     await syncCloudWorkspace();
     await router.push({ path: '/monitor', query: { job: result.jobId } });
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '任务提交失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '任务提交失败';
   } finally {
     busy.value = false;
   }
@@ -130,7 +131,10 @@ async function submit() {
           ><InputNumber v-model:value="form.maxAds" :min="1" :max="100"
         /></Form.Item>
         <Form.Item label="每路每词站点上限"
-          ><InputNumber v-model:value="form.maxSites" :min="1" :max="10"
+          ><InputNumber v-model:value="form.maxSites" :min="1" :max="20"
+        /></Form.Item>
+        <Form.Item label="Brave 每词搜索页数"
+          ><InputNumber v-model:value="form.siteSearchPages" :min="1" :max="3"
         /></Form.Item>
         <Form.Item label="本任务广告请求上限"
           ><InputNumber v-model:value="form.maxRequests" :min="1" :max="1000"
@@ -148,7 +152,7 @@ async function submit() {
     <Alert
       type="info"
       show-icon
-      :message="`最多 ${Math.min(form.maxRequests, keywordIds.length * form.maxPages)} 次广告查询，另有 ${keywordIds.length} 次 Brave 搜索流程（含官网核验）；两路每词各最多 ${form.maxSites} 家站点，合并后去重。使用现有服务额度，站点评分优先复用 Semrush 缓存。`"
+      :message="`最多 ${Math.min(form.maxRequests, keywordIds.length * form.maxPages)} 次广告查询，另有 ${keywordIds.length * form.siteSearchPages} 页 Brave 搜索（含官网核验）；两路每词各最多 ${form.maxSites} 家站点，合并后去重。使用现有服务额度，站点评分优先复用 Semrush 缓存。`"
     />
     <p class="hci-subtle">
       提交后由服务器执行，关闭浏览器不影响任务。不会自动购买额度。

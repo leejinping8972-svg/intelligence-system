@@ -120,6 +120,8 @@ export async function runCombinedDiscovery(job, io, runAds) {
           markets: [r.market],
           sources: ['site_discovery'],
           maxSites: v.maxSites,
+          siteSearchPages: v.siteSearchPages,
+          candidateConcurrency: 4,
           productsPerSite: 1,
           sorftimeRequestLimit: 0,
         });

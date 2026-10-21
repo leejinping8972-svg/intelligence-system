@@ -121,6 +121,10 @@ export interface CollectionState {
   startedAt?: string;
   finishedAt?: string;
   apiUnits?: number;
+  detailTarget?: number;
+  detailCompleted?: number;
+  ingredientCoverage?: number;
+  doseCoverage?: number;
 }
 export interface IngredientInsight {
   name: string;
@@ -129,6 +133,13 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  formula?: {
+    status: 'observed' | 'unknown' | 'verified';
+    fingerprint: string;
+    ingredients: Array<{ name: string; amount: string; raw: string }>;
+    evidenceUrl: string;
+    collectedAt: string;
+  };
   discovery?: DiscoveryObservation;
   lastCollectedAt?: string;
   sourceMetrics?: {
@@ -143,6 +154,7 @@ export interface Product {
     position?: number;
     keyword?: string;
     shopName?: string;
+    salesMetricNature?: string;
     timestamp?: number | string;
     observedAt?: string;
     urlKind?: string;
@@ -295,6 +307,13 @@ export interface Review {
 export interface Task {
   researchProgress?: {
     unlimitedRequests?: boolean;
+    profile?: string;
+    policyWarnings?: string[];
+    detailTarget?: number;
+    detailCompleted?: number;
+    ingredientProducts?: number;
+    doseProducts?: number;
+    stopReason?: string;
     completion?: {
       total: number;
       done: number;
@@ -331,6 +350,11 @@ export interface Task {
       errorKind?: string;
       requests: number;
       products: number;
+      detailTarget?: number;
+      detailCompleted?: number;
+      ingredients?: number;
+      doses?: number;
+      stopReason?: string;
       nextRunAt: string;
       message: string;
     }>;

@@ -153,11 +153,13 @@ test('validates task bounds and rejects duplicate selected IDs', () => {
     validateMarketJob({ kind: 'ads', keywordIds: ['a'] }).maxRequests,
     3,
   );
+  assert.equal(validateMarketJob({ kind: 'ads', keywordIds: ['a'] }).siteSearchPages, 1);
   for (const input of [
     { kind: 'ads', keywordIds: ['a', 'a'] },
     { kind: 'ads', keywordIds: ['a'], maxRequests: 1001 },
     { kind: 'ads', keywordIds: [] },
     { kind: 'ads', keywordIds: ['a'], maxPages: 11 },
+    { kind: 'ads', keywordIds: ['a'], siteSearchPages: 4 },
   ])
     assert.throws(() => validateMarketJob(input));
 });

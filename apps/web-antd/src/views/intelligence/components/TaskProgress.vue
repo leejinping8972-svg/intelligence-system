@@ -170,6 +170,20 @@ const visibleRows = computed(() =>
         task.researchProgress.kind === 'products' && task.researchProgress.rows
       "
     >
+      <div class="hci-toolbar">
+        <span>模式 {{ task.researchProgress.profile === 'deep' ? '深度采集' : '探索采集' }}</span>
+        <span>详情 {{ task.researchProgress.detailCompleted || 0 }}/{{ task.researchProgress.detailTarget || 0 }}</span>
+        <span>有成分 {{ task.researchProgress.ingredientProducts || 0 }} 件</span>
+        <span>有剂量 {{ task.researchProgress.doseProducts || 0 }} 件</span>
+      </div>
+      <Alert
+        v-for="warning in task.researchProgress.policyWarnings || []"
+        :key="warning"
+        type="warning"
+        show-icon
+        :message="warning"
+        style="margin: 8px 0"
+      />
       <p class="hci-subtle">
         各站点轮流执行；单个站点限流时进入延迟队列，其余站点继续。等待重试
         {{ task.researchProgress.waiting || 0 }} 家<span
@@ -195,7 +209,7 @@ const visibleRows = computed(() =>
         :columns="[
           { title: '站点', key: 'site', width: 180 },
           { title: '状态', key: 'state', width: 150 },
-          { title: '商品 / 网页请求', key: 'counts', width: 130 },
+          { title: '商品 / 详情 / 请求', key: 'counts', width: 180 },
           { title: '下次执行', key: 'next', width: 180 },
           { title: '结果与原因', dataIndex: 'message', width: 250 },
         ]"
@@ -218,7 +232,8 @@ const visibleRows = computed(() =>
             ></template
           >
           <template v-else-if="column.key === 'counts'"
-            >{{ record.products }}件 / {{ record.requests }}次</template
+            >{{ record.products }}件 / {{ record.detailCompleted || 0 }} of {{ record.detailTarget || 0 }}详情 / {{ record.requests }}次
+            <p class="hci-subtle">成分 {{ record.ingredients || 0 }} · 剂量 {{ record.doses || 0 }}</p></template
           >
           <template v-else-if="column.key === 'next'">{{
             time(record.nextRunAt)

@@ -9,6 +9,7 @@ import {
   InputNumber,
   message,
   Modal,
+  Select,
 } from 'ant-design-vue';
 
 import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
@@ -20,12 +21,33 @@ const busy = ref(false);
   const open = ref(false);
   const router = useRouter();
 const form = reactive({
-  maxProducts: 100,
-  maxRequests: 100,
-  maxRequestsPerSite: undefined as number | undefined,
-  maxBrowserPages: 5,
+  profile: 'explore',
+  maxProducts: 30,
+  maxDetailProducts: 10,
+  maxRequests: 20,
+  maxRequestsPerSite: 20,
+  maxBrowserPages: 1,
   maxPaidRequests: 0,
 });
+function applyProfile(profile: string) {
+  const count = Math.max(1, props.siteIds.length);
+  if (profile === 'deep')
+    Object.assign(form, {
+      maxProducts: 100,
+      maxDetailProducts: 100,
+      maxRequests: Math.min(2000, 120 * count),
+      maxRequestsPerSite: 120,
+      maxBrowserPages: Math.min(50, 3 * count),
+    });
+  else
+    Object.assign(form, {
+      maxProducts: 30,
+      maxDetailProducts: 10,
+      maxRequests: 20 * count,
+      maxRequestsPerSite: 20,
+      maxBrowserPages: Math.min(50, count),
+    });
+}
 const names = computed(() =>
   state.sites.filter((s) => props.siteIds.includes(s.id)).map((s) => s.brand),
 );
@@ -46,8 +68,8 @@ async function submit() {
     message.success('商品目录与详情采集已提交后台');
     await syncCloudWorkspace();
     await router.push({ path: '/monitor', query: { job: r.jobId } });
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '提交失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '提交失败';
   } finally {
     busy.value = false;
   }
@@ -55,9 +77,10 @@ async function submit() {
 </script>
 <template>
   <Button
-    :disabled="!siteIds.length || siteIds.length > 100"
+    :disabled="!siteIds.length || siteIds.length > 20"
     @click="
       open = true;
+          applyProfile(form.profile);
       error = '';
       requestId = '';
     "
@@ -73,6 +96,16 @@ async function submit() {
     >
 <p>{{ names.join('、') }}</p>
     <Form layout="vertical" @change="requestId = ''">
+      <Form.Item label="采集模式">
+        <Select
+          v-model:value="form.profile"
+          :options="[
+            { label: '探索采集 · 先覆盖、少量详情', value: 'explore' },
+            { label: '深度采集 · 更多目录与详情', value: 'deep' },
+          ]"
+          @change="(value) => applyProfile(String(value))"
+        />
+      </Form.Item>
 <Form.Item label="每站商品上限（1～1000）">
 <InputNumber
           v-model:value="form.maxProducts"
@@ -86,6 +119,13 @@ async function submit() {
           :max="2000"
       />
 </Form.Item>
+      <Form.Item label="每站商品详情目标">
+        <InputNumber
+          v-model:value="form.maxDetailProducts"
+          :min="0"
+          :max="form.maxProducts"
+        />
+      </Form.Item>
       <Form.Item label="单站网页请求上限（留空则按站点数分配）">
 <InputNumber
           v-model:value="form.maxRequestsPerSite"
@@ -110,10 +150,10 @@ async function submit() {
 </Form><Alert
       type="info"
       show-icon
-      message="各站轮流采集，429先冷却整个站点。公开目录和站点地图优先，动态商品页按预算使用浏览器；托管备用需要管理员先在设置中启用，再为本任务设置大于0的上限。"
+      :message="`${form.profile === 'deep' ? '深度' : '探索'}模式：各站轮流采集，目录发现达到商品上限后仍继续完成已排队的 ${form.maxDetailProducts} 个详情目标。429先冷却整个站点；动态页按预算使用浏览器。`"
 />
     <p class="hci-subtle">
-      目录、详情、浏览器与托管各计一次页面采集，均受整批和单站上限约束；浏览器每页最多读取12个必要文本资源，不下载商品图片。托管尝试可能消耗平台积分，上限是请求次数，不是美元或积分保证；响应未知时不自动重放。图片内标签仍需人工核验。
+      每批最多20站；目录、详情、浏览器与托管各计一次页面采集，均受整批和单站上限约束。浏览器每页最多读取24个必要文本资源、正文10MB，单页45秒，不下载商品图片。托管尝试可能消耗平台积分；响应未知时不自动重放。图片内标签仍需人工核验。
     </p>
     <Alert v-if="error" :message="error" type="error" show-icon />
 </Modal>
