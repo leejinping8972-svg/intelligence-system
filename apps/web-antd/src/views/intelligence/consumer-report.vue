@@ -190,6 +190,7 @@ const time = (v: string) =>
       <Button
         :disabled="
           !modelReady ||
+          report?.reportType === 'market' ||
           !evidence.length ||
           actionBusy ||
           ['queued', 'running'].includes(report?.status || '')
@@ -205,7 +206,15 @@ const time = (v: string) =>
     <template v-if="report">
       <section class="hci-panel">
         <div class="report-strip">
-          <Tag>{{ reportStatus(report.status) }}</Tag><span>{{ marketName(report.market) }}</span><span>{{ evidence.length }} 条文本 ·
+          <Tag>{{ reportStatus(report.status) }}</Tag><Tag v-if="report.reportType === 'market'" color="blue">
+国家市场{{
+              report.period === 'week'
+                ? '周报'
+                : report.period === 'quarter'
+                  ? '季报'
+                  : '月报'
+            }}
+</Tag><span>{{ marketName(report.market) }}</span><span>{{ evidence.length }} 条证据 ·
             {{ sourceRows.length }} 个来源页面</span><span>{{ time(report.createdAt) }}</span><Tag>{{ report.modelAnalysis ? 'AI归纳' : '规则统计' }}</Tag>
         </div>
         <p class="hci-subtle">
@@ -225,13 +234,90 @@ const time = (v: string) =>
         />
         <p v-if="report.message" class="hci-subtle">{{ report.message }}</p>
       </section>
-      <section class="hci-panel">
-        <h2>话题方向与热度</h2>
+      <section
+        v-if="report.reportType === 'market' && report.marketSnapshot"
+        class="hci-panel"
+      >
+        <h2>市场覆盖与冻结口径</h2>
         <p class="hci-subtle">
-          热度 = 该话题引用文本数 /
+          {{ report.marketSnapshot.startAt.slice(0, 10) }} 至
+          {{ report.marketSnapshot.endAt.slice(0, 10) }} · 快照冻结于
+          {{ time(report.marketSnapshot.frozenAt) }}
+        </p>
+        <div class="market-metrics">
+          <div>
+            <b>{{ report.marketSnapshot.coverage.products }}</b><span>商品总数</span>
+          </div>
+          <div>
+            <b>{{ report.marketSnapshot.coverage.tiktokShopProducts }}</b><span>TikTok Shop商品</span>
+          </div>
+          <div>
+            <b>{{ report.marketSnapshot.coverage.activeMetaAds }}</b><span>Meta在投广告</span>
+          </div>
+          <div>
+            <b>{{ report.marketSnapshot.coverage.independentSites }}</b><span>独立站</span>
+          </div>
+          <div>
+            <b>{{ report.marketSnapshot.coverage.tiktokContent }}</b><span>TikTok内容</span>
+          </div>
+          <div>
+            <b>{{ report.marketSnapshot.coverage.consumerComments }}</b><span>消费者评论</span>
+          </div>
+        </div>
+        <h2>高信号商品</h2>
+        <Table
+          size="small"
+          row-key="id"
+          :data-source="report.marketSnapshot.topProducts.slice(0, 10)"
+          :pagination="false"
+          :scroll="{ x: 760 }"
+          :columns="[
+            { title: '商品', dataIndex: 'title' },
+            { title: '品牌/店铺', dataIndex: 'brand', width: 150 },
+            { title: '来源', dataIndex: 'source', width: 130 },
+            { title: '平台展示销量', dataIndex: 'reportedSales', width: 130 },
+            { title: '评论数', dataIndex: 'reviewCount', width: 90 },
+          ]"
+        />
+        <div class="market-two-columns">
+          <div>
+            <h2>常见配方信号</h2>
+            <p
+              v-for="item in report.marketSnapshot.topIngredients.slice(0, 10)"
+              :key="item.name"
+            >
+              {{ item.name }} · {{ item.count }}个商品
+            </p>
+          </div>
+          <div>
+            <h2>活跃广告主</h2>
+            <p
+              v-for="item in report.marketSnapshot.topAdvertisers.slice(0, 10)"
+              :key="item.name"
+            >
+              {{ item.name }} · {{ item.ads }}条在投广告 ·
+              {{ item.landingSites }}个落地站
+            </p>
+          </div>
+        </div>
+      </section>
+      <section class="hci-panel">
+        <h2>
           {{
-            report.modelAnalysis ? 'AI实际分析' : '已采样'
-          }}文本数；话题可重叠，比例不必合计100%。
+            report.reportType === 'market' ? '跨来源市场结论' : '话题方向与热度'
+          }}
+        </h2>
+        <p class="hci-subtle">
+          {{
+            report.reportType === 'market'
+              ? '每条结论必须引用本次冻结快照中的证据；置信度仍受采集覆盖限制。'
+              : '热度 = 该话题引用文本数 /'
+          }}
+          <template v-if="report.reportType !== 'market'">
+            {{
+              report.modelAnalysis ? 'AI实际分析' : '已采样'
+            }}文本数；话题可重叠，比例不必合计100%。
+          </template>
         </p>
         <Table
           size="small"
@@ -279,7 +365,13 @@ const time = (v: string) =>
         />
       </section>
       <section class="hci-panel">
-        <h2>跨境保健品建议 · 待验证动作</h2>
+        <h2>
+          {{
+            report.reportType === 'market'
+              ? '选品与渠道验证动作'
+              : '跨境保健品建议 · 待验证动作'
+          }}
+        </h2>
         <Table
           size="small"
           row-key="key"
@@ -400,7 +492,11 @@ const time = (v: string) =>
       <details class="hci-panel">
         <summary>样本口径、生成信息与导出</summary><div class="report-strip"><Button :loading="downloading" @click="download">下载 Word 文档</Button><Button @click="exportRaw">导出原始数据</Button></div>
         <p>
-          抽样讨论反映个人体验；研究市场不代表评论者实际所在地。建议用于业务验证，个体反馈不作为疗效或医学结论。
+          {{
+            report.reportType === 'market'
+              ? '报告覆盖系统在选定时间窗内实际采集的数据，不代表国家市场全量。平台展示销量不是本周期新增销量，广告在投不代表投放效果。'
+              : '抽样讨论反映个人体验；研究市场不代表评论者实际所在地。建议用于业务验证，个体反馈不作为疗效或医学结论。'
+          }}
         </p>
         <p>
           {{ report.statistics?.method }}；{{ report.statistics?.confidence }}
@@ -444,5 +540,44 @@ const time = (v: string) =>
 .consumer-report h2 {
   margin-bottom: 12px;
   font-size: 17px;
+}
+
+.market-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(100px, 1fr));
+  gap: 10px;
+  margin: 16px 0 24px;
+}
+
+.market-metrics div {
+  padding: 14px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+}
+
+.market-metrics b,
+.market-metrics span {
+  display: block;
+}
+
+.market-metrics b {
+  font-size: 24px;
+}
+
+.market-two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  margin-top: 22px;
+}
+
+@media (max-width: 900px) {
+  .market-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .market-two-columns {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

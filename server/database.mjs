@@ -61,6 +61,7 @@ export const pool = rawMysql
 const advisoryLocks = new Map([
   ['competitor-runner', 89_761_033],
   ['daily-discovery', 89_761_034],
+  ['market-research', 89_761_035],
   ['keyword-submit', 89_761_032],
   ['enrichment-submit', 89_761_018],
   ['public-content-runner', 89_761_031],

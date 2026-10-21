@@ -90,6 +90,7 @@ test('all current model tasks have editable defaults and mandatory output contra
     'ad_report',
     'consumer_report',
     'keyword_translation',
+    'market_analysis',
     'public_content',
   ]);
   const a = aiPromptSnapshot('consumer_report'),

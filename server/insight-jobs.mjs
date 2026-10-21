@@ -284,6 +284,13 @@ export async function insightSnapshot(input = {}) {
     .map((r) => ({ ...r.value, revision: r.revision }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   if (input.kind === 'consumer') reports = reports.filter((r) => r.kind !== 'ad_analysis' && r.reportType !== 'ad');
+  if (input.reportType && input.reportType !== 'ALL')
+    reports = reports.filter(
+      (r) =>
+        (r.reportType ||
+          (r.kind === 'market_analysis' ? 'market' : 'consumer')) ===
+        input.reportType,
+    );
   if (input.keywordId) reports = reports.filter((r) => r.keywordIds?.includes(input.keywordId));
   if (input.latestByKeyword) {
     if (!Array.isArray(input.keywordIds) || input.keywordIds.length > 2000) throw new Error('关键词筛选范围过大');

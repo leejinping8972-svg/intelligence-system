@@ -17,6 +17,8 @@ import { productProgress } from './product-queue.mjs';
 import { runPlatformProducts } from './platform-products-jobs.mjs';
 import { completionProgress } from './platform-product-completion.mjs';
 import { tickDailyDiscovery } from './daily-discovery.mjs';
+import { tickMarketResearch } from './market-research.mjs';
+import { runMarketReport } from './market-report-jobs.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   if (
@@ -24,6 +26,7 @@ export function jobTasks(job) {
       'consumer_research',
       'ad_analysis',
       'evidence_analysis',
+      'market_analysis',
       'products',
       'platform_products',
     ].includes(job.input.kind)
@@ -32,6 +35,7 @@ export function jobTasks(job) {
       consumer_research: '消费者需求采集',
       ad_analysis: '广告拆解与分析',
       evidence_analysis: '需求语义分析',
+      market_analysis: '国家市场商品与消费者分析',
       products: '站点商品采集',
       platform_products:
         job.input.discoveryDay ? '每日关键词商品发现' : job.input.mode === 'enrich'
@@ -51,7 +55,9 @@ export function jobTasks(job) {
       created:
         job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
       steps: [
-        job.input.kind === 'platform_products' && job.input.completeAll
+        job.input.kind === 'market_analysis'
+          ? `正在冻结${job.input.period === 'week' ? '周' : job.input.period === 'quarter' ? '季度' : '月度'}市场数据并生成报告`
+          : job.input.kind === 'platform_products' && job.input.completeAll
           ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；发现与补全共用数据请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`
           : `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
         ...(job.checkpoint.logs || []),
@@ -459,9 +465,14 @@ async function runLane(signal, trends = false) {
         // oxlint-disable-next-line unicorn/no-process-exit
         lostConnection = () => process.exit(1);
         connection.on('error', lostConnection);
-        if (!trends) await tickDailyDiscovery().catch((error) => {
-          console.error('Daily discovery unavailable:', error.code || error.name);
-        });
+        if (!trends) {
+          await tickDailyDiscovery().catch((error) => {
+            console.error('Daily discovery unavailable:', error.code || error.name);
+          });
+          await tickMarketResearch().catch((error) => {
+            console.error('Market research orchestration unavailable:', error.code || error.name);
+          });
+        }
         const { rows } = await pool.query(
           sql(
             `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND COALESCE(checkpoint->>'trendQueueVersion','0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(checkpoint->>'nextRunAt','0') AS BIGINT) <= $1 ORDER BY updated_at LIMIT 20`,
@@ -482,6 +493,8 @@ async function runLane(signal, trends = false) {
             )
           )
             await runInsightJob(next);
+          else if (next.input.kind === 'market_analysis')
+            await runMarketReport(next);
           else if (next.input.kind === 'products') await runProductsJob(next);
           else if (next.input.kind === 'platform_products')
             await runPlatformProducts(next);

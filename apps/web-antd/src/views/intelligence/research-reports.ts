@@ -31,7 +31,43 @@ export interface ResearchReport {
   market: Market;
   createdAt: string;
   status: string;
-  reportType?: 'ad' | 'consumer';
+  reportType?: 'ad' | 'consumer' | 'market';
+  period?: 'month' | 'quarter' | 'week';
+  endDate?: string;
+  marketSnapshot?: {
+    startAt: string;
+    endAt: string;
+    frozenAt: string;
+    coverage: {
+      products: number;
+      tiktokShopProducts: number;
+      independentSiteProducts: number;
+      activeMetaAds: number;
+      independentSites: number;
+      tiktokContent: number;
+      consumerComments: number;
+    };
+    topProducts: Array<{
+      id: string;
+      title: string;
+      brand: string;
+      source: string;
+      reportedSales: number;
+      reviewCount: number;
+      rating: number;
+    }>;
+    topIngredients: Array<{ name: string; count: number }>;
+    topAdvertisers: Array<{ name: string; ads: number; landingSites: number }>;
+    topContent: Array<{
+      id: string;
+      title: string;
+      source: string;
+      likes: number;
+      comments: number;
+      url: string;
+    }>;
+    limitations: string[];
+  };
   documentVersion?: number;
   finishedAt?: string;
   researchFocus?: string;
@@ -114,6 +150,6 @@ export interface ReportPrompt {
   version: string;
   schemaVersion: number;
   systemContract?: string;
-  updatedAt?: string | null;
+  updatedAt?: null | string;
   updatedBy?: string;
 }
