@@ -1,5 +1,6 @@
 import process from 'node:process';
 
+import { ssoSchema } from './admin-sso-store.mjs';
 import { engine, pool, sql } from './database.mjs';
 import { cleanKeyword, naturalKey } from './domain.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
@@ -32,6 +33,7 @@ export async function migrate() {
   for (const statement of authSchema) await pool.query(statement);
 }
 export const authSchema = [
+  ssoSchema,
   `CREATE TABLE IF NOT EXISTS admin_users (id varchar(36) PRIMARY KEY, username varchar(64) UNIQUE NOT NULL, display_name varchar(100) NOT NULL, password_hash varchar(256) NOT NULL, role varchar(20) NOT NULL, enabled integer NOT NULL DEFAULT 1, created_at bigint NOT NULL, last_login_at bigint, password_changed_at bigint NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS admin_sessions (token_hash varchar(64) PRIMARY KEY, user_id varchar(36) NOT NULL, created_at bigint NOT NULL, expires_at bigint NOT NULL, last_seen_at bigint NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS admin_login_attempts (attempt_key varchar(128) PRIMARY KEY, failures integer NOT NULL, locked_until bigint NOT NULL, updated_at bigint NOT NULL)`,

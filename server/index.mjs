@@ -3,9 +3,12 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import process from 'node:process';
 
+import { adminSsoConfig } from './admin-sso-config.mjs';
+import { createSsoStore } from './admin-sso-store.mjs';
+import { createAdminSso } from './admin-sso.mjs';
 import { serveAdMedia } from './ad-media.mjs';
 import { adsConfig } from './ads-provider.mjs';
-import { authAction, requireAdmin, sessionUser } from './auth.mjs';
+import { adminSsoSignIn, authAction, requireAdmin, sessionUser } from './auth.mjs';
 import {
   competitorAction,
   runCompetitorQueue,
@@ -64,6 +67,12 @@ const secret = Buffer.from(process.env.SERVER_BRIDGE_KEY || '');
 if (secret.length < 32) throw new Error('SERVER_BRIDGE_KEY must be configured');
 await migrate();
 await registerRelease();
+const sso = createAdminSso({
+  config: adminSsoConfig(),
+  store: createSsoStore(pool),
+  sessionUser,
+  signIn: adminSsoSignIn,
+});
 const controller = new AbortController();
 void runQueue(controller.signal);
 void runContentQueue(controller.signal);
@@ -459,6 +468,19 @@ const server = createServer(async (request, response) => {
     response.writeHead(400).end('{"error":"请求地址无效"}');
     return;
   }
+  if (requestUrl.pathname.startsWith('/api/sso/')) {
+    if (maintenance) {
+      response.writeHead(503).end('{"error":"正在切换数据库，请稍后刷新"}');
+      return;
+    }
+    activeRequests++;
+    try {
+      await sso.handle(request, response, requestUrl);
+    } finally {
+      activeRequests--;
+    }
+    return;
+  }
   if (
     ['GET', 'HEAD'].includes(request.method) &&
     requestUrl.pathname === '/api/media'
@@ -548,9 +570,9 @@ const server = createServer(async (request, response) => {
           ].includes(input.action),
         );
     if (input.action?.startsWith('auth_')) {
-      response.end(
-        JSON.stringify(await authAction(input, request, response, user)),
-      );
+      const result = await authAction(input, request, response, user);
+      if (input.action === 'auth_status') result.ssoEnabled = sso.enabled;
+      response.end(JSON.stringify(result));
       return;
     }
     if (!internal && !user) {

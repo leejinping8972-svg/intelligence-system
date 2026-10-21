@@ -99,6 +99,12 @@ async function audit(actor, action, target = '') {
     [randomUUID(), actor?.id || null, action, target, Date.now()],
   );
 }
+export async function adminSsoSignIn(user, response, peerId) {
+  requireAdmin(user);
+  if (!user.enabled) throw new Error('管理员已停用');
+  await audit(user, `单点登录 ${peerId}`, user.id);
+  return signIn(user, response);
+}
 export async function setupRequired() {
   const { rows } = await pool.query(
     'SELECT count(*)::integer AS total FROM admin_users',

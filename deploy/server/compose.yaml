@@ -11,6 +11,13 @@ services:
       SERVER_BRIDGE_KEY: ${SERVER_BRIDGE_KEY:?Set SERVER_BRIDGE_KEY in the server .env}
       PROVIDER_CONFIG_ENCRYPTION_KEY: ${PROVIDER_CONFIG_ENCRYPTION_KEY:?Set PROVIDER_CONFIG_ENCRYPTION_KEY in the server .env}
       DATABASE_CONFIG_FILE: /data/database.enc.json
+      ADMIN_SSO_ENABLED: ${ADMIN_SSO_ENABLED:-false}
+      ADMIN_SSO_PUBLIC_ORIGIN: ${ADMIN_SSO_PUBLIC_ORIGIN:-https://is.luckdate.com}
+      ADMIN_SSO_PEER_ORIGIN: ${ADMIN_SSO_PEER_ORIGIN:-https://ai.chatviva.com}
+      ADMIN_SSO_CLIENT_ID: ${ADMIN_SSO_CLIENT_ID:-intelligence-system}
+      ADMIN_SSO_PEER_ID: ${ADMIN_SSO_PEER_ID:-chatviva-admin}
+      ADMIN_SSO_SHARED_SECRET: ${ADMIN_SSO_SHARED_SECRET:-}
+      ADMIN_SSO_ACCOUNT_MAP: ${ADMIN_SSO_ACCOUNT_MAP:-}
     volumes:
       - ./private-config:/data
     depends_on:
