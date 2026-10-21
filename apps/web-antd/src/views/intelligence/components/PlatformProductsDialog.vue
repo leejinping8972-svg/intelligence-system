@@ -33,13 +33,14 @@ const disabledMessage = computed(() =>
 const form = reactive({
   terms: '',
   market: 'US',
-  providers: ['sorftime', 'semrush'],
+  providers: ['sorftime', 'semrush', 'tiktok_shop'],
   maxProducts: 100,
   perKeyword: 20,
-  maxRequests: 0,
-  completeAll: true,
+  maxRequests: 150,
+  completeAll: false,
+  maxDetailProducts: 20,
   maxDomains: 3,
-  semrushUnitLimit: 0,
+  semrushUnitLimit: 2000,
   enrich: true,
   trend: true,
 });
@@ -57,14 +58,16 @@ const expected = computed(
     ((form.providers.includes('sorftime')
       ? Math.ceil(form.perKeyword / 20)
       : 0) +
-      (form.providers.includes('semrush') ? 1 + form.maxDomains : 0)),
+      (form.providers.includes('semrush') ? 1 + form.maxDomains : 0) +
+      (form.providers.includes('tiktok_shop') ? 1 : 0)),
 );
 let requestId = '',
   signature = '';
 function show() {
   form.terms = (props.terms || []).join('\n');
   form.market = props.market || (state.market === 'ALL' ? 'US' : state.market);
-  if (form.market === 'VN') form.providers = ['semrush'];
+  if (form.market === 'VN')
+    form.providers = form.providers.filter((provider) => provider !== 'sorftime');
   open.value = true;
   errorMessage.value = '';
   requestId = '';
@@ -147,7 +150,7 @@ async function submit() {
     <Alert
       type="info"
       show-icon
-      message="商品直接取自平台，不先抓整站。Sorftime 搜 Amazon 商品；Semrush 查相关商家的 Google Shopping 商品，两者分别保留来源。"
+      message="商品直接取自平台，不先抓整站。Sorftime 搜 Amazon，Semrush 查 Google Shopping，ScrapeCreators 搜 TikTok Shop；每条数据分别保留来源与采集时间。"
     />
     <Form layout="vertical" :disabled="busy" style="margin-top: 16px">
       <Form.Item label="关键词（每行一个，最多100个）"
@@ -171,6 +174,7 @@ async function submit() {
               disabled: form.market === 'VN',
             },
             { label: 'Semrush · Google Shopping', value: 'semrush' },
+            { label: 'ScrapeCreators · TikTok Shop', value: 'tiktok_shop' },
           ]"
       /></Form.Item>
       <div class="platform-form-grid">
@@ -180,9 +184,16 @@ async function submit() {
         <Form.Item label="整批商品总数上限"
           ><InputNumber v-model:value="form.maxProducts" :min="1" :max="1000"
         /></Form.Item>
-        <Form.Item label="发现阶段请求上限（0为不限制）"
-          ><InputNumber v-model:value="form.maxRequests" :min="0" :max="100000"
+        <Form.Item label="发现与补全共用请求上限"
+          ><InputNumber v-model:value="form.maxRequests" :min="1" :max="100000"
         /></Form.Item>
+        <Form.Item label="商品详情补全数量上限"
+          ><InputNumber
+            v-model:value="form.maxDetailProducts"
+            :min="0"
+            :max="1000"
+          />
+        </Form.Item>
         <Form.Item label="Semrush 每词商家数上限"
           ><InputNumber
             v-model:value="form.maxDomains"
@@ -190,7 +201,7 @@ async function submit() {
             :max="5"
             :disabled="!form.providers.includes('semrush')"
         /></Form.Item>
-        <Form.Item label="Semrush API units 上限（0为不限制）"
+        <Form.Item label="Semrush API units 上限（0为关闭）"
           ><InputNumber
             v-model:value="form.semrushUnitLimit"
             :min="0"
@@ -198,7 +209,10 @@ async function submit() {
             :disabled="!form.providers.includes('semrush')"
         /></Form.Item>
       </div>
-      <Form.Item label="对全部已发现商品补全（不再抽前几件）"
+      <Form.Item label="补全范围"
+        ><Checkbox v-model:checked="form.completeAll"
+          >补全全部已发现商品（会显著增加请求）</Checkbox
+        >
         ><Checkbox v-model:checked="form.enrich">商品详情与图片/属性</Checkbox
         ><Checkbox v-model:checked="form.trend"
           >ASIN月销量、大类排名与评论数历史</Checkbox
@@ -208,11 +222,10 @@ async function submit() {
     <p class="hci-subtle">
       {{ parsedTerms.length }} 个词；基础发现参考约
       {{ expected }}
-      次数据请求；过滤不相关商品可能追加翻页。默认开放数据请求，已发现商品全部排队补全；如手动设置发现预算，只停止继续找新商品，不截断已发现商品补全。相同查询优先复用缓存。
+      次数据请求；过滤不相关商品可能追加翻页。发现与补全共用 {{ form.maxRequests }} 次预算；默认最多补全 {{ form.maxDetailProducts }} 件，勾选“补全全部”后仍受共用预算约束。相同查询优先复用缓存。
     </p>
     <p class="hci-subtle">
-      Sorftime 消耗现有平台额度，Semrush 按报告行消耗 API units；次数和 units
-      不是同一单位。消耗现有平台额度，不购买额度。缺历史、配方或剂量时记录平台返回情况；可以在商品库再次补全。
+      Sorftime 与 TikTok Shop 消耗现有平台额度，Semrush 按报告行消耗 API units；次数、credits 和 units 不是同一单位。TikTok 销量只保存为采集时点累计快照。不会购买额度；缺历史、配方或剂量时记录平台返回情况，可在商品库再次补全。
     </p>
     <Alert v-if="errorMessage" :message="errorMessage" type="error" show-icon />
   </Modal>

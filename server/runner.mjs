@@ -52,7 +52,7 @@ export function jobTasks(job) {
         job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
       steps: [
         job.input.kind === 'platform_products' && job.input.completeAll
-          ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；数据请求 ${job.checkpoint.requests || 0} 次；已发现商品逐件补全，不被发现预算截断`
+          ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；发现与补全共用数据请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`
           : `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
         ...(job.checkpoint.logs || []),
       ],
@@ -72,6 +72,7 @@ export function jobTasks(job) {
         requestLimit: job.input.maxRequests,
         credits: job.checkpoint.creditsCharged,
         unknownCharges: job.checkpoint.unknownCharges || 0,
+        stopReason: job.checkpoint.stopReason || '',
         reportId: ['products', 'platform_products'].includes(job.input.kind)
           ? ''
           : job.id,
@@ -80,7 +81,7 @@ export function jobTasks(job) {
               completion: job.input.completeAll
                 ? completionProgress(job.checkpoint)
                 : undefined,
-              unlimitedRequests: job.input.completeAll,
+              unlimitedRequests: false,
               semrushUnits: job.checkpoint.semrushUnits || 0,
               semrushReserved: job.checkpoint.semrushReserved || 0,
               semrushUnitLimit: job.input.semrushUnitLimit,

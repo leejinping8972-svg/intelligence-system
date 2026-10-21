@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { pool, lock, unlock } from './database.mjs';
 import { inferCategory } from './collector.js';
 import { collectionBudget, fetchConfiguration } from './site-fetch-config.mjs';
+import { collectionPolicyMessage, resolveCollectionPolicy } from './collection-policy.mjs';
+import { withFormulaIntelligence } from './formula-intelligence.mjs';
 export function siteHostAllowed(host, domain) {
   const root = String(domain)
     .toLowerCase()
@@ -79,7 +81,7 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     .update(url.toString())
     .digest('hex')
     .slice(0, 24);
-  return {
+  return withFormulaIntelligence({
     id: `${site.market}-product-${hash}`,
     title: p.title,
     brand: p.brand || site.brand,
@@ -108,7 +110,7 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     lastCollectedAt: at,
     evidenceUrl: url.toString(),
     dataNature: 'collected',
-  };
+  });
 }
 export async function submitProducts(input, user) {
   const fallbackBudget = collectionBudget(input, user);
@@ -125,12 +127,9 @@ export async function submitProducts(input, user) {
     input.siteIds.some((id) => typeof id !== 'string' || id.length > 160)
   )
     throw new Error('请选择1～100家站点');
-  const maxProducts = Number(input.maxProducts ?? 100),
-    maxRequests = Number(input.maxRequests ?? 100);
-  const perSite = Number(
-    input.maxRequestsPerSite ??
-      Math.ceil(maxRequests / new Set(input.siteIds).size),
-  );
+  const siteCount = new Set(input.siteIds).size;
+  const policy = resolveCollectionPolicy(input, siteCount);
+  const { maxProducts, maxDetailProducts, maxRequests, maxRequestsPerSite: perSite, maxBrowserPages } = policy;
   if (
     !Number.isInteger(maxProducts) ||
     maxProducts < 1 ||
@@ -141,10 +140,13 @@ export async function submitProducts(input, user) {
     maxRequests < new Set(input.siteIds).size ||
     !Number.isInteger(perSite) ||
     perSite < 1 ||
-    perSite > maxRequests
+    perSite > maxRequests ||
+    !Number.isInteger(maxDetailProducts) ||
+    maxDetailProducts < 0 ||
+    maxDetailProducts > maxProducts
   )
     throw new Error(
-      '单站商品上限1～1000，任务网页请求上限须覆盖全部站点且不超过2000；单站请求上限不得超过整批上限',
+      '单站商品上限1～1000；详情目标须在0～商品上限内；任务网页请求上限须覆盖全部站点且不超过2000；单站请求上限不得超过整批上限',
     );
   const c = await pool.connect();
   let locked = false;
@@ -187,9 +189,14 @@ export async function submitProducts(input, user) {
           records,
           markets: [...new Set(records.map((s) => s.market))],
           maxProducts,
+          maxDetailProducts,
           maxRequests,
           maxRequestsPerSite: perSite,
           ...fallbackBudget,
+          maxBrowserPages,
+          profile: policy.profile,
+          collectionPolicyVersion: 4,
+          policyWarnings: collectionPolicyMessage(policy, siteCount),
         },
         { submittedAt: new Date().toISOString() },
       ],

@@ -260,11 +260,11 @@ test('subdomain storefronts use the verified shop origin and stay inside officia
     'https://goldsgym.com',
   );
 });
-test('tracking and collection parameters do not create infinite duplicate crawl paths', () => {
+test('tracking parameters are removed while query-based product identity is retained', () => {
   const base = 'https://s.example';
   assert.equal(
     canonicalCatalogUrl('/products/a?utm_source=x&variant=2#foo', base),
-    'https://s.example/products/a',
+    'https://s.example/products/a?variant=2',
   );
   assert.equal(
     canonicalCatalogUrl('/collections/all?sort_by=best-selling&page=2', base),
@@ -273,6 +273,37 @@ test('tracking and collection parameters do not create infinite duplicate crawl 
   assert.equal(
     canonicalCatalogUrl('https://evil.example/products/a', base),
     null,
+  );
+});
+test('reaching the catalog product cap still completes queued detail evidence', async () => {
+  const h = harness(1, 3);
+  h.job.input.maxProducts = 1;
+  h.job.input.maxDetailProducts = 1;
+  h.job.input.collectionPolicyVersion = 4;
+  const original = h.io.fetchPage;
+  h.io.fetchPage = async (url) => {
+    if (url.includes('/products/creatine')) {
+      h.calls.push(url);
+      return {
+        url,
+        html: '<script type="application/ld+json">{"@type":"Product","name":"Creatine Gummies","url":"https://s0.example/products/creatine","image":"https://s0.example/new.jpg","additionalProperty":[{"name":"Ingredients","value":"Creatine monohydrate 5 g"},{"name":"Serving Size","value":"2 gummies"}]}</script>',
+      };
+    }
+    return original(url);
+  };
+  await runProductsJob(h.job, h.io);
+  assert.equal(h.saved.checkpoint.siteWork[0].productIds.length, 1);
+  assert.equal(h.saved.checkpoint.siteWork[0].detailTargets.length, 1);
+  assert.notEqual(h.saved.status, 'completed');
+  h.advance();
+  await runProductsJob(h.saved, h.io);
+  const progress = productProgress(h.saved.checkpoint, h.job.input);
+  assert.equal(progress.detailTarget, 1);
+  assert.equal(progress.detailCompleted, 1);
+  assert.equal(h.saved.status, 'completed');
+  assert.equal(
+    h.calls.filter((url) => url.includes('/products/creatine')).length,
+    1,
   );
 });
 test('single-site request ceiling is enforced before moving on and total cap is never exceeded', async () => {

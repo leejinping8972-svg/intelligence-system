@@ -108,6 +108,7 @@ test('uses Brave-compatible targeting for Vietnam', () => {
   assert.equal(url.searchParams.get('search_lang'), 'vi');
   assert.match(url.searchParams.get('q'), /Việt Nam/);
   assert.equal(request.locationCountry, 'VN');
+  assert.equal(new URL(braveSearchRequest('Sức khỏe phụ nữ', 'VN', 20, 40).url).searchParams.get('offset'), '40');
 });
 
 const productPage = `<!doctype html><html><head>

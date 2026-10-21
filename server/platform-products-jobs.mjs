@@ -7,6 +7,7 @@ import { observeDiscovery } from './discovery-newness.mjs';
 import { readKeyword } from './enrichment-jobs.mjs';
 import { collectorEnv } from './local-provider.mjs';
 import { readSorftimeToken } from './collector.js';
+import { withFormulaIntelligence } from './formula-intelligence.mjs';
 import {
   completionKey,
   productCompletionWork,
@@ -35,9 +36,9 @@ export function validatePlatformProducts(input) {
   if (
     !Array.isArray(input.providers) ||
     input.providers.length === 0 ||
-    input.providers.some((p) => !['sorftime', 'semrush'].includes(p))
+    input.providers.some((p) => !['sorftime', 'semrush', 'tiktok_shop'].includes(p))
   )
-    throw new Error('请选择 Sorftime 或 Semrush 来源');
+    throw new Error('请选择 Sorftime、Semrush 或 TikTok Shop 来源');
   const value = {
     kind: 'platform_products',
     seeds,
@@ -49,18 +50,17 @@ export function validatePlatformProducts(input) {
     trend: input.trend !== false,
     maxProducts: input.maxProducts ?? 100,
     perKeyword: input.perKeyword ?? 20,
-    maxRequests: input.maxRequests ?? (input.completeAll === false ? 25 : 0),
-    maxDetailProducts:
-      input.maxDetailProducts ?? (input.completeAll === false ? 5 : 0),
+    maxRequests: input.maxRequests ?? 150,
+    maxDetailProducts: input.maxDetailProducts ?? 20,
     maxDomains: input.maxDomains ?? 3,
     semrushUnitLimit:
-      input.semrushUnitLimit ?? (input.completeAll === false ? 2000 : 0),
+      input.semrushUnitLimit ?? (input.providers.includes('semrush') ? 2000 : 0),
   };
   for (const [key, min, max] of [
     ['maxProducts', 1, 1000],
     ['perKeyword', 1, 100],
-    ['maxRequests', value.completeAll ? 0 : 1, 100_000],
-    ['maxDetailProducts', 0, 100],
+    ['maxRequests', 1, 100_000],
+    ['maxDetailProducts', 0, 1000],
     ['maxDomains', 1, 5],
     ['semrushUnitLimit', 0, 100_000],
   ])
@@ -124,6 +124,15 @@ export async function submitPlatformProducts(input, context = {}) {
       ).rows.length === 0
     )
       throw new Error('请先配置 Semrush MCP');
+    if (
+      value.providers.includes('tiktok_shop') &&
+      (
+        await c.query('SELECT name FROM provider_configs WHERE name=$1', [
+          'provider:scrapecreators:v1',
+        ])
+      ).rows.length === 0
+    )
+      throw new Error('请先在数据源与设置中配置 ScrapeCreators API Key');
     const all = (
       await c.query(
         'SELECT natural_key,data FROM research_keywords ORDER BY updated_at DESC LIMIT 10000',
@@ -167,7 +176,7 @@ export async function upsertProduct(patch) {
       await c.query('COMMIT');
       return undefined;
     }
-    const value = observeDiscovery(old, mergePlatformProduct(old, patch), 'product');
+    const value = withFormulaIntelligence(observeDiscovery(old, mergePlatformProduct(old, patch), 'product'));
     await putDocument('workspace_documents', name, value, false, c);
     await c.query('COMMIT');
     return value;
@@ -285,6 +294,9 @@ export async function submitPlatformProductEnrichment(input) {
       !(await readSorftimeToken(await collectorEnv()))
     )
       throw new Error('请先配置 Sorftime MCP Token');
+    const maxRequests = Number(input.maxRequests ?? Math.max(1, products.length * 5));
+    if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100_000)
+      throw new Error('商品补全请求上限须为1～100000');
     const id = randomUUID(),
       at = new Date().toISOString();
     const value = {
@@ -299,7 +311,7 @@ export async function submitPlatformProductEnrichment(input) {
       providers: ['sorftime'],
       maxProducts: ids.length,
       perKeyword: 1,
-      maxRequests: 0,
+      maxRequests,
       maxDomains: 1,
       semrushUnitLimit: 0,
       initialWork: [],
@@ -415,7 +427,7 @@ export async function runPlatformProducts(job, overrides = {}) {
         v.providers.map((provider) => ({
           provider,
           term,
-          op: provider === 'sorftime' ? 'search' : 'domains',
+          op: provider === 'semrush' ? 'domains' : 'search',
           page: 1,
         })),
       ),
@@ -462,12 +474,12 @@ export async function runPlatformProducts(job, overrides = {}) {
   };
   if (await io.isCancelled()) return finish('cancelled');
   if (
-    !v.completeAll &&
     !cp.inFlight &&
     cp.requests >= v.maxRequests &&
     cp.index < cp.work.length
   ) {
     cp.failures++;
+    cp.stopReason = 'request_limit';
     cp.logs.push('已达到整批调用上限，剩余步骤未执行；已保存商品保留');
     return finish('partial');
   }
@@ -502,9 +514,7 @@ export async function runPlatformProducts(job, overrides = {}) {
     const units =
       w.provider === 'semrush' ? limit * (w.op === 'domains' ? 20 : 30) : 0;
     const isDiscovery = ['search', 'shopping', 'domains'].includes(w.op);
-    const exhausted =
-      v.maxRequests > 0 &&
-      (v.completeAll ? cp.discoveryRequests : cp.requests) >= v.maxRequests;
+    const exhausted = cp.requests >= v.maxRequests;
     if (cp.blockedProviders?.[w.provider]) {
       cp.failures++;
       await setCompletion(
@@ -517,7 +527,7 @@ export async function runPlatformProducts(job, overrides = {}) {
       );
     } else if (
       !cp.inFlight &&
-      ((exhausted && (!v.completeAll || isDiscovery)) ||
+      (exhausted ||
         (v.semrushUnitLimit > 0 &&
           cp.semrushReserved + units > v.semrushUnitLimit))
     ) {
@@ -558,6 +568,8 @@ export async function runPlatformProducts(job, overrides = {}) {
           product,
         };
         const result = await io.collect(job, `platform:${cp.index}`, request);
+        if (w.provider === 'tiktok_shop' && Number.isFinite(result.providerCalls))
+          cp.creditsCharged = (cp.creditsCharged || 0) + result.providerCalls;
         if (Number.isFinite(result.apiUnits) && result.apiUnits >= 0)
           cp.semrushUnits += result.apiUnits;
         if (w.provider === 'semrush' && !Number.isFinite(result.apiUnits))
@@ -598,7 +610,7 @@ export async function runPlatformProducts(job, overrides = {}) {
               await io.linkKeyword(keyword, [p.id]);
             if (!existing) cp.productIds.push(p.id);
             if (!ids.includes(p.id)) ids.push(p.id);
-            if (v.completeAll) {
+            if (v.completeAll && w.provider === 'sorftime') {
               if (!cp.detailIds.includes(p.id)) {
                 cp.detailIds.push(p.id);
                 const planned = productCompletionWork(p, v, w.term);
@@ -664,10 +676,10 @@ export async function runPlatformProducts(job, overrides = {}) {
               `${w.term}：平台返回重复搜索页，停止翻页；已发现商品补全继续`,
             );
           if (
-            w.provider === 'sorftime' &&
+            ['sorftime', 'tiktok_shop'].includes(w.provider) &&
             !repeatedPage &&
             result.hasMore &&
-            (v.completeAll || w.page < 5) &&
+            w.page < 5 &&
             (cp.termProductIds[termKey] || []).length < v.perKeyword
           )
             addWork({ ...w, page: w.page + 1 });

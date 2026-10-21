@@ -109,10 +109,10 @@ const input = (patch) =>
     ...patch,
   });
 
-test('defaults cover every discovered product, no request/detail cap truncates completion', async () => {
-  const v = input({ maxRequests: 1, maxDetailProducts: 1 });
+test('default unified budget covers normal completion and an explicit low cap stops all remaining steps', async () => {
+  const v = input({});
   assert.equal(v.completeAll, true);
-  assert.equal(input({}).maxRequests, 0);
+  assert.equal(v.maxRequests, 150);
   const h = harness(v);
   await h.run();
   assert.equal(h.job.status, 'completed');
@@ -126,6 +126,11 @@ test('defaults cover every discovered product, no request/detail cap truncates c
     );
   }
   assert.equal(completionProgress(h.job.checkpoint).withHistory, 20);
+  const bounded = harness(input({ maxRequests: 1, maxDetailProducts: 1 }));
+  await bounded.run();
+  assert.equal(bounded.job.status, 'partial');
+  assert.equal(bounded.calls.length, 1);
+  assert.equal(bounded.docs.size, 20);
 });
 
 test('empty ASIN sales still fetches rank and review history without changing the metric scope', async () => {

@@ -60,7 +60,7 @@ export function canonicalCatalogUrl(value, base) {
     u.hash = '';
     for (const key of [...u.searchParams.keys()])
       if (
-        !['page', 'paged', 'limit'].includes(key) &&
+        !['page','paged','limit','id','pid','product_id','productid','sku','variant','handle'].includes(key.toLowerCase()) &&
         !(/sitemap.*\.xml/i.test(u.pathname) && ['from', 'to'].includes(key))
       )
         u.searchParams.delete(key);
@@ -120,6 +120,8 @@ export function initialProductWork(site) {
     status: 'pending',
     requests: 0,
     productIds: [],
+    detailTargets: [], detailCompleted: [], detailProductIds: [],
+    ingredientProductIds: [], doseProductIds: [], imageProductIds: [],
     visited: [],
     attempts: {},
     failures: 0,
@@ -253,6 +255,12 @@ export function productProgress(cp, input) {
     browserPageLimit: input.maxBrowserPages || 0,
     paidRequests: cp.paidRequests || 0,
     paidRequestLimit: input.maxPaidRequests || 0,
+    profile: input.profile || 'legacy',
+    policyWarnings: input.policyWarnings || [],
+    detailTarget: works.reduce((sum, work) => sum + (work.detailTargets?.length || 0), 0),
+    detailCompleted: works.reduce((sum, work) => sum + (work.detailCompleted?.length || 0), 0),
+    ingredientProducts: works.reduce((sum, work) => sum + (work.ingredientProductIds?.length || 0), 0),
+    doseProducts: works.reduce((sum, work) => sum + (work.doseProductIds?.length || 0), 0),
     waiting: works.filter((w) => w.status === 'retry_wait').length,
     nextRunAt: cp.nextRunAt ? at(cp.nextRunAt) : '',
     rows: input.records.map((s, i) => {
@@ -266,6 +274,11 @@ export function productProgress(cp, input) {
         errorKind: w.errorKind,
         requests: w.requests || 0,
         products: w.productIds?.length || 0,
+        detailTarget: w.detailTargets?.length || 0,
+        detailCompleted: w.detailCompleted?.length || 0,
+        ingredients: w.ingredientProductIds?.length || 0,
+        doses: w.doseProductIds?.length || 0,
+        stopReason: w.stopReason || '',
         nextRunAt: w.nextRunAt ? at(w.nextRunAt) : '',
         message: w.message || '待执行',
       };
@@ -405,12 +418,25 @@ function discoveredUrls(html, url, sitemap) {
       /product|san-pham|sitemap\.xml/i.test(new URL(u).pathname),
   );
 }
+function productDetailUrl(value) {
+  try { const u = new URL(value); return /\/(?:products?|san-pham)\/[^/]+/i.test(u.pathname) && !/\/products\.json$/i.test(u.pathname); } catch { return false; }
+}
+function addDetailTargets(work, urls, base, limit) {
+  work.detailTargets ||= [];
+  for (const value of urls) {
+    if (work.detailTargets.length >= limit) break;
+    const url = canonicalCatalogUrl(value, base);
+    if (url && productDetailUrl(url) && !work.detailTargets.includes(url)) work.detailTargets.push(url);
+  }
+}
+function pendingDetailUrls(work) { const completed = new Set(work.detailCompleted || []); return (work.detailTargets || []).filter((url) => !completed.has(url)); }
 async function persistProducts(list, site, work, cp, io) {
   for (const p of list) {
-    if (work.productIds.length >= io.maxProducts) break;
     if (!p.title || !canonicalCatalogUrl(p.url, siteBase(site))) continue;
     const product = normalizeProduct(p, site),
-      old = await io.readProduct(product.id),
+      alreadyDiscovered = work.productIds.includes(product.id);
+    if (!alreadyDiscovered && work.productIds.length >= io.maxProducts) continue;
+    const old = await io.readProduct(product.id),
       preserved = {};
     for (const [field, available] of [
       ['ingredient', p.ingredients],
@@ -441,6 +467,10 @@ async function persistProducts(list, site, work, cp, io) {
       work.productIds.push(product.id);
       cp.products++;
     }
+    if (p.ingredients && !work.ingredientProductIds.includes(product.id)) work.ingredientProductIds.push(product.id);
+    if (p.servingSize && !work.doseProductIds.includes(product.id)) work.doseProductIds.push(product.id);
+    if (p.image && !work.imageProductIds.includes(product.id)) work.imageProductIds.push(product.id);
+    if (productDetailUrl(product.evidenceUrl) && !work.detailProductIds.includes(product.id)) work.detailProductIds.push(product.id);
   }
 }
 export async function runProductsJob(job, overrides = {}) {
@@ -499,6 +529,7 @@ export async function runProductsJob(job, overrides = {}) {
     ...overrides,
   };
   io.maxProducts = job.input.maxProducts;
+  io.maxDetailProducts = job.input.maxDetailProducts ?? job.input.maxProducts;
   const cp = initializeProducts(job, io.now()),
     v = job.input,
     perSite =
@@ -535,6 +566,10 @@ export async function runProductsJob(job, overrides = {}) {
         status: w.status === 'blocked' ? 'partial' : w.status,
         count: w.productIds.length,
         target: v.maxProducts,
+        detailTarget: w.detailTargets?.length || 0,
+        detailCompleted: w.detailCompleted?.length || 0,
+        ingredientCoverage: w.productIds.length > 0 ? (w.ingredientProductIds?.length || 0) / w.productIds.length : 0,
+        doseCoverage: w.productIds.length > 0 ? (w.doseProductIds?.length || 0) / w.productIds.length : 0,
         requests: w.requests,
         nextRunAt: w.nextRunAt ? at(w.nextRunAt) : '',
         message: w.message,
@@ -598,6 +633,7 @@ export async function runProductsJob(job, overrides = {}) {
             : cp.requests >= v.maxRequests
               ? '整批网页请求上限已用完，保留已有结果'
               : '达到单站请求上限，已给其他站点保留执行机会';
+        w.stopReason = io.now() >= cp.deadlineAt ? 'deadline' : cp.requests >= v.maxRequests ? 'batch_request_limit' : 'site_request_limit';
         await patch(i);
       }
     let index = -1;
@@ -624,6 +660,7 @@ export async function runProductsJob(job, overrides = {}) {
     cp.currentTerm = site.brand;
     w.status = 'running';
     cleanProductQueue(w, site);
+    for (const field of ['detailTargets','detailCompleted','detailProductIds','ingredientProductIds','doseProductIds','imageProductIds']) w[field] ||= [];
     w.urls = w.urls.slice(0, 2000);
     if (!w.urls.length) {
       w.status = w.failures
@@ -632,6 +669,7 @@ export async function runProductsJob(job, overrides = {}) {
           ? 'completed'
           : 'empty';
       w.message = '公开目录遍历结束';
+      w.stopReason = 'directory_exhausted';
       await patch(index);
       return save();
     }
@@ -644,6 +682,7 @@ export async function runProductsJob(job, overrides = {}) {
       w.status = 'partial';
       w.nextRunAt = 0;
       w.message = '备用页面预算已用完，已有商品保留';
+      w.stopReason = method === 'browser' ? 'browser_budget' : 'paid_budget';
       await patch(index);
       return save();
     }
@@ -806,11 +845,14 @@ export async function runProductsJob(job, overrides = {}) {
         if (/\/products?\//.test(new URL(url).pathname) && !list.length)
           w.noProductPages++;
       }
+      addDetailTargets(w, [...list.map((product) => product.url), ...links], base, io.maxDetailProducts);
       const before = w.productIds.length;
       if (method !== 'direct')
         for (const p of list)
           p.extractionMethod = `${p.extractionMethod || '官网商品字段提取'}；采集方式：${method === 'browser' ? '浏览器渲染' : 'Firecrawl托管备用'}`;
       await persistProducts(list, site, w, cp, io);
+      const canonicalCurrent = canonicalCatalogUrl(page.url || url, base);
+      if (canonicalCurrent && w.detailTargets.includes(canonicalCurrent) && !w.detailCompleted.includes(canonicalCurrent)) w.detailCompleted.push(canonicalCurrent);
       entry.products = w.productIds.length - before;
       w.visited.push(url);
       w.urls.shift();
@@ -841,6 +883,7 @@ export async function runProductsJob(job, overrides = {}) {
         w.nextRunAt = 0;
         w.message =
           '连续4个商品页无可验证的商品结构化数据，停止空抓；可能需要动态页面解析';
+        w.stopReason = 'unparseable_product_pages';
       }
       await io.setHostGate(site, { until: w.nextRunAt, reason: 'pacing' });
     }
@@ -853,9 +896,15 @@ export async function runProductsJob(job, overrides = {}) {
     cp.logs = cp.logs.slice(-200);
     if (!done(w) && w.status !== 'retry_wait') {
       if (w.productIds.length >= v.maxProducts) {
-        w.status = 'completed';
-        w.nextRunAt = 0;
-        w.message = '已达到本次商品目标上限，未声称全站无遗漏';
+        const pendingDetails = pendingDetailUrls(w).filter((detailUrl) => !w.visited.includes(detailUrl));
+        if (pendingDetails.length) {
+          w.urls = [...new Set([...pendingDetails, ...w.urls.filter((candidate) => pendingDetails.includes(candidate))])];
+          w.status = 'pending';
+          w.message = `目录目标已达成，继续补齐${pendingDetails.length}个商品详情`;
+        } else {
+          w.status = 'completed'; w.nextRunAt = 0; w.stopReason = 'product_and_detail_targets_reached';
+          w.message = `已达到商品目标，并完成${w.detailCompleted.length}/${w.detailTargets.length}个详情尝试；未声称全站无遗漏`;
+        }
       } else if (!w.urls.length) {
         w.status = w.failures
           ? 'partial'
@@ -863,10 +912,12 @@ export async function runProductsJob(job, overrides = {}) {
             ? 'completed'
             : 'empty';
         w.nextRunAt = 0;
+        w.stopReason = 'directory_exhausted';
         w.message = '公开目录遍历结束，缺失字段保留未知';
       } else if (cp.requests >= v.maxRequests || w.requests >= perSite) {
         w.status = 'partial';
         w.nextRunAt = 0;
+        w.stopReason = cp.requests >= v.maxRequests ? 'batch_request_limit' : 'site_request_limit';
         w.message = '达到网页请求上限，已保存结果保留';
       }
     }
@@ -877,6 +928,7 @@ export async function runProductsJob(job, overrides = {}) {
         if (!done(other)) {
           other.status = 'partial';
           other.nextRunAt = 0;
+          other.stopReason = 'batch_request_limit';
           other.message = '整批网页请求上限已用完，保留已有结果';
           await patch(i);
         }

@@ -1083,7 +1083,7 @@ export function mergeSuggestionItems(sourceResults, limit) {
   return items;
 }
 
-export function braveSearchRequest(keyword, market, count) {
+export function braveSearchRequest(keyword, market, count, offset = 0) {
   const options = MARKET_OPTIONS[market];
   const params = new URLSearchParams({
     q: `${keyword} ${options.intent}`,
@@ -1092,14 +1092,15 @@ export function braveSearchRequest(keyword, market, count) {
     count: String(Math.min(20, count)),
     safesearch: 'moderate',
   });
+  if (offset > 0) params.set('offset', String(offset));
   return {
     locationCountry: market,
     url: `https://api.search.brave.com/res/v1/web/search?${params}`,
   };
 }
 
-async function braveSearch(keyword, market, env, count) {
-  const request = braveSearchRequest(keyword, market, count);
+async function braveSearch(keyword, market, env, count, offset = 0) {
+  const request = braveSearchRequest(keyword, market, count, offset);
   let response;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     response = await fetch(request.url, {
@@ -1138,6 +1139,11 @@ async function braveSearch(keyword, market, env, count) {
   return (data.web?.results || [])
     .map((item) => item.url)
     .filter((url) => isCandidateUrl(url));
+}
+async function mapWithConcurrency(values, limit, mapper) {
+  const results = Array.from({ length: values.length }); let cursor = 0;
+  async function worker() { while (cursor < values.length) { const index = cursor++; results[index] = await mapper(values[index], index); } }
+  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, () => worker())); return results;
 }
 
 export function parseGoogleTrendsPayload(text) {
@@ -1688,12 +1694,14 @@ async function runResearch(input, env) {
     1,
     Math.min(100, Number(input.limit) || 100),
   );
-  const maxSites = Math.max(1, Math.min(10, Number(input.maxSites) || 6));
+  const maxSites = Math.max(1, Math.min(30, Number(input.maxSites) || 6));
   const productsPerSite = Math.max(
     1,
     Math.min(20, Number(input.productsPerSite) || 10),
   );
-  const candidateLimit = Math.min(20, Math.max(10, maxSites * 2));
+  const searchPages = Math.max(1, Math.min(3, Number(input.siteSearchPages) || 1));
+  const candidateConcurrency = Math.max(1, Math.min(4, Number(input.candidateConcurrency) || 4));
+  const candidateLimit = Math.min(60, Math.max(10, maxSites * 2));
   if (keywords.length === 0 || keywords.length > 3)
     throw new Error('每次请输入1至3个关键词');
   if (markets.length === 0 || markets.some((market) => !MARKET_OPTIONS[market]))
@@ -1751,7 +1759,8 @@ async function runResearch(input, env) {
         );
       }
       if (sources.includes('site_discovery')) {
-        const urls = await braveSearch(keyword, market, env, 20);
+        const urls = [];
+        for (let searchPage = 0; searchPage < searchPages; searchPage += 1) urls.push(...(await braveSearch(keyword, market, env, 20, searchPage * 20)));
         const unique = [];
         const domains = new Set();
         for (const url of urls) {
@@ -1761,11 +1770,7 @@ async function runResearch(input, env) {
           unique.push(url);
           if (unique.length >= candidateLimit) break;
         }
-        const candidates = await Promise.all(
-          unique.map((url) =>
-            validateCandidate(url, keyword, market, productsPerSite),
-          ),
-        );
+        const candidates = await mapWithConcurrency(unique, candidateConcurrency, (url) => validateCandidate(url, keyword, market, productsPerSite));
         const validated = candidates
           .filter(Boolean)
           .toSorted((a, b) => b.confidence - a.confidence)
@@ -1775,7 +1780,9 @@ async function runResearch(input, env) {
           market,
           coverage: {
             searchResults: urls.length,
+            searchPages,
             candidateDomains: unique.length,
+            candidateConcurrency,
             validatedSites: validated.length,
             rejectedOrUnreachable: unique.length - validated.length,
           },

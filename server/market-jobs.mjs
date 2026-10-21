@@ -12,6 +12,7 @@ import { fetchPublicPage } from './safe-web.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { runCombinedDiscovery } from './combined-discovery.mjs';
 import { observeDiscovery } from './discovery-newness.mjs';
+import { withFormulaIntelligence } from './formula-intelligence.mjs';
 const readDoc = async (key) =>
   (
     await pool.query('SELECT value FROM workspace_documents WHERE name=$1', [
@@ -45,7 +46,7 @@ export async function mergeBusiness(key, patch) {
     if (old.metrics && !patch.metrics) value.metrics = old.metrics;
     if (key.startsWith('sites:')) value.assessment = scoreSite(value);
     if (key.startsWith('ads:')) value = observeDiscovery(old, value, 'ad');
-    if (key.startsWith('products:')) value = observeDiscovery(old, value, 'product');
+    if (key.startsWith('products:')) value = withFormulaIntelligence(observeDiscovery(old, value, 'product'));
     await putDocument(
       'workspace_documents',
       `business:${key}`,
@@ -78,6 +79,7 @@ export function validateMarketJob(input) {
     maxPages: input.maxPages ?? 3,
     maxAds: input.maxAds ?? 100,
     maxSites: input.maxSites ?? 10,
+    siteSearchPages: input.siteSearchPages ?? 1,
     maxRequests:
       input.maxRequests ?? Math.min(1000, ids.length * (input.maxPages ?? 3)),
   };
@@ -85,6 +87,7 @@ export function validateMarketJob(input) {
     ['maxPages', 10],
     ['maxAds', 100],
     ['maxSites', 20],
+    ['siteSearchPages', 3],
     ['maxRequests', 1000],
   ])
     if (
@@ -93,7 +96,7 @@ export function validateMarketJob(input) {
       limits[name] > max
     )
       throw new Error(
-        '广告页数1～10、每词广告1～100、每词站点1～20、任务请求上限1～1000',
+        '广告页数1～10、每词广告1～100、每词站点1～20、搜索页数1～3、任务请求上限1～1000',
       );
   if (input.adStatus && !['ACTIVE', 'ALL', 'INACTIVE'].includes(input.adStatus))
     throw new Error('广告状态不正确');

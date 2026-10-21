@@ -23,10 +23,10 @@ async function action(save = false, verify = false) {
     );
     if (save) {
       key.value = '';
-      message.success('广告接口密钥已加密保存');
+      message.success('Meta / TikTok 数据接口密钥已加密保存');
     }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '请求失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '请求失败';
   } finally {
     busy.value = false;
   }
@@ -36,7 +36,7 @@ onMounted(() => action());
 <template>
   <section class="hci-panel" id="ads-provider">
     <div class="hci-panel-head">
-      <h2>广告数据源 · ScrapeCreators</h2>
+      <h2>Meta / TikTok 数据源 · ScrapeCreators</h2>
       <Tag :color="status.ready ? 'green' : 'default'">{{
         status.ready ? '连接正常' : status.configured ? '已配置' : '未配置'
       }}</Tag>
@@ -69,7 +69,7 @@ onMounted(() => action());
     <p class="hci-subtle">
       {{
         status.message ||
-        '使用 Meta 广告库数据；在广告观察选择已入选关键词开始采集。密钥仅在服务器加密保存。'
+        '使用 Meta 广告库与 TikTok Shop 数据；广告观察和平台商品采集共用服务器加密保存的密钥。'
       }}
     </p>
   </section>
