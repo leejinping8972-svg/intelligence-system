@@ -8,8 +8,9 @@ test('persona API isolated SQL: permission, idempotence, reuse, review revision 
   const db = new PGlite();
   await db.exec('CREATE TABLE workspace_documents(name text PRIMARY KEY,value jsonb NOT NULL,revision integer DEFAULT 1); CREATE TABLE research_keywords(natural_key text PRIMARY KEY,data jsonb NOT NULL,updated_at timestamptz DEFAULT now()); CREATE TABLE provider_configs(name text PRIMARY KEY,value jsonb NOT NULL); CREATE TABLE research_jobs(id uuid PRIMARY KEY,request_id uuid UNIQUE,input jsonb,checkpoint jsonb,status text DEFAULT \'queued\',cancelled boolean DEFAULT false,updated_at timestamptz DEFAULT now());');
   globalThis.__personaTestDb = db;
+  globalThis.__personaSqlState = { attempts: 0, busyUntil: 2, unlocks: 0 };
   const mod = s => `data:text/javascript,${encodeURIComponent(s)}`;
-  const fakeDb = mod(`const db=globalThis.__personaTestDb; const c={query:(q,p)=>db.query(q,p),release(){}}; export const pool={query:(q,p)=>db.query(q,p),connect:async()=>c}; export const engine='postgres';export const sql=p=>p;export const lock=async()=>true;export const unlock=async()=>{};export async function putDocument(t,n,v,ignore=false,c=pool){await c.query('INSERT INTO '+t+'(name,value) VALUES($1,$2) ON CONFLICT(name) '+(ignore?'DO NOTHING':'DO UPDATE SET value=EXCLUDED.value'),[n,v]);}`);
+  const fakeDb = mod(`const db=globalThis.__personaTestDb,s=globalThis.__personaSqlState; const c={query(q,p){if(q.startsWith('SELECT pg_try_advisory_lock')){if(p[0]!==89761036)throw new Error('unexpected index lock');return Promise.resolve({rows:[{locked:++s.attempts>s.busyUntil}]});}if(q.startsWith('SELECT pg_advisory_unlock')){s.unlocks++;return Promise.resolve({rows:[]});}return db.query(q,p);},release(){}}; export const pool={query:(q,p)=>db.query(q,p),connect:async()=>c}; export const engine='postgres';export const sql=p=>p;export const lock=async()=>true;export const unlock=async()=>{};export async function putDocument(t,n,v,ignore=false,c=pool){if(n===s.failName)throw new Error('synthetic write failure');await c.query('INSERT INTO '+t+'(name,value) VALUES($1,$2) ON CONFLICT(name) '+(ignore?'DO NOTHING':'DO UPDATE SET value=EXCLUDED.value'),[n,v]);}`);
   const hook = registerHooks({ resolve(specifier,context,next) {
     if(specifier==='./database.mjs')return {url:fakeDb,shortCircuit:true};
     if(specifier==='./ads-provider.mjs')return {url:mod('export const openAdsKey=()=>{throw new Error("No credentials")};export const scrapeRequest=()=>{throw new Error("No paid requests")};'),shortCircuit:true};
@@ -29,6 +30,8 @@ test('persona API isolated SQL: permission, idempotence, reuse, review revision 
     const first=await api(input,admin); assert.equal((await api(input,admin)).id,first.id);
     await db.query('INSERT INTO workspace_documents(name,value) VALUES($1,$2)',['business:researchEvidence:qa',{id:'original',kind:'comment',text:'mệt ngủ Tôi 32 tuổi.',url:'https://www.tiktok.com/@synthetic/video/12345678901234',platform:'TikTok',market:'VN',collectedAt:'2026-10-01T00:00:00Z'}]);
     await runPersonaResearch({id:first.id});
+    assert.equal(globalThis.__personaSqlState.attempts,3);
+    assert.equal(globalThis.__personaSqlState.unlocks,1);
     let detail=await api({action:'server_persona_detail',id:first.id},admin);
     assert.equal(detail.study.evidence.length,1);assert.equal(detail.study.journal.length,0);assert.equal(detail.study.status,'partial');
     assert.equal(detail.study.businessSync.keywords.length,5);
@@ -54,5 +57,14 @@ test('persona API isolated SQL: permission, idempotence, reuse, review revision 
     const queued=await api({...input,requestId:'2bfb6000-a617-434a-b042-886375fa0ba3'},admin);
     await api({action:'server_persona_cancel',id:queued.id},admin);
     assert.equal((await api({action:'server_persona_detail',id:queued.id},admin)).study.status,'cancelled');
-  } finally {hook.deregister();delete globalThis.__personaTestDb;await db.close();}
+    const failing=await api({...input,requestId:'3bfb6000-a617-434a-b042-886375fa0ba3'},admin);
+    const unlocks=globalThis.__personaSqlState.unlocks;
+    globalThis.__personaSqlState.failName=`content:job:${failing.id}`;
+    await assert.rejects(()=>runPersonaResearch({id:failing.id}),/synthetic write failure/);
+    assert.equal(globalThis.__personaSqlState.unlocks,unlocks+1);
+    assert.equal((await db.query('SELECT value FROM workspace_documents WHERE name=$1',[`content:job:${failing.id}`])).rows.length,0);
+    delete globalThis.__personaSqlState.failName;
+    await runPersonaResearch({id:failing.id});
+    assert.ok((await api({action:'server_persona_detail',id:failing.id},admin)).study.businessSync);
+  } finally {hook.deregister();delete globalThis.__personaTestDb;delete globalThis.__personaSqlState;await db.close();}
 });

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as wait } from 'node:timers/promises';
 import { requireAdmin } from './auth.mjs';
 import { openAdsKey, scrapeRequest } from './ads-provider.mjs';
-import { pool, lock, unlock, putDocument } from './database.mjs';
+import { pool, lock, unlock, putDocument, engine, sql } from './database.mjs';
 import { normalizeEvidence } from './research-evidence.mjs';
 import { normalizeTikTokShopProduct } from './tiktok-shop-provider.mjs';
 import { marketObservationRecords } from './market-report-domain.mjs';
@@ -66,8 +67,19 @@ async function publish(report, evidence) {
   const study = await read(`persona:study:${report.id}`);
   if (study) {
     const c = await pool.connect();
+    const indexLockKey = engine === 'mysql' ? 'intelligence:workspace-reads' : 89_761_036;
+    let indexLocked = false, transaction = false;
     try {
-      await c.query('BEGIN');
+      // Share the index worker lock without relying on a newer database key registry.
+      const deadline = Date.now() + 45_000;
+      do {
+        indexLocked = Boolean((await c.query(sql('SELECT pg_try_advisory_lock($1) AS locked', 'SELECT GET_LOCK($1,0) AS locked'), [indexLockKey])).rows[0]?.locked);
+        if (!indexLocked) await wait(250);
+      } while (!indexLocked && Date.now() < deadline);
+      if (!indexLocked) throw new Error('业务列表索引正在更新，已采结果已保留，请稍后重试保存');
+      await c.query(sql('BEGIN ISOLATION LEVEL READ COMMITTED', 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED'));
+      if (engine === 'mysql') await c.query('BEGIN');
+      transaction = true;
       const businessIo = {
         list: async (prefix) => (await c.query('SELECT value FROM workspace_documents WHERE name LIKE $1', [`${prefix}%`])).rows.map((r) => r.value),
         keyword: async (record) => {
@@ -92,8 +104,12 @@ async function publish(report, evidence) {
       }
       await put(`persona:study:${study.id}`, study, c);
       await c.query('COMMIT');
-    } catch (e) { await c.query('ROLLBACK'); throw e; }
-    finally { c.release(); }
+      transaction = false;
+    } catch (e) { if (transaction) await c.query('ROLLBACK'); throw e; }
+    finally {
+      try { if (indexLocked) await c.query(sql('SELECT pg_advisory_unlock($1)', 'SELECT RELEASE_LOCK($1)'), [indexLockKey]); }
+      finally { c.release(); }
+    }
   }
   // Per-study IDs keep reviews of reused evidence independent between reports.
   const ids = new Map(evidence.map((r) => [r.id, `${report.id}:${r.id}`]));

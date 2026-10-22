@@ -22,12 +22,14 @@ Entry: consumer insights, "从人群画像研究". Existing keyword and country 
 - Research business data, PDF, evidence exports and local QA fixtures are excluded from this commit. The actual VN report is a separate data deliverable; writing it does not deploy this feature.
 - Publication also materializes local research queries into keyword research, all acquired content into public content, comments into the evidence store and parent content details, and products/sites/ads into their business lists. Existing IDs, reviews, metrics and source dates are retained; only research associations are added to existing records. A completed public-content archive job exposes the entire acquired set, independently of the smaller report sample. It performs zero new provider calls. Newly saved TikTok comments can be read without enabling unsupported comment collection controls.
 - A saved acquisition signature skips repeated full materialization. Subsequent reviews update only linked business review annotations and changed report evidence. Reused comments whose legacy ID cannot be matched may reuse an exact full-text and source-page match; fresh comments keep their source IDs.
+- Business materialization shares the workspace index worker's advisory lock (MySQL `intelligence:workspace-reads`, PostgreSQL `89761036`) and uses READ COMMITTED. It waits up to 45 seconds before reporting index contention, releases the lock after success or rollback, and retains already collected results. This also works on the confirmed baseline without a newer lock-key registry.
 - Provider hits with a URL but no description are retained in acquired business records with an explicit source-text-missing label. They do not become consumer quotes or increase the reviewed report sample.
 
 ## Verification
 
 - `node --test server/persona-research.test.mjs server/persona-business-records.test.mjs server/market-research.test.mjs server/consumer-reports.test.mjs`
 - `HCI_TEST_PGLITE_MODULE=<installed @electric-sql/pglite/dist/index.js> node --test server/persona-research.integration.test.mjs`
+- The isolated SQL test covers index-lock contention, release after rollback and a successful database-only retry with provider calls disabled.
 - Full application Vue type check and server/history production build, using an isolated `.artifacts/web-dist` output.
 - Browser acceptance uses synthetic APIs only: preview, submit/navigation, exact evidence review, finding add/edit/delete, CSV export, a standalone printable report with all accepted evidence, desktop/mobile layout and script errors. No real accounts or paid sources are used by tests.
 
