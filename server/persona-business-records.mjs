@@ -61,7 +61,7 @@ export async function materializePersonaBusiness(study, io) {
     const old = current.content.find((c) => c.id === r.originalId || canonical(c.url) === canonical(r.sourceUrl));
     const raw = r.sourceRecord || {};
     const source = sourceOf(r), id = videoId(r.sourceUrl) || raw.sourceId || r.originalId || hash(r.sourceUrl);
-    const item = old || normalizeContent({ sourceId: id, url: r.sourceUrl, title: parentOnly ? '原评论所属内容（标题未补采）' : raw.title || r.text, summary: parentOnly ? '' : raw.summary || r.text, author: raw.author || '', language: raw.language || 'unknown', type: source === 'web_articles' ? 'article' : 'video', publishedAt: parentOnly ? null : r.postedAt, marketBasis: r.marketBasis, interactions: raw.interactions || {}, textAvailability: parentOnly ? '仅来源链接；未重新采集正文' : '描述 / 原始检索文本' }, source, { market: study.plan.market, language: study.plan.language, searchScope: 'local', keywordIds: [], productIds: [] }, '', r.collectedAt || study.createdAt);
+    const item = old || normalizeContent({ sourceId: id, url: r.sourceUrl, title: parentOnly ? '原评论所属内容（标题未补采）' : raw.title || r.text, summary: parentOnly ? '' : raw.summary || r.text, author: raw.author || '', language: raw.language || 'unknown', type: source === 'web_articles' ? 'article' : 'video', publishedAt: parentOnly ? null : r.postedAt, marketBasis: r.marketBasis, interactions: raw.interactions || {}, textAvailability: parentOnly ? '仅来源链接；未重新采集正文' : raw.textAvailability || '描述 / 原始检索文本' }, source, { market: study.plan.market, language: study.plan.language, searchScope: 'local', keywordIds: [], productIds: [] }, '', r.collectedAt || study.createdAt);
     if (!item) throw new Error(`无法归档公共内容 ${r.id}`);
     return save('content', 'content:item:', item, r);
   };
