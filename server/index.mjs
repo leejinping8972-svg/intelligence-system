@@ -45,6 +45,7 @@ import { submitMarketJob } from './market-jobs.mjs';
 import { analysisConfig } from './model-provider.mjs';
 import { assessKeyword } from './model.js';
 import { protectPlatformClientEdit } from './platform-product-data.mjs';
+import { productResourceAction, resumeResourceJob } from './product-resource-service.mjs';
 import {
   cancelPlatformCompletion,
   submitPlatformProductEnrichment,
@@ -92,6 +93,11 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action === 'server_product_resource_resume') {
+    const job = await resumeResourceJob(input);
+    return { jobId: job.id, tasks: jobTasks(job) };
+  }
+  if (input.action?.startsWith('server_product_resource_')) return productResourceAction(input, user);
   if (input.action?.startsWith('server_persona_')) return personaResearchAction(input, user);
   if (input.action?.startsWith('server_keyword_trends_'))
     return keywordTrendsAction(input, user);
@@ -617,6 +623,8 @@ const server = createServer(async (request, response) => {
             'server_workspace_detail',
             'server_workspace_export',
             'server_core_rates',
+            'server_product_resource_capabilities',
+            'server_product_resource_observations',
           ].includes(input.action),
         );
     if (input.action?.startsWith('auth_')) {

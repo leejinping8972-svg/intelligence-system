@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
+import { mergeResourceHistory } from './product-resource-domain.mjs';
 
 export const text = (value) =>
   typeof value === 'string' ? value.trim().slice(0, 12_000) : '';
@@ -562,7 +563,7 @@ export function protectPlatformClientEdit(old, incoming) {
   };
 }
 export function mergePlatformProduct(old, patch) {
-  if (!old) return patch;
+  if (!old) return patch.resourceEvidence ? { ...patch, resourceHistory: mergeResourceHistory(undefined, patch) } : patch;
   const merged = {
     ...old,
     ...patch,
@@ -570,6 +571,7 @@ export function mergePlatformProduct(old, patch) {
     reviewed: old.reviewed ?? false,
     firstSeenAt: old.firstSeenAt || patch.firstSeenAt,
   };
+  if (old.resourceEvidence || patch.resourceEvidence) merged.resourceHistory = mergeResourceHistory(old, patch);
   if (!patch.siteId && old.siteId) merged.siteId = old.siteId;
   for (const key of [
     'imageUrl',
@@ -586,7 +588,7 @@ export function mergePlatformProduct(old, patch) {
   ]) {
     if (
       !patch[key] ||
-      /^(平台未返回|品牌待确认|待分类|待识别)/.test(patch[key])
+      /^(平台未返回|官网未公开|品牌待确认|待分类|待识别)/.test(patch[key])
     )
       merged[key] = old[key] || patch[key];
   }
@@ -630,6 +632,7 @@ export function mergePlatformProduct(old, patch) {
       s.platform,
       s.market,
       s.productId,
+      s.sourceVariantId || s.variantId || '',
       s.metric,
       s.period,
     ].join(':');

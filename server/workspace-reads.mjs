@@ -21,7 +21,7 @@ const collections = new Set([
   'advertisers',
   'insightReports',
 ]);
-const MODEL_VERSION = 'workspace-reads-v3-statistics';
+const MODEL_VERSION = 'workspace-reads-v4-product-resources';
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
@@ -49,6 +49,9 @@ export function projectRecord(collection, value) {
     columns: [value.market || '', '', null, '', '', value.reviewStatus || 'pending', '', 0, value.createdAt || '', '', '', '', '', 'unknown', 0, value.title || ''],
   };
   const data = pick(value, listKeys[collection].split(' '));
+  if (collection === 'products' && value.resourceEvidence) {
+    data.resourceEvidence = pick(value.resourceEvidence, ['version', 'jobId', 'routeId', 'platform', 'provider', 'market', 'mode', 'category', 'researchCategory', 'requestedWindow', 'metric', 'ranking', 'coverage', 'collectedAt', 'evidenceUrl', 'states']);
+  }
   if (!data.id) throw new Error('记录缺少编号');
   data.listSummary = true;
   if (collection !== 'advertisers') {
