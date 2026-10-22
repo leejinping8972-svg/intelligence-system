@@ -3,7 +3,7 @@
   "includedCommits": [
     "7f0cbbcb5837d52dcb0c40b6f65b8f63834f062e"
   ],
-  "sourceSha": "a57349c6897305fc65b15a5e26de290cd3cd931c",
+  "sourceSha": "2b2bd42f5a6dc304c81648ae24534e6b4afa23ff",
   "changes": [
     "补齐商品、独立站、广告和关键词的来源字段与指标证据，修复TikTok嵌套商品数据解析。",
     "支持列预设及30/90/365天指标，缺失数据保留原因，不伪造销量或流量。",
@@ -53,8 +53,8 @@
     "准确候选需通过GitHub Actions的回归、标准类型检查、前端构建、API镜像与隔离MySQL验证后正式切换。",
     "发布验证不触发真实收费来源，保留任务检查点和public/data。"
   ],
-  "id": "20261022085315-1cf6dda6",
-  "builtAt": "2026-10-22T08:53:15.433Z",
-  "sourceDigest": "1cf6dda62043d353038b718b5a7dd757a72cdd40cf4f77ae9c9555f8eea3b571",
+  "id": "20261022091615-abf59e8d",
+  "builtAt": "2026-10-22T09:16:15.159Z",
+  "sourceDigest": "abf59e8d7d1cbfa5f87600ec972713726a36715d03ad76801591824ac497427a",
   "operator": "Codex"
 }
