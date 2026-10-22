@@ -16,6 +16,7 @@ import { useRouter } from 'vue-router';
 import {
   Alert,
   Button,
+  Drawer,
   Input,
   message,
   Select,
@@ -31,6 +32,13 @@ import {
   syncCloudWorkspace,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import CoreListControls from './components/CoreListControls.vue';
+import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
+import EvidenceMetric from './components/EvidenceMetric.vue';
+import { useCoreList } from './use-core-list';
+const core = useCoreList('keywords');
+const { preset: corePreset, period: corePeriod } = core;
+const evidenceKeyword = ref<Keyword>();
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import { keywordChineseName } from './keyword-names';
 import SelectionBar from './components/SelectionBar.vue';
@@ -48,7 +56,7 @@ import {
   reportStatus,
   reportTopics,
 } from './consumer-reports';
-import { audit, filteredKeywords, marketName, state } from './data';
+import { audit, exportCsv, filteredKeywords, marketName, state } from './data';
 import { assessKeyword } from './keyword-scoring';
 import { platformProductSelection } from './platform-product-selection';
 
@@ -227,6 +235,7 @@ const time = (r: Keyword) =>
       <Button @click="router.push('/monitor')">查看后台任务</Button>
       <DailyDiscoveryPlan />
       <KeywordTrendsControl :ids="ids" />
+      <Button :disabled="!rows.length" @click="exportCsv('入选关键词完整数据.csv', rows.map((k) => ({关键词:k.term,...core.exportRecord(k)})))">完整导出</Button>
     </PageHeader>
     <Alert
       type="info"
@@ -290,16 +299,17 @@ const time = (r: Keyword) =>
       >
         <KeywordNamesDialog :ids="ids" />
       </SelectionBar>
+      <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="keywords" />
       <Table
         class="hci-resource-table"
         size="small"
-        :columns="columns"
+        :columns="core.columns(columns)"
         :data-source="rows"
         :loading="
           cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
         "
         row-key="id"
-        :scroll="{ x: 2700 }"
+        :scroll="{ x: 'max-content' }"
         :row-selection="rowSelection"
         :pagination="{
           current: page,
@@ -314,8 +324,9 @@ const time = (r: Keyword) =>
         }"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'term'">
-            <b>{{ record.term }}</b>
+          <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Keyword, column.key)" />
+          <template v-else-if="column.key === 'term'">
+            <Button type="link" @click="evidenceKeyword = record as Keyword">{{ record.term }}</Button>
             <p class="hci-subtle">
               {{ record.termZh ? '中文' : '中文参考' }}：{{
                 keywordChineseName({
@@ -483,6 +494,7 @@ const time = (r: Keyword) =>
         </template>
       </Table>
     </section>
+    <Drawer :open="!!evidenceKeyword" title="关键词数据与来源" width="min(940px, 100vw)" @close="evidenceKeyword = undefined"><CoreMetricsPanel v-if="evidenceKeyword" kind="keywords" :record="evidenceKeyword" /></Drawer>
   </main>
 </template>
 <style scoped>

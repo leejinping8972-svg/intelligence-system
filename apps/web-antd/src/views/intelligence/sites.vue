@@ -21,6 +21,11 @@ import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import SiteDrawer from './components/SiteDrawer.vue';
+import CoreListControls from './components/CoreListControls.vue';
+import EvidenceMetric from './components/EvidenceMetric.vue';
+import { useCoreList } from './use-core-list';
+const core = useCoreList('sites');
+const { preset: corePreset, period: corePeriod } = core;
 import BulkSiteWatch from './components/BulkSiteWatch.vue';
 import { emptyScoreFilter, matchesScore, useFilteredSelection } from './resource-list';
 import ProductCollectDialog from './components/ProductCollectDialog.vue';
@@ -222,6 +227,7 @@ const columns = [
           exportCsv(
             '独立站.csv',
             rows.map((s) => ({
+              ...core.exportRecord(s),
               品牌: s.brand,
               域名: s.domain,
               市场: s.market,
@@ -295,14 +301,14 @@ const columns = [
         :message="scoreError"
         type="error"
         show-icon
-      /><Table
+      /><CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="sites" /><Table
         class="hci-resource-table"
         size="small"
         :row-selection="rowSelection"
-        :columns="columns"
+        :columns="core.columns(columns)"
         :data-source="rows"
         row-key="id"
-        :scroll="{ x: 1250 }"
+        :scroll="{ x: 'max-content' }"
         :pagination="{
           current: page,
           pageSize,
@@ -315,6 +321,7 @@ const columns = [
         }"
       >
         <template #bodyCell="{ column, record }">
+          <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Site, column.key)" />
           <template v-if="column.key === 'brand'">
             <button
               class="hci-link"

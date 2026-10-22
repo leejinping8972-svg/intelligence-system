@@ -27,6 +27,12 @@ import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
 import PageHeader from './components/PageHeader.vue';
+import CoreListControls from './components/CoreListControls.vue';
+import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
+import EvidenceMetric from './components/EvidenceMetric.vue';
+import { useCoreList } from './use-core-list';
+const core = useCoreList('keywords');
+const { preset: corePreset, period: corePeriod } = core;
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
 import SocialTrendCell from './components/SocialTrendCell.vue';
 import { keywordChineseName } from './keyword-names';
@@ -475,6 +481,7 @@ function exportKeywords() {
   exportCsv(
     '关键词研究与评级.csv',
     rows.value.map((record) => ({
+      ...core.exportRecord(record),
       关键词: record.term,
       中文名称: keywordChineseName(record),
       种子词: record.seedTerm || '',
@@ -806,9 +813,10 @@ function saveMetrics() {
         :message="`选中的${selection.missing.length}个词已无法匹配，请刷新并重新选择；不会仅提交其余部分。`"
         style="margin-bottom: 16px"
       />
+      <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="keywords" />
       <Table
         :data-source="rows"
-        :columns="columns"
+        :columns="core.columns(columns)"
         class="hci-resource-table"
         size="small"
         :row-selection="rowSelection"
@@ -817,10 +825,11 @@ function saveMetrics() {
         :loading="
           cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
         "
-        :scroll="{ x: 2310 }"
+        :scroll="{ x: 'max-content' }"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'term'">
+          <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Keyword, column.key)" />
+          <template v-else-if="column.key === 'term'">
             <button class="hci-link keyword-term" @click="openDetail(record)">
               {{ record.term }}
             </button>
@@ -1098,6 +1107,7 @@ function saveMetrics() {
       @close="detailId = ''"
     >
       <template v-if="detail && assessment">
+        <CoreMetricsPanel kind="keywords" :record="detail" />
         <h2 class="keyword-detail-title hci-resource-title">
           {{ detail.term }}
         </h2>

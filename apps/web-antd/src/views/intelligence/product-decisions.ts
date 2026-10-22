@@ -7,6 +7,7 @@ export type ProductMetricKind =
   | 'shopping_rank'
   | 'keywords_count';
 export interface ProductMetricSeries {
+  basis?: string;
   provider: string;
   platform: string;
   market: string;

@@ -14,6 +14,7 @@ interface TrendRecord {
   trendHistoryCollectedAt?: string;
 }
 export interface TrendComparison {
+  collectedAt?: string;
   key: string;
   label: string;
   heat: null | number;
@@ -235,4 +236,15 @@ export function formatTrendComparison(value: TrendComparison) {
   if (value.change === null)
     return `${value.label}：${value.heat}（${value.previousMean === 0 ? '基期为0' : '待补对比'}）`;
   return `${value.label}：${value.heat}(${value.change > 0 ? '+' : ''}${value.change}%)`;
+}
+
+export function rollingTrendComparison(record: TrendRecord, days: 30 | 90 | 365): TrendComparison {
+  const daily = intervals(record.trendDailyPoints, 'day', record.trendDailyCollectedAt);
+  const history = intervals(record.trendHistoryPoints, record.trendHistoryResolution, record.trendHistoryCollectedAt);
+  const annual = intervals(record.trendPoints, record.trendResolution, record.trendCollectedAt);
+  const series = days === 30 && daily.length ? daily : history.length ? history : annual;
+  const captured = days === 30 && daily.length ? record.trendDailyCollectedAt : history.length ? record.trendHistoryCollectedAt : record.trendCollectedAt;
+  const end = day(Date.parse(captured || ''));
+  if (!Number.isFinite(end)) return compare('month', `近${days}天`, []);
+  return { ...compare('month', `近${days}天`, series, 0, { start: end - days * DAY, end, previousStart: end - 2 * days * DAY, previousEnd: end - days * DAY }), collectedAt: captured };
 }

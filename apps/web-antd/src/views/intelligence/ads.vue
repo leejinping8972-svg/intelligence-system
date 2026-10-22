@@ -17,8 +17,16 @@ import {
   Select,
   Tag,
   Tabs,
+  Table,
 } from 'ant-design-vue';
 import PageHeader from './components/PageHeader.vue';
+import CoreListControls from './components/CoreListControls.vue';
+import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
+import EvidenceMetric from './components/EvidenceMetric.vue';
+import { useCoreList } from './use-core-list';
+const core = useCoreList('ads');
+const { preset: corePreset, period: corePeriod } = core;
+const adColumns = [{ title: '广告主 / 素材', key: 'brand', width: 270, fixed: 'left' as const }, { title: '市场', key: 'market', width: 90 }, { title: '操作', key: 'actions', width: 100, fixed: 'right' as const }];
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import AdsResearchPanel from './components/AdsResearchPanel.vue';
@@ -29,7 +37,7 @@ import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import AdvertiserList from './components/AdvertiserList.vue';
 import { groupAdvertisers } from './advertisers';
 import { discoveryDecision, discoveryFilters } from './discovery';
-import { inMarket, marketName, state } from './data';
+import { exportCsv, inMarket, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
 const route = useRoute(),
   router = useRouter();
@@ -153,7 +161,7 @@ watch([() => route.query.ad, () => state.ads], () => {
   <main class="hci-page">
     <PageHeader title="广告观察" description=""
       ><Button @click="router.push('/imports')">导入资料</Button
-      ><Button type="primary" @click="begin"
+      ><Button :disabled="!rows.length" @click="exportCsv('广告完整数据.csv', rows.filter((a) => !bulkIds.length || bulkIds.includes(a.id)).map((a) => ({广告主:a.brand,广告ID:a.archiveId || a.id,...core.exportRecord(a)})))">完整导出</Button><Button type="primary" @click="begin"
         >采集广告与独立站</Button
       ></PageHeader
     >
@@ -185,7 +193,16 @@ watch([() => route.query.ad, () => state.ads], () => {
         v-if="!rows.length"
         description="暂无广告；选择已入选关键词采集，或导入真实广告资料"
       />
-      <div class="hci-ad-grid">
+      <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="ads" />
+      <Table v-if="corePreset !== 'original'" size="small" row-key="id" :columns="core.columns(adColumns)" :data-source="pagedRows" :pagination="false" :scroll="{ x: 'max-content' }" :row-selection="{ selectedRowKeys: bulkIds, onChange: (keys) => bulkIds = keys.map(String), getCheckboxProps: (a) => ({disabled:a.dataNature === 'demo'}) }">
+        <template #bodyCell="{column,record}">
+          <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Ad,column.key)" />
+          <template v-else-if="column.key === 'brand'"><Button type="link" @click="selected = record as Ad">{{ record.brand }}</Button><p class="hci-clamp-2">{{ record.headline }}</p></template>
+          <template v-else-if="column.key === 'market'">{{ marketName(record.market) }}</template>
+          <Button v-else-if="column.key === 'actions'" size="small" @click="selected = record as Ad">详情</Button>
+        </template>
+      </Table>
+      <div v-else class="hci-ad-grid">
         <article v-for="ad in pagedRows" :key="ad.id" class="hci-ad-card">
           <div class="hci-card-select"><Checkbox :checked="bulkIds.includes(ad.id)" :disabled="ad.dataNature === 'demo'" :aria-label="`选择广告 ${ad.headline || ad.id}`" @change="bulkIds = $event.target.checked ? [...bulkIds, ad.id] : bulkIds.filter((id) => id !== ad.id)" /></div>
           <AdMedia :ad="ad" />
@@ -236,6 +253,7 @@ watch([() => route.query.ad, () => state.ads], () => {
         <DiscoveryTag :item="selected" kind="ad" details />
         <CompetitorWatchPanel v-if="selected.pageId" kind="advertiser" :ad-id="selected.id" />
         </div><section class="hci-detail-section"><h3>广告文案</h3><p class="hci-resource-copy">{{ selected.copy || '来源未提供文案' }}</p></section></div>
+        <CoreMetricsPanel kind="ads" :record="selected" />
         <dl class="hci-detail-grid">
           <dt>广告 ID</dt>
           <dd>{{ selected.archiveId || '—' }}</dd>

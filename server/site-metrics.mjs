@@ -9,6 +9,7 @@ export function domainMetrics(row, market, domain, at) {
     market,
     collectedAt: at,
     source: 'Semrush MCP · domain_rank',
+    period: '来源月度搜索估算；起止日未提供',
   };
   for (const [field, keys] of [
     ['organicTraffic', ['organic_traffic', 'Organic Traffic', 'Ot']],
@@ -85,6 +86,6 @@ export async function collectSiteMetrics(request) {
     await putDocument('provider_configs', name, { cachedAt: at, result });
     return { ...result, semrushKeyId };
   } catch (error) {
-    throw new Error(safeSemrushError(error, key), { cause: e });
+    throw new Error(safeSemrushError(error, key), { cause: error });
   }
 }

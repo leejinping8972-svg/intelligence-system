@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { pool, lock, unlock, putDocument } from './database.mjs';
+import { pool, lock, unlock, putDocument, sql } from './database.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 import { readKeyword, patchCollection } from './enrichment-jobs.mjs';
 import {
@@ -13,6 +13,7 @@ import { scoreSite } from './site-scoring.mjs';
 import { runCombinedDiscovery } from './combined-discovery.mjs';
 import { observeDiscovery } from './discovery-newness.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
+import { appendCoreEvidence, archiveCoreEvidence, exactProductLinks } from './core-evidence.mjs';
 const readDoc = async (key) =>
   (
     await pool.query('SELECT value FROM workspace_documents WHERE name=$1', [
@@ -47,6 +48,19 @@ export async function mergeBusiness(key, patch) {
     if (key.startsWith('sites:')) value.assessment = scoreSite(value);
     if (key.startsWith('ads:')) value = observeDiscovery(old, value, 'ad');
     if (key.startsWith('products:')) value = withFormulaIntelligence(observeDiscovery(old, value, 'product'));
+    const kind = key.split(':')[0];
+    if (['products', 'sites', 'ads'].includes(kind)) {
+      value = appendCoreEvidence(kind, old, value, { ...patch, market: value.market, id: value.id, sourceProductId: value.sourceProductId, sourceProvider: value.sourceProvider, sourcePlatform: value.sourcePlatform, domain: value.domain });
+      if (kind === 'ads' && !value.productId && value.landingUrls?.length) {
+        const rows = await c.query(sql(
+          "SELECT value FROM workspace_documents WHERE name LIKE 'business:products:%' AND value->>'market'=$1 AND value->>'siteId'=ANY($2::text[])",
+          "SELECT value FROM workspace_documents WHERE name LIKE 'business:products:%' AND JSON_UNQUOTE(JSON_EXTRACT(value,'$.market'))=$1 AND JSON_CONTAINS($2,JSON_EXTRACT(value,'$.siteId'))"
+        ), [value.market, value.siteIds || []]);
+        const matches = exactProductLinks(value, rows.rows.map((r) => r.value));
+        if (matches.length === 1) value.productId = matches[0];
+      }
+      await archiveCoreEvidence(kind, value.id, value, (name, snapshot, only) => putDocument('workspace_documents', name, snapshot, only, c), old);
+    }
     await putDocument(
       'workspace_documents',
       `business:${key}`,

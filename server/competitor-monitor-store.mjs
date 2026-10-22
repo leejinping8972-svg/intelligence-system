@@ -1,6 +1,7 @@
 /* eslint-disable unicorn/no-await-expression-member -- Document SQL follows existing server query conventions. */
 /* eslint-disable unicorn/prefer-ternary -- Each scheduler branch supplies a separate set of IO callbacks. */
 import { randomUUID } from 'node:crypto';
+import { appendCoreEvidence, archiveCoreEvidence } from './core-evidence.mjs';
 import { setTimeout as pause } from 'node:timers/promises';
 
 import { saveAdvertiserBatch } from './advertiser-monitor-batch.mjs';
@@ -239,7 +240,9 @@ export async function persistObservation(c, target, kind, item, event, at) {
         [businessName],
       )
     ).rows[0]?.value;
-    await db.write(businessName, mergeObserved(old, item, at));
+    const observed = appendCoreEvidence(kind, old, mergeObserved(old, item, at), item);
+    await archiveCoreEvidence(kind, item.id, observed, (name, snapshot, only) => putDocument('workspace_documents', name, snapshot, only, c), old);
+    await db.write(businessName, observed);
     if (event) {
       event.keywordIds = [];
       for (const term of event.terms) {

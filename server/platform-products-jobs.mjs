@@ -1,5 +1,6 @@
 /* eslint-disable unicorn/no-await-expression-member -- Keep SQL row access consistent with existing server modules. */
 import { randomUUID } from 'node:crypto';
+import { appendCoreEvidence, archiveCoreEvidence } from './core-evidence.mjs';
 import { lock, unlock, pool, putDocument } from './database.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 import { mergePlatformProduct } from './platform-product-data.mjs';
@@ -176,7 +177,9 @@ export async function upsertProduct(patch) {
       await c.query('COMMIT');
       return undefined;
     }
-    const value = withFormulaIntelligence(observeDiscovery(old, mergePlatformProduct(old, patch), 'product'));
+    const merged = withFormulaIntelligence(observeDiscovery(old, mergePlatformProduct(old, patch), 'product'));
+    const value = appendCoreEvidence('products', old, merged, { ...patch, id: merged.id, market: merged.market, sourceProvider: merged.sourceProvider, sourcePlatform: merged.sourcePlatform, sourceProductId: merged.sourceProductId });
+    await archiveCoreEvidence('products', value.id, value, (key, snapshot, only) => putDocument('workspace_documents', key, snapshot, only, c), old);
     await putDocument('workspace_documents', name, value, false, c);
     await c.query('COMMIT');
     return value;

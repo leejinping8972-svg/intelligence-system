@@ -9,6 +9,7 @@ import CompactTags from './CompactTags.vue';
 import CollectionTime from './CollectionTime.vue';
 import { siteCollectedAt } from '../resource-metadata';
 import ProductCollectDialog from './ProductCollectDialog.vue';
+import CoreMetricsPanel from './CoreMetricsPanel.vue';
 
 const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
@@ -74,6 +75,7 @@ function go(path: string, query: Record<string, string>) {
           <span>自然关键词数</span><b>{{ site.metrics?.organicKeywords ?? '—' }}</b>
         </div>
       </div>
+      <CoreMetricsPanel kind="sites" :record="site" />
       <section class="hci-detail-section">
         <h3>站点概况</h3>
         <dl class="hci-detail-grid">

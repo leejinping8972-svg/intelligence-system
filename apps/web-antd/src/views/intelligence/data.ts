@@ -1,4 +1,5 @@
 import type { DiscoveryObservation } from './discovery';
+import type { CoreEvidence } from './core-list-metrics';
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
 import type {
   ProductCompletion,
@@ -52,6 +53,7 @@ export const categories = [
   '运动营养',
 ];
 export interface Keyword {
+  coreEvidence?: CoreEvidence;
   adCollection?: {
     jobId?: string;
     status: string;
@@ -155,6 +157,7 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  coreEvidence?: CoreEvidence;
   formula?: {
     status: 'observed' | 'unknown' | 'verified';
     fingerprint: string;
@@ -177,6 +180,12 @@ export interface Product {
     keyword?: string;
     shopName?: string;
     salesMetricNature?: string;
+    soldCount?: number;
+    soldRaw?: string;
+    soldPrecision?: string;
+    soldCollectedAt?: string;
+    orderCount?: number;
+    unclassifiedSales?: string;
     timestamp?: number | string;
     observedAt?: string;
     urlKind?: string;
@@ -184,6 +193,7 @@ export interface Product {
   sourceContent?: {
     collectedAt: string;
     descriptions: string[];
+    sellingPoints?: string[];
     attributes: Record<string, string>;
     productInfo?: Record<string, string>;
     aPlusImages?: string[];
@@ -238,6 +248,7 @@ export interface SiteAssessment {
   }[];
 }
 export interface Site {
+  coreEvidence?: CoreEvidence;
   productCollection?: CollectionState;
   id: string;
   brand: string;
@@ -261,6 +272,7 @@ export interface Site {
     organicKeywords?: number;
     paidTraffic?: number;
     paidKeywords?: number;
+    period?: string;
   };
   metricsStatus?: string;
   metricsMessage?: string;
@@ -283,6 +295,7 @@ export interface Site {
   dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Ad {
+  coreEvidence?: CoreEvidence;
   discovery?: DiscoveryObservation;
   archiveId?: string;
   pageId?: string;
@@ -968,7 +981,7 @@ export function csvValue(value: unknown) {
 export function exportCsv(name: string, rows: Record<string, unknown>[]) {
   const [firstRow] = rows;
   if (!firstRow) return;
-  const keys = Object.keys(firstRow);
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))];
   download(
     name,
     `\uFEFF${[

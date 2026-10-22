@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import process from 'node:process';
+import { coreListAction } from './core-list-service.mjs';
 
 import { adminSsoConfig } from './admin-sso-config.mjs';
 import { createSsoStore } from './admin-sso-store.mjs';
@@ -223,7 +224,7 @@ async function api(input, user) {
                 [`business:${entry.key}`],
               );
           } else {
-            if (/^(products|ads):/.test(entry.key)) {
+            if (/^(products|ads|sites):/.test(entry.key)) {
               const old = (
                 await connection.query(
                   'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
@@ -232,7 +233,8 @@ async function api(input, user) {
               ).rows[0]?.value;
               if (entry.key.startsWith('products:') && !input.importOnly)
                 entry.value = protectPlatformClientEdit(old, entry.value);
-              entry.value = protectDiscoveryEdit(old, entry.value);
+              if (!entry.key.startsWith('sites:')) entry.value = protectDiscoveryEdit(old, entry.value);
+              if (old?.coreEvidence) entry.value.coreEvidence = old.coreEvidence;
             }
             await putDocument(
               'workspace_documents',
@@ -252,6 +254,9 @@ async function api(input, user) {
         connection.release();
       }
     }
+    case 'server_core_rates':
+    case 'server_core_rates_refresh':
+      return coreListAction(input);
     case 'server_status': {
       const { rows } = await pool.query("SELECT input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false");
       const activeCounts = {};

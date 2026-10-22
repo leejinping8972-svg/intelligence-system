@@ -24,6 +24,11 @@ import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import CoreListControls from './components/CoreListControls.vue';
+import EvidenceMetric from './components/EvidenceMetric.vue';
+import { useCoreList } from './use-core-list';
+const core = useCoreList('products');
+const { preset: corePreset, period: corePeriod } = core;
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import { discoveryDecision, discoveryFilters } from './discovery';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
@@ -254,6 +259,7 @@ function toggleCompare(id: string) {
           exportCsv(
             '商品库.csv',
             exportRows.map((p) => ({
+              ...core.exportRecord(p),
               商品: p.title,
               品牌: p.brand,
               国家: p.market,
@@ -492,16 +498,17 @@ function toggleCompare(id: string) {
         </div>
       </article>
     </div>
+    <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="products" />
     <Table
-      v-else
+        v-if="viewMode === 'list'"
       class="hci-resource-table"
       :row-selection="rowSelection"
       :data-source="pagedRows"
       row-key="id"
       size="middle"
       :pagination="false"
-      :scroll="{ x: 1400 }"
-      :columns="[
+      :scroll="{ x: 'max-content' }"
+      :columns="core.columns([
         { title: '商品', key: 'product', width: 320, fixed: 'left' },
         { title: '市场 / 品类', key: 'category', width: 150 },
         { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
@@ -511,10 +518,11 @@ function toggleCompare(id: string) {
         { title: '价格', key: 'price', width: 130 },
         { title: '数据来源 / 独立站', key: 'source', width: 220 },
         { title: '操作', key: 'actions', width: 210, fixed: 'right' },
-      ]"
+      ])"
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'product'"
+        <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Product, column.key)" />
+        <template v-else-if="column.key === 'product'"
           ><div class="product-list-name">
             <button
               class="product-list-thumb"
@@ -633,7 +641,7 @@ function toggleCompare(id: string) {
       :footer="null"
     >
       <div class="hci-demo-note">
-        保留原币种与规格；未接入汇率，不计算跨币种价格高低。
+        {{ core.metric(comparison[0]!, 'core:priceUsd').reason }}
       </div>
       <div class="hci-comparison">
         <div v-for="p in comparison" :key="p.id">
