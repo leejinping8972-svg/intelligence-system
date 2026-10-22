@@ -1,9 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
-import { createWorkspaceReads } from './workspace-reads.mjs';
+import { createWorkspaceReads, projectRecord } from './workspace-reads.mjs';
 
 const pgSql = (postgres) => postgres;
+test('list truncation preserves complete emoji at JSON and SQL column boundaries', () => {
+  const emoji = '\uD83D\uDC8A';
+  const ad = projectRecord('ads', {
+    id: 'unicode-ad', copy: 'a'.repeat(1499) + emoji + 'end',
+    category: 'c'.repeat(159) + emoji + 'end',
+    benefits: ['b'.repeat(179) + emoji + 'end'],
+  });
+  assert.equal(ad.data.copy, 'a'.repeat(1499) + emoji);
+  assert.equal(ad.columns[1], 'c'.repeat(159) + emoji);
+  assert.equal(ad.links.find(([relation]) => relation === 'benefit')[1], 'b'.repeat(179) + emoji);
+  const product = projectRecord('products', {
+    id: 'unicode-product', benefitEvidence: 'e'.repeat(1199) + emoji + 'end',
+  });
+  assert.equal(product.data.benefitEvidence, 'e'.repeat(1199) + emoji);
+  assert.ok(JSON.stringify([ad, product]).isWellFormed());
+});
 const keyword = (i) => ({
   id: `k${i}`,
   term: `magnesium gummies ${i}`,
@@ -79,6 +95,7 @@ export async function exerciseWorkspaceReads(
       siteId: 's1',
       favorite: false,
       dataNature: 'collected',
+      benefitEvidence: 'e'.repeat(1199) + '\uD83D\uDC8A' + 'end',
       sourceContent: { descriptions: ['x'.repeat(50000)] },
       decisionData: { series: [] },
     });
@@ -99,7 +116,7 @@ export async function exerciseWorkspaceReads(
       market: 'US',
       brand: 'Test advertiser',
       headline: 'Test',
-      copy: 'x'.repeat(10000),
+      copy: 'x'.repeat(1499) + '\uD83D\uDC8A' + 'x'.repeat(8500),
       keywordIds: ['k0'],
       siteIds: ['s1'],
       status: '投放中',
