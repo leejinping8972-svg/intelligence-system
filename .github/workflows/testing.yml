@@ -109,7 +109,7 @@ jobs:
             --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
             -e MYSQL_DATABASE=platform_products_qa -e MYSQL_USER=qa \
             -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
-            --innodb-buffer-pool-size=64M --performance-schema=OFF
+            --innodb-buffer-pool-size=64M --performance-schema=OFF --log-bin-trust-function-creators=1
           ready=false
           for attempt in $(seq 1 60); do
             if docker exec platform-products-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
@@ -125,7 +125,7 @@ jobs:
             --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
             -e MYSQL_DATABASE=product_completion_qa -e MYSQL_USER=qa \
             -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
-            --innodb-buffer-pool-size=64M --performance-schema=OFF
+            --innodb-buffer-pool-size=64M --performance-schema=OFF --log-bin-trust-function-creators=1
           ready=false
           for attempt in $(seq 1 60); do
             if docker exec product-completion-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
@@ -141,7 +141,7 @@ jobs:
             --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
             -e MYSQL_DATABASE=competitor_monitor_qa -e MYSQL_USER=qa \
             -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
-            --innodb-buffer-pool-size=64M --performance-schema=OFF
+            --innodb-buffer-pool-size=64M --performance-schema=OFF --log-bin-trust-function-creators=1
           ready=false
           for attempt in $(seq 1 60); do
             if docker exec competitor-monitor-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
@@ -157,7 +157,7 @@ jobs:
             --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
             -e MYSQL_DATABASE=admin_sso_qa -e MYSQL_USER=qa \
             -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
-            --innodb-buffer-pool-size=64M --performance-schema=OFF
+            --innodb-buffer-pool-size=64M --performance-schema=OFF --log-bin-trust-function-creators=1
           ready=false
           for attempt in $(seq 1 60); do
             if docker exec admin-sso-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
@@ -173,7 +173,7 @@ jobs:
             --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
             -e MYSQL_DATABASE=workspace_read_qa -e MYSQL_USER=qa \
             -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
-            --innodb-buffer-pool-size=64M --performance-schema=OFF
+            --innodb-buffer-pool-size=64M --performance-schema=OFF --log-bin-trust-function-creators=1
           ready=false
           for attempt in $(seq 1 60); do
             if docker exec workspace-read-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
