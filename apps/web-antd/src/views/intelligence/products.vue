@@ -36,6 +36,9 @@ import {
   productDataSource,
 } from './product-decisions';
 import type { Product } from './data';
+import { serverMode } from './session';
+import { useWorkspaceList } from './workspace-queries';
+import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 import {
   categories,
   exportCsv,
@@ -62,7 +65,7 @@ const decisionRulesOpen = ref(false);
 const sourceFilter = ref('ALL');
 const sourceOptions = computed(() => [
   { label: '全部数据来源', value: 'ALL' },
-  ...[...new Set(filteredProducts.value.map(productDataSource))].map(
+  ...(serverMode ? remote.facets.value.source || [] : [...new Set(filteredProducts.value.map(productDataSource))]).map(
     (value) => ({ label: value, value }),
   ),
 ]);
@@ -71,6 +74,12 @@ const compareIds = ref<string[]>([]);
 const compareOpen = ref(false);
 const siteFilter = ref('');
 const keywordFilter = ref('');
+const remote = useWorkspaceList<Product>('products', computed(() => ({
+  market: state.market, search: search.value, category: category.value, favorite: favorites.value,
+  benefit: benefitFilter.value, ingredient: ingredientFilter.value, decision: decisionFilter.value,
+  newness: newness.value, source: sourceFilter.value, siteId: siteFilter.value,
+  keywordId: keywordFilter.value || route.query.keyword,
+})), page, pageSize);
 const availableSites = computed(() =>
   state.sites.filter(
     (site) => state.market === 'ALL' || site.market === state.market,
@@ -78,14 +87,14 @@ const availableSites = computed(() =>
 );
 const siteOptions = computed(() => [
   { label: '全部独立站', value: '' },
-  ...availableSites.value.map((site) => ({
+  ...(serverMode ? remote.facets.value.sites || [] : availableSites.value.map((site) => ({
     label: `${site.brand} · ${site.domain}`,
     value: site.id,
-  })),
+  }))),
 ]);
 const keywordOptions = computed(() => [
   { label: '全部关联关键词', value: '' },
-  ...state.keywords
+  ...(serverMode ? remote.facets.value.keywords || [] : state.keywords
     .filter(
       (keyword) =>
         keyword.productIds.length > 0 &&
@@ -94,26 +103,26 @@ const keywordOptions = computed(() => [
     .map((keyword) => ({
       label: `${keyword.term} · ${keyword.market}`,
       value: keyword.id,
-    })),
+    }))),
 ]);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keyword),
 );
 const benefitOptions = computed(() => [
   { label: '全部功效卖点', value: 'ALL' },
-  ...[
+  ...(serverMode ? remote.facets.value.benefit || [] : [
     ...new Set(filteredProducts.value.flatMap((product) => product.benefits)),
-  ].map((value) => ({ label: value, value })),
+  ]).map((value) => ({ label: value, value })),
 ]);
 const ingredientOptions = computed(() => [
   { label: '全部成分', value: 'ALL' },
-  ...[
+  ...(serverMode ? remote.facets.value.ingredient || [] : [
     ...new Set(
       filteredProducts.value.flatMap((product) =>
         product.ingredientInsights.map((item) => item.name),
       ),
     ),
-  ].map((value) => ({ label: value, value })),
+  ]).map((value) => ({ label: value, value })),
 ]);
 watch(
   () => route.query.site,
@@ -136,7 +145,7 @@ watch(
     sourceFilter.value = 'ALL';
     search.value = '';
     if (
-      siteFilter.value &&
+      !serverMode && siteFilter.value &&
       !state.sites.some(
         (s) =>
           s.id === siteFilter.value &&
@@ -145,7 +154,7 @@ watch(
     )
       siteFilter.value = '';
     if (
-      keywordFilter.value &&
+      !serverMode && keywordFilter.value &&
       !state.keywords.some(
         (keyword) =>
           keyword.id === keywordFilter.value &&
@@ -155,7 +164,7 @@ watch(
       keywordFilter.value = '';
   },
 );
-const rows = computed(() =>
+const rows = computed(() => serverMode ? remote.rows.value :
   filteredProducts.value.filter(
     (p) =>
       `${p.title} ${p.brand} ${p.size} ${p.form} ${p.claim} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')} ${state.sites.find((site) => site.id === p.siteId)?.domain || ''} ${state.keywords
@@ -186,10 +195,9 @@ const rows = computed(() =>
       (!linkedKeyword.value || linkedKeyword.value.productIds.includes(p.id)),
   ),
 );
-const { ids: bulkIds, selected: bulkSelected, selectable, selectAll, clear, rowSelection } = useFilteredSelection(rows);
-const exportRows = computed(() => bulkIds.value.length ? bulkSelected.value : rows.value);
+const { ids: bulkIds, selected: bulkSelected, selectable, selectAll, clear, rowSelection } = useFilteredSelection(rows, undefined, serverMode ? remote.selectAll : undefined);
 const pagedRows = computed(() =>
-  rows.value.slice(
+  serverMode ? rows.value : rows.value.slice(
     (page.value - 1) * pageSize.value,
     page.value * pageSize.value,
   ),
@@ -211,11 +219,13 @@ watch(
   ],
   () => {
     page.value = 1;
+    clear();
   },
 );
 watch(
   () => rows.value.length,
   (n) => {
+    if (serverMode) return;
     page.value = Math.min(
       page.value,
       Math.max(1, Math.ceil(n / pageSize.value)),
@@ -226,7 +236,7 @@ function changePage(current: number, size: number) {
   pageSize.value = size;
   page.value = Math.min(
     current,
-    Math.max(1, Math.ceil(rows.value.length / size)),
+    Math.max(1, Math.ceil((serverMode ? remote.total.value : rows.value.length) / size)),
   );
 }
 const comparison = computed(() =>
@@ -238,6 +248,24 @@ function toggleCompare(id: string) {
   else if (compareIds.value.length < 3) compareIds.value.push(id);
   else message.info('最多同时对比3个商品');
 }
+function siteField(id: string, field: 'brand' | 'domain') {
+  return state.sites.find((row) => row.id === id)?.[field] || remote.facets.value.sites?.find((row) => row.value === id)?.[field] || '';
+}
+async function exportProducts() {
+  try {
+    const records = bulkIds.value.length ? bulkSelected.value : serverMode ? await remote.selectAll() : rows.value;
+    exportCsv('商品库.csv', records.map((p) => ({
+      商品: p.title, 品牌: p.brand, 国家: p.market, 规格: p.size, 价格: p.price, 币种: p.currency,
+      成分: p.ingredient, 剂量: p.dose, 功效卖点: p.benefits.join('、'), 卖点依据: p.benefitEvidence,
+      成分分析: p.ingredientInsights.map((item) => `${item.name}｜${item.amount}｜${item.role}`).join('；'),
+      商品图片: p.imageUrl || '', 数据来源: [p.sourceProvider, p.sourcePlatform].filter(Boolean).join(' · '),
+      采集时间: productCollectedAt(p) || '', 决策标签: productDecisions(p).map((item) => item.label).join('、'),
+      决策依据: productDecisions(p).map((item) => `${item.label}：${item.reason} 来源：${item.source} 日期：${item.date}`).join('；'),
+      已采集字段: p.collectionFields?.join('、') || '', 独立站品牌: siteField(p.siteId, 'brand'),
+      独立站域名: siteField(p.siteId, 'domain'), 证据网址: p.evidenceUrl || '', 性质: productDataSource(p),
+    })));
+  } catch (cause) { message.error((cause as Error).message); }
+}
 </script>
 <template>
   <main class="hci-page">
@@ -247,50 +275,10 @@ function toggleCompare(id: string) {
     >
       <FormulaInsights />
       <PlatformProductsDialog />
-      <ProductCompletionDialog :product-ids="rows.map((p) => p.id)" />
+      <ProductCompletionDialog :product-ids="rows.map((p) => p.id)" :total="serverMode ? remote.total.value : undefined" :resolve-product-ids="serverMode ? async () => (await remote.selectAll()).map((p) => p.id) : undefined" />
       <Button
         :disabled="!rows.length"
-        @click="
-          exportCsv(
-            '商品库.csv',
-            exportRows.map((p) => ({
-              商品: p.title,
-              品牌: p.brand,
-              国家: p.market,
-              规格: p.size,
-              价格: p.price,
-              币种: p.currency,
-              成分: p.ingredient,
-              剂量: p.dose,
-              功效卖点: p.benefits.join('、'),
-              卖点依据: p.benefitEvidence,
-              成分分析: p.ingredientInsights
-                .map((item) => `${item.name}｜${item.amount}｜${item.role}`)
-                .join('；'),
-              商品图片: p.imageUrl || '',
-              数据来源: [p.sourceProvider, p.sourcePlatform]
-                .filter(Boolean)
-                .join(' · '),
-              采集时间: productCollectedAt(p) || '',
-              决策标签: productDecisions(p)
-                .map((item) => item.label)
-                .join('、'),
-              决策依据: productDecisions(p)
-                .map(
-                  (item) =>
-                    `${item.label}：${item.reason} 来源：${item.source} 日期：${item.date}`,
-                )
-                .join('；'),
-              已采集字段: p.collectionFields?.join('、') || '',
-              独立站品牌:
-                state.sites.find((site) => site.id === p.siteId)?.brand || '',
-              独立站域名:
-                state.sites.find((site) => site.id === p.siteId)?.domain || '',
-              证据网址: p.evidenceUrl || '',
-              性质: productDataSource(p),
-            })),
-          )
-        "
+        @click="exportProducts"
       >
         {{ bulkIds.length ? `导出所选（${bulkIds.length}）` : '导出商品' }} </Button
       ><Button
@@ -375,11 +363,12 @@ function toggleCompare(id: string) {
         ]"
       />
       <span class="hci-subtle"
-        >{{ rows.length }} 个商品 · 当前第 {{ page }} 页</span
+        >{{ serverMode ? remote.total.value : rows.length }} 个商品 · 当前第 {{ page }} 页</span
       >
       <Button @click="decisionRulesOpen = true">决策标签规则</Button>
     </div>
-    <SelectionBar :count="bulkIds.length" :total="selectable.length" @all="selectAll" @clear="clear"><ProductCompletionDialog v-if="bulkIds.length" :product-ids="bulkIds" :compact="bulkIds.length === 1" /></SelectionBar>
+    <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
+    <SelectionBar :count="bulkIds.length" :total="serverMode ? remote.total.value : selectable.length" @all="selectAll" @clear="clear"><ProductCompletionDialog v-if="bulkIds.length" :product-ids="bulkIds" :compact="bulkIds.length === 1" /></SelectionBar>
     <div v-if="viewMode === 'cards'" class="hci-product-grid">
       <article
         v-for="product in pagedRows"
@@ -453,7 +442,7 @@ function toggleCompare(id: string) {
           >
             <span>关联独立站</span>
             <b>{{
-              state.sites.find((site) => site.id === product.siteId)?.domain
+              siteField(product.siteId, 'domain')
             }}</b>
             <span>查看档案 →</span>
           </button>
@@ -494,6 +483,8 @@ function toggleCompare(id: string) {
     </div>
     <Table
       v-else
+      :loading="remote.loading.value"
+      @change="remote.tableChange"
       class="hci-resource-table"
       :row-selection="rowSelection"
       :data-source="pagedRows"
@@ -504,7 +495,7 @@ function toggleCompare(id: string) {
       :columns="[
         { title: '商品', key: 'product', width: 320, fixed: 'left' },
         { title: '市场 / 品类', key: 'category', width: 150 },
-        { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
+        { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: serverMode ? true : (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
         { title: '决策标签（点击看依据）', key: 'decisions', width: 280 },
         { title: '规格 / 剂型', key: 'spec', width: 170 },
         { title: '配方与成分', key: 'ingredient', width: 240 },
@@ -575,7 +566,7 @@ function toggleCompare(id: string) {
               router.push({ path: '/sites', query: { site: record.siteId } })
             "
             >{{
-              state.sites.find((s) => s.id === record.siteId)?.domain ||
+              siteField(record.siteId, 'domain') ||
               '未关联站点'
             }}</Button
           >
@@ -600,7 +591,7 @@ function toggleCompare(id: string) {
       <Pagination
         :current="page"
         :page-size="pageSize"
-        :total="rows.length"
+        :total="serverMode ? remote.total.value : rows.length"
         show-size-changer
         :page-size-options="['10', '20', '50', '100']"
         :show-total="(total) => `共 ${total} 个商品`"

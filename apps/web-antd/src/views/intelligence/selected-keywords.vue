@@ -51,6 +51,9 @@ import {
 import { audit, filteredKeywords, marketName, state } from './data';
 import { assessKeyword } from './keyword-scoring';
 import { platformProductSelection } from './platform-product-selection';
+import { serverMode } from './session';
+import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
+import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 
 const router = useRouter();
 const ids = ref<string[]>([]);
@@ -58,6 +61,8 @@ const search = ref('');
 const status = ref('ALL');
 const page = ref(1);
 const pageSize = ref(20);
+const remote = useWorkspaceList<Keyword>('keywords', computed(() => ({ market: state.market, search: search.value, review: 'selected', status: status.value })), page, pageSize);
+const overview = useOverviewSnapshot();
 const labels: Record<string, string> = {
   pending: '尚未采集',
   queued: '等待采集',
@@ -115,7 +120,7 @@ function stopReports() {
   reportActive = false;
   if (reportTimer) clearTimeout(reportTimer);
 }
-const rows = computed(() =>
+const rows = computed(() => serverMode ? remote.rows.value.map((k) => ({ ...k, score: assessKeyword(k).score })) :
   selected.value
     .filter(
       (k) =>
@@ -131,6 +136,7 @@ const rows = computed(() =>
 const { selectable, selectAll, clear, rowSelection } = useFilteredSelection(
   rows,
   ids,
+  serverMode ? remote.selectAll : undefined,
 );
 const active = (r: Keyword) =>
   ['queued', 'running'].includes(r.siteCollection?.status || '');
@@ -176,7 +182,7 @@ const columns = [
     key: 'score',
     width: 105,
     defaultSortOrder: 'descend' as const,
-    sorter: (a: { score: null | number }, b: { score: null | number }) =>
+    sorter: serverMode ? true : (a: { score: null | number }, b: { score: null | number }) =>
       (a.score ?? -1) - (b.score ?? -1),
   },
   { title: '趋势热度 / 周期变化', key: 'trend', width: 215 },
@@ -191,7 +197,8 @@ const columns = [
   { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
 ];
 async function remove(r: Keyword) {
-  r.reviewStatus = 'pending';
+  const current = state.keywords.find((row) => row.id === r.id);
+  if (current) current.reviewStatus = 'pending';
   audit('移出入选关键词', r.term);
   try {
     await syncCloudWorkspace();
@@ -226,7 +233,7 @@ const time = (r: Keyword) =>
       <Button @click="router.push('/research')">返回关键词研究</Button>
       <Button @click="router.push('/monitor')">查看后台任务</Button>
       <DailyDiscoveryPlan />
-      <KeywordTrendsControl :ids="ids" />
+      <KeywordTrendsControl :ids="ids" :visible-ids="serverMode ? rows.map((r) => r.id) : undefined" />
     </PageHeader>
     <Alert
       type="info"
@@ -236,8 +243,8 @@ const time = (r: Keyword) =>
     />
     <section class="hci-panel">
       <div class="selected-summary">
-        <b>当前市场入选 {{ selected.length }} 个词</b><span>已完成 {{ completed }} 个 · 等待或采集中
-          {{ selected.filter(active).length }} 个</span>
+        <b>当前市场入选 {{ serverMode ? overview.snapshot.value?.keywords.selected ?? '—' : selected.length }} 个词</b><span>已完成 {{ serverMode ? overview.snapshot.value?.keywords.completed ?? '—' : completed }} 个 · 等待或采集中
+          {{ serverMode ? overview.snapshot.value?.keywords.active ?? '—' : selected.filter(active).length }} 个</span>
       </div>
       <Alert v-if="reportError" type="error" :message="reportError" show-icon />
       <div class="selected-toolbar">
@@ -284,24 +291,27 @@ const time = (r: Keyword) =>
       </div>
       <SelectionBar
         :count="ids.length"
-        :total="selectable.length"
+        :total="serverMode ? remote.total.value : selectable.length"
         @all="selectAll"
         @clear="clear"
       >
         <KeywordNamesDialog :ids="ids" />
       </SelectionBar>
+      <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
       <Table
+        @change="remote.tableChange"
         class="hci-resource-table"
         size="small"
         :columns="columns"
         :data-source="rows"
         :loading="
-          cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
+          serverMode ? remote.loading.value : cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
         "
         row-key="id"
         :scroll="{ x: 2700 }"
         :row-selection="rowSelection"
         :pagination="{
+          total: serverMode ? remote.total.value : rows.length,
           current: page,
           pageSize,
           showSizeChanger: true,

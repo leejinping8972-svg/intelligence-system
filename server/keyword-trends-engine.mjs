@@ -91,9 +91,9 @@ export async function enqueueTrendWork(db, words, plan, now, trigger) {
 export async function trendAction(input, user, io) {
   const { db, now = Date.now() } = io;
   if (input.action === 'server_keyword_trends_snapshot') {
-    const words = await io.keywords(),
+    const words = await io.keywords(input.keywordIds),
       byId = new Map(words.map((k) => [k.id, k]));
-    const summaries = (await db.list(`${P}summary:`))
+    const summaries = (await (io.summaries ? io.summaries(input.keywordIds) : db.list(`${P}summary:`)))
       .map((r) => r.value)
       .filter((s) => identity(byId.get(s.keywordId), s))
       .map((summary) => presentSocialSummary(summary));

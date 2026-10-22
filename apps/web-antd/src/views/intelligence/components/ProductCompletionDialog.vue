@@ -11,7 +11,10 @@ import {
 } from '../cloud-workspace';
 import { state } from '../data';
 import { serverMode } from '../session';
-const props = defineProps<{ productIds: string[]; compact?: boolean }>();
+const props = defineProps<{ productIds: string[]; compact?: boolean; total?: number; resolveProductIds?: () => Promise<string[]> }>();
+const resolvedIds = ref<string[]>();
+const resolutionFailed = ref(false);
+const productIds = computed(() => resolvedIds.value || props.productIds);
 const busy = ref(false);
 const error = ref('');
 const open = ref(false);
@@ -22,14 +25,14 @@ const supported = computed(
   () =>
     state.products.filter(
       (p) =>
-        props.productIds.includes(p.id) &&
+        productIds.value.includes(p.id) &&
         p.sourceProvider === 'Sorftime' &&
         /^[A-Z0-9]{10}$/.test(p.sourceProductId || '') &&
         ['MX', 'US'].includes(p.market),
     ).length,
 );
 async function submit() {
-  if (busy.value) return;
+  if (busy.value || resolutionFailed.value) return;
   busy.value = true;
   error.value = '';
   try {
@@ -37,7 +40,7 @@ async function submit() {
     requestId ||= crypto.randomUUID();
     const result = await cloudRequest<{ jobId: string }>(
       'server_complete_platform_products',
-      { requestId, productIds: [...props.productIds], maxRequests: maxRequests.value },
+      { requestId, productIds: [...productIds.value], maxRequests: maxRequests.value },
     );
     await syncCloudWorkspace();
     open.value = false;
@@ -49,25 +52,36 @@ async function submit() {
     busy.value = false;
   }
 }
+async function begin() {
+  if (busy.value) return;
+  error.value = '';
+  resolvedIds.value = undefined;
+  resolutionFailed.value = false;
+  busy.value = true;
+  try {
+    if (props.resolveProductIds) resolvedIds.value = await props.resolveProductIds();
+    maxRequests.value = Math.max(1, supported.value * 5);
+    requestId = '';
+    open.value = true;
+  } catch (cause) { resolutionFailed.value = true; error.value = (cause as Error).message; open.value = true; }
+  finally { busy.value = false; }
+}
 </script>
 <template>
   <Button
     :type="compact ? 'link' : 'primary'"
     :disabled="!serverMode || !cloudWorkspace.ready || productIds.length === 0"
-    @click="
-      open = true;
-      maxRequests = Math.max(1, supported * 5);
-      error = '';
-      requestId = '';
-    "
+    :loading="busy"
+    @click="begin"
   >
-    {{ compact ? '补全此商品' : `补全商品数据（${productIds.length}）` }}
+    {{ compact ? '补全此商品' : `补全商品数据（${total ?? productIds.length}）` }}
   </Button>
   <Modal
     v-model:open="open"
     title="补全已抓取商品的数据"
     ok-text="提交补全任务"
     :confirm-loading="busy"
+    :ok-button-props="{ disabled: resolutionFailed }"
     :closable="!busy"
     :mask-closable="!busy"
     @ok="submit"

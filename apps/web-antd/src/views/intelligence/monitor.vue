@@ -20,7 +20,6 @@ import {
   cloudRequest,
   cloudWorkspace,
   retryCloudTrends,
-  startCloudSync,
   syncCloudWorkspace,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
@@ -31,7 +30,6 @@ import { focusedMonitorRows } from './focused-monitors';
 import TaskProgress from './components/TaskProgress.vue';
 import { audit, marketName, state } from './data';
 import { groupTasks } from './task-list';
-startCloudSync();
 const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
@@ -150,6 +148,7 @@ const statuses = {
 <template>
   <main class="hci-page">
     <PageHeader
+      :mode="tab === 'tasks' ? 'tasks' : 'legacy'"
       title="监控与任务"
       description="让重点对象持续可见，让每个研究步骤都有明确状态。"
     >

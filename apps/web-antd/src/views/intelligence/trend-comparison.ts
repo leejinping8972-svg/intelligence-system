@@ -4,6 +4,8 @@ export interface TrendPoint {
   isPartial?: boolean;
 }
 interface TrendRecord {
+  listSummary?: boolean;
+  trendSummary?: TrendComparison[];
   trendDailyPoints?: TrendPoint[];
   trendDailyCollectedAt?: string;
   trendPoints?: TrendPoint[];
@@ -209,6 +211,8 @@ export function fourPeriodComparisons(record: TrendRecord): TrendComparison[] {
 export function trendComparisons(
   record: TrendRecord,
 ): [TrendComparison, TrendComparison, TrendComparison] {
+  if (record.listSummary && record.trendSummary?.length === 3)
+    return record.trendSummary as [TrendComparison, TrendComparison, TrendComparison];
   const daily = intervals(
     record.trendDailyPoints,
     'day',

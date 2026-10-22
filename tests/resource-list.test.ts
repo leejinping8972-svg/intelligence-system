@@ -32,6 +32,19 @@ describe('score intervals', () => {
   });
 });
 describe('all filtered records selection', () => {
+  it('retains checked records across server pages and selects the complete server result', async () => {
+    const input = ref([{ id: '1' }, { id: '2' }]);
+    const all = Array.from({ length: 34 }, (_, i) => ({ id: String(i + 1) }));
+    const selection = useFilteredSelection(computed(() => input.value), undefined, async () => all);
+    selection.rowSelection.value.onChange(['1']);
+    input.value = [{ id: '3' }, { id: '4' }];
+    await nextTick();
+    expect(selection.ids.value).toEqual(['1']);
+    expect(selection.selected.value.map((r) => r.id)).toEqual(['1']);
+    await selection.selectAll();
+    expect(selection.ids.value).toHaveLength(34);
+    expect(selection.selected.value).toHaveLength(34);
+  });
   it('selects more than 100 records across pages without truncation or submission', async () => {
     const input = ref(
       Array.from({ length: 220 }, (_, i) => ({

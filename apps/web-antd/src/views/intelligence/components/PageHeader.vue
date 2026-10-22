@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { cloudWorkspace, startCloudSync } from '../cloud-workspace';
+import { watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { cloudWorkspace, setWorkspaceReadMode, startCloudSync } from '../cloud-workspace';
 import { state, storageError } from '../data';
 import { serverMode } from '../session';
 import MarketSwitcher from './MarketSwitcher.vue';
-withDefaults(
-  defineProps<{ title: string; description: string; showMarket?: boolean }>(),
+const props = withDefaults(
+  defineProps<{ title: string; description: string; showMarket?: boolean; mode?: 'legacy' | 'paged' | 'tasks' }>(),
   { showMarket: true },
 );
-startCloudSync();
+const route = useRoute();
+watch(() => [route.path, props.mode] as const, ([path, mode]) => {
+  const page = path.split('/').filter(Boolean).at(-1);
+  setWorkspaceReadMode(mode || (page === 'monitor' ? 'tasks' : ['overview', 'research', 'selected-keywords', 'products', 'sites', 'ads', 'settings'].includes(page || '') ? 'paged' : 'legacy'));
+  startCloudSync();
+}, { immediate: true });
 </script>
 <template>
   <div class="hci-page-head">

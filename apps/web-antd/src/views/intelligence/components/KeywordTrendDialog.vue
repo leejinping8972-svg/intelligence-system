@@ -2,26 +2,32 @@
 import type { Keyword } from '../data';
 
 import { computed, ref } from 'vue';
+import { loadWorkspaceDetail } from '../cloud-workspace';
 
-import { Modal, Tag } from 'ant-design-vue';
+import { Modal, Tag, message } from 'ant-design-vue';
 
 import { trendOption } from '../charts';
-import { marketName } from '../data';
+import { marketName, state } from '../data';
 import Chart from './Chart.vue';
 import GoogleTrendInsights from './GoogleTrendInsights.vue';
 import KeywordTrendComparison from './KeywordTrendComparison.vue';
 
 const props = defineProps<{ keyword: Keyword }>();
 const open = ref(false);
+const keyword = computed(() => open.value ? state.keywords.find((row) => row.id === props.keyword.id) || props.keyword : props.keyword);
+async function show() {
+  try { await loadWorkspaceDetail('keywords', props.keyword.id); open.value = true; }
+  catch (cause) { message.error((cause as Error).message); }
+}
 const dateRange = computed(() => {
-  const points = props.keyword.trendPoints || [];
+  const points = keyword.value.trendPoints || [];
   if (points.length === 0) return '日期范围未记录';
   return `${points[0]?.date || '—'} 至 ${points.at(-1)?.date || '—'}`;
 });
 </script>
 
 <template>
-  <button type="button" class="hci-link" @click="open = true">
+  <button type="button" class="hci-link" @click="show">
     查看一年曲线
   </button>
   <Modal

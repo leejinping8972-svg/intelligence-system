@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Button, Drawer, Progress, Tag } from 'ant-design-vue';
+import { Alert, Button, Drawer, Progress, Tag } from 'ant-design-vue';
+import type { Product } from '../data';
+import { loadWorkspaceDetail } from '../cloud-workspace';
+import { useWorkspaceList } from '../workspace-queries';
+import { serverMode } from '../session';
 
 import { marketName, state } from '../data';
 import CompactTags from './CompactTags.vue';
@@ -13,9 +17,18 @@ import ProductCollectDialog from './ProductCollectDialog.vue';
 const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
 const router = useRouter();
+const detailError = ref('');
+const productPage = ref(1), productPageSize = ref(20);
+const remoteProducts = useWorkspaceList<Product>('products', computed(() => ({ siteId: props.id, enabled: !!props.id })), productPage, productPageSize);
+watch(() => props.id, async (id) => {
+  detailError.value = '';
+  if (!id) return;
+  try { await loadWorkspaceDetail('sites', id); }
+  catch (cause) { if (props.id === id) detailError.value = (cause as Error).message; }
+}, { immediate: true });
 const site = computed(() => state.sites.find((item) => item.id === props.id));
 const products = computed(() =>
-  state.products.filter((item) => item.siteId === props.id),
+  serverMode ? remoteProducts.rows.value : state.products.filter((item) => item.siteId === props.id),
 );
 const sources = computed(() =>
   site.value?.sources?.length
@@ -33,12 +46,13 @@ function go(path: string, query: Record<string, string>) {
 </script>
 <template>
   <Drawer
-    :open="!!site"
+    :open="!!id"
     width="min(940px, 100vw)"
     root-class-name="hci-resource-drawer"
     title="独立站档案"
     @close="emit('close')"
   >
+    <Alert v-if="detailError || remoteProducts.error.value" type="error" :message="detailError || remoteProducts.error.value" show-icon />
     <template v-if="site">
       <header class="hci-resource-hero">
         <div class="hci-resource-avatar" aria-hidden="true">
@@ -62,7 +76,7 @@ function go(path: string, query: Record<string, string>) {
       </header>
       <div class="hci-resource-metrics">
         <div>
-          <span>关联商品</span><b>{{ products.length }}</b>
+          <span>关联商品</span><b>{{ serverMode ? remoteProducts.total.value : products.length }}</b>
         </div>
         <div>
           <span>自然搜索流量估算</span><b>{{ site.metrics?.organicTraffic ?? '—' }}</b>

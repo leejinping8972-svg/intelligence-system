@@ -4,6 +4,7 @@ import { ssoSchema } from './admin-sso-store.mjs';
 import { engine, pool, sql } from './database.mjs';
 import { cleanKeyword, naturalKey } from './domain.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
+import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 
 export { pool } from './database.mjs';
 
@@ -31,6 +32,7 @@ export async function migrate() {
     CREATE TABLE IF NOT EXISTS workspace_documents (name text PRIMARY KEY, value jsonb NOT NULL, revision integer NOT NULL DEFAULT 1);
   `);
   for (const statement of authSchema) await pool.query(statement);
+  await migrateWorkspaceReads(pool, engine);
 }
 export const authSchema = [
   ssoSchema,

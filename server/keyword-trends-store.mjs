@@ -1,6 +1,7 @@
 /* eslint-disable unicorn/no-await-expression-member -- SQL adapters follow the existing document-store convention. */
 import { openAdsKey } from './ads-provider.mjs';
 import { lock, pool, putDocument, unlock } from './database.mjs';
+import { trendDigest } from './keyword-trends-domain.mjs';
 import { maintenance } from './database-admin.mjs';
 import { validateJob } from './domain.mjs';
 import { submitKeywordJob } from './keyword-submit.mjs';
@@ -38,10 +39,22 @@ export function keywordTrendIO(c = pool, overrides = {}) {
   };
   return {
     db,
-    keywords: async () =>
-      (await c.query('SELECT data FROM research_keywords')).rows.map(
+    summaries: async (ids) => {
+      if (!Array.isArray(ids)) return db.list('keyword-trends:summary:');
+      const names = [...new Set(ids)].slice(0, 100).flatMap((id) => ['tiktok', 'instagram', 'facebook'].map((source) => `keyword-trends:summary:${trendDigest(id)}:${source}`));
+      if (!names.length) return [];
+      return (await c.query(`SELECT name,value FROM workspace_documents WHERE name IN (${names.map((_, i) => `$${i + 1}`).join(',')})`, names)).rows;
+    },
+    keywords: async (ids) => {
+      if (Array.isArray(ids)) {
+        if (!ids.length) return [];
+        const keys = [...new Set(ids)].slice(0, 100);
+        return (await c.query(`SELECT payload AS data FROM workspace_read_rows WHERE collection='keywords' AND id IN (${keys.map((_, i) => `$${i + 1}`).join(',')})`, keys)).rows.map((r) => r.data);
+      }
+      return (await c.query('SELECT data FROM research_keywords')).rows.map(
         (r) => r.data,
-      ),
+      );
+    },
     key: async () => {
       const record = (
         await c.query('SELECT value FROM provider_configs WHERE name=$1', [

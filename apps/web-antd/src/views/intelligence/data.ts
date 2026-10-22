@@ -52,6 +52,8 @@ export const categories = [
   '运动营养',
 ];
 export interface Keyword {
+  listSummary?: boolean;
+  trendSummary?: import('./trend-comparison').TrendComparison[];
   adCollection?: {
     jobId?: string;
     status: string;
@@ -155,6 +157,8 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  listSummary?: boolean;
+  decisionTags?: import('./product-decisions').ProductDecision[];
   formula?: {
     status: 'observed' | 'unknown' | 'verified';
     fingerprint: string;
@@ -238,6 +242,8 @@ export interface SiteAssessment {
   }[];
 }
 export interface Site {
+  listSummary?: boolean;
+  productCount?: number;
   productCollection?: CollectionState;
   id: string;
   brand: string;
@@ -625,6 +631,12 @@ function normalizeGrowth(data: DemoState) {
 const storageKey = 'hci-demo-state-v1';
 function restore(): DemoState {
   try {
+    if (import.meta.env.VITE_HCI_SERVER === 'true') {
+      const saved = JSON.parse(localStorage.getItem('hci-server-preferences-v1') || 'null');
+      const defaults = initial();
+      if (saved && ['ALL', 'MX', 'US', 'VN'].includes(saved.market)) defaults.market = saved.market;
+      return defaults;
+    }
     const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
     const defaults = initial();
     if (saved && saved.version !== STATE_VERSION) {
@@ -859,10 +871,12 @@ export function openCapturedTrend(term: string, market: string) {
 }
 export const storageError = reactive({ value: '' });
 watch(
-  state,
+  import.meta.env.VITE_HCI_SERVER === 'true' ? () => state.market : state,
   () => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(state));
+      if (import.meta.env.VITE_HCI_SERVER === 'true')
+        localStorage.setItem('hci-server-preferences-v1', JSON.stringify({ market: state.market }));
+      else localStorage.setItem(storageKey, JSON.stringify(state));
       storageError.value = '';
     } catch {
       storageError.value = '浏览器存储不可用，本次操作仅在当前页面会话保留。';

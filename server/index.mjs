@@ -64,6 +64,7 @@ import { siteFetchConfig } from './site-fetch-config.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { migrate, pool, saveKeyword } from './store.mjs';
 import { workspaceSnapshot } from './workspace-snapshot.mjs';
+import { createWorkspaceReads } from './workspace-reads.mjs';
 import { isWorkspaceSyncKey } from './workspace-sync-keys.mjs';
 import { youtubeAction } from './youtube-config.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -71,6 +72,12 @@ const secret = Buffer.from(process.env.SERVER_BRIDGE_KEY || '');
 if (secret.length < 32) throw new Error('SERVER_BRIDGE_KEY must be configured');
 await migrate();
 await registerRelease();
+const workspaceReads = createWorkspaceReads({ pool, sql, lock, unlock, putDocument, isWorkspaceSyncKey });
+let readTimer;
+async function refreshWorkspaceReads() {
+  const more = !maintenance && await workspaceReads.refresh();
+  if (!controller.signal.aborted) readTimer = setTimeout(refreshWorkspaceReads, more ? 10 : 2000);
+}
 const sso = createAdminSso({
   config: adminSsoConfig(),
   store: createSsoStore(pool),
@@ -78,6 +85,7 @@ const sso = createAdminSso({
   signIn: adminSsoSignIn,
 });
 const controller = new AbortController();
+void refreshWorkspaceReads();
 void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
@@ -91,6 +99,12 @@ async function api(input, user) {
   if (input.action?.startsWith('server_market_collection_'))
     return marketResearchAction(input, user);
   switch (input.action) {
+    case 'server_workspace_bootstrap': return workspaceReads.bootstrap();
+    case 'server_workspace_overview': return workspaceReads.overview(input);
+    case 'server_workspace_list': return workspaceReads.list(input);
+    case 'server_workspace_facets': return workspaceReads.facets(input);
+    case 'server_workspace_selection': return workspaceReads.selection(input);
+    case 'server_workspace_detail': return workspaceReads.details(input);
     case 'server_ai_prompts':
     case 'server_ai_prompt_save': { return aiPromptAction(input, user); }
     case 'server_keyword_names': {
@@ -185,6 +199,7 @@ async function api(input, user) {
         jobTasks,
         scoreSite,
         isWorkspaceSyncKey,
+        readVersions: async () => (await workspaceReads.status()).revisions,
       });
     }
     case 'server_task_detail': {
@@ -223,13 +238,14 @@ async function api(input, user) {
                 [`business:${entry.key}`],
               );
           } else {
-            if (/^(products|ads):/.test(entry.key)) {
+            if (input.patch || /^(products|ads):/.test(entry.key)) {
               const old = (
                 await connection.query(
                   'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
                   [`business:${entry.key}`],
                 )
               ).rows[0]?.value;
+              if (input.patch && old) entry.value = { ...old, ...entry.value };
               if (entry.key.startsWith('products:') && !input.importOnly)
                 entry.value = protectPlatformClientEdit(old, entry.value);
               entry.value = protectDiscoveryEdit(old, entry.value);
@@ -584,6 +600,11 @@ const server = createServer(async (request, response) => {
             'server_task_detail',
             'server_workspace_delta',
             'server_workspace_snapshot',
+            'server_workspace_bootstrap',
+            'server_workspace_overview',
+            'server_workspace_list',
+            'server_workspace_facets',
+            'server_workspace_detail',
           ].includes(input.action),
         );
     if (input.action?.startsWith('auth_')) {
@@ -641,6 +662,7 @@ server.listen(Number(process.env.PORT || 8080), '0.0.0.0', () =>
 );
 process.on('SIGTERM', () => {
   controller.abort();
+  clearTimeout(readTimer);
   server.close();
   setTimeout(() => process.exit(0), 1000).unref();
 });

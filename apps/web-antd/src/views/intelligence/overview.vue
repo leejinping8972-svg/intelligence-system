@@ -2,7 +2,9 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Button, Select, Tag } from 'ant-design-vue';
+import { Alert, Button, Select, Tag } from 'ant-design-vue';
+import { serverMode } from './session';
+import { useOverviewSnapshot } from './workspace-queries';
 
 import { trendOption } from './charts';
 import Chart from './components/Chart.vue';
@@ -17,37 +19,41 @@ import {
   state,
 } from './data';
 const router = useRouter();
+const overview = useOverviewSnapshot();
+const overviewKeywords = computed(() => serverMode ? overview.snapshot.value?.topKeywords || [] : filteredKeywords.value);
+const count = (key: 'keywords' | 'products' | 'reviews' | 'sites') => serverMode ? overview.snapshot.value?.counts[key] ?? '—' : ({ keywords: filteredKeywords.value.length, sites: filteredSites.value.length, products: filteredProducts.value.length, reviews: pendingReviews.value.length })[key];
+const productCount = (market: string) => serverMode ? overview.snapshot.value?.productMarkets[market] ?? '—' : state.products.filter((p) => p.market === market).length;
 const selectedTerm = ref('k1');
 const keyword = computed(
   () =>
-    filteredKeywords.value.find((k) => k.id === selectedTerm.value) ||
-    filteredKeywords.value[0],
+    overviewKeywords.value.find((k) => k.id === selectedTerm.value) ||
+    overviewKeywords.value[0],
 );
 const stats = computed(() => [
   {
     title: '在研关键词',
-    value: filteredKeywords.value.length,
+    value: count('keywords'),
     note: '按国家保留独立观察',
     icon: '⌕',
     route: '/research',
   },
   {
     title: '竞品独立站',
-    value: filteredSites.value.length,
+    value: count('sites'),
     note: '去重后的站点档案',
     icon: '◎',
     route: '/sites',
   },
   {
     title: '已发现商品',
-    value: filteredProducts.value.length,
+    value: count('products'),
     note: '包含不同配方与规格',
     icon: '▦',
     route: '/products',
   },
   {
     title: '待审核事项',
-    value: pendingReviews.value.length,
+    value: count('reviews'),
     note: '字段冲突与信息补证',
     icon: '☷',
     route: '/reviews',
@@ -59,7 +65,7 @@ const mapOptions = computed(() => ({
     formatter: (p: any) => {
       const m = markets.find((m) => m.english === p.name);
       return m
-        ? `${m.name}：${state.products.filter((x) => x.market === m.code).length} 个商品`
+        ? `${m.name}：${productCount(m.code)} 个商品`
         : '后续开放市场';
     },
   },
@@ -119,7 +125,9 @@ function selectMarket(name: string) {
         ＋ 新建研究
       </Button>
     </PageHeader>
-    <div class="hci-demo-note">
+    <Alert v-if="overview.error.value" type="error" :message="overview.error.value" show-icon />
+    <div v-if="serverMode && overview.snapshot.value" class="hci-subtle" style="margin-bottom:12px">数据更新于 {{ new Date(overview.snapshot.value.generatedAt).toLocaleString('zh-CN') }}<span v-if="overview.indexing.value"> · 更新中</span></div>
+    <div v-if="!serverMode || overview.snapshot.value?.counts.keywords === 0" class="hci-demo-note">
       <b>空白工作区</b>系统不再预置样本。请从关键词研究、公开数据采集或数据导入开始建立真实结果。
     </div>
     <div class="hci-stats">
@@ -183,7 +191,7 @@ function selectMarket(name: string) {
             <div class="hci-subtle">{{ m.language }} · {{ m.currency }}</div>
           </div>
           <div>
-            <b>{{ state.products.filter((p) => p.market === m.code).length }}</b><span class="hci-subtle"> 个商品 →</span>
+            <b>{{ productCount(m.code) }}</b><span class="hci-subtle"> 个商品 →</span>
           </div>
         </button>
         <div
@@ -214,7 +222,7 @@ function selectMarket(name: string) {
           <Select
             :value="keyword?.id"
             :options="
-              filteredKeywords.map((k) => ({
+              overviewKeywords.map((k) => ({
                 label: `${k.term} · ${k.market}`,
                 value: k.id,
               }))
@@ -234,7 +242,7 @@ function selectMarket(name: string) {
           </button>
         </div>
         <div
-          v-for="(k, i) in filteredKeywords
+          v-for="(k, i) in overviewKeywords
             .filter((k) => k.growth && k.growth > 25)
             .slice(0, 4)"
           :key="k.id"

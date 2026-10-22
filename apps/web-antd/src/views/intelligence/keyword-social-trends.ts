@@ -71,12 +71,15 @@ export const socialTrends = reactive({
   loading: false,
 });
 let flight: Promise<TrendSnapshot> | undefined;
-export function loadSocialTrends(): Promise<TrendSnapshot> {
-  if (flight) return flight;
+let flightKey = '';
+export function loadSocialTrends(keywordIds?: string[]): Promise<TrendSnapshot> {
+  const key = JSON.stringify(keywordIds?.toSorted());
+  if (flight && flightKey === key) return flight;
+  flightKey = key;
   socialTrends.loading = true;
-  flight = cloudRequest<TrendSnapshot>('server_keyword_trends_snapshot')
+  const request = cloudRequest<TrendSnapshot>('server_keyword_trends_snapshot', keywordIds ? { keywordIds } : {})
     .then((value) => {
-      socialTrends.summaries = value.summaries;
+      if (flightKey === key) socialTrends.summaries = value.summaries;
       socialTrends.error = '';
       return value;
     })
@@ -86,8 +89,8 @@ export function loadSocialTrends(): Promise<TrendSnapshot> {
       throw error;
     })
     .finally(() => {
-      flight = undefined;
-      socialTrends.loading = false;
+      if (flightKey === key) { flight = undefined; socialTrends.loading = false; }
     });
-  return flight;
+  flight = request;
+  return request;
 }

@@ -62,6 +62,21 @@ test('unchanged polling reads only metadata and omits all data channels', async 
   assert.deepEqual(f.task.steps, ['first', 'last']);
   assert.deepEqual(f.task.researchProgress.requestLog, ['log']);
 });
+
+test('persisted versions avoid full-table hashes and task-only reads skip other channels', async () => {
+  const f = fixture();
+  const versions = { business: '3', keywords: '4', tasks: '5' };
+  f.deps.readVersions = async () => versions;
+  const next = await workspaceSnapshot({ channels: ['tasks'] }, f.deps);
+  assert.ok(next.tasks);
+  assert.equal(next.business, undefined);
+  assert.equal(next.keywords, undefined);
+  assert.equal(f.calls.length, 1);
+  assert.match(f.calls[0], /^SELECT \*/);
+  f.calls.length = 0;
+  await workspaceSnapshot({ revisions: versions }, f.deps);
+  assert.equal(f.calls.length, 0);
+});
 test('a task update does not reload products or keywords', async () => {
   const f = fixture();
   const first = await workspaceSnapshot({}, f.deps);

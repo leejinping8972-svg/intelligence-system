@@ -57,6 +57,7 @@ async function setup() {
   );
   const cloud =
     await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+  cloud.setWorkspaceReadMode('legacy');
   await cloud.syncCloudWorkspace();
   mock.request.mockClear();
   return cloud;
@@ -180,6 +181,7 @@ describe('workspace delta synchronization', () => {
     );
     const cloud =
       await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    cloud.setWorkspaceReadMode('legacy');
     const pending = cloud.syncCloudWorkspace();
     await Promise.resolve();
     expect(cloud.cloudWorkspace.ready).toBe(true);
@@ -202,11 +204,42 @@ describe('workspace delta synchronization', () => {
     mock.request.mockResolvedValue(initial());
     const cloud =
       await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    cloud.setWorkspaceReadMode('legacy');
     await cloud.syncCloudWorkspace();
     expect(mock.request).toHaveBeenCalledExactlyOnceWith(
       'server_workspace_delta',
       { revisions: {} },
       90_000,
     );
+  });
+});
+
+describe('paged server workspace', () => {
+  it('starts with configuration and revisions without downloading business collections', async () => {
+    mock.request.mockImplementation(async () => ({ entries: [], revisions: { published: '1' }, active: 0, generatedAt: 'now', indexing: false }));
+    const cloud = await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    await cloud.syncCloudWorkspace();
+    expect(mock.request.mock.calls.map((call) => call[0])).toEqual(['server_workspace_bootstrap']);
+    expect(cloud.cloudWorkspace.ready).toBe(true);
+    cloud.applyWorkspaceRecords('products', [{ id: 'p1', title: 'summary', favorite: false, listSummary: true }]);
+    cloud.applyWorkspaceRecords('products', [{ id: 'p1', title: 'summary', favorite: false, sourceContent: { descriptions: ['full detail'] }, ingredientInsights: [{ evidence: 'full ingredient evidence' }], listSummary: false }]);
+    cloud.applyWorkspaceRecords('products', [{ id: 'p1', title: 'summary', favorite: false, ingredientInsights: [{ evidence: '' }], listSummary: true }]);
+    expect(mock.state.products[0].ingredientInsights[0].evidence).toBe('full ingredient evidence');
+    expect(mock.state.products[0].listSummary).toBe(false);
+    mock.request.mockClear();
+    await cloud.syncCloudWorkspace();
+    expect(mock.request.mock.calls.map((call) => call[0])).toEqual(['server_workspace_bootstrap']);
+    mock.state.products[0].favorite = true;
+    await cloud.syncCloudWorkspace();
+    expect(mock.request).toHaveBeenCalledWith('server_workspace_sync', { patch: true, entries: [{ key: 'products:p1', value: { favorite: true } }] }, 30_000);
+    expect(mock.state.products[0].sourceContent.descriptions).toEqual(['full detail']);
+  });
+  it('task polling requests the task channel without reloading keywords or products', async () => {
+    mock.request.mockImplementation(async (action) => action === 'server_workspace_delta' ? { tasks: [], revisions: { tasks: '1' } } : { entries: [], revisions: { published: '1' }, active: 0, generatedAt: 'now', indexing: false });
+    const cloud = await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    cloud.setWorkspaceReadMode('tasks');
+    await cloud.syncCloudWorkspace();
+    expect(mock.request.mock.calls.map((call) => call[0])).toEqual(['server_workspace_bootstrap', 'server_workspace_delta']);
+    expect(mock.request.mock.calls[1][1]).toEqual({ channels: ['tasks'], revisions: {} });
   });
 });

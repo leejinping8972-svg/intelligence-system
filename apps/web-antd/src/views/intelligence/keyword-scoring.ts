@@ -50,6 +50,7 @@ export function gradeForScore(score: number): KeywordGrade {
   return 'D';
 }
 export function assessKeyword(keyword: Keyword): KeywordAssessment {
+  if (keyword.listSummary && keyword.assessment) return keyword.assessment;
   const business = assessSupplementRelevance(keyword);
   const { relevance, offTopic, brand } = business;
   const tags = new Set<string>(business.tags);

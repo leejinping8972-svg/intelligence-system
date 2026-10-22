@@ -27,6 +27,10 @@ import ProductCollectDialog from './components/ProductCollectDialog.vue';
 import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
 import { exportCsv, filteredSites, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
+import { loadWorkspaceDetail } from './cloud-workspace';
+import { serverMode } from './session';
+import { useWorkspaceList } from './workspace-queries';
+import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 const router = useRouter();
 const ids = ref<string[]>([]),
   scoring = ref(false),
@@ -39,7 +43,7 @@ const source = ref('ALL');
 const scoreFilter = ref(emptyScoreFilter());
 const sourceOptions = computed(() => [
   { label: '全部数据来源', value: 'ALL' },
-  ...[...new Set(filteredSites.value.flatMap(sources))].map((value) => ({
+  ...(serverMode ? remote.facets.value.source || [] : [...new Set(filteredSites.value.flatMap(sources))]).map((value) => ({
     label: value,
     value,
   })),
@@ -76,30 +80,34 @@ const keywordFilter = ref('');
 const selected = ref<Site>();
 const page = ref(1);
 const pageSize = ref(8);
+const remote = useWorkspaceList<Site>('sites', computed(() => ({ market: state.market,
+  search: search.value, platform: platform.value, category: category.value, ownership: ownership.value,
+  keywordId: keywordFilter.value || route.query.keywordId, source: source.value, score: scoreFilter.value,
+})), page, pageSize);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keywordId),
 );
 const categoryOptions = computed(() => [
   { label: '全部类别', value: 'ALL' },
-  ...[...new Set(filteredSites.value.map((site) => site.category))].map(
+  ...(serverMode ? remote.facets.value.category || [] : [...new Set(filteredSites.value.map((site) => site.category))]).map(
     (value) => ({ label: value, value }),
   ),
 ]);
 const ownershipOptions = computed(() => [
   { label: '全部股权背景', value: 'ALL' },
-  ...[
+  ...(serverMode ? remote.facets.value.ownership || [] : [
     ...new Set(filteredSites.value.map((site) => site.ownershipBackground)),
-  ].map((value) => ({ label: value, value })),
+  ]).map((value) => ({ label: value, value })),
 ]);
 const platformOptions = computed(() => [
   { label: '全部平台', value: 'ALL' },
-  ...[...new Set(filteredSites.value.map((site) => site.platform))].map(
+  ...(serverMode ? remote.facets.value.platform || [] : [...new Set(filteredSites.value.map((site) => site.platform))]).map(
     (value) => ({ label: value, value }),
   ),
 ]);
 const keywordOptions = computed(() => [
   { label: '全部关联关键词', value: '' },
-  ...state.keywords
+  ...(serverMode ? remote.facets.value.keywords || [] : state.keywords
     .filter(
       (keyword) =>
         keyword.siteIds.length > 0 &&
@@ -108,7 +116,7 @@ const keywordOptions = computed(() => [
     .map((keyword) => ({
       label: `${keyword.term} · ${keyword.market}`,
       value: keyword.id,
-    })),
+    }))),
 ]);
 const collectedCount = computed(
   () => rows.value.filter((site) => site.dataNature === 'collected').length,
@@ -116,6 +124,10 @@ const collectedCount = computed(
 watch(
   () => route.query.site,
   async (siteId) => {
+    if (serverMode && typeof siteId === 'string') {
+      try { await loadWorkspaceDetail('sites', siteId); }
+      catch (error) { message.error((error as Error).message); return; }
+    }
     const site = state.sites.find((item) => item.id === siteId);
     if (!site) return;
     if (state.market !== site.market) {
@@ -139,7 +151,7 @@ watch(
     search.value = '';
     page.value = 1;
     if (
-      keywordFilter.value &&
+      !serverMode && keywordFilter.value &&
       !state.keywords.some(
         (keyword) =>
           keyword.id === keywordFilter.value &&
@@ -149,7 +161,7 @@ watch(
       keywordFilter.value = '';
   },
 );
-const rows = computed(() =>
+const rows = computed(() => serverMode ? remote.rows.value :
   filteredSites.value.filter(
     (s) =>
       `${s.brand} ${s.domain} ${s.keyword} ${s.mainProducts.join(' ')} ${s.category} ${s.ownershipBackground} ${state.products
@@ -177,21 +189,37 @@ const rows = computed(() =>
       (!linkedKeyword.value || linkedKeyword.value.siteIds.includes(s.id)),
   ),
 );
-const { selectAll, clear, selectable, rowSelection } = useFilteredSelection(rows, ids);
+const { selectAll, clear, selectable, rowSelection } = useFilteredSelection(rows, ids, serverMode ? remote.selectAll : undefined);
+const exporting = ref(false);
+async function exportSites() {
+  exporting.value = true;
+  try {
+    const records = serverMode ? await remote.selectAll() : rows.value;
+    exportCsv('独立站.csv', records.filter((site) => !ids.value.length || ids.value.includes(site.id)).map((s) => ({
+      品牌: s.brand, 域名: s.domain, 市场: s.market, 类别: s.category,
+      主要产品: s.mainProducts.join('、'), 股权背景: s.ownershipBackground,
+      官网依据: s.ownershipEvidence, 采集时间: siteCollectedAt(s) || '',
+      证据网址: s.evidenceUrl || '', 验证置信度: s.confidence ?? '',
+      验证信号: s.signals?.join('、') || '', 性质: s.dataNature === 'collected' ? '官网实采' : '演示',
+    })));
+  } catch (cause) { message.error((cause as Error).message); }
+  finally { exporting.value = false; }
+}
 watch([search, platform, category, ownership, keywordFilter, source, scoreFilter], () => {
   page.value = 1;
+  ids.value = [];
   scoreRequest = '';
 });
 const columns = [
   { title: '品牌 / 独立站', key: 'brand', width: 220 },
   { title: '市场', key: 'market', width: 90 },
-  { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: (a: Site, b: Site) => collectionTimeOrder(siteCollectedAt(a)) - collectionTimeOrder(siteCollectedAt(b)) },
+  { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: serverMode ? true : (a: Site, b: Site) => collectionTimeOrder(siteCollectedAt(a)) - collectionTimeOrder(siteCollectedAt(b)) },
   {
     title: '站点评分',
     key: 'assessment',
     width: 120,
     defaultSortOrder: 'descend' as const,
-    sorter: (a: Site, b: Site) =>
+    sorter: serverMode ? true : (a: Site, b: Site) =>
       (a.assessment?.score ?? -1) - (b.assessment?.score ?? -1),
   },
   { title: '类别', dataIndex: 'category', width: 150 },
@@ -218,25 +246,8 @@ const columns = [
         >补齐指标与站点评分（{{ ids.length }}）</Button
       ><Button @click="router.push('/imports')">导入站点</Button
       ><Button
-        @click="
-          exportCsv(
-            '独立站.csv',
-            rows.map((s) => ({
-              品牌: s.brand,
-              域名: s.domain,
-              市场: s.market,
-              类别: s.category,
-              主要产品: s.mainProducts.join('、'),
-              股权背景: s.ownershipBackground,
-              官网依据: s.ownershipEvidence,
-              采集时间: siteCollectedAt(s) || '',
-              证据网址: s.evidenceUrl || '',
-              验证置信度: s.confidence ?? '',
-              验证信号: s.signals?.join('、') || '',
-              性质: s.dataNature === 'collected' ? '官网实采' : '演示',
-            })),
-          )
-        "
+        @click="exportSites"
+        :loading="exporting"
         :disabled="!rows.length"
       >
         导出
@@ -285,17 +296,20 @@ const columns = [
           :options="sourceOptions"
           aria-label="数据来源"
         /><span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 家站点 · {{ collectedCount }} 家实采</span
+          >{{ serverMode ? remote.total.value : rows.length }} 家站点<span v-if="!serverMode"> · {{ collectedCount }} 家实采</span></span
         >
       </div>
       <div class="hci-toolbar"><ScoreRangeFilter v-model="scoreFilter" label="独立站" /></div>
-      <SelectionBar :count="ids.length" :total="selectable.length" :busy="scoring" @all="selectAll" @clear="clear" />
+      <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
+      <SelectionBar :count="ids.length" :total="serverMode ? remote.total.value : selectable.length" :busy="scoring" @all="selectAll" @clear="clear" />
       <Alert
         v-if="scoreError"
         :message="scoreError"
         type="error"
         show-icon
       /><Table
+        :loading="remote.loading.value"
+        @change="remote.tableChange"
         class="hci-resource-table"
         size="small"
         :row-selection="rowSelection"
@@ -304,6 +318,7 @@ const columns = [
         row-key="id"
         :scroll="{ x: 1250 }"
         :pagination="{
+          total: serverMode ? remote.total.value : rows.length,
           current: page,
           pageSize,
           showSizeChanger: true,
@@ -360,7 +375,7 @@ const columns = [
               <span class="hci-clamp-2">{{ record.ownershipSource }}</span>
             </div> </template
           ><template v-if="column.key === 'products'">
-            {{ state.products.filter((p) => p.siteId === record.id).length }}
+            {{ serverMode ? record.productCount ?? '—' : state.products.filter((p) => p.siteId === record.id).length }}
             <p v-if="record.productCollection" class="hci-subtle">
               {{
                 record.productCollection.status === 'running'

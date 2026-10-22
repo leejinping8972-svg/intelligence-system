@@ -9,6 +9,8 @@ import { adminRequest, leaveSession, serverMode, session } from './session';
 import { isWorkspaceSyncKey } from './workspace-sync-keys';
 
 export const cloudWorkspace = reactive({
+  publishedRevision: '',
+  indexing: false,
   ready: false,
   syncing: false,
   submitting: false,
@@ -56,6 +58,46 @@ function businessEntries() {
   return entries;
 }
 const applying = ref(false);
+const readMode = ref<'legacy' | 'paged' | 'tasks'>('paged');
+export function setWorkspaceReadMode(mode: 'legacy' | 'paged' | 'tasks') {
+  if (readMode.value === mode) return;
+  readMode.value = mode;
+}
+function changedFields(previous: string | undefined, value: unknown) {
+  if (!previous || !value || typeof value !== 'object') return value;
+  const old = JSON.parse(previous);
+  return Object.fromEntries(Object.entries(value).filter(([key, next]) =>
+    !['listSummary', 'decisionTags', 'trendSummary', 'score', 'assessment', 'productCount'].includes(key) && JSON.stringify(old[key]) !== JSON.stringify(next),
+  ));
+}
+export function applyWorkspaceRecords(collection: 'ads' | 'keywords' | 'products' | 'sites', records: unknown[]) {
+  applying.value = true;
+  try {
+    for (const incoming of records) {
+      const record = incoming as Keyword;
+      const previous = (state[collection] as unknown as Keyword[]).find((row) => row.id === record.id);
+      const localPatch = collection === 'keywords' ? pending.get(record.id) : businessPending.get(`${collection}:${record.id}`);
+      const merged = { ...record, ...(localPatch && typeof localPatch === 'object' ? localPatch : {}) };
+      if (previous?.listSummary === false && record.listSummary) {
+        // A compact page refresh must not truncate an already opened detail.
+        const full = previous as unknown as Record<string, unknown>;
+        const next = merged as unknown as Record<string, unknown>;
+        for (const key of ['series', 'trendPoints', 'ingredientInsights', 'benefits', 'benefitEvidence', 'decisionData', 'copy', 'imageUrls', 'videoUrls', 'videoPosterUrls'])
+          if (full[key] !== undefined) next[key] = full[key];
+        merged.listSummary = false;
+      }
+      if (previous) Object.assign(previous, merged);
+      else (state[collection] as unknown[]).push(merged);
+      if (collection === 'keywords') known.set(record.id, JSON.stringify(editable(record)));
+      else businessKnown.set(`${collection}:${record.id}`, JSON.stringify(previous || merged));
+    }
+  } finally { applying.value = false; }
+}
+export async function loadWorkspaceDetail(collection: 'ads' | 'keywords' | 'products' | 'sites', id: string) {
+  if (!serverMode || !id) return;
+  const result = await cloudRequest<{ record: unknown }>('server_workspace_detail', { collection, id });
+  applyWorkspaceRecords(collection, [result.record]);
+}
 let revisions: Record<string, string> = {};
 const revisionCacheKey = 'intelligence-workspace-revisions-v1';
 function workspaceFingerprint() {
@@ -129,8 +171,13 @@ watch(
     if (!entries || applying.value || !cloudWorkspace.ready) return;
     const current = new Map(entries.map((entry) => [entry.key, entry.value]));
     for (const { key, value } of entries)
-      if (businessKnown.get(key) !== value)
-        businessPending.set(key, JSON.parse(value));
+      if (businessKnown.get(key) !== value) {
+        const next = JSON.parse(value);
+        const patch = serverMode && readMode.value !== 'legacy'
+          ? { ...(businessPending.get(key) as object || {}), ...changedFields(businessKnown.get(key), next) as object } : next;
+        if (patch && Object.keys(patch).length) businessPending.set(key, patch);
+        else businessKnown.set(key, value);
+      }
     for (const key of businessKnown.keys())
       if (
         isWorkspaceSyncKey(key) &&
@@ -204,6 +251,7 @@ export function syncCloudWorkspace() {
   return syncFlight.run(runCloudSync);
 }
 async function runCloudSync() {
+  if (serverMode && readMode.value !== 'legacy') return runPagedSync();
   if (
     cloudWorkspace.syncing ||
     clearing ||
@@ -411,6 +459,72 @@ async function runCloudSync() {
   } finally {
     cloudWorkspace.syncing = false;
   }
+}
+let pagedScope = '';
+async function runPagedSync() {
+  if (clearing) return;
+  cloudWorkspace.syncing = true;
+  try {
+    const scope = session.user?.id || '';
+    if (pagedScope !== scope) {
+      known.clear(); pending.clear(); businessKnown.clear(); businessPending.clear();
+      pagedScope = scope;
+    }
+    if (pending.size) {
+      const updates = [...pending].slice(0, 100).map(([id, patch]) => ({ id, patch }));
+      await cloudRequest('server_patch_keywords', { updates });
+      for (const { id, patch } of updates) {
+        if (JSON.stringify(pending.get(id)) === JSON.stringify(patch)) pending.delete(id);
+        known.set(id, JSON.stringify(patch));
+      }
+    }
+    if (businessPending.size) {
+      const entries = [...businessPending].slice(0, 1000).map(([key, value]) => ({ key, value }));
+      await cloudRequest('server_workspace_sync', { entries, patch: true });
+      for (const { key, value } of entries) {
+        if (JSON.stringify(businessPending.get(key)) === JSON.stringify(value)) businessPending.delete(key);
+        if (value === null) businessKnown.delete(key);
+        else {
+          const current = businessEntries().get(key);
+          businessKnown.set(key, JSON.stringify(current));
+        }
+      }
+    }
+    const result = await cloudRequest<{
+      entries: Array<{ key: string; value: object }>;
+      revisions: Record<string, string>; active: number; generatedAt: string; indexing: boolean;
+    }>('server_workspace_bootstrap');
+    const taskSnapshot = readMode.value === 'tasks' ? await cloudRequest<{ tasks?: Task[]; revisions: Record<string, string> }>('server_workspace_delta', { channels: ['tasks'], revisions }) : undefined;
+    applying.value = true;
+    try {
+      for (const { key, value } of result.entries) {
+        if (!businessPending.has(key)) {
+          if (key === 'branding:main') Object.assign(state.branding, value);
+          if (key === 'preferences:main') Object.assign(state.settings, value);
+          businessKnown.set(key, JSON.stringify(businessEntries().get(key)));
+        }
+      }
+      for (const [key, value] of [['branding:main', state.branding], ['preferences:main', state.settings]] as const)
+        if (!businessKnown.has(key) && !businessPending.has(key)) businessKnown.set(key, JSON.stringify(value));
+      if (taskSnapshot) {
+        const tasks = taskSnapshot;
+        if (tasks.tasks) {
+          state.tasks = [...state.tasks.filter((t) => !t.cloudJobId), ...tasks.tasks];
+          cloudWorkspace.taskRevision = tasks.revisions.tasks || '';
+        }
+        revisions = tasks.revisions;
+      }
+    } finally { applying.value = false; }
+    cloudWorkspace.publishedRevision = result.revisions.published || '';
+    cloudWorkspace.indexing = result.indexing;
+    cloudWorkspace.active = result.active;
+    cloudWorkspace.ready = true;
+    cloudWorkspace.error = '';
+    cloudWorkspace.lastSynced = result.generatedAt;
+  } catch (error) {
+    cloudWorkspace.error = error instanceof Error ? error.message : '云端保存或状态读取失败';
+    throw error;
+  } finally { cloudWorkspace.syncing = false; }
 }
 export function submitCloudResearch(
   input: Omit<KeywordResearchInput, 'signal'>,

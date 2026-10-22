@@ -1,5 +1,7 @@
 export { assessKeyword } from '../apps/web-antd/src/views/intelligence/keyword-scoring';
 export { trendComparisons } from '../apps/web-antd/src/views/intelligence/trend-comparison';
+export { productDataSource, productDecisions } from '../apps/web-antd/src/views/intelligence/product-decisions';
+export { groupAdvertisers } from '../apps/web-antd/src/views/intelligence/advertisers';
 export {
   classifyKeyword,
   trendRecordFields,

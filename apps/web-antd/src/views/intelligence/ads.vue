@@ -31,6 +31,10 @@ import { groupAdvertisers } from './advertisers';
 import { discoveryDecision, discoveryFilters } from './discovery';
 import { inMarket, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
+import { loadWorkspaceDetail } from './cloud-workspace';
+import { serverMode } from './session';
+import { useWorkspaceList } from './workspace-queries';
+import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 const route = useRoute(),
   router = useRouter();
 const search = ref(''),
@@ -55,12 +59,12 @@ const form = reactive({
   maxRequests: 3,
   adStatus: 'ACTIVE',
 });
-const keywords = computed(() =>
+const keywords = computed(() => serverMode ? (remote.facets.value.keywords || []).filter((k) => k.reviewStatus === 'selected').map((k) => ({ ...k, id: k.value })) :
   state.keywords.filter(
     (k) => k.reviewStatus === 'selected' && inMarket(k.market),
   ),
 );
-const rows = computed(() =>
+const rows = computed(() => serverMode ? remote.rows.value :
   state.ads
     .filter(
       (a) =>
@@ -82,12 +86,22 @@ const rows = computed(() =>
       ),
     ),
 );
-const { ids: bulkIds, selectable, selectAll, clear } = useFilteredSelection(rows);
 const page = ref(1);
 const pageSize = ref(20);
-const pagedRows = computed(() => rows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
+const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.market, search: search.value,
+  status: status.value, newness: newness.value, keywordId: route.query.keywordId, linkedSite: route.query.site,
+})), page, pageSize);
+const { ids: bulkIds, selectable, selectAll, clear } = useFilteredSelection(rows, undefined, serverMode ? remote.selectAll : undefined);
+const pagedRows = computed(() => serverMode ? rows.value : rows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
+watch(() => selected.value?.id, async (id) => {
+  if (!id || !serverMode) return;
+  try {
+    await loadWorkspaceDetail('ads', id);
+    if (selected.value?.id === id) selected.value = state.ads.find((row) => row.id === id);
+  } catch (cause) { message.error((cause as Error).message); }
+});
 const adResearch = ref<InstanceType<typeof AdsResearchPanel>>();
-watch([search, status, newness, () => state.market, () => route.query], () => { page.value = 1; });
+watch([search, status, newness, () => state.market, () => route.query], () => { page.value = 1; clear(); });
 watch([() => keywordIds.value.length, () => form.maxPages], () => {
   form.maxRequests = Math.max(
     1,
@@ -145,8 +159,11 @@ async function submit() {
   }
 }
 const time = (v?: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—');
-watch([() => route.query.ad, () => state.ads], () => {
-  if (route.query.ad) selected.value = state.ads.find((ad) => ad.id === String(route.query.ad));
+watch([() => route.query.ad], async () => {
+  if (route.query.ad) {
+    if (serverMode) try { await loadWorkspaceDetail('ads', String(route.query.ad)); } catch (cause) { message.error((cause as Error).message); return; }
+    selected.value = state.ads.find((ad) => ad.id === String(route.query.ad));
+  }
 }, { immediate: true });
 </script>
 <template>
@@ -159,8 +176,8 @@ watch([() => route.query.ad, () => state.ads], () => {
     >
     <div class="hci-toolbar" style="margin-bottom: 16px"><CompetitorWatchPanel kind="advertiser" /><DailyDiscoveryPlan /><label for="ad-newness">广告新旧标签</label><Select id="ad-newness" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /></div>
     <Tabs v-model:active-key="viewTab">
-    <Tabs.TabPane key="ads" :tab="`广告素材（${rows.length}）`">
-    <AdsResearchPanel ref="adResearch" :ads="rows" />
+    <Tabs.TabPane key="ads" :tab="`广告素材（${serverMode ? remote.total.value : rows.length}）`">
+    <AdsResearchPanel ref="adResearch" :ads="serverMode ? state.ads : rows" />
     <section class="hci-panel">
       <div class="hci-toolbar">
         <Input.Search
@@ -177,10 +194,11 @@ watch([() => route.query.ad, () => state.ads], () => {
         /><Button v-if="route.query.site" @click="router.replace('/ads')"
           >清除站点筛选</Button
         ><span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 条广告</span
+          >{{ serverMode ? remote.total.value : rows.length }} 条广告</span
         >
       </div>
-      <SelectionBar :count="bulkIds.length" :total="selectable.length" @all="selectAll" @clear="clear"><Button size="small" :disabled="!bulkIds.length || bulkIds.length > 100" @click="adResearch?.begin(bulkIds)">分析所选广告</Button><span v-if="bulkIds.length > 100" class="hci-subtle">每份报告最多100条，请缩小筛选</span></SelectionBar>
+      <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
+      <SelectionBar :count="bulkIds.length" :total="serverMode ? remote.total.value : selectable.length" @all="selectAll" @clear="clear"><Button size="small" :disabled="!bulkIds.length || bulkIds.length > 100" @click="adResearch?.begin(bulkIds)">分析所选广告</Button><span v-if="bulkIds.length > 100" class="hci-subtle">每份报告最多100条，请缩小筛选</span></SelectionBar>
       <Empty
         v-if="!rows.length"
         description="暂无广告；选择已入选关键词采集，或导入真实广告资料"
@@ -216,10 +234,10 @@ watch([() => route.query.ad, () => state.ads], () => {
           </div>
         </article>
       </div>
-      <div v-if="rows.length" class="hci-list-pagination"><Pagination :current="page" :page-size="pageSize" :total="rows.length" :show-size-changer="true" :page-size-options="['10','20','50','100']" @change="(current: number, size: number) => { page = current; pageSize = size; }" /></div>
+      <div v-if="rows.length" class="hci-list-pagination"><Pagination :current="page" :page-size="pageSize" :total="serverMode ? remote.total.value : rows.length" :show-size-changer="true" :page-size-options="['10','20','50','100']" @change="(current: number, size: number) => { page = current; pageSize = size; }" /></div>
     </section>
     </Tabs.TabPane>
-    <Tabs.TabPane key="advertisers" :tab="`广告主（${advertiserCount}）`">
+    <Tabs.TabPane key="advertisers" :tab="serverMode ? '广告主' : `广告主（${advertiserCount}）`">
       <AdvertiserList :ads="rows" :page-id="typeof route.query.pageId === 'string' ? route.query.pageId : undefined" @ads="(pageId) => { search=pageId; viewTab='ads'; }" />
     </Tabs.TabPane>
     </Tabs>

@@ -12,10 +12,11 @@ export async function workspaceSnapshot(
     jobTasks,
     scoreSite,
     isWorkspaceSyncKey,
+    readVersions,
     sql = (postgres) => postgres,
   },
 ) {
-  const [businessMeta, keywordMeta, taskMeta] = await Promise.all([
+  const [businessMeta, keywordMeta, taskMeta] = readVersions ? [] : await Promise.all([
     pool.query(
       "SELECT name,revision FROM workspace_documents WHERE name LIKE 'business:%' ORDER BY name",
     ),
@@ -32,15 +33,16 @@ export async function workspaceSnapshot(
       ),
     ),
   ]);
-  const revisions = {
+  const revisions = readVersions ? await readVersions() : {
     business: digest(businessMeta.rows),
     keywords: digest(keywordMeta.rows),
     tasks: digest(taskMeta.rows),
   };
   const previous = input.revisions || {};
+  const channels = new Set(input.channels || ['business', 'keywords', 'tasks']);
   const result = { revisions, generatedAt: new Date().toISOString() };
   await Promise.all([
-    previous.business === revisions.business
+    !channels.has('business') || previous.business === revisions.business
       ? null
       : (async () => {
           const { rows } = await pool.query(
@@ -57,7 +59,7 @@ export async function workspaceSnapshot(
               })),
           };
         })(),
-    previous.keywords === revisions.keywords
+    !channels.has('keywords') || previous.keywords === revisions.keywords
       ? null
       : (async () => {
           const { rows } = await pool.query(
@@ -65,7 +67,7 @@ export async function workspaceSnapshot(
           );
           result.keywords = rows.map((r) => r.data);
         })(),
-    previous.tasks === revisions.tasks
+    !channels.has('tasks') || previous.tasks === revisions.tasks
       ? null
       : (async () => {
           const { rows } = await pool.query(

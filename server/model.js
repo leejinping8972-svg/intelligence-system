@@ -132,6 +132,7 @@ function gradeForScore(score) {
   return "D";
 }
 function assessKeyword(keyword) {
+  if (keyword.listSummary && keyword.assessment) return keyword.assessment;
   const business = assessSupplementRelevance(keyword);
   const { relevance, offTopic, brand } = business;
   const tags = new Set(business.tags);
@@ -410,6 +411,8 @@ function compare(key, label, source, months = 0, bounds) {
   return result;
 }
 function trendComparisons(record) {
+  if (record.listSummary && record.trendSummary?.length === 3)
+    return record.trendSummary;
   const daily = intervals(
     record.trendDailyPoints,
     "day",
@@ -432,6 +435,389 @@ function trendComparisons(record) {
   ];
 }
 
+// server/discovery-newness.mjs
+var DAY2 = 864e5;
+function validDiscoveryDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value))
+    return void 0;
+  if (value.length > 10 && !Number.isFinite(Date.parse(value)))
+    return void 0;
+  const date2 = value.slice(0, 10);
+  const time = Date.parse(`${date2}T00:00:00Z`);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === date2 ? time : void 0;
+}
+function discoveryDecision(item, kind, now = Date.now()) {
+  const first = item.discovery?.firstSeenAt || item.firstSeenAt;
+  const observed = validDiscoveryDate(first);
+  const recentDiscovery = observed !== void 0 && Date.parse(first) <= now && now - observed < 8 * DAY2;
+  const listing = item.decisionData?.listing;
+  const isProduct = kind === "product";
+  const date2 = isProduct ? listing?.date : item.startDate;
+  const source = isProduct ? listing?.provider : item.source;
+  const collectedAt = isProduct ? listing?.collectedAt : item.lastCollectedAt;
+  const evidenceUrl = isProduct ? listing?.evidenceUrl : item.evidenceUrl;
+  const time = validDiscoveryDate(date2);
+  const collected = Date.parse(collectedAt || "");
+  let publicEvidence = false;
+  try {
+    const url = new URL(evidenceUrl);
+    publicEvidence = ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
+  } catch {
+  }
+  const supported = Boolean(
+    source && publicEvidence && Number.isFinite(collected) && collected <= now && (!isProduct || listing.platform && listing.market === item.market)
+  );
+  const windowDays = isProduct ? 90 : 7;
+  const known = supported && time !== void 0 && Date.parse(date2) <= Math.min(now, collected);
+  const isNew = known ? Math.floor((now - time) / DAY2) <= windowDays : null;
+  let label = isProduct ? "\u65B0\u54C1\u5F85\u6838\u9A8C" : "\u65B0\u5E7F\u544A\u5F85\u6838\u9A8C";
+  if (isNew === true) label = isProduct ? "\u65B0\u54C1\uFF0890\u5929\u5185\uFF09" : "\u65B0\u5E7F\u544A\uFF087\u5929\u5185\uFF09";
+  if (isNew === false) label = isProduct ? "\u975E\u8FD1\u671F\u65B0\u54C1" : "\u975E\u8FD1\u671F\u65B0\u5E7F\u544A";
+  return {
+    version: "discovery-v1",
+    isNew,
+    label,
+    recentDiscovery,
+    windowDays,
+    reason: known ? `${isProduct ? "\u6765\u6E90\u4E0A\u67B6" : "\u5E73\u53F0\u6295\u653E\u5F00\u59CB"}\u65E5\u671F ${date2.slice(0, 10)}\uFF0C${isNew ? "\u5728" : "\u8D85\u8FC7"}${windowDays}\u5929\u7A97\u53E3\uFF1B${isProduct ? "\u4E0D\u7B49\u540C\u4E8E\u54C1\u724C\u9996\u53D1" : "\u6309\u5E7F\u544AID\u5224\u65AD\uFF0C\u4E0D\u5C06\u540C\u7D20\u6750\u590D\u7528\u5408\u5E76"}\u3002` : "\u7F3A\u5C11\u53EF\u6838\u9A8C\u7684\u6765\u6E90\u65E5\u671F\u6216\u6765\u6E90\u4F9D\u636E\uFF1B\u7CFB\u7EDF\u9996\u6B21\u53D1\u73B0\u4E0D\u80FD\u8BC1\u660E\u521A\u4E0A\u5E02\u6216\u521A\u5F00\u59CB\u6295\u653E\u3002",
+    source: source || "",
+    evidenceDate: known ? date2.slice(0, 10) : "",
+    evidenceUrl: evidenceUrl || "",
+    evaluatedAt: new Date(now).toISOString()
+  };
+}
+
+// apps/web-antd/src/views/intelligence/product-decisions.ts
+function productDataSource(product) {
+  if (product.sourceProvider)
+    return `${product.sourceProvider} \xB7 ${product.sourcePlatform || "\u5E73\u53F0\u5546\u54C1"}`;
+  if (product.dataNature === "demo") return "\u6F14\u793A\u6837\u672C";
+  return product.siteId ? "\u5B98\u7F51\u5B9E\u91C7" : "\u4EBA\u5DE5\u5BFC\u5165 / \u6765\u6E90\u5F85\u786E\u8BA4";
+}
+var DAY3 = 864e5;
+var day2 = (value) => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return Number.NaN;
+  const parsed = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value ? parsed : Number.NaN;
+};
+var sourceOf = (value) => `${value.provider} \xB7 ${value.platform} \xB7 ${value.market}`;
+var periodName = { day: "\u65E5", week: "\u5468", month: "\u6708" };
+function validPoint(point, period, now) {
+  const start = day2(point.start), end = day2(point.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end + DAY3 > now || point.partial || typeof point.value !== "number" || !Number.isFinite(point.value) || point.value < 0)
+    return false;
+  if (period === "day") return start === end;
+  if (period === "week") return end - start === 6 * DAY3;
+  const date2 = new Date(start);
+  return date2.getUTCDate() === 1 && end === Date.UTC(date2.getUTCFullYear(), date2.getUTCMonth() + 1, 0);
+}
+function productDecisions(product, now = Date.now()) {
+  if (product.listSummary && product.decisionTags) return product.decisionTags;
+  const result = [];
+  const data = product.decisionData;
+  const listing = data?.listing;
+  if (listing && discoveryDecision(product, "product", now).isNew === true) {
+    result.push({
+      key: "new_product",
+      label: "\u65B0\u54C1",
+      color: "purple",
+      reason: `\u5E73\u53F0\u4E0A\u67B6\u65E5\u671F ${listing.date}\uFF0C\u8DDD\u89C2\u5BDF\u65E5\u4E0D\u8D85\u8FC790\u5929\uFF1B\u4E0D\u4EE3\u8868\u54C1\u724C\u9996\u6B21\u63A8\u51FA\u3002`,
+      source: sourceOf(listing),
+      date: listing.collectedAt,
+      evidenceUrl: listing.evidenceUrl
+    });
+  }
+  let hasTrend = false, stale = false;
+  const seen = /* @__PURE__ */ new Set();
+  for (const series of [...data?.series || []].toSorted(
+    (a, b) => Date.parse(b.collectedAt) - Date.parse(a.collectedAt)
+  )) {
+    if (!series.provider || !series.platform || !series.productId || series.market !== product.market || ![
+      "sales_volume",
+      "sales_rank",
+      "shopping_rank",
+      "keywords_count",
+      "review_count"
+    ].includes(series.metric) || !["day", "week", "month"].includes(series.period) || !Array.isArray(series.points) || !Number.isFinite(Date.parse(series.collectedAt)) || Date.parse(series.collectedAt) > now)
+      continue;
+    const identity = [
+      series.provider,
+      series.platform,
+      series.market,
+      series.productId,
+      series.metric,
+      series.period
+    ].join(":");
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    const duplicates = /* @__PURE__ */ new Map();
+    for (const point of series.points)
+      duplicates.set(point.start, (duplicates.get(point.start) || 0) + 1);
+    const points = series.points.filter(
+      (p) => duplicates.get(p.start) === 1 && validPoint(p, series.period, now)
+    ).toSorted((a, b) => day2(a.start) - day2(b.start));
+    const current = points.at(-1), previous = points.at(-2);
+    if (!current || !previous || day2(current.start) !== day2(previous.end) + DAY3)
+      continue;
+    if (now - day2(current.end) > { day: 7, week: 21, month: 45 }[series.period] * DAY3) {
+      stale = true;
+      continue;
+    }
+    if (["sales_rank", "shopping_rank"].includes(series.metric) && (!current.value || !previous.value))
+      continue;
+    hasTrend = true;
+    const suffix = `${series.platform}${periodName[series.period]}`;
+    const detail = `${previous.start}\uFF5E${previous.end}\uFF1A${previous.value}\uFF1B${current.start}\uFF5E${current.end}\uFF1A${current.value}\u3002`;
+    const add = (key, label, color, reason, change) => result.push({
+      key,
+      label,
+      color,
+      reason: `${detail}${reason}`,
+      source: sourceOf(series),
+      date: series.collectedAt,
+      evidenceUrl: series.evidenceUrl,
+      change
+    });
+    const tail = [current];
+    for (let i = points.length - 2; i >= 0 && tail.length < 12; i--) {
+      const point = points[i];
+      const firstPoint = tail[0];
+      if (!point || !firstPoint || day2(firstPoint.start) !== day2(point.end) + DAY3)
+        break;
+      tail.unshift(point);
+    }
+    if (series.metric === "sales_volume" && tail.length >= 4 && tail.slice(0, -1).every((p) => p.value === 0) && current.value > 0) {
+      add(
+        "emerging",
+        `${suffix}\u9500\u91CF\u65B0\u51FA\u73B0\u4FE1\u53F7`,
+        "cyan",
+        "\u6B64\u524D\u81F3\u5C11\u4E09\u4E2A\u5B8C\u6574\u5468\u671F\u9500\u91CF\u6307\u6807\u4E3A0\uFF0C\u6700\u8FD1\u51FA\u73B0\u6B63\u503C\uFF1B\u4E0D\u8BA1\u7B97\u96F6\u57FA\u6570\u589E\u957F\u7387\uFF0C\u4E5F\u4E0D\u636E\u6B64\u8BA4\u5B9A\u65B0\u54C1\u3002"
+      );
+      continue;
+    }
+    const growth = previous.value > 0 ? (current.value - previous.value) / previous.value * 100 : void 0;
+    if (growth === void 0 || !Number.isFinite(growth)) {
+      add(
+        "low_base",
+        `${suffix}\u96F6\u57FA\u6570`,
+        "orange",
+        "\u524D\u671F\u57FA\u6570\u4E3A0\uFF0C\u4E0D\u80FD\u8BA1\u7B97\u767E\u5206\u6BD4\uFF1B\u5F53\u524D\u6570\u636E\u4E0D\u7B49\u540C\u4E8E\u8FDE\u7EED\u589E\u957F\u3002"
+      );
+      continue;
+    }
+    if (series.metric === "sales_rank" || series.metric === "shopping_rank") {
+      if (growth <= -20)
+        add(
+          "rank_improving",
+          `${suffix}${series.metric === "shopping_rank" ? "Shopping" : "\u9500\u91CF"}\u6392\u540D\u6539\u5584`,
+          "blue",
+          "\u6392\u540D\u6570\u5B57\u964D\u4F4E\u8868\u793A\u4F4D\u7F6E\u6539\u5584\uFF0C\u4E0D\u7B49\u4E8E\u9500\u91CF\u589E\u957F\u3002",
+          growth
+        );
+      else if (growth >= 20)
+        add(
+          "rank_declining",
+          `${suffix}\u6392\u540D\u56DE\u843D`,
+          "orange",
+          "\u6392\u540D\u6570\u5B57\u589E\u52A0\u8868\u793A\u4F4D\u7F6E\u56DE\u843D\u3002",
+          growth
+        );
+      else
+        add(
+          "rank_stable",
+          `${suffix}\u6392\u540D\u53D8\u5316\u6709\u9650`,
+          "default",
+          "\u6392\u540D\u53D8\u5316\u672A\u8FBE\u523020%\u7684\u63D0\u793A\u9608\u503C\u3002",
+          growth
+        );
+      continue;
+    }
+    if (series.metric === "review_count") {
+      add(
+        "review_activity",
+        `${suffix}\u8BC4\u8BBA\u6570${growth > 0 ? "\u589E\u52A0" : growth < 0 ? "\u51CF\u5C11" : "\u4E0D\u53D8"}`,
+        "blue",
+        `\u8BC4\u8BBA\u6570\u7531${previous.value}\u53D8\u4E3A${current.value}\uFF0C\u53D8\u5316${growth.toFixed(1)}%\uFF1B\u8BC4\u8BBA\u6307\u6807\u4E0D\u7B49\u4E8E\u9500\u91CF\u3002`,
+        growth
+      );
+      continue;
+    }
+    if (series.metric === "keywords_count") {
+      if (growth >= 20)
+        add(
+          "coverage_growing",
+          `${suffix}\u641C\u7D22\u8986\u76D6\u6269\u5927`,
+          "blue",
+          "\u5546\u54C1\u8986\u76D6\u5173\u952E\u8BCD\u6570\u589E\u52A0\uFF0C\u4E0D\u7B49\u4E8E\u9500\u91CF\u6216\u70B9\u51FB\u589E\u957F\u3002",
+          growth
+        );
+      else if (growth <= -20)
+        add(
+          "coverage_declining",
+          `${suffix}\u641C\u7D22\u8986\u76D6\u7F29\u5C0F`,
+          "orange",
+          "\u5546\u54C1\u8986\u76D6\u5173\u952E\u8BCD\u6570\u51CF\u5C11\u3002",
+          growth
+        );
+      else
+        add(
+          "coverage_stable",
+          `${suffix}\u641C\u7D22\u8986\u76D6\u53D8\u5316\u6709\u9650`,
+          "default",
+          "\u8986\u76D6\u53D8\u5316\u672A\u8FBE\u523020%\u7684\u63D0\u793A\u9608\u503C\u3002",
+          growth
+        );
+      continue;
+    }
+    const peakIndex = tail.length - 3;
+    const baseline = tail.slice(0, peakIndex);
+    const baselineValues = baseline.map((p) => p.value).toSorted((a, b) => a - b);
+    const median = baselineValues[Math.floor(baselineValues.length / 2)] || 0;
+    const peak = tail[peakIndex];
+    if (peak && baseline.length >= 3 && median >= 20 && peak.value >= median * 3 && tail.slice(peakIndex + 1).every((p) => p.value <= median * 1.5)) {
+      add(
+        "spike",
+        `${suffix}\u9500\u91CF\u5076\u53D1\u5C16\u5CF0`,
+        "orange",
+        `\u5CF0\u503C\u5468\u671F ${peak.start} \u6307\u6807${peak.value}\uFF0C\u81F3\u5C11\u662F\u524D\u671F\u4E2D\u4F4D\u6570${median}\u76843\u500D\uFF0C\u540E\u4E24\u4E2A\u5468\u671F\u5DF2\u56DE\u843D\u81F3\u4E2D\u4F4D\u65701.5\u500D\u4EE5\u5185\u3002`
+      );
+      continue;
+    }
+    const sign = growth >= 0 ? "+" : "";
+    if (growth >= 20 && previous.value < 20)
+      add(
+        "low_base",
+        `${suffix}\u9500\u91CF\u4F4E\u57FA\u6570\u589E\u957F`,
+        "orange",
+        `\u53D8\u5316${sign}${growth.toFixed(1)}%\uFF0C\u524D\u671F\u6307\u6807\u4E0D\u8DB320\uFF0C\u4E0D\u6807\u8BB0\u6301\u7EED\u589E\u957F\u3002`,
+        growth
+      );
+    else if (growth >= 20) {
+      add(
+        "growing",
+        `${suffix}\u9500\u91CF\u8FD1\u671F\u589E\u957F`,
+        "green",
+        `\u53D8\u5316${sign}${growth.toFixed(1)}%\uFF0C\u8FBE\u523020%\u7684\u63D0\u793A\u9608\u503C\u3002\u9500\u91CF\u53E3\u5F84\u4EE5\u5E73\u53F0\u4E3A\u51C6\u3002`,
+        growth
+      );
+      const last = tail.slice(-4);
+      if (last.length === 4 && (last[0]?.value ?? 0) >= 20 && last.slice(1).every((p, i) => last[i] !== void 0 && p.value > last[i].value))
+        add(
+          "sustained",
+          `${suffix}\u9500\u91CF\u6301\u7EED\u589E\u957F`,
+          "green",
+          "\u6700\u8FD1\u56DB\u4E2A\u5B8C\u6574\u89C2\u6D4B\u503C\u8FDE\u7EED\u4E0A\u5347\uFF0C\u5F62\u6210\u4E09\u4E2A\u8FDE\u7EED\u589E\u957F\u5468\u671F\u3002"
+        );
+    } else if (growth <= -20)
+      add(
+        "declining",
+        `${suffix}\u9500\u91CF\u8FD1\u671F\u56DE\u843D`,
+        "orange",
+        `\u53D8\u5316${growth.toFixed(1)}%\uFF0C\u8FBE\u5230-20%\u7684\u63D0\u793A\u9608\u503C\u3002`,
+        growth
+      );
+    else
+      add(
+        "stable",
+        `${suffix}\u9500\u91CF\u53D8\u5316\u6709\u9650`,
+        "default",
+        `\u53D8\u5316${sign}${growth.toFixed(1)}%\uFF0C\u672A\u8FBE\u5230\u589E\u957F\u6216\u56DE\u843D\u9608\u503C\u3002`,
+        growth
+      );
+  }
+  const first = Date.parse(product.firstSeenAt || "");
+  if (Number.isFinite(first) && first <= now && now - first < 14 * DAY3)
+    result.push({
+      key: "first_seen",
+      label: "\u9996\u6B21\u53D1\u73B0",
+      color: "default",
+      reason: "\u7CFB\u7EDF\u5728\u6700\u8FD114\u5929\u9996\u6B21\u91C7\u96C6\u5230\u8BE5\u5546\u54C1\uFF0C\u4E0D\u8868\u793A\u5546\u54C1\u521A\u4E0A\u67B6\u3002",
+      source: "\u7CFB\u7EDF\u91C7\u96C6\u8BB0\u5F55",
+      date: new Date(first).toISOString()
+    });
+  if (!hasTrend) {
+    const steps = Object.entries(product.dataCompletion || {}).filter(
+      ([key]) => key.startsWith("trend")
+    );
+    const states = steps.map(([, value]) => value);
+    let label = stale ? "\u8D8B\u52BF\u6570\u636E\u8FC7\u65E7" : "\u8D8B\u52BF\u672A\u8BF7\u6C42";
+    let reason = stale ? "\u5386\u53F2\u6570\u636E\u5DF2\u8D85\u8FC7\u65F6\u6548\u7A97\u53E3\uFF0C\u6682\u4E0D\u7528\u4E8E\u5F53\u524D\u8D8B\u52BF\u5224\u65AD\u3002" : "\u8BE5\u5546\u54C1\u5C1A\u672A\u5B8C\u6210\u5386\u53F2\u8BF7\u6C42\uFF1B\u53EF\u5728\u5546\u54C1\u5E93\u70B9\u51FB\u8865\u5168\u5546\u54C1\u6570\u636E\u3002";
+    if (states.some((s) => ["queued", "running"].includes(s.status))) {
+      label = "\u8D8B\u52BF\u8865\u5168\u4E2D";
+      reason = "\u5DF2\u8FDB\u5165\u540E\u53F0\u8865\u5168\u961F\u5217\uFF0C\u5173\u95ED\u9875\u9762\u540E\u7EE7\u7EED\u6267\u884C\u3002";
+    } else if (states.some((s) => ["failed", "unknown", "cancelled"].includes(s.status))) {
+      label = "\u8D8B\u52BF\u91C7\u96C6\u672A\u5B8C\u6210";
+      reason = states.filter((s) => ["failed", "unknown", "cancelled"].includes(s.status)).map((s) => s.message).join("\uFF1B");
+    } else if (states.length > 0 && states.every((s) => s.status === "unsupported")) {
+      label = "\u6765\u6E90\u4E0D\u63D0\u4F9B\u5386\u53F2";
+      reason = states.map((s) => s.message).join("\uFF1B");
+    } else if (states.length > 0 && states.every((s) => s.status === "empty")) {
+      label = "\u5E73\u53F0\u6682\u65E0\u6709\u6548\u5386\u53F2";
+      reason = states.map((s) => s.message).join("\uFF1B");
+    } else if ((data?.series?.length || 0) > 0 && !stale) {
+      label = "\u5386\u53F2\u5468\u671F\u4E0D\u8DB3";
+      reason = "\u5DF2\u6709\u5386\u53F2\uFF0C\u4F46\u7F3A\u5C11\u540C\u5546\u54C1\u3001\u540C\u5E02\u573A\u3001\u540C\u6307\u6807\u7684\u76F8\u90BB\u5B8C\u6574\u5468\u671F\uFF1B\u53EF\u5728\u8BE6\u60C5\u67E5\u770B\u5B9E\u9645\u8FD4\u56DE\u503C\u3002";
+    }
+    result.push({
+      key: stale ? "stale" : "insufficient",
+      label,
+      color: "default",
+      reason,
+      source: "\u7CFB\u7EDF\u89C4\u5219",
+      date: new Date(now).toISOString()
+    });
+  }
+  return result;
+}
+
+// apps/web-antd/src/views/intelligence/advertisers.ts
+function groupAdvertisers(ads, sites) {
+  const groups = /* @__PURE__ */ new Map();
+  const knownSites = new Map(sites.map((s) => [s.id, s]));
+  const sorted = [...ads].toSorted(
+    (a, b) => (b.lastCollectedAt || "").localeCompare(a.lastCollectedAt || "")
+  );
+  for (const ad of sorted) {
+    if (!/^\d{1,40}$/.test(String(ad.pageId || ""))) continue;
+    const id = `${ad.market}:${ad.pageId}`;
+    const row = groups.get(id) || {
+      id,
+      pageId: String(ad.pageId),
+      market: ad.market,
+      name: ad.brand || `\u5E7F\u544A\u4E3B ${ad.pageId}`,
+      adId: ad.id,
+      adIds: [],
+      active: 0,
+      stopped: 0,
+      siteIds: [],
+      domains: [],
+      collectedAt: void 0,
+      dataNature: ad.dataNature
+    };
+    if (row.adIds.includes(ad.id)) continue;
+    if (row.dataNature === "demo" && ad.dataNature !== "demo") {
+      row.adId = ad.id;
+      row.dataNature = ad.dataNature;
+      row.name = ad.brand || row.name;
+    }
+    row.adIds.push(ad.id);
+    if (ad.status === "\u6295\u653E\u4E2D") row.active++;
+    if (ad.status === "\u5DF2\u505C\u6B62") row.stopped++;
+    for (const siteId of ad.siteIds || []) {
+      const site = knownSites.get(siteId);
+      if (site?.market === ad.market && !row.siteIds.includes(siteId)) {
+        row.siteIds.push(siteId);
+        row.domains.push(site.domain);
+      }
+    }
+    if (ad.lastCollectedAt && Number.isFinite(Date.parse(ad.lastCollectedAt)) && (!row.collectedAt || Date.parse(ad.lastCollectedAt) > Date.parse(row.collectedAt)))
+      row.collectedAt = ad.lastCollectedAt;
+    groups.set(id, row);
+  }
+  return [...groups.values()];
+}
+
 // apps/web-antd/src/views/intelligence/site-discovery.ts
 function trendRecordFields(trend) {
   return {
@@ -450,7 +836,13 @@ function trendRecordFields(trend) {
     trendCollectedAt: trend.collectedAt,
     trendDailyMessage: trend.dailyMessage,
     trendStatus: trend.series.length > 0 ? "collected" : "failed",
-    trendMessage: trend.message || trend.dailyMessage || "\u5DF2\u91C7\u96C6\u4E00\u5E74\u8D8B\u52BF"
+    trendMessage: trend.message || trend.dailyMessage || "\u5DF2\u91C7\u96C6\u4E00\u5E74\u8D8B\u52BF",
+    trendRegions: trend.regions || [],
+    trendRelatedTop: trend.relatedTop || [],
+    trendRelatedRising: trend.relatedRising || [],
+    trendInsightsStatus: trend.insightsStatus,
+    trendInsightsMessage: trend.insightsMessage,
+    trendInsightsPeriod: trend.insightsPeriod
   };
 }
 function classifyKeyword(...values) {
@@ -484,6 +876,9 @@ function classifyKeyword(...values) {
 export {
   assessKeyword,
   classifyKeyword,
+  groupAdvertisers,
+  productDataSource,
+  productDecisions,
   trendComparisons,
   trendRecordFields
 };

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Button, Drawer, message, Tabs, Tag } from 'ant-design-vue';
+import { Alert, Button, Drawer, message, Tabs, Tag } from 'ant-design-vue';
+import { loadWorkspaceDetail } from '../cloud-workspace';
 
 import {
   marketName,
@@ -21,6 +22,16 @@ import PublicContentLauncher from './PublicContentLauncher.vue';
 const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
 const router = useRouter();
+const detailError = ref('');
+watch(() => props.id, async (id) => {
+  detailError.value = '';
+  if (!id) return;
+  try {
+    await loadWorkspaceDetail('products', id);
+    const siteId = state.products.find((row) => row.id === id)?.siteId;
+    if (siteId) await loadWorkspaceDetail('sites', siteId);
+  } catch (cause) { if (props.id === id) detailError.value = (cause as Error).message; }
+}, { immediate: true });
 const product = computed(() => state.products.find((p) => p.id === props.id));
 const productSite = computed(() =>
   state.sites.find((site) => site.id === product.value?.siteId),
@@ -34,12 +45,13 @@ function addMonitor() {
 </script>
 <template>
   <Drawer
-    :open="!!product"
+    :open="!!id"
     width="min(940px, 100vw)"
     root-class-name="hci-resource-drawer"
     title="商品情报详情"
     @close="emit('close')"
   >
+    <Alert v-if="detailError" type="error" :message="detailError" show-icon />
     <template v-if="product">
       <div class="hci-product-detail-hero"><ProductArt
         :color="product.color"

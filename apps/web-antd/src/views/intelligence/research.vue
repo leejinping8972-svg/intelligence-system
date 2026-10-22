@@ -20,7 +20,10 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
-import { cloudWorkspace, syncCloudWorkspace } from './cloud-workspace';
+import { cloudWorkspace, loadWorkspaceDetail, syncCloudWorkspace } from './cloud-workspace';
+import { serverMode } from './session';
+import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
+import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 import { researchSourceTags } from './competitor-monitor';
 import CompactTags from './components/CompactTags.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
@@ -88,6 +91,12 @@ watch(
 );
 const pageSize = ref(10);
 const currentPage = ref(1);
+const remote = useWorkspaceList<Keyword>('keywords', computed(() => ({
+  market: state.market, search: search.value, category: category.value,
+  rating: rating.value, ratingStatus: ratingStatus.value, score: scoreFilter.value,
+  tags: tagFilter.value, timeRange: timeRange.value, review: reviewFilter.value, favorite: favoritesOnly.value,
+})), currentPage, pageSize);
+const overview = useOverviewSnapshot();
 const gradeColors: Record<string, string> = {
   A: 'green',
   B: 'blue',
@@ -148,11 +157,11 @@ const allRows = computed(() =>
   }),
 );
 const tagOptions = computed(() =>
-  [...new Set(allRows.value.flatMap((record) => record.assessment.tags))]
+  (serverMode ? remote.facets.value.tag || [] : [...new Set(allRows.value.flatMap((record) => record.assessment.tags))])
     .toSorted()
     .map((value) => ({ label: value, value })),
 );
-const rows = computed(() =>
+const localRows = computed(() =>
   allRows.value.filter((record) => {
     const collectedAt = record.collectedAt;
     const age = collectedAt
@@ -182,12 +191,15 @@ const rows = computed(() =>
     );
   }),
 );
+const rows = computed(() => serverMode ? remote.rows.value.map((record) => ({ ...record, assessment: assessKeyword(record) })) : localRows.value);
 const selection = computed(() =>
   resolveSelection(selectedIds.value, selectionSnapshots.value, state.keywords),
 );
 const selected = computed(() => selection.value.records);
-function selectFiltered() {
-  const records = rows.value.filter((r) => r.dataNature !== 'demo');
+async function selectFiltered() {
+  let records: Keyword[];
+  try { records = serverMode ? await remote.selectAll() : rows.value.filter((r) => r.dataNature !== 'demo'); }
+  catch (error) { message.error((error as Error).message); return; }
   selectedIds.value = records.map((r) => r.id);
   selectionSnapshots.value = rememberSelection(selectedIds.value, records);
 }
@@ -199,7 +211,7 @@ const assessment = computed(() =>
     ? allRows.value.find((row) => row.id === detail.value?.id)?.assessment
     : undefined,
 );
-const summary = computed(() => ({
+const summary = computed(() => serverMode ? overview.snapshot.value?.keywords || { total: 0, priority: 0, pending: 0, selected: 0 } : ({
   total: allRows.value.length,
   priority: allRows.value.filter((record) =>
     ['A', 'B'].includes(record.assessment.grade || ''),
@@ -252,6 +264,7 @@ const rowSelection = computed(() => ({
   }),
 }));
 const pagination = computed(() => ({
+  total: serverMode ? remote.total.value : rows.value.length,
   current: currentPage.value,
   pageSize: pageSize.value,
   pageSizeOptions: ['10', '20', '50', '100'],
@@ -271,7 +284,7 @@ const columns = [
     key: 'score',
     defaultSortOrder: 'descend' as const,
     width: 130,
-    sorter: (a: Keyword, b: Keyword) =>
+    sorter: serverMode ? true : (a: Keyword, b: Keyword) =>
       (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
   },
   { title: '分析标签', key: 'tags', width: 240 },
@@ -284,7 +297,7 @@ const columns = [
     title: '抓取时间',
     key: 'collectedAt',
     width: 170,
-    sorter: (a: Keyword, b: Keyword) =>
+    sorter: serverMode ? true : (a: Keyword, b: Keyword) =>
       (Date.parse(a.collectedAt || '') || 0) -
       (Date.parse(b.collectedAt || '') || 0),
   },
@@ -318,7 +331,8 @@ function markRecords(
   records: Keyword[],
   status: 'excluded' | 'pending' | 'selected',
 ) {
-  for (const record of records) {
+  for (const item of records) {
+    const record = state.keywords.find((row) => row.id === item.id) || item;
     record.reviewStatus = status;
     record.assessment = assessKeyword(record);
     audit(
@@ -471,10 +485,13 @@ async function supplementSelected() {
     supplementSubmitting.value = false;
   }
 }
-function exportKeywords() {
+async function exportKeywords() {
+  let records = rows.value;
+  if (serverMode) try { records = (await remote.selectAll()).map((record) => ({ ...record, assessment: assessKeyword(record) })); }
+  catch (cause) { message.error((cause as Error).message); return; }
   exportCsv(
     '关键词研究与评级.csv',
-    rows.value.map((record) => ({
+    records.map((record) => ({
       关键词: record.term,
       中文名称: keywordChineseName(record),
       种子词: record.seedTerm || '',
@@ -505,7 +522,11 @@ const metricsForm = reactive({
   date: '',
   note: '',
 });
-function openDetail(value: Record<string, unknown>) {
+async function openDetail(value: Record<string, unknown>) {
+  if (serverMode) {
+    try { await loadWorkspaceDetail('keywords', String(value.id)); }
+    catch (error) { message.error((error as Error).message); return; }
+  }
   const record = state.keywords.find((item) => item.id === value.id);
   if (!record) return;
   detailId.value = record.id;
@@ -741,7 +762,7 @@ function saveMetrics() {
           v-model="scoreFilter"
           label="关键词"
         /><KeywordNamesDialog :ids="selectedIds" />
-        <KeywordTrendsControl :ids="selectedIds" />
+        <KeywordTrendsControl :ids="selectedIds" :visible-ids="serverMode ? rows.map((r) => r.id) : undefined" />
       </div>
       <div class="hci-toolbar">
         <span class="hci-subtle">已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span>
@@ -797,7 +818,7 @@ function saveMetrics() {
         >
           标为排除
         </Button>
-        <span class="hci-toolbar-end hci-subtle">{{ rows.length }} 条筛选结果</span>
+        <span class="hci-toolbar-end hci-subtle">{{ serverMode ? remote.total.value : rows.length }} 条筛选结果</span>
       </div>
       <Alert
         v-if="selection.missing.length"
@@ -806,7 +827,9 @@ function saveMetrics() {
         :message="`选中的${selection.missing.length}个词已无法匹配，请刷新并重新选择；不会仅提交其余部分。`"
         style="margin-bottom: 16px"
       />
+      <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
       <Table
+        @change="remote.tableChange"
         :data-source="rows"
         :columns="columns"
         class="hci-resource-table"
@@ -815,7 +838,7 @@ function saveMetrics() {
         row-key="id"
         :pagination="pagination"
         :loading="
-          cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
+          serverMode ? remote.loading.value : cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
         "
         :scroll="{ x: 2310 }"
       >

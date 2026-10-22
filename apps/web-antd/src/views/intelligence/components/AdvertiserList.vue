@@ -14,6 +14,10 @@ import { collectionTimeLabel } from '../resource-metadata';
 import BulkAdvertiserWatch from './BulkAdvertiserWatch.vue';
 import CompactTags from './CompactTags.vue';
 import SelectionBar from './SelectionBar.vue';
+import type { AdvertiserRow } from '../advertisers';
+import { serverMode } from '../session';
+import { useWorkspaceList } from '../workspace-queries';
+import WorkspaceReadStatus from './WorkspaceReadStatus.vue';
 
 const props = defineProps<{ ads: Ad[]; pageId?: string }>();
 const emit = defineEmits<{ ads: [pageId: string] }>();
@@ -21,6 +25,8 @@ const router = useRouter();
 const workspace = useCompetitorWorkspace();
 const page = ref(1);
   const search = ref('');
+const pageSize = ref(10);
+const remote = useWorkspaceList<AdvertiserRow>('advertisers', computed(() => ({ market: state.market, search: search.value })), page, pageSize);
 watch(
   () => props.pageId,
   (value) => {
@@ -35,7 +41,7 @@ watch(
   },
 );
 const grouped = computed(() => groupAdvertisers(props.ads, state.sites));
-const rows = computed(() =>
+const rows = computed(() => serverMode ? remote.rows.value :
   grouped.value.filter((a) =>
     `${a.name} ${a.pageId} ${a.domains.join(' ')}`
       .toLowerCase()
@@ -43,9 +49,10 @@ const rows = computed(() =>
   ),
 );
 const { ids, selected, selectable, selectAll, clear, rowSelection } =
-  useFilteredSelection(rows);
+  useFilteredSelection(rows, undefined, serverMode ? remote.selectAll : undefined);
 watch([search, () => state.market, () => props.ads], () => {
   page.value = 1;
+  clear();
 });
 const missing = computed(
   () => props.ads.filter((a) => !/^\d{1,40}$/.test(a.pageId || '')).length,
@@ -69,7 +76,7 @@ function site(id: string) {
         v-model:value="search"
         placeholder="搜索广告主、Page ID或关联域名"
         allow-clear
-      /><span>{{ grouped.length }}个广告主 · 汇总当前筛选范围内的已存广告</span>
+      /><span>{{ serverMode ? remote.total.value : grouped.length }}个广告主</span>
     </div>
     <p v-if="missing" class="hci-subtle">
       {{ missing }}条广告未提供有效Page
@@ -77,17 +84,20 @@ function site(id: string) {
     </p>
     <SelectionBar
       :count="ids.length"
-      :total="selectable.length"
+      :total="serverMode ? remote.total.value : selectable.length"
       @all="selectAll"
       @clear="clear"
       >
 <BulkAdvertiserWatch :advertisers="selected" />
 </SelectionBar>
+    <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
     <Table
+      :loading="remote.loading.value"
       row-key="id"
       :data-source="rows"
       :row-selection="rowSelection"
       :pagination="{
+        total: serverMode ? remote.total.value : rows.length,
         current: page,
         pageSize: 10,
         showSizeChanger: false,
@@ -117,7 +127,7 @@ function site(id: string) {
         }}
 </template>
         <template v-else-if="column.key === 'counts'">
-<b>{{ record.adIds.length }}条</b>
+<b>{{ record.adCount ?? record.adIds.length }}条</b>
           <p class="hci-subtle">
             投放中{{ record.active }} · 已停止{{ record.stopped }}
           </p>

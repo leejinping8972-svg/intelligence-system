@@ -34,16 +34,22 @@ export function matchesScore(
 // Request limits remain the responsibility of each existing action; selecting never submits.
 export function useFilteredSelection<
   T extends { id: string; dataNature?: string },
->(rows: ComputedRef<T[]>, ids = ref<string[]>([])) {
+>(rows: ComputedRef<T[]>, ids = ref<string[]>([]), loadAll?: () => Promise<T[]>) {
+  const remembered = new Map<string, T>();
+  watch(rows, (items) => { for (const row of items) remembered.set(row.id, row); }, { immediate: true });
   const selectable = computed(() =>
     rows.value.filter((item) => item.dataNature !== 'demo'),
   );
   const selected = computed(() => {
     const selectedIds = new Set(ids.value);
-    return selectable.value.filter((item) => selectedIds.has(item.id));
+    return loadAll ? [...selectedIds].flatMap((id) => remembered.has(id) ? [remembered.get(id)!] : []) : selectable.value.filter((item) => selectedIds.has(item.id));
   });
-  const selectAll = () => {
-    ids.value = selectable.value.map((item) => item.id);
+  const selectAll = async () => {
+    let items;
+    try { items = loadAll ? await loadAll() : selectable.value; }
+    catch { return; }
+    for (const item of items) remembered.set(item.id, item);
+    ids.value = items.map((item) => item.id);
   };
   const clear = () => {
     ids.value = [];
@@ -51,6 +57,7 @@ export function useFilteredSelection<
   watch(
     () => selectable.value.map((item) => item.id).join('\0'),
     () => {
+      if (loadAll) return;
       const available = new Set(selectable.value.map((item) => item.id));
       ids.value = ids.value.filter((id) => available.has(id));
     },

@@ -125,6 +125,8 @@ function validPoint(
 }
 export function productDecisions(
   product: {
+    listSummary?: boolean;
+    decisionTags?: ProductDecision[];
     market: string;
     firstSeenAt?: string;
     decisionData?: ProductDecisionData;
@@ -132,6 +134,7 @@ export function productDecisions(
   },
   now = Date.now(),
 ): ProductDecision[] {
+  if (product.listSummary && product.decisionTags) return product.decisionTags;
   const result: ProductDecision[] = [];
   const data = product.decisionData;
   const listing = data?.listing;

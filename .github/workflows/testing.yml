@@ -85,7 +85,9 @@ jobs:
       - name: Task list UI tests (synthetic data)
         run: pnpm exec vitest run tests/task-list.test.ts
       - name: Workspace synchronization UI tests (synthetic data)
-        run: pnpm exec vitest run tests/cloud-workspace.test.ts
+        run: |
+          pnpm exec vitest run tests/cloud-workspace.test.ts tests/workspace-queries.test.ts
+          node --test server/workspace-reads.test.mjs
       - name: Resource market UI tests (synthetic data)
         run: pnpm exec vitest run apps/web-antd/src/views/intelligence/__tests__/resource-market.test.ts
       - name: Build server frontend
@@ -165,10 +167,26 @@ jobs:
           docker run --rm --network platform-products-qa-net --memory=256m \
             -e ADMIN_SSO_QA=disposable-only -e QA_MYSQL_HOST=admin-sso-qa-db \
             --entrypoint node intelligence-platform-products-qa admin-sso.integration.mjs
+      - name: Isolated workspace snapshots and paged lists (synthetic data only)
+        run: |
+          docker run -d --name workspace-read-qa-db --network platform-products-qa-net \
+            --memory=512m -e MYSQL_ROOT_PASSWORD=disposable-root-qa-only \
+            -e MYSQL_DATABASE=workspace_read_qa -e MYSQL_USER=qa \
+            -e MYSQL_PASSWORD=disposable-qa-only mysql:8.0 \
+            --innodb-buffer-pool-size=64M --performance-schema=OFF
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec workspace-read-qa-db mysqladmin ping -h127.0.0.1 -uqa -pdisposable-qa-only --silent; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+          docker run --rm --network platform-products-qa-net --memory=256m \
+            -e WORKSPACE_READ_MYSQL_QA=disposable-only -e QA_MYSQL_HOST=workspace-read-qa-db \
+            --entrypoint node intelligence-platform-products-qa workspace-reads.integration.mjs
       - name: Clean disposable database
         if: always()
         run: |
-          docker rm -f platform-products-qa-db product-completion-qa-db competitor-monitor-qa-db admin-sso-qa-db || true
+          docker rm -f platform-products-qa-db product-completion-qa-db competitor-monitor-qa-db admin-sso-qa-db workspace-read-qa-db || true
           docker network rm platform-products-qa-net || true
       - name: Upload test frontend build
         uses: actions/upload-artifact@v4

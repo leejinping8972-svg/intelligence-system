@@ -30,7 +30,7 @@ import { cloudRequest, cloudWorkspace } from '../cloud-workspace';
 import { loadSocialTrends, socialTrends } from '../keyword-social-trends';
 import { session } from '../session';
 
-const props = defineProps<{ ids: string[] }>();
+const props = defineProps<{ ids: string[]; visibleIds?: string[] }>();
 const acknowledged = ref(false);
 const busy = ref(false);
 const loaded = ref(false);
@@ -80,7 +80,7 @@ let active = false;
 async function refresh(reset = false) {
   if (!cloudWorkspace.ready) return;
   try {
-    const value = await loadSocialTrends();
+    const value = await loadSocialTrends(props.visibleIds);
     run.value = value.run;
     requiresReview.value = value.requiresPlanReview === true;
     if (reset || !loaded.value) {
@@ -109,6 +109,7 @@ onMounted(activate);
 onActivated(activate);
 onDeactivated(deactivate);
 onUnmounted(deactivate);
+watch(() => props.visibleIds?.join(','), () => { if (active) void refresh(); });
 watch(
   () => cloudWorkspace.ready,
   (ready) => {
