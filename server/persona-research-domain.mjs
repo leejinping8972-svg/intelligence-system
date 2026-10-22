@@ -119,6 +119,7 @@ export function personaEvidence(raw, context, plan) {
   return {
     id: `persona-${hash(`${platform}:${kind}:${url.split('?')[0]}:${raw.sourceId || text}`)}`,
     originalId: raw.id || null, text, url: raw.url || url, sourceUrl: url, platform, kind,
+    ...(!context?.reused ? { sourceRecord: raw } : {}),
     market: plan.market, postedAt, collectedAt: raw.collectedAt || raw.lastCollectedAt || raw.sourceMetrics?.collectedAt || null,
     timeScope, marketBasis: raw.marketBasis || '目标市场检索，发言者所在地未知',
     price: Number(raw.price) > 0 ? Number(raw.price) : null, currency: raw.currency || null,

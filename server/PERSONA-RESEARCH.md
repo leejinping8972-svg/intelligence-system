@@ -20,15 +20,17 @@ Entry: consumer insights, "从人群画像研究". Existing keyword and country 
 - Shared entry changes are limited to the API action dispatch, research runner dispatch/task label, consumer list/dialog, consumer report mounting, report type and lightweight summary. No `data.ts`, core-list parsers, product drawer, router or dependency manifests changed.
 - Integration must retain both branches' narrow changes to `server/index.mjs` and `runner.mjs`. This feature does not depend on the four-core-list field delivery.
 - Research business data, PDF, evidence exports and local QA fixtures are excluded from this commit. The actual VN report is a separate data deliverable; writing it does not deploy this feature.
+- Publication also materializes local research queries into keyword research, all acquired content into public content, comments into the evidence store and parent content details, and products/sites/ads into their business lists. Existing IDs, reviews, metrics and source dates are retained; only research associations are added to existing records. A completed public-content archive job exposes the entire acquired set, independently of the smaller report sample. It performs zero new provider calls. Newly saved TikTok comments can be read without enabling unsupported comment collection controls.
+- A saved acquisition signature skips repeated full materialization. Subsequent reviews update only linked business review annotations and changed report evidence. Reused comments whose legacy ID cannot be matched may reuse an exact full-text and source-page match; fresh comments keep their source IDs.
 
 ## Verification
 
-- `node --test server/persona-research.test.mjs server/market-research.test.mjs server/consumer-reports.test.mjs`
+- `node --test server/persona-research.test.mjs server/persona-business-records.test.mjs server/market-research.test.mjs server/consumer-reports.test.mjs`
 - `HCI_TEST_PGLITE_MODULE=<installed @electric-sql/pglite/dist/index.js> node --test server/persona-research.integration.test.mjs`
 - Full application Vue type check and server/history production build, using an isolated `.artifacts/web-dist` output.
 - Browser acceptance uses synthetic APIs only: preview, submit/navigation, exact evidence review, finding add/edit/delete, CSV export, a standalone printable report with all accepted evidence, desktop/mobile layout and script errors. No real accounts or paid sources are used by tests.
 
-Local pnpm workspace links were damaged. Ignored materialized dependencies and source aliases were used for local type/build validation; dependency manifests and lockfiles were not changed. CI on the exact integrated SHA remains the integration gate. PGlite is local SQL evidence; no MySQL/Docker or remote CI result is claimed here.
+Local pnpm workspace links were damaged. Ignored materialized dependencies and source aliases were used for local type/build validation; dependency manifests and lockfiles were not changed. CI on the exact integrated SHA remains the integration gate. PGlite is local SQL evidence; no MySQL/Docker or remote CI test result is claimed here. The separately authorized real-data import is an operational data write, not an integration test or a feature deployment.
 
 ## Limits
 

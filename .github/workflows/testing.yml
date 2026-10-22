@@ -49,7 +49,7 @@ jobs:
       - name: Country market research and frozen reports (synthetic data)
         run: node --test server/market-research.test.mjs
       - name: Persona research budget and evidence boundaries (synthetic data)
-        run: node --test server/persona-research.test.mjs
+        run: node --test server/persona-research.test.mjs server/persona-business-records.test.mjs
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
       - name: Public branding startup regression

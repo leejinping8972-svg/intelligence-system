@@ -7,6 +7,10 @@ import { normalizeTikTokShopProduct } from './tiktok-shop-provider.mjs';
 import { marketObservationRecords } from './market-report-domain.mjs';
 import { personaQueries, personaReport, reviewPersonaEvidence, validatePersonaFindings, validatePersonaPlan } from './persona-research-domain.mjs';
 import { executePersonaStudy } from './persona-research-engine.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { materializePersonaBusiness, personaBusinessSignature, refreshPersonaBusinessReview } from './persona-business-records.mjs';
+import { saveKeyword } from './store.mjs';
+import { naturalKey } from './domain.mjs';
 
 const read = async (name, c = pool) => (await c.query('SELECT value FROM workspace_documents WHERE name=$1', [name])).rows[0]?.value;
 const put = (name, value, c = pool) => putDocument('workspace_documents', name, value, false, c);
@@ -59,9 +63,45 @@ async function readConfig() {
   return r;
 }
 async function publish(report, evidence) {
+  const study = await read(`persona:study:${report.id}`);
+  if (study) {
+    const c = await pool.connect();
+    try {
+      await c.query('BEGIN');
+      const businessIo = {
+        list: async (prefix) => (await c.query('SELECT value FROM workspace_documents WHERE name LIKE $1', [`${prefix}%`])).rows.map((r) => r.value),
+        keyword: async (record) => {
+          await saveKeyword(record, true, c);
+          return (await c.query('SELECT data FROM research_keywords WHERE natural_key=$1', [naturalKey(record)])).rows[0].data;
+        },
+        update: async (name, transform) => {
+          await putDocument('workspace_documents', name, {}, true, c);
+          const old = (await c.query('SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE', [name])).rows[0]?.value;
+          const value = transform(old?.id ? old : undefined);
+          await put(name, value, c); return value;
+        },
+      };
+      if (study.businessSync?.signature !== personaBusinessSignature(study)) study.businessSync = await materializePersonaBusiness(study, businessIo);
+      else for (const r of study.evidence) {
+        if (study.businessSync.reviewStatuses?.[r.id] === r.review.status) continue;
+        for (const ref of study.businessSync.references[r.id] || []) {
+          const prefix = { content: 'content:item:', comment: 'business:researchEvidence:', product: 'business:products:', site: 'business:sites:', ad: 'business:ads:' }[ref.list];
+          await businessIo.update(`${prefix}${ref.id}`, (old) => refreshPersonaBusinessReview(old, study.id, r));
+        }
+        study.businessSync.reviewStatuses[r.id] = r.review.status;
+      }
+      await put(`persona:study:${study.id}`, study, c);
+      await c.query('COMMIT');
+    } catch (e) { await c.query('ROLLBACK'); throw e; }
+    finally { c.release(); }
+  }
   // Per-study IDs keep reviews of reused evidence independent between reports.
   const ids = new Map(evidence.map((r) => [r.id, `${report.id}:${r.id}`]));
-  for (const r of evidence) await put(`business:researchEvidence:${ids.get(r.id)}`, { ...r, id: ids.get(r.id), sourceEvidenceId: r.id });
+  const publishedEvidence = new Map((await docs(`business:researchEvidence:${report.id}:`)).map((r) => [r.id, r]));
+  for (const r of evidence) {
+    const value = { ...r, id: ids.get(r.id), sourceEvidenceId: r.id };
+    if (!isDeepStrictEqual(publishedEvidence.get(value.id), value)) await put(`business:researchEvidence:${value.id}`, value);
+  }
   const published = { ...report, evidenceIds: [...ids.values()], personaResearch: { ...report.personaResearch, findings: report.personaResearch.findings.map((f) => ({ ...f, evidenceIds: f.evidenceIds.map((id) => ids.get(id)) })) } };
   await put(`business:insightReports:${report.id}`, published);
   return report;
