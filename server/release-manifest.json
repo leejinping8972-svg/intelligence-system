@@ -1,10 +1,11 @@
 {
   "title": "新品雷达及统计页面性能优化",
-  "sourceSha": "7ccf350e50a46327e42cacfd6221860e28e27314",
+  "sourceSha": "a40763543a5545cfb8004e47f56f1eb8572d9a0d",
   "includedCommits": [
     "d850b33c83f0b63a6e37d4f0d08db3f7e4e94569",
     "eb67f92fc6848637d07f2cb46fda5b0de2f90c49",
-    "7ccf350e50a46327e42cacfd6221860e28e27314"
+    "7ccf350e50a46327e42cacfd6221860e28e27314",
+    "a40763543a5545cfb8004e47f56f1eb8572d9a0d"
   ],
   "changes": [
     "新品雷达改用后台快照、服务端分页和全量汇总，完整报告按需生成。",
@@ -41,8 +42,8 @@
     "合成API浏览器验收通过；准确候选CI包括双前端构建、API镜像与隔离MySQL集成。",
     "发布不触发收费采集，保留业务数据、任务检查点和public/data。"
   ],
-  "id": "20261022135737-d150fb3e",
-  "builtAt": "2026-10-22T13:57:37.683Z",
-  "sourceDigest": "d150fb3e3a6a9dc520bf294b3c1444d097fe7b0f7445fc6b7fc67ffecfa3945a",
+  "id": "20261022140859-8d3deb33",
+  "builtAt": "2026-10-22T14:08:59.349Z",
+  "sourceDigest": "8d3deb333b0b58f54e54187782624e7c90b609f6c11f5d251b6e62780f592bab",
   "operator": "Codex"
 }
