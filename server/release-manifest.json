@@ -1,10 +1,11 @@
 {
   "title": "画像驱动消费者研究与业务列表归档",
-  "sourceSha": "d190a07191f5c5cb3fcd0b41b3d8e63e7fb2ed77",
+  "sourceSha": "48e663c519ceb47ff7173c32a534b0142eb3fbd6",
   "includedCommits": [
     "3391ad5c1a66dc0dc611d86701ce4fe8a88b08f0",
     "3c7c19fff785d72c467c93093530c3660272113b",
-    "47a500555c9367a123bf3d63f320a6b4f5c32d09"
+    "47a500555c9367a123bf3d63f320a6b4f5c32d09",
+    "f2854ab3605dbeb1353545b6835897d242698d57"
   ],
   "changes": [
     "增加画像研究入口、当地语言检索计划、有限预算采集与可追溯证据审核。",
@@ -35,8 +36,8 @@
     "合并后39项相关Node测试和1项隔离PGlite实际SQL集成通过。",
     "标准类型检查、前后端构建与准确候选CI由本批执行；发布不触发付费采集。"
   ],
-  "id": "20261022092820-462364f6",
-  "builtAt": "2026-10-22T09:28:20.612Z",
-  "sourceDigest": "462364f68d9d58b3842cd672581da74b99da04d55ba3e5197e0ebad3715327db",
+  "id": "20261022095004-e7c403d8",
+  "builtAt": "2026-10-22T09:50:04.629Z",
+  "sourceDigest": "e7c403d8b3765b2f3d5808852a9852ae7e3812b1e59f61d1a1b786da35f0bcbd",
   "operator": "Codex"
 }
