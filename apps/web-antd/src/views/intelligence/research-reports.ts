@@ -31,7 +31,7 @@ export interface ResearchReport {
   market: Market;
   createdAt: string;
   status: string;
-  reportType?: 'ad' | 'consumer' | 'market';
+  reportType?: 'ad' | 'consumer' | 'market' | 'persona';
   period?: 'month' | 'quarter' | 'week';
   endDate?: string;
   marketSnapshot?: {

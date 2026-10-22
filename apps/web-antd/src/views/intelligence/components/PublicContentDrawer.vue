@@ -267,10 +267,11 @@ onUnmounted(stopPreviewTimer);
               已标记相似内容，原始记录仍保留。
             </p>
           </section>
-          <section v-if="item.source === 'reddit'" class="detail-block">
+          <section v-if="item.source === 'reddit' || item.comments" class="detail-block">
             <div class="detail-section-head">
               <h3>讨论评论</h3>
               <Button
+                v-if="item.source === 'reddit'"
                 :loading="submitting"
                 :disabled="!!item.comments"
                 @click="emit('comments')"
