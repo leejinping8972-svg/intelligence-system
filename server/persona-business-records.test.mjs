@@ -41,9 +41,10 @@ test('existing records keep manual fields, metrics, dates and IDs while adding r
 
 test('all acquired rows remain available for business lists even when report sampling keeps one',async()=>{
   const s=study([]);s.queries=[q];let calls=0;
-  await executePersonaStudy(s,{existing:async()=>[],cancelled:async()=>false,save:async()=>{},publish:async()=>{},collect:async()=>{calls++;return {credits:1,records:[video.sourceRecord,{...video.sourceRecord,id:'22345678901234',sourceId:'22345678901234',url:'https://www.tiktok.com/@synthetic/video/22345678901234'}]};}});
+  await executePersonaStudy(s,{existing:async()=>[],cancelled:async()=>false,save:async()=>{},publish:async()=>{},collect:async()=>{calls++;return {credits:1,records:[video.sourceRecord,{...video.sourceRecord,text:'',id:'22345678901234',sourceId:'22345678901234',url:'https://www.tiktok.com/@synthetic/video/22345678901234'}]};}});
   assert.equal(calls,1);assert.equal(s.evidence.length,1);assert.equal(s.acquiredEvidence.length,2);
   const result=await materializePersonaBusiness(s,memory());assert.equal(result.contentIds.length,2);
+  assert.match(s.acquiredEvidence[1].sourceRecord.textAvailability,/仅链接/);
 });
 
 test('reused comments with a missing original ID reuse an exact source and full-text match',async()=>{

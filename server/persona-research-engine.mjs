@@ -1,4 +1,4 @@
-import { mergePersonaEvidence, personaEvidence, personaReport } from './persona-research-domain.mjs';
+import { mergePersonaEvidence, personaAcquisitionEvidence, personaEvidence, personaReport } from './persona-research-domain.mjs';
 
 export async function executePersonaStudy(study, io) {
   study.status = 'running';
@@ -42,7 +42,7 @@ export async function executePersonaStudy(study, io) {
           j.credits = Number.isFinite(result.credits) ? result.credits : null;
           j.status = j.credits === null ? 'unknown' : 'done';
           j.received = result.records.length;
-          study.acquiredEvidence = mergePersonaEvidence(study.acquiredEvidence || [], result.records.map((r) => personaEvidence(r, q, study.plan)));
+          study.acquiredEvidence = mergePersonaEvidence(study.acquiredEvidence || [], result.records.map((r) => personaAcquisitionEvidence(r, q, study.plan)));
           study.evidence = mergePersonaEvidence(study.evidence, result.records.slice(0, study.plan.budget.perQuery).map((r) => personaEvidence(r, q, study.plan)));
           await io.save(study);
         } catch (error) {
@@ -72,7 +72,7 @@ export async function executePersonaStudy(study, io) {
           const result = await io.collect('comments', { ...q, url: video.sourceUrl }, study.plan);
           j.credits = Number.isFinite(result.credits) ? result.credits : null;
           j.status = j.credits === null ? 'unknown' : 'done'; j.received = result.records.length;
-          study.acquiredEvidence = mergePersonaEvidence(study.acquiredEvidence || [], result.records.map((r) => personaEvidence(r, q, study.plan)));
+          study.acquiredEvidence = mergePersonaEvidence(study.acquiredEvidence || [], result.records.map((r) => personaAcquisitionEvidence(r, q, study.plan)));
           study.evidence = mergePersonaEvidence(study.evidence, result.records.slice(0, study.plan.budget.perQuery).map((r) => personaEvidence(r, q, study.plan)));
         } catch (error) { j.status = 'unknown'; j.message = String(error.message || error).slice(0, 1000); }
         await io.save(study);

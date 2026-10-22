@@ -141,6 +141,10 @@ export function mergePersonaEvidence(records, incoming) {
   }
   return [...map.values()];
 }
+export function personaAcquisitionEvidence(raw, context, plan) {
+  const sourceOnly = raw.kind === 'content' && !String(raw.text || raw.title || raw.summary || '').trim();
+  return personaEvidence(sourceOnly ? { ...raw, title: '来源未返回描述，仅保存视频链接', textAvailability: '仅链接；来源未返回描述' } : raw, context, plan);
+}
 export function validatePersonaFindings(findings, records) {
   const accepted = new Set(records.filter((r) => r.review.status === 'accepted').map((r) => r.id));
   const sections = ['needs', 'consumption', 'habits', 'trust', 'decision', 'family', 'hypotheses', 'comparison'];
