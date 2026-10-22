@@ -20,6 +20,8 @@ const collections = new Set([
 ]);
 const MODEL_VERSION = 'workspace-reads-v2-core';
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
+const truncate = (value, length) =>
+  Array.from(String(value ?? '')).slice(0, length).join('');
 const pick = (value, keys) =>
   Object.fromEntries(
     keys
@@ -67,7 +69,7 @@ export function projectRecord(collection, value) {
         evidence: '',
       }));
     data.benefits = (value.benefits || []).slice(0, 30);
-    data.benefitEvidence = String(value.benefitEvidence || '').slice(0, 1200);
+    data.benefitEvidence = truncate(value.benefitEvidence, 1200);
   }
   if (collection === 'keywords') {
     data.assessment = assessKeyword(value);
@@ -83,7 +85,7 @@ export function projectRecord(collection, value) {
   if (collection === 'products' && value.decisionData?.listing)
     data.decisionData = { listing: value.decisionData.listing };
   if (collection === 'ads') {
-    data.copy = String(data.copy || '').slice(0, 1500);
+    data.copy = truncate(data.copy, 1500);
     for (const key of ['imageUrls', 'videoUrls', 'videoPosterUrls'])
       data[key] = (data[key] || []).slice(0, 3);
   }
@@ -96,9 +98,9 @@ export function projectRecord(collection, value) {
   const add = (relation, values) => {
     for (const item of values || [])
       if (item !== undefined && item !== null && String(item))
-        links.set(`${relation}\0${String(item).slice(0, 180)}`, [
+        links.set(`${relation}\0${truncate(item, 180)}`, [
           relation,
-          String(item).slice(0, 180),
+          truncate(item, 180),
         ]);
   };
   add('tag', [
@@ -169,8 +171,8 @@ export function projectRecord(collection, value) {
     data,
     links: [...links.values()],
     columns: [
-      String(value.market || '').slice(0, 8),
-      String(value.category || '').slice(0, 160),
+      truncate(value.market, 8),
+      truncate(value.category, 160),
       data.assessment?.score ?? null,
       data.assessment?.grade || '',
       data.assessment?.status || '',
@@ -178,9 +180,9 @@ export function projectRecord(collection, value) {
       value.siteCollection?.status || 'pending',
       value.favorite ? 1 : 0,
       at,
-      String(source).slice(0, 160),
-      String(value.platform || '').slice(0, 100),
-      String(value.ownershipBackground || '').slice(0, 160),
+      truncate(source, 160),
+      truncate(value.platform, 100),
+      truncate(value.ownershipBackground, 160),
       value.siteId || '',
       discovery.isNew === null || discovery.isNew === undefined
         ? 'unknown'
