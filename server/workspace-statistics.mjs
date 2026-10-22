@@ -87,7 +87,8 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
         let bytes = 0;
         while (start + batch.length < rows.length && batch.length < 1000) {
           const row = rows[start + batch.length];
-          const payload = kind === 'radar' ? references.get(Number(variant)).get(row) : row;
+          // MySQL JSON columns require scalar JSON as text, rather than numeric SQL parameters.
+          const payload = kind === 'radar' ? String(references.get(Number(variant)).get(row)) : row;
           const size = Buffer.byteLength(JSON.stringify(payload));
           if (batch.length && bytes + size > 512 * 1024) break;
           batch.push([kind, market, variant, start + batch.length, row.type || '', payload]);
