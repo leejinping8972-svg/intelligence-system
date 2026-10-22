@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 import { createWorkspaceReads, projectRecord } from './workspace-reads.mjs';
+import { readReportSummaries } from './report-read-summaries.mjs';
 
 const pgSql = (postgres) => postgres;
 test('list truncation preserves complete emoji at JSON and SQL column boundaries', () => {
@@ -71,6 +72,7 @@ export async function exerciseWorkspaceReads(
     unlock,
     putDocument,
     isWorkspaceSyncKey: () => true,
+    loadPublic: async () => ({ collector: null, free: null }),
   });
   const drain = async () => {
     for (let i = 0; i < 100; i++) if (!(await reads.refresh())) break;
@@ -83,6 +85,7 @@ export async function exerciseWorkspaceReads(
       'INSERT INTO research_keywords(natural_key,data) VALUES($1,$2)',
       [`key${i}`, keyword(i)],
     );
+  const observedAt = new Date(Date.now() - 86_400_000).toISOString();
   for (let i = 0; i < 240; i++)
     await putDocument('workspace_documents', `business:products:p${i}`, {
       id: `p${i}`,
@@ -96,6 +99,7 @@ export async function exerciseWorkspaceReads(
       siteId: 's1',
       favorite: false,
       dataNature: 'collected',
+      firstSeenAt: observedAt,
       benefitEvidence: 'e'.repeat(1199) + '\uD83D\uDC8A' + 'end',
       sourceContent: { descriptions: ['x'.repeat(50000)] },
       decisionData: { series: [] },
@@ -129,6 +133,38 @@ export async function exerciseWorkspaceReads(
   assert.equal(overview.snapshot.counts.keywords, 34);
   assert.equal(overview.snapshot.counts.products, 240);
   assert.equal(overview.snapshot.productMarkets.US, 120);
+  const radar = await reads.statistics({ kind: 'radar', type: 'product', pageSize: 20 });
+  assert.equal(radar.total, 240);
+  assert.equal(radar.rows.length, 20);
+  assert.equal(radar.snapshot.summary.counts.product, 240);
+  assert.equal(Object.values(radar.snapshot.summary.activity).reduce((sum, day) => sum + day.product, 0), 240);
+  const nextRadar = await reads.statistics({ kind: 'radar', type: 'product', page: 2, pageSize: 20 });
+  assert.equal(new Set([...radar.rows, ...nextRadar.rows].map(r => r.id)).size, 40);
+  const mexicoRadar = await reads.statistics({ kind: 'radar', type: 'product', market: 'MX' });
+  assert.equal(mexicoRadar.total, 120);
+  assert.ok(mexicoRadar.rows.every(r => r.market === 'MX'));
+  assert.match((await reads.statistics({ kind: 'radar', type: 'product', report: true })).report, /240/);
+  const formulas = await reads.statistics({ kind: 'formulas', market: 'US' });
+  assert.equal(formulas.snapshot.coverage.total, 120);
+  assert.equal(formulas.snapshot.coverage.observed, 120);
+  assert.equal(formulas.rows[0].products, 120);
+  assert.equal((await reads.statistics({ kind: 'opportunities', tab: 'concept' })).rows[0].count, 240);
+  assert.equal((await reads.statistics({ kind: 'opportunities', tab: 'new', saved: [] })).total, 0);
+  assert.equal((await reads.statistics({ kind: 'opportunities', tab: 'new', saved: ['Product 1'] })).total, 1);
+  await assert.rejects(reads.statistics({ kind: 'invalid' }), /未知/);
+  const report = { id: 'report-qa', title: 'Synthetic report', kind: 'market_analysis', market: 'VN', createdAt: new Date().toISOString(), status: 'completed', evidenceIds: ['qa'], marketSnapshot: { coverage: { products: 99 }, topProducts: ['x'.repeat(50000)] }, modelAnalysis: { model: 'fake', findings: [] } };
+  await putDocument('workspace_documents', 'business:insightReports:report-qa', report);
+  assert.equal((await readReportSummaries(pool))[0].title, 'Synthetic report');
+  await drain();
+  const reportSummary = (await readReportSummaries(pool))[0];
+  assert.deepEqual(reportSummary.marketSnapshot, { coverage: { products: 99 } });
+  assert.equal(reportSummary.hasModelAnalysis, true);
+  assert.equal(reportSummary.revision, 1);
+  await putDocument('workspace_documents', 'business:insightReports:report-qa', { ...report, title: 'Changed before indexing' });
+  assert.equal((await readReportSummaries(pool))[0].title, 'Changed before indexing');
+  await pool.query('DELETE FROM workspace_documents WHERE name=$1', ['business:insightReports:report-qa']);
+  assert.equal((await readReportSummaries(pool)).length, 0);
+  await drain();
   const first = await reads.list({ collection: 'products', pageSize: 20 });
   const second = await reads.list({
     collection: 'products',

@@ -12,7 +12,7 @@ const props = withDefaults(
 const route = useRoute();
 watch(() => [route.path, props.mode] as const, ([path, mode]) => {
   const page = path.split('/').filter(Boolean).at(-1);
-  setWorkspaceReadMode(mode || (page === 'monitor' ? 'tasks' : ['overview', 'research', 'selected-keywords', 'products', 'sites', 'ads', 'settings'].includes(page || '') ? 'paged' : 'legacy'));
+  setWorkspaceReadMode(mode || (page === 'monitor' ? 'tasks' : ['overview', 'research', 'selected-keywords', 'products', 'sites', 'ads', 'settings', 'radar', 'opportunities', 'trends'].includes(page || '') ? 'paged' : 'legacy'));
   startCloudSync();
 }, { immediate: true });
 </script>

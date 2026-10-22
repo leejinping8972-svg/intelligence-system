@@ -96,6 +96,8 @@ jobs:
         run: |
           pnpm exec vitest run tests/cloud-workspace.test.ts tests/workspace-queries.test.ts
           node --test server/workspace-reads.test.mjs
+          node --test server/workspace-statistics.test.mjs
+          pnpm exec vitest run tests/statistics-queries.test.ts
       - name: Resource market UI tests (synthetic data)
         run: pnpm exec vitest run apps/web-antd/src/views/intelligence/__tests__/resource-market.test.ts
       - name: Build server frontend

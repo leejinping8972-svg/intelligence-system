@@ -6,6 +6,7 @@ import { normalizeAdTranscript, transcriptSummary } from './ad-transcript.mjs';
 import { currentAdPrompt } from './report-prompts.mjs';
 import { currentAiPrompt } from './ai-prompt-config.mjs';
 import { consumerTopics, insightSummary } from './consumer-topics.mjs';
+import { readReportSummaries } from './report-read-summaries.mjs';
 import { sampleRedditComments } from './consumer-comment-sample.mjs';
 import {
   sourceKinds,
@@ -275,14 +276,14 @@ export async function submitInsight(input) {
   }
 }
 export async function insightSnapshot(input = {}) {
-  const summarize = insightSummary;
-  let reports = (
+  const summarize = report => report.listSummary ? report : insightSummary(report);
+  let reports = input.summary || input.paginated || input.latestByKeyword ? await readReportSummaries(pool) : (
     await pool.query(
       "SELECT value,revision FROM workspace_documents WHERE name LIKE 'business:insightReports:%'",
     )
   ).rows
-    .map((r) => ({ ...r.value, revision: r.revision }))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .map((r) => ({ ...r.value, revision: r.revision }));
+  reports.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   if (input.kind === 'consumer') reports = reports.filter((r) => r.kind !== 'ad_analysis' && r.reportType !== 'ad');
   if (input.reportType && input.reportType !== 'ALL')
     reports = reports.filter(

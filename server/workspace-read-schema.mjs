@@ -17,6 +17,7 @@ export async function migrateWorkspaceReads(pool, engine) {
       search_text text NOT NULL, payload ${json} NOT NULL, PRIMARY KEY(collection,id))`,
     `CREATE TABLE IF NOT EXISTS workspace_read_links (collection varchar(32) NOT NULL, id varchar(160) NOT NULL, relation varchar(32) NOT NULL, target varchar(180) NOT NULL, PRIMARY KEY(collection,id,relation,target))`,
     `CREATE TABLE IF NOT EXISTS workspace_overview_snapshots (market varchar(8) PRIMARY KEY, revision bigint NOT NULL, generated_at varchar(40) NOT NULL, payload ${json} NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS workspace_statistic_rows (kind varchar(20) NOT NULL, market varchar(8) NOT NULL, variant varchar(20) NOT NULL, position integer NOT NULL, subtype varchar(20) NOT NULL, payload ${json} NOT NULL, PRIMARY KEY(kind,market,variant,position))`,
   ];
   for (const statement of statements) await pool.query(statement);
   if (engine === 'mysql') {

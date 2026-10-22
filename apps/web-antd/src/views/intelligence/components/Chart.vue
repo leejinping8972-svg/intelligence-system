@@ -23,6 +23,7 @@ const el = ref<HTMLDivElement>();
 const error = ref('');
 const { isDark } = usePreferences();
 let chart: ReturnType<typeof echarts.init> | undefined;
+let chartTheme: string | undefined;
 let observer: ResizeObserver | undefined;
 let disposed = false;
 async function render() {
@@ -53,13 +54,15 @@ async function render() {
     }
   }
   if (disposed || !el.value) return;
-  chart?.dispose();
-  chart = echarts.init(el.value, isDark.value ? 'dark' : undefined);
+  const theme = isDark.value ? 'dark' : undefined;
+  if (chart && chartTheme !== theme) { chart.dispose(); chart = undefined; }
+  if (!chart) { chart = echarts.init(el.value, theme); chartTheme = theme; }
   chart.setOption({
     ...props.options,
     backgroundColor: 'transparent',
     animation: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  });
+  }, { notMerge: true });
+  chart.off('click');
   chart.on('click', (p) => emit('select', p.name));
 }
 onMounted(() => {

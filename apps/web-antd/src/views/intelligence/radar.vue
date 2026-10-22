@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FreeSourceData } from './public-sources';
-import type { PublicCollectorData, RadarFinding } from './radar-engine';
+import type { PublicCollectorData, RadarFinding, RadarSourceCoverage } from './radar-engine';
 
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -10,6 +10,7 @@ import {
   Button,
   Drawer,
   Empty,
+  message,
   Modal,
   Progress,
   Segmented,
@@ -24,6 +25,9 @@ import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import { download, marketName, state } from './data';
+import { cloudRequest } from './cloud-workspace';
+import { serverMode } from './session';
+import { useStatistics } from './statistics-queries';
 import {
   buildCollectedRadarFindings,
   buildFreeSourceRadarFindings,
@@ -42,8 +46,12 @@ const reportOpen = ref(false);
 const sourceOpen = ref(false);
 const collectorData = ref<null | PublicCollectorData>(null);
 const freeSourceData = ref<FreeSourceData | null>(null);
+const page = ref(1), pageSize = ref(20);
+watch(() => [state.market, windowDays.value, findingType.value], () => { page.value = 1; selected.value = undefined; reportOpen.value = false; });
+const remote = useStatistics<RadarFinding>(computed(() => ({ kind: 'radar', market: state.market, days: windowDays.value, type: findingType.value, page: page.value, pageSize: pageSize.value })));
+watch(remote.pagination, value => { page.value = value.page; });
 
-const allFindings = computed(() => [
+const allFindings = computed(() => serverMode ? remote.rows.value : [
   ...buildCollectedRadarFindings(collectorData.value, windowDays.value),
   ...buildFreeSourceRadarFindings(freeSourceData.value, windowDays.value),
   ...buildRadarFindings(state, windowDays.value, includeDemo.value),
@@ -56,12 +64,13 @@ const findings = computed(() =>
   ),
 );
 const sourceCoverage = computed(() =>
-  buildSourceCoverage(state, collectorData.value, freeSourceData.value),
+  serverMode ? (remote.snapshot.value?.coverage as RadarSourceCoverage[] || []) : buildSourceCoverage(state, collectorData.value, freeSourceData.value),
 );
+const serverReport = ref('');
 const report = computed(() =>
-  buildRadarReport(findings.value, windowDays.value, marketName(state.market), state.branding.appName),
+  serverMode ? serverReport.value : buildRadarReport(findings.value, windowDays.value, marketName(state.market), state.branding.appName),
 );
-const counts = computed(() => ({
+const counts = computed(() => serverMode ? remote.snapshot.value?.summary?.counts || { ad: 0, product: 0, concept: 0, ingredient: 0, verified: 0 } : ({
   ad: findings.value.filter((item) => item.type === 'ad').length,
   product: findings.value.filter((item) => item.type === 'product').length,
   concept: findings.value.filter((item) => item.type === 'concept').length,
@@ -70,6 +79,7 @@ const counts = computed(() => ({
   verified: findings.value.filter((item) => item.confidenceScore >= 70).length,
 }));
 const averageScore = computed(() => {
+  if (serverMode) return remote.snapshot.value?.summary?.averageScore ?? null;
   const values = findings.value
     .map((item) => item.businessScore)
     .filter((value): value is number => value !== null);
@@ -113,6 +123,7 @@ const typeLabel: Record<string, string> = {
 };
 
 onMounted(async () => {
+  if (serverMode) return;
   const [collectorResult, freeResult] = await Promise.allSettled([
     fetch(`${import.meta.env.BASE_URL}data/public-site-observations.json`),
     fetch(`${import.meta.env.BASE_URL}data/free-source-observations.json`),
@@ -134,7 +145,7 @@ const activityOption = computed(() => {
       const date = new Date();
       date.setDate(date.getDate() - windowDays.value + index + 1);
       const key = date.toISOString().slice(0, 10);
-      return findings.value.filter(
+      return serverMode ? remote.snapshot.value?.summary?.activity[key]?.[type] || 0 : findings.value.filter(
         (item) => item.type === type && item.firstSeenAt === key,
       ).length;
     });
@@ -187,7 +198,20 @@ const typeOption = computed(() => ({
   ],
 }));
 
-function exportReport() {
+async function loadReport() {
+  if (!serverMode) return true;
+  const scope = JSON.stringify([state.market, windowDays.value, findingType.value]);
+  try {
+    const result = await cloudRequest<{ report: string }>('server_workspace_statistics', { kind: 'radar', market: state.market, days: windowDays.value, type: findingType.value, report: true, appName: state.branding.appName });
+    if (!result.report) throw new Error('雷达汇总尚在生成，请稍后重试');
+    if (scope !== JSON.stringify([state.market, windowDays.value, findingType.value])) return false;
+    serverReport.value = result.report;
+    return true;
+  } catch (error) { message.error((error as Error).message); return false; }
+}
+async function showReport() { if (await loadReport()) reportOpen.value = true; }
+async function exportReport() {
+  if (!await loadReport()) return;
   download(
     `新品雷达-${marketName(state.market)}-${windowDays.value}天.txt`,
     report.value,
@@ -222,8 +246,10 @@ function openRelated(item: RadarFinding) {
       <DailyDiscoveryPlan />
       <Button @click="router.push('/signals')">公共情报源</Button>
       <Button @click="router.push('/imports')">导入真实数据</Button>
-      <Button type="primary" @click="reportOpen = true">生成分析报告</Button>
+      <Button type="primary" @click="showReport">生成分析报告</Button>
     </PageHeader>
+    <Alert v-if="remote.error.value" type="error" :message="remote.error.value" show-icon />
+    <p v-if="serverMode" class="hci-subtle" role="status">{{ remote.snapshot.value ? `数据更新于 ${new Date(remote.snapshot.value.generatedAt).toLocaleString('zh-CN')}` : remote.loading.value ? '正在加载雷达汇总…' : '雷达汇总更新中…' }}<span v-if="remote.snapshot.value?.publicDataStale"> · 公共情报源暂不可用，保留上次结果</span></p>
 
     <Alert
       v-if="demoCount"
@@ -261,7 +287,7 @@ function openRelated(item: RadarFinding) {
           style="width: 130px"
         />
       </div>
-      <label class="hci-radar-demo-toggle">
+      <label v-if="!serverMode" class="hci-radar-demo-toggle">
         <Switch v-model:checked="includeDemo" size="small" />
         <span>包含演示样本</span>
       </label>
@@ -330,13 +356,14 @@ function openRelated(item: RadarFinding) {
           <h2>候选清单</h2>
           <p>新鲜度可信度与商业机会分分开计算，缺失数据不会按零分处理。</p>
         </div>
-        <span class="hci-subtle">{{ findings.length }} 项结果</span>
+        <span class="hci-subtle">{{ serverMode ? remote.total.value : findings.length }} 项结果</span>
       </div>
       <div v-if="findings.length" class="hci-data-table">
         <Table
           :columns="columns"
           :data-source="findings"
-          :pagination="{ pageSize: 8, hideOnSinglePage: true }"
+          :loading="remote.loading.value"
+          :pagination="serverMode ? { current: page, pageSize, total: remote.total.value, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], onChange: (p: number, size: number) => { page = p; pageSize = size; } } : { pageSize: 8, hideOnSinglePage: true }"
           :scroll="{ x: 1150 }"
           row-key="id"
           size="middle"

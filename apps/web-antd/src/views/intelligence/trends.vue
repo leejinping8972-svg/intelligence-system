@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import {
@@ -27,14 +27,44 @@ import {
 } from './data';
 import { discoverSites, trendRecordFields } from './site-discovery';
 import { trendComparisons } from './trend-comparison';
+import type { Keyword } from './data';
+import { loadWorkspaceDetail } from './cloud-workspace';
+import { useWorkspaceList } from './workspace-queries';
+import { serverMode } from './session';
 const route = useRoute();
 const router = useRouter();
 const selected = ref('');
+const search = ref(typeof route.query.term === 'string' ? route.query.term : '');
+const remote = useWorkspaceList<Keyword>('keywords', computed(() => ({ market: state.market, search: search.value })), ref(1), ref(30));
+const detailLoading = ref(false), detailError = ref('');
+let detailTicket = 0;
+watch(() => remote.rows.value, rows => { if (serverMode && !selected.value && rows.length) selected.value = rows[0]!.id; });
+watch(selected, async id => {
+  const ticket = ++detailTicket;
+  if (!serverMode || !id) return;
+  detailLoading.value = true;
+  detailError.value = '';
+  try { await loadWorkspaceDetail('keywords', id); }
+  catch (error) { if (ticket === detailTicket) detailError.value = (error as Error).message; }
+  finally { if (ticket === detailTicket) detailLoading.value = false; }
+});
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+onUnmounted(() => { detailTicket++; if (searchTimer) clearTimeout(searchTimer); });
+function searchKeywords(term: string) {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { search.value = term; }, 250);
+}
 const days = ref(365);
 const refreshing = ref(false);
 watch(
   () => [route.query.keyword, route.query.term, route.query.market],
   ([value, term, market]) => {
+    if (serverMode) {
+      if (['ALL', 'US', 'MX', 'VN'].includes(String(market))) state.market = String(market) as typeof state.market;
+      if (typeof value === 'string') selected.value = value;
+      else if (typeof term === 'string') search.value = term;
+      return;
+    }
     const k =
       state.keywords.find((k) => k.id === value) ||
       (typeof term === 'string' && typeof market === 'string'
@@ -49,12 +79,13 @@ watch(
 );
 const keyword = computed(
   () =>
-    filteredKeywords.value.find((k) => k.id === selected.value) ||
+    serverMode ? state.keywords.find(k => k.id === selected.value && !k.listSummary && (state.market === 'ALL' || k.market === state.market)) : filteredKeywords.value.find((k) => k.id === selected.value) ||
     filteredKeywords.value[0],
 );
 watch(
   () => state.market,
   () => {
+    if (serverMode) { selected.value = typeof route.query.keyword === 'string' && route.query.market === state.market ? route.query.keyword : ''; return; }
     if (!filteredKeywords.value.some((item) => item.id === selected.value))
       selected.value = filteredKeywords.value[0]?.id || '';
   },
@@ -216,17 +247,20 @@ async function refreshTrend() {
     <section class="hci-panel">
       <div class="hci-toolbar">
         <Select
-          :value="keyword?.id"
+          :value="selected || keyword?.id"
           show-search
+          :filter-option="serverMode ? false : undefined"
+          :loading="remote.loading.value || detailLoading"
           option-filter-prop="label"
           :options="
-            filteredKeywords.map((k) => ({
+            (serverMode ? [...new Map([...(keyword ? [keyword] : []), ...remote.rows.value].map(k => [k.id, k])).values()] : filteredKeywords).map((k) => ({
               label: `${k.term} · ${k.market}`,
               value: k.id,
             }))
           "
           style="min-width: 290px"
           @change="(v: any) => (selected = v)"
+          @search="searchKeywords"
         />
         <div class="hci-toolbar-end">
           <Radio.Group v-model:value="days">
@@ -234,6 +268,8 @@ async function refreshTrend() {
           </Radio.Group>
         </div>
       </div>
+      <Alert v-if="detailError || remote.error.value" type="error" :message="detailError || remote.error.value" show-icon />
+      <p v-if="detailLoading" role="status">正在加载关键词完整趋势…</p>
       <template v-if="keyword">
         <div class="hci-panel-head">
           <div>

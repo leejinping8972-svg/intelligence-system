@@ -104,6 +104,7 @@ async function api(input, user) {
   switch (input.action) {
     case 'server_workspace_bootstrap': return workspaceReads.bootstrap();
     case 'server_workspace_overview': return workspaceReads.overview(input);
+    case 'server_workspace_statistics': return workspaceReads.statistics(input);
     case 'server_workspace_list': return workspaceReads.list(input);
     case 'server_workspace_facets': return workspaceReads.facets(input);
     case 'server_workspace_selection': return workspaceReads.selection(input);
@@ -610,6 +611,7 @@ const server = createServer(async (request, response) => {
             'server_workspace_snapshot',
             'server_workspace_bootstrap',
             'server_workspace_overview',
+            'server_workspace_statistics',
             'server_workspace_list',
             'server_workspace_facets',
             'server_workspace_detail',

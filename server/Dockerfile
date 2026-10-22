@@ -9,6 +9,7 @@ COPY apps/web-antd/src/views/intelligence/keyword-scoring.ts apps/web-antd/src/v
 COPY apps/web-antd/src/views/intelligence/product-decisions.ts apps/web-antd/src/views/intelligence/discovery.ts ./apps/web-antd/src/views/intelligence/
 COPY apps/web-antd/src/views/intelligence/advertisers.ts ./apps/web-antd/src/views/intelligence/
 COPY apps/web-antd/src/views/intelligence/core-list-metrics.ts ./apps/web-antd/src/views/intelligence/
+COPY apps/web-antd/src/views/intelligence/radar-engine.ts apps/web-antd/src/views/intelligence/statistics-engine.ts ./apps/web-antd/src/views/intelligence/
 RUN server/node_modules/.bin/esbuild server/model.ts --bundle --platform=node --format=esm --outfile=server/model.js
 RUN server/node_modules/.bin/esbuild server/collector.ts --bundle --platform=node --format=esm --outfile=server/collector.js
 

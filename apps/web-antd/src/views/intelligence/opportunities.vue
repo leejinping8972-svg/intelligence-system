@@ -8,6 +8,8 @@ import {
   Empty,
   message,
   Modal,
+  Pagination,
+  Alert,
   Tabs,
   Tag,
 } from 'ant-design-vue';
@@ -21,9 +23,17 @@ import {
   marketName,
   state,
 } from './data';
+import { useStatistics } from './statistics-queries';
+import { serverMode } from './session';
+import { opportunityRows } from './statistics-engine';
+import type { OpportunityRow } from './statistics-engine';
 const router = useRouter();
 const tab = ref('concept');
 const savedOnly = ref(false);
+const page = ref(1), pageSize = ref(20);
+watch(() => [state.market, tab.value, savedOnly.value], () => { page.value = 1; });
+const remote = useStatistics<OpportunityRow>(computed(() => ({ kind: 'opportunities', market: state.market, tab: tab.value, page: page.value, pageSize: pageSize.value, ...(savedOnly.value ? { saved: state.savedOpportunities } : {}) })));
+watch(remote.pagination, value => { page.value = value.page; });
 const selected = ref<{ title: string; count: number; description: string }>();
 watch(
   () => state.market,
@@ -40,44 +50,8 @@ const tabs = [
   { key: 'new', label: '新发现商品' },
 ];
 const rows = computed(() => {
-  let output: { title: string; count: number; description: string }[];
-  if (tab.value === 'keyword')
-    output = filteredKeywords.value
-      .filter((k) => (k.growth || 0) > 20)
-      .map((k) => ({
-        title: `${k.term} · ${k.market}`,
-        count: 1,
-        description: `${k.category} · 同市场趋势上升示例，仍需独立来源验证。`,
-      }));
-  else if (tab.value === 'site')
-    output = filteredSites.value.map((s) => ({
-      title: s.brand,
-      count: state.products.filter((p) => p.siteId === s.id).length,
-      description: `${marketName(s.market)} · 目前只有首次样本，尚不能确认持续成长。`,
-    }));
-  else if (tab.value === 'new')
-    output = filteredProducts.value.map((p) => ({
-      title: p.title,
-      count: 1,
-      description: `${p.brand} · ${marketName(p.market)} · 新发现不等于新上市。`,
-    }));
-  else {
-    const grouped = new Map<string, number>();
-    for (const p of filteredProducts.value) {
-      let key = p.category;
-      if (tab.value === 'ingredient') key = p.ingredient;
-      if (tab.value === 'claim') key = p.claim;
-      grouped.set(key, (grouped.get(key) || 0) + 1);
-    }
-    output = [...grouped].map(([title, count]) => ({
-      title,
-      count,
-      description:
-        tab.value === 'claim'
-          ? '竞品文案表达示例，不能据此认定科学功效。'
-          : '已整理关联商品样本，建议补充趋势、配方与市场反馈。',
-    }));
-  }
+  if (serverMode) return remote.rows.value;
+  const output = opportunityRows({ products: filteredProducts.value, keywords: filteredKeywords.value, sites: filteredSites.value }, tab.value);
   return output.filter(
     (r) => !savedOnly.value || state.savedOpportunities.includes(r.title),
   );
@@ -115,9 +89,11 @@ function report() {
           :tab="item.label"
         />
 </Tabs><Empty v-if="!rows.length" description="暂无符合条件的研究方向" />
+      <Alert v-if="remote.error.value" type="error" :message="remote.error.value" show-icon />
+      <p v-if="serverMode && remote.loading.value" role="status">正在加载研究方向…</p>
       <article
         v-for="(row, i) in rows"
-        :key="row.title"
+        :key="row.id"
         class="hci-opportunity"
       >
         <div>
@@ -141,6 +117,7 @@ function report() {
 </button><Button @click="selected = row">研究详情</Button>
         </div>
       </article>
+      <Pagination v-if="serverMode" v-model:current="page" v-model:page-size="pageSize" :total="remote.total.value" show-size-changer :page-size-options="['20', '50', '100']" />
     </section>
     <Modal
       :open="!!selected"

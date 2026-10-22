@@ -10,6 +10,8 @@ import {
 } from './model.js';
 import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
+import { createWorkspaceStatistics } from './workspace-statistics.mjs';
+import { projectReportSummary } from './report-read-summaries.mjs';
 
 const collections = new Set([
   'keywords',
@@ -17,8 +19,9 @@ const collections = new Set([
   'sites',
   'ads',
   'advertisers',
+  'insightReports',
 ]);
-const MODEL_VERSION = 'workspace-reads-v2-core';
+const MODEL_VERSION = 'workspace-reads-v3-statistics';
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
@@ -34,12 +37,17 @@ const listKeys = {
   keywords:
     'id term termZh market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
-    'id title brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery',
+    'id title brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery',
   sites:
     'id brand domain market platform type keyword keywordIds category mainProducts ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand market platform headline copy format productId status color archiveId pageId keywordIds query siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
 };
 export function projectRecord(collection, value) {
+  if (!value.id) throw new Error('记录缺少编号');
+  if (collection === 'insightReports') return {
+    data: projectReportSummary(value), links: [],
+    columns: [value.market || '', '', null, '', '', value.reviewStatus || 'pending', '', 0, value.createdAt || '', '', '', '', '', 'unknown', 0, value.title || ''],
+  };
   const data = pick(value, listKeys[collection].split(' '));
   if (!data.id) throw new Error('记录缺少编号');
   data.listSummary = true;
@@ -66,7 +74,7 @@ export function projectRecord(collection, value) {
         name: item.name,
         amount: item.amount,
         role: item.role,
-        evidence: '',
+        evidence: truncate(item.evidence, 600),
       }));
     data.benefits = (value.benefits || []).slice(0, 30);
     data.benefitEvidence = truncate(value.benefitEvidence, 1200);
@@ -202,9 +210,22 @@ export function createWorkspaceReads({
   unlock,
   putDocument,
   isWorkspaceSyncKey,
+  loadPublic,
 }) {
   let flight;
   let lastError = '';
+  const statistics = createWorkspaceStatistics({ pool, sql, putDocument, loadPublic });
+  async function refreshStatistics(connection) {
+    await connection.query('BEGIN');
+    try {
+      const revision = (await connection.query("SELECT revision FROM workspace_read_versions WHERE collection='published'")).rows[0].revision;
+      await statistics.rebuild(connection, revision);
+      await connection.query('COMMIT');
+    } catch (error) {
+      await connection.query('ROLLBACK');
+      console.error('Workspace statistics refresh:', error.message);
+    }
+  }
   async function withRelations(collection, records) {
     if (!records.length) return records;
     const values = records.map((record) => record.id);
@@ -347,6 +368,7 @@ export function createWorkspaceReads({
           'SELECT market FROM workspace_overview_snapshots LIMIT 1',
         );
         if (!snapshot.rows.length) await buildOverview(connection);
+        if (statistics.due()) await refreshStatistics(connection);
         return false;
       }
       await connection.query('BEGIN');
@@ -364,12 +386,12 @@ export function createWorkspaceReads({
           const value = kind === 'keywords' ? 'data' : 'value';
           const rows = (
             await connection.query(
-              `SELECT ${key} AS source_key,${value} AS data FROM ${table} WHERE ${key} IN (${keys.map((_, i) => `$${i + 1}`).join(',')})`,
+              `SELECT ${key} AS source_key,${value} AS data${kind === 'business' ? ',revision' : ''} FROM ${table} WHERE ${key} IN (${keys.map((_, i) => `$${i + 1}`).join(',')})`,
               keys,
             )
           ).rows;
           for (const row of rows)
-            sources.set(`${kind}:${row.source_key}`, row.data);
+            sources.set(`${kind}:${row.source_key}`, row.source_key.startsWith('business:insightReports:') ? { ...row.data, revision: row.revision } : row.data);
         }
         const projected = [],
           replacements = [],
@@ -471,8 +493,10 @@ export function createWorkspaceReads({
             );
           }
           await buildOverview(connection);
+          await putDocument('workspace_documents', 'read:reports-ready', { ready: true }, false, connection);
         }
         await connection.query('COMMIT');
+        if (!remaining.rows.length) await refreshStatistics(connection);
         lastError = (
           await connection.query(
             "SELECT name FROM workspace_documents WHERE name LIKE 'read:failure:%' LIMIT 1",
@@ -895,6 +919,7 @@ export function createWorkspaceReads({
     refresh,
     status,
     overview,
+    statistics: statistics.read,
     list,
     facets,
     selection,
