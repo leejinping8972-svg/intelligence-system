@@ -1,13 +1,15 @@
 {
   "title": "新品雷达及统计页面性能优化",
-  "sourceSha": "d850b33c83f0b63a6e37d4f0d08db3f7e4e94569",
+  "sourceSha": "eb67f92fc6848637d07f2cb46fda5b0de2f90c49",
   "includedCommits": [
-    "d850b33c83f0b63a6e37d4f0d08db3f7e4e94569"
+    "d850b33c83f0b63a6e37d4f0d08db3f7e4e94569",
+    "eb67f92fc6848637d07f2cb46fda5b0de2f90c49"
   ],
   "changes": [
     "新品雷达改用后台快照、服务端分页和全量汇总，完整报告按需生成。",
     "机会研究及热门配方后台统计，趋势页仅检索和加载所选关键词。",
-    "报告列表使用紧凑摘要，复用图表和查询缓存，离页停止轮询。"
+    "报告列表使用紧凑摘要，复用图表和查询缓存，离页停止轮询。",
+    "雷达证据无损压缩保存，统计批次提升至最多1000条且512KiB，减少跨地域数据库往返，兼容旧数据。"
   ],
   "files": [
     "apps/web-antd/src/views/intelligence/components/Chart.vue",
@@ -33,12 +35,13 @@
     "tests/statistics-queries.test.ts"
   ],
   "validation": [
+    "补充压缩往返及旧行兼容测试，7项Node含隔离PGlite完整分页/报告集成通过。",
     "功能分支12项前端测试、6项Node含隔离PGlite集成、完整类型检查及生产构建通过。",
     "合成API浏览器验收通过；准确候选CI包括双前端构建、API镜像与隔离MySQL集成。",
     "发布不触发收费采集，保留业务数据、任务检查点和public/data。"
   ],
-  "id": "20261022120051-82f53596",
-  "builtAt": "2026-10-22T12:00:51.650Z",
-  "sourceDigest": "82f535967c9e0d9f471e25f96d67c354d8d63474b93f51e5b8ecd2cf38035720",
+  "id": "20261022130238-e444a937",
+  "builtAt": "2026-10-22T13:02:38.951Z",
+  "sourceDigest": "e444a93791026b7a510154270ae8ce8b1f59c95048d84b392ec73c99ad494c85",
   "operator": "Codex"
 }
