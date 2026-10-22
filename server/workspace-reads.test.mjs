@@ -318,6 +318,26 @@ export async function exerciseWorkspaceReads(
   );
   pool.query = query;
   await drain();
+  for (const [key, id] of [['cafe', 'accent-a'], ['caf\u00e9', 'accent-b']]) {
+    await pool.query('INSERT INTO research_keywords(natural_key,data) VALUES($1,$2)', [
+      `case:${key}`,
+      { ...keyword(90), id, term: `collation-probe-${id}` },
+    ]);
+  }
+  await drain();
+  assert.equal((await reads.list({ collection: 'keywords', search: 'collation-probe' })).total, 2);
+  if (engine === 'mysql') {
+    for (const table of ['workspace_read_dirty', 'workspace_read_rows'])
+      await pool.query(`ALTER TABLE ${table} MODIFY source_key varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL`);
+    await migrateWorkspaceReads(pool, engine);
+    await drain();
+    assert.equal((await reads.list({ collection: 'keywords', search: 'collation-probe' })).total, 2);
+  }
+  await pool.query('UPDATE research_keywords SET data=$1 WHERE natural_key=$2', [
+    { ...keyword(90), id: 'accent-a', term: 'collation-probe-updated' }, 'case:cafe',
+  ]);
+  await drain();
+  assert.equal((await reads.list({ collection: 'keywords', search: 'collation-probe' })).total, 2);
   return {
     pageBytes: Buffer.byteLength(JSON.stringify(first)),
     overviewBytes: Buffer.byteLength(JSON.stringify(overview)),

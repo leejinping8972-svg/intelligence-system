@@ -40,7 +40,7 @@ try {
     'CREATE TABLE workspace_documents(name varchar(512) PRIMARY KEY,value json NOT NULL,revision integer DEFAULT 1)',
   );
   await pool.query(
-    'CREATE TABLE research_keywords(natural_key varchar(512) PRIMARY KEY,data json NOT NULL,updated_at timestamp DEFAULT CURRENT_TIMESTAMP)',
+    'CREATE TABLE research_keywords(natural_key varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY,data json NOT NULL,updated_at timestamp DEFAULT CURRENT_TIMESTAMP)',
   );
   await pool.query(
     'CREATE TABLE research_jobs(id varchar(160) PRIMARY KEY,status varchar(32),cancelled boolean DEFAULT false)',

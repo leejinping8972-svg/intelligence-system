@@ -1,11 +1,14 @@
 // Derived tables are rebuildable. Source writes and invalidations share a transaction.
 export async function migrateWorkspaceReads(pool, engine) {
   const json = engine === 'mysql' ? 'json' : 'jsonb';
+  const sourceKey = engine === 'mysql'
+    ? 'varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin'
+    : 'varchar(512)';
   const statements = [
     `CREATE TABLE IF NOT EXISTS workspace_read_versions (collection varchar(32) PRIMARY KEY, revision bigint NOT NULL DEFAULT 0)`,
-    `CREATE TABLE IF NOT EXISTS workspace_read_dirty (kind varchar(16) NOT NULL, source_key varchar(512) NOT NULL, revision bigint NOT NULL DEFAULT 1, PRIMARY KEY(kind,source_key))`,
+    `CREATE TABLE IF NOT EXISTS workspace_read_dirty (kind varchar(16) NOT NULL, source_key ${sourceKey} NOT NULL, revision bigint NOT NULL DEFAULT 1, PRIMARY KEY(kind,source_key))`,
     `CREATE TABLE IF NOT EXISTS workspace_read_rows (
-      collection varchar(32) NOT NULL, id varchar(160) NOT NULL, source_key varchar(512) NOT NULL,
+      collection varchar(32) NOT NULL, id varchar(160) NOT NULL, source_key ${sourceKey} NOT NULL,
       market varchar(8) NOT NULL, category varchar(160) NOT NULL, score double precision,
       grade varchar(32) NOT NULL, rating_status varchar(32) NOT NULL, review_status varchar(32) NOT NULL,
       collection_status varchar(32) NOT NULL, favorite integer NOT NULL, collected_at varchar(40) NOT NULL,
@@ -16,6 +19,20 @@ export async function migrateWorkspaceReads(pool, engine) {
     `CREATE TABLE IF NOT EXISTS workspace_overview_snapshots (market varchar(8) PRIMARY KEY, revision bigint NOT NULL, generated_at varchar(40) NOT NULL, payload ${json} NOT NULL)`,
   ];
   for (const statement of statements) await pool.query(statement);
+  if (engine === 'mysql') {
+    let repaired = false;
+    for (const table of ['workspace_read_dirty', 'workspace_read_rows']) {
+      const found = await pool.query(
+        "SELECT collation_name AS collation_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=$1 AND column_name='source_key'",
+        [table],
+      );
+      if (found.rows[0]?.collation_name === 'utf8mb4_bin') continue;
+      await pool.query(`ALTER TABLE ${table} MODIFY source_key ${sourceKey} NOT NULL`);
+      repaired = true;
+    }
+    // Older accent-insensitive queue keys could have collapsed distinct source records.
+    if (repaired) await pool.query("INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'keywords',natural_key FROM research_keywords ON DUPLICATE KEY UPDATE revision=workspace_read_dirty.revision+1");
+  }
   for (const [table, name, columns] of [
     [
       'workspace_read_rows',
