@@ -23,7 +23,7 @@ Formula heat uses product and brand counts plus review snapshots. Unknown-period
 
 The frontend keeps bounded per-user query caches, coalesces duplicate requests, rejects stale market responses and stops polling when inactive. Charts reuse their instance when the theme is unchanged.
 
-Radar findings are stored as losslessly compressed JSON and decoded at the read boundary, so existing API fields and evidence are preserved. Batches contain at most 1,000 rows and approximately 512 KiB of JSON payload. Older uncompressed rows remain readable. This avoids repeating large evidence strings in small cross-region database writes for every time window and market.
+Radar evidence is stored once per time window as a losslessly compressed array, shared by every market. SQL rows contain only array positions and filter columns. Reads decode a bounded four-window cache and return the requested page with every original field. Batches contain at most 1,000 rows and approximately 512 KiB of payload. Legacy per-row compressed and uncompressed snapshots remain readable. Evidence and indexes publish in one transaction, preventing mixed revisions.
 
 ## Verification Boundaries
 

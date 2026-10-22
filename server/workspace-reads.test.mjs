@@ -136,6 +136,8 @@ export async function exerciseWorkspaceReads(
   const radar = await reads.statistics({ kind: 'radar', type: 'product', pageSize: 20 });
   assert.equal(radar.total, 240);
   assert.equal(radar.rows.length, 20);
+  assert.equal((await pool.query("SELECT COUNT(*) AS n FROM workspace_documents WHERE name LIKE 'read:radar-payload:%'")).rows[0].n, 4);
+  assert.equal(typeof (await pool.query("SELECT payload FROM workspace_statistic_rows WHERE kind='radar' LIMIT 1")).rows[0].payload, 'number');
   assert.equal(radar.snapshot.summary.counts.product, 240);
   assert.equal(Object.values(radar.snapshot.summary.activity).reduce((sum, day) => sum + day.product, 0), 240);
   const nextRadar = await reads.statistics({ kind: 'radar', type: 'product', page: 2, pageSize: 20 });

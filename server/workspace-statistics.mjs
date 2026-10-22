@@ -4,7 +4,7 @@ import {
   buildSourceCoverage, buildRadarReport, opportunityRows, formulaStatistics, radarStatistics,
 } from './model.js';
 
-const VERSION = 2;
+const VERSION = 3;
 export const encodeStatistic = value => ({ codec: 'deflate-json-v1', body: deflateRawSync(Buffer.from(JSON.stringify(value))).toString('base64') });
 export const decodeStatistic = value => value?.codec === 'deflate-json-v1'
   ? JSON.parse(inflateRawSync(Buffer.from(value.body, 'base64'), { maxOutputLength: 4 * 1024 * 1024 }).toString('utf8'))
@@ -47,6 +47,7 @@ export function createPublicObservationReader({ fetcher = fetch, base = process.
 
 export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic = createPublicObservationReader() }) {
   let nextCheck = 0;
+  const radarCache = new Map();
   const keyOf = (kind, market, variant) => `read:statistics:${kind}:${market}:${variant}`;
   async function rebuild(connection, revision) {
     const now = Date.now();
@@ -74,7 +75,11 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
       ...buildCollectedRadarFindings(publicData.collector, days),
       ...buildFreeSourceRadarFindings(publicData.free, days),
     ].sort((a, b) => (b.businessScore ?? -1) - (a.businessScore ?? -1) || b.confidenceScore - a.confidenceScore || a.id.localeCompare(b.id))]));
-    const encoded = new WeakMap();
+    const references = new Map();
+    for (const [days, rows] of allRadar) {
+      references.set(days, new Map(rows.map((row, index) => [row, index])));
+      await putDocument('workspace_documents', `read:radar-payload:${days}`, { revision: String(revision), data: encodeStatistic(rows) }, false, connection);
+    }
     async function save(kind, market, variant, rows, summary) {
       await connection.query('DELETE FROM workspace_statistic_rows WHERE kind=$1 AND market=$2 AND variant=$3', [kind, market, variant]);
       for (let start = 0; start < rows.length;) {
@@ -82,8 +87,7 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
         let bytes = 0;
         while (start + batch.length < rows.length && batch.length < 1000) {
           const row = rows[start + batch.length];
-          if (kind === 'radar' && !encoded.has(row)) encoded.set(row, encodeStatistic(row));
-          const payload = kind === 'radar' ? encoded.get(row) : row;
+          const payload = kind === 'radar' ? references.get(Number(variant)).get(row) : row;
           const size = Buffer.byteLength(JSON.stringify(payload));
           if (batch.length && bytes + size > 512 * 1024) break;
           batch.push([kind, market, variant, start + batch.length, row.type || '', payload]);
@@ -101,7 +105,7 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
         const summaries = Object.fromEntries(types.map(type => [type, radarStatistics(rows.filter(row => type === 'all' || row.type === type))]));
         const scopedCollector = publicData.collector ? { ...publicData.collector, observations: publicData.collector.observations.filter(row => market === 'ALL' || row.market === market) } : null;
         const scopedFree = publicData.free ? { ...publicData.free, signals: publicData.free.signals.filter(row => market === 'ALL' || row.market === market || row.market === 'GLOBAL') } : null;
-        await save('radar', market, String(days), rows, { summaries, coverage: buildSourceCoverage(scoped, scopedCollector, scopedFree), publicDataStale: !!(publicData.collectorStale || publicData.freeStale) });
+        await save('radar', market, String(days), rows, { radarPayloadKey: `read:radar-payload:${days}`, summaries, coverage: buildSourceCoverage(scoped, scopedCollector, scopedFree), publicDataStale: !!(publicData.collectorStale || publicData.freeStale) });
       }
       for (const tab of tabs) await save('opportunities', market, tab, opportunityRows(scoped, tab), {});
       const formula = formulaStatistics(scoped.products);
@@ -118,6 +122,22 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     const subtype = kind === 'radar' && types.includes(input.type) ? input.type : 'all';
     const snapshot = (await connection.query('SELECT value FROM workspace_documents WHERE name=$1', [keyOf(kind, market, variant)])).rows[0]?.value;
     if (!snapshot) return { rows: [], total: 0, page: 1, pageSize: 20, snapshot: null, indexing: true };
+    async function resolveRows(values) {
+      if (!snapshot.radarPayloadKey) return values.map(decodeStatistic);
+      let cached = radarCache.get(snapshot.radarPayloadKey);
+      if (cached?.revision !== snapshot.revision) {
+        const saved = (await connection.query('SELECT value FROM workspace_documents WHERE name=$1', [snapshot.radarPayloadKey])).rows[0]?.value;
+        if (saved?.revision !== snapshot.revision) throw new Error('Radar snapshot payload unavailable');
+        const rows = JSON.parse(inflateRawSync(Buffer.from(saved.data.body, 'base64'), { maxOutputLength: 64 * 1024 * 1024 }).toString('utf8'));
+        if (!Array.isArray(rows)) throw new Error('Invalid radar snapshot payload');
+        cached = { revision: snapshot.revision, rows };
+        radarCache.set(snapshot.radarPayloadKey, cached);
+      }
+      return values.map(index => {
+        if (!Number.isInteger(index) || index < 0 || index >= cached.rows.length) throw new Error('Invalid radar snapshot reference');
+        return cached.rows[index];
+      });
+    }
     const params = [kind, market, variant];
     let where = 'kind=$1 AND market=$2 AND variant=$3';
     if (subtype !== 'all') { params.push(subtype); where += ` AND subtype=$${params.length}`; }
@@ -131,14 +151,14 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
       }
     }
     if (kind === 'radar' && input.report === true) {
-      const rows = (await connection.query(`SELECT payload FROM workspace_statistic_rows WHERE ${where} ORDER BY position`, params)).rows.map(r => decodeStatistic(r.payload));
+      const rows = await resolveRows((await connection.query(`SELECT payload FROM workspace_statistic_rows WHERE ${where} ORDER BY position`, params)).rows.map(r => r.payload));
       return { report: `${buildRadarReport(rows, Number(variant), marketLabel(market), input.appName ? String(input.appName).slice(0, 120) : undefined)}\n\n数据快照时间：${snapshot.generatedAt}`, snapshot };
     }
     const total = Number((await connection.query(`SELECT COUNT(*) AS total FROM workspace_statistic_rows WHERE ${where}`, params)).rows[0].total);
     const pageSize = Math.max(1, Math.min(100, Math.floor(Number(input.pageSize) || 20)));
     const page = Math.max(1, Math.min(Math.ceil(total / pageSize) || 1, Math.floor(Number(input.page) || 1)));
-    const rows = (await connection.query(`SELECT payload FROM workspace_statistic_rows WHERE ${where} ORDER BY position LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, pageSize, (page - 1) * pageSize])).rows.map(r => decodeStatistic(r.payload));
-    const { summaries, ...metadata } = snapshot;
+    const rows = await resolveRows((await connection.query(`SELECT payload FROM workspace_statistic_rows WHERE ${where} ORDER BY position LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, pageSize, (page - 1) * pageSize])).rows.map(r => r.payload));
+    const { summaries, radarPayloadKey, ...metadata } = snapshot;
     return { rows, total, page, pageSize, snapshot: { ...metadata, summary: summaries?.[subtype] } };
   }
   async function read(input) {
