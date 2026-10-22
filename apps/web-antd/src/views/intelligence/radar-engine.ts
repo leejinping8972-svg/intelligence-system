@@ -756,6 +756,7 @@ export function buildRadarReport(
   findings: RadarFinding[],
   windowDays: number,
   marketLabel: string,
+  appName = '情报工作区',
 ) {
   const products = findings.filter((item) => item.type === 'product');
   const concepts = findings.filter((item) => item.type === 'concept');
@@ -765,7 +766,7 @@ export function buildRadarReport(
     .filter((item) => item.businessScore !== null)
     .sort((a, b) => (b.businessScore || 0) - (a.businessScore || 0))[0];
   return [
-    `知衡情报 · 新品雷达${windowDays}天分析报告`,
+    `${appName} · 新品雷达${windowDays}天分析报告`,
     `市场：${marketLabel}`,
     `生成时间：${new Date().toLocaleString('zh-CN')}`,
     '',

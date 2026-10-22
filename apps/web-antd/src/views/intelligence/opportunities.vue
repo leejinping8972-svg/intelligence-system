@@ -91,7 +91,7 @@ function report() {
   if (!selected.value) return;
   download(
     `研究摘要-${tab.value}.txt`,
-    `知衡情报 · 研究摘要\n研究方向：${selected.value.title}\n市场：${marketName(state.market)}\n关联记录：${selected.value.count}项\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未达到自动确认门槛。\n数据缺口：独立来源、真实配方、持续观察历史、广告或销售证据。\n后续动作：补充资料并完成人工审核。`,
+    `${state.branding.appName} · 研究摘要\n研究方向：${selected.value.title}\n市场：${marketName(state.market)}\n关联记录：${selected.value.count}项\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未达到自动确认门槛。\n数据缺口：独立来源、真实配方、持续观察历史、广告或销售证据。\n后续动作：补充资料并完成人工审核。`,
   );
   message.success('研究摘要已导出');
 }

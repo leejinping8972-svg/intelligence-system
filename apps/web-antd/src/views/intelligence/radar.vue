@@ -59,7 +59,7 @@ const sourceCoverage = computed(() =>
   buildSourceCoverage(state, collectorData.value, freeSourceData.value),
 );
 const report = computed(() =>
-  buildRadarReport(findings.value, windowDays.value, marketName(state.market)),
+  buildRadarReport(findings.value, windowDays.value, marketName(state.market), state.branding.appName),
 );
 const counts = computed(() => ({
   ad: findings.value.filter((item) => item.type === 'ad').length,

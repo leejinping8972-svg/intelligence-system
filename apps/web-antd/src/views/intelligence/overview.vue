@@ -262,7 +262,7 @@ function selectMarket(name: string) {
       </section>
     </div>
     <div class="hci-demo-footer">
-      <span>知衡情报 · 用证据连接关键词、品牌与商品</span><span>工作区结果从真实采集或人工导入开始累计</span>
+      <span>{{ state.branding.appName }} · 用证据连接关键词、品牌与商品</span><span>工作区结果从真实采集或人工导入开始累计</span>
     </div>
   </main>
 </template>

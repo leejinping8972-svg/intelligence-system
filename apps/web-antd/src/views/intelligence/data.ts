@@ -794,6 +794,8 @@ const bootBranding = (
   }
 ).__hciBranding;
 if (bootBranding) Object.assign(state.branding, bootBranding);
+else if (import.meta.env.VITE_HCI_SERVER === 'true')
+  state.branding.appName = '情报工作区';
 window.addEventListener('hci:branding-changed', (event) => {
   Object.assign(state.branding, (event as CustomEvent).detail);
 });
