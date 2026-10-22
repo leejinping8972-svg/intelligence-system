@@ -23,6 +23,8 @@ Formula heat uses product and brand counts plus review snapshots. Unknown-period
 
 The frontend keeps bounded per-user query caches, coalesces duplicate requests, rejects stale market responses and stops polling when inactive. Charts reuse their instance when the theme is unchanged.
 
+Radar findings are stored as losslessly compressed JSON and decoded at the read boundary, so existing API fields and evidence are preserved. Batches contain at most 1,000 rows and approximately 512 KiB of JSON payload. Older uncompressed rows remain readable. This avoids repeating large evidence strings in small cross-region database writes for every time window and market.
+
 ## Verification Boundaries
 
 Use synthetic records and the disposable PostgreSQL/MySQL workspace-read fixture. Test complete counts versus pages, market isolation, full report export, saved-only filters, source invalidation/deletion, malformed-record isolation and immediate visibility of report changes. No production data or provider keys are needed. Local results do not establish production response times; deployment and actual browser timing remain separate release checks.

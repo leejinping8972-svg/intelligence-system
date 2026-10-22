@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formulaStatistics, opportunityRows, radarStatistics } from './model.js';
-import { createPublicObservationReader } from './workspace-statistics.mjs';
+import { createPublicObservationReader, encodeStatistic, decodeStatistic } from './workspace-statistics.mjs';
+
+test('compressed findings preserve every field and legacy rows remain readable', () => {
+  const row = { id: 'radar-qa', title: '补充剂', evidence: Array.from({ length: 30 }, () => ({ detail: 'Evidence text '.repeat(100), url: 'https://example.com/product' })), score: null };
+  const packed = encodeStatistic(row);
+  assert.ok(JSON.stringify(packed).length < JSON.stringify(row).length / 3);
+  assert.deepEqual(decodeStatistic(packed), row);
+  assert.equal(decodeStatistic(row), row);
+});
 
 test('formula totals cover the full dataset and do not mix unknown sales periods', () => {
   const products = Array.from({ length: 150 }, (_, i) => ({ id: `p${i}`, market: 'VN', siteId: 's', brand: i % 2 ? 'A' : 'B', reviewed: i < 10, ingredientInsights: [{ name: 'Magnesium' }], sourceMetrics: { reportedSales: 999999 } }));
