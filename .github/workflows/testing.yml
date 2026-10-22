@@ -50,6 +50,8 @@ jobs:
         run: node --test server/market-research.test.mjs
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
+      - name: Public branding startup regression
+        run: pnpm exec vitest run tests/public-branding.test.ts
       - name: Administrator SSO protocol and navigation (synthetic accounts, no external requests)
         run: |
           node --test server/admin-sso.test.mjs server/password-policy.test.mjs
@@ -94,6 +96,8 @@ jobs:
           VITE_ROUTER_HISTORY: history
           VITE_APP_NAMESPACE: intelligence-testing
         run: pnpm --filter @vben/web-antd exec vite build --mode production --base=/admin/
+      - name: Verify frontend layout utilities
+        run: node apps/web-antd/scripts/verify-build.mjs apps/web-antd/dist
       - name: Build API image
         run: docker build -t intelligence-platform-products-qa -f server/Dockerfile .
       - name: Isolated MySQL integration (no production network or provider keys)
@@ -180,6 +184,8 @@ jobs:
           VITE_ROUTER_HISTORY: history
           VITE_APP_NAMESPACE: intelligence-production
         run: pnpm --filter @vben/web-antd exec vite build --mode production --base=/admin/
+      - name: Verify production layout utilities
+        run: node apps/web-antd/scripts/verify-build.mjs apps/web-antd/dist
       - name: Upload production frontend build
         uses: actions/upload-artifact@v4
         with:

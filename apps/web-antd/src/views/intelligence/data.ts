@@ -794,6 +794,9 @@ const bootBranding = (
   }
 ).__hciBranding;
 if (bootBranding) Object.assign(state.branding, bootBranding);
+window.addEventListener('hci:branding-changed', (event) => {
+  Object.assign(state.branding, (event as CustomEvent).detail);
+});
 watch(
   () => [state.branding.appName, state.branding.logo],
   () => {

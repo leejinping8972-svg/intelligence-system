@@ -1,9 +1,11 @@
 import { defineConfig } from '@vben/vite-config';
+import { tailwindSources } from './tailwind-sources';
 
 export default defineConfig(async () => {
   return {
     application: {},
     vite: {
+      plugins: [tailwindSources()],
       server: {
         proxy: {
           '/api': {

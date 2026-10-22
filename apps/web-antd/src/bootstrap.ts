@@ -1,8 +1,8 @@
-import { createApp, watchEffect } from 'vue';
+import { createApp, watch, watchEffect } from 'vue';
 
 import { registerAccessDirective } from '@vben/access';
 import { registerLoadingDirective } from '@vben/common-ui/es/loading';
-import { preferences } from '@vben/preferences';
+import { preferences, updatePreferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/antd';
@@ -16,6 +16,7 @@ import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm } from './adapter/form';
 import App from './app.vue';
 import { router } from './router';
+import { state } from './views/intelligence/data';
 
 async function bootstrap(namespace: string) {
   // 初始化组件适配器
@@ -61,14 +62,22 @@ async function bootstrap(namespace: string) {
   const { MotionPlugin } = await import('@vben/plugins/motion');
   app.use(MotionPlugin);
 
-  // 动态更新标题
+  watch(
+    () => [state.branding.appName, state.branding.logo],
+    () => updatePreferences({
+      app: { name: state.branding.appName },
+      logo: { source: state.branding.logo },
+    }),
+    { immediate: true },
+  );
+  // Keep the configured brand in the title even when page prefixes are disabled.
   watchEffect(() => {
-    if (preferences.app.dynamicTitle) {
-      const routeTitle = router.currentRoute.value.meta?.title;
-      const pageTitle =
-        (routeTitle ? `${$t(routeTitle)} - ` : '') + preferences.app.name;
-      useTitle(pageTitle);
-    }
+    const routeTitle = preferences.app.dynamicTitle
+      ? router.currentRoute.value.meta?.title
+      : undefined;
+    const pageTitle =
+      (routeTitle ? `${$t(routeTitle)} - ` : '') + preferences.app.name;
+    useTitle(pageTitle);
   });
 
   app.mount('#app');
