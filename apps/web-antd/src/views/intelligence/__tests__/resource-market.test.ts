@@ -32,7 +32,11 @@ vi.mock('ant-design-vue', () => ({
     },
   }),
 }));
-vi.mock('../cloud-workspace', () => ({ cloudWorkspace: { error: '' }, startCloudSync: vi.fn() }));
+vi.mock('../cloud-workspace', () => ({
+  cloudWorkspace: { error: '' },
+  setWorkspaceReadMode: vi.fn(),
+  startCloudSync: vi.fn(),
+}));
 
 const apps: ReturnType<typeof createApp>[] = [];
 beforeEach(() => {
