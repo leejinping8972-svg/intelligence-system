@@ -305,12 +305,12 @@ const visibleRows = computed(() =>
       <span
         >对象 {{ task.collectionProgress.done }} /
         {{ task.collectionProgress.total }}</span
-      ><span v-if="task.collectionProgress.kind !== 'site_metrics'"
+      ><span v-if="!['site_metrics', 'semrush_sites'].includes(task.collectionProgress.kind || '')"
         >广告 {{ task.collectionProgress.ads }} 条</span
       ><span v-if="task.collectionProgress.kind !== 'site_metrics'"
         >官网 {{ task.collectionProgress.sites }} 家</span
       ><span v-if="task.collectionProgress.kind !== 'site_metrics'"
-        >广告请求 {{ task.collectionProgress.requests }} /
+        >{{ task.collectionProgress.kind === 'semrush_sites' ? 'Semrush报告' : '广告请求' }} {{ task.collectionProgress.requests }} /
         {{ task.collectionProgress.requestLimit }}</span
       >
     </div>
@@ -335,7 +335,7 @@ const visibleRows = computed(() =>
     </div>
     <p class="hci-subtle">
       {{ task.collectionProgress.current
-      }}<span v-if="task.collectionProgress.kind === 'site_metrics'">
+      }}<span v-if="['site_metrics', 'semrush_sites'].includes(task.collectionProgress.kind || '')">
         · Semrush 已确认 {{ task.collectionProgress.semrushUnits || 0 }} API
         units</span
       >

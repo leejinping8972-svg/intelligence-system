@@ -614,31 +614,6 @@ function saveMetrics() {
         ＋ 新建关键词研究
       </Button>
     </PageHeader>
-    <div class="hci-demo-note">
-      <b>{{
-        cloudWorkspace.ready
-          ? '腾讯云 · 关键词云端存储'
-          : '正在连接云端业务服务'
-      }}</b>
-      <span>
-        ·
-        提交成功后可关闭浏览器；本机已有关键词会自动迁移，收藏和人工筛选会同步保存。</span>
-      <Button
-        size="small"
-        :loading="cloudWorkspace.syncing"
-        @click="
-          syncCloudWorkspace().catch((error) => message.error(error.message))
-        "
-      >
-        刷新云端数据
-      </Button>
-      <p v-if="cloudWorkspace.error" role="alert">
-        {{ cloudWorkspace.error }}。本机缓存保留，请检查连接后重试。
-      </p>
-    </div>
-    <div class="hci-demo-note keyword-stage-note">
-      <b>1 关键词研究与评级</b><span>→ 人工选词</span><span>2 独立站研究</span><span>→ 人工选站</span><span>3 商品研究</span>
-    </div>
     <Alert
       v-if="keywordJob.running"
       type="info"
@@ -679,10 +654,10 @@ function saveMetrics() {
       </div>
     </div>
     <section class="hci-panel">
-      <div class="hci-toolbar keyword-filters">
+      <div class="hci-toolbar keyword-filters hci-filter-toolbar">
         <Input.Search
           v-model:value="search"
-          placeholder="搜索关键词、种子词或标签"
+          placeholder="搜索中英文关键词、种子词或标签"
           allow-clear
           aria-label="搜索关键词"
         />
@@ -763,8 +738,6 @@ function saveMetrics() {
         >
           重置筛选
         </Button>
-      </div>
-      <div class="hci-toolbar">
         <ScoreRangeFilter
           v-model="scoreFilter"
           label="关键词"

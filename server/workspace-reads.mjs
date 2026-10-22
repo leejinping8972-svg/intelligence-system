@@ -12,6 +12,7 @@ import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
+import { productListingDate, validateListingRange } from './product-listing.mjs';
 
 const collections = new Set([
   'keywords',
@@ -21,7 +22,7 @@ const collections = new Set([
   'advertisers',
   'insightReports',
 ]);
-const MODEL_VERSION = 'workspace-reads-v3-statistics';
+const MODEL_VERSION = 'workspace-reads-v4-listing-search';
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
@@ -134,6 +135,7 @@ export function projectRecord(collection, value) {
       : [source],
   );
   add('benefit', value.benefits);
+  if (collection === 'products') add('listingDate', [productListingDate(value)]);
   add(
     'ingredient',
     value.ingredientInsights?.map((item) => item.name),
@@ -172,6 +174,7 @@ export function projectRecord(collection, value) {
   ]
     .filter(Boolean)
     .join(' ')
+    .normalize('NFKC')
     .toLowerCase();
   const at =
     value.collectedAt || value.lastCollectedAt || value.firstSeenAt || '';
@@ -676,6 +679,10 @@ export function createWorkspaceReads({
         );
     }
     if (input.favorite) clauses.push('r.favorite=1');
+    if (collection === 'products') {
+      const { from, to } = validateListingRange(input.listedFrom, input.listedTo);
+      if (from || to) clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='listingDate'${from ? ` AND d.target>=${bind(from)}` : ''}${to ? ` AND d.target<=${bind(to)}` : ''})`);
+    }
     const score = input.score || {};
     if (score.status === 'unscored') clauses.push('r.score IS NULL');
     else {
@@ -715,7 +722,7 @@ export function createWorkspaceReads({
       relation('sites', [input.linkedSite]);
     if (input.search?.trim()) {
       const search = bind(
-        `%${String(input.search).trim().toLowerCase().slice(0, 200).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`,
+        `%${String(input.search).normalize('NFKC').trim().toLowerCase().slice(0, 200).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`,
       );
       clauses.push(
         `(r.search_text LIKE ${search} ESCAPE '!' OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.id WHERE l.collection='keywords' AND l.relation=r.collection AND l.target=r.id AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_rows s WHERE s.collection='sites' AND s.id=r.site_id AND s.search_text LIKE ${search} ESCAPE '!'))`,

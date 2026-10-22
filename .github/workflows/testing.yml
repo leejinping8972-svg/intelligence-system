@@ -50,6 +50,7 @@ jobs:
         run: node --test server/market-research.test.mjs
       - name: Core list data evidence and nested TikTok fields (synthetic only)
         run: |
+          node --test server/product-listing.test.mjs server/semrush-sites.test.mjs server/semrush-sites.integration.test.mjs
           node --test server/core-list-fields.test.mjs
           pnpm exec vitest run tests/core-list-metrics.test.ts
       - name: Persona research budget and evidence boundaries (synthetic data)

@@ -45,6 +45,7 @@ const presets: Record<CoreKind, Array<[string, string]>> = {
 const extra: Record<CoreKind, Array<[string, string]>> = {
   products: [
     ['cumulativeSold', '累计展示已售'],
+    ['listingDate', '上架时间'],
     ['priceOriginal', '原币价格'],
     ['spec', '规格'],
     ['sellingPoints', '卖点'],
@@ -81,7 +82,7 @@ type Column = {
 };
 export function useCoreList(kind: CoreKind) {
   const { width } = useWindowSize();
-  const preset = ref('decision');
+  const preset = ref('original');
   const period = ref<CorePeriod>(30);
   const context = () => ({
     complete: !serverMode,

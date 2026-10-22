@@ -362,6 +362,23 @@ export async function exerciseWorkspaceReads(
   }
   await drain();
   assert.equal((await reads.list({ collection: 'keywords', search: 'collation-probe' })).total, 2);
+  for (const [id, date] of [['p10', '2026-10-15'], ['p12', '2026-10-22'], ['p14', '2026-10-14']]) {
+    const old = (await reads.details({ collection: 'products', id })).record;
+    await putDocument('workspace_documents', `business:products:${id}`, {
+      ...old, decisionData: { ...old.decisionData, listing: { date, provider: 'Synthetic', platform: 'Amazon', market: 'US', collectedAt: '2026-10-22T00:00:00Z', evidenceUrl: 'https://synthetic.example/product' } },
+    });
+  }
+  await drain();
+  const listingFilter = { collection: 'products', market: 'US', listedFrom: '2026-10-15', listedTo: '2026-10-22' };
+  assert.equal((await reads.list({ ...listingFilter, pageSize: 1 })).total, 2);
+  assert.equal((await reads.list({ ...listingFilter, page: 2, pageSize: 1 })).rows.length, 1);
+  const listed = await reads.selection(listingFilter);
+  assert.deepEqual(listed.rows.map((row) => row.id).sort(), ['p10', 'p12']);
+  assert.deepEqual((await reads.exportRecords({ collection: 'products', ids: listed.rows.map((row) => row.id) })).rows.map((row) => row.id).sort(), ['p10', 'p12']);
+  assert.equal((await reads.list({ ...listingFilter, search: '镁软糖' })).total, 2);
+  assert.equal((await reads.list({ ...listingFilter, search: 'MAGNESIUM' })).total, 2);
+  assert.equal((await reads.list({ ...listingFilter, market: 'MX' })).total, 0);
+  await assert.rejects(reads.list({ ...listingFilter, listedFrom: '2026-10-30' }), /开始日期/);
   if (engine === 'mysql') {
     for (const table of ['workspace_read_dirty', 'workspace_read_rows'])
       await pool.query(`ALTER TABLE ${table} MODIFY source_key varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL`);
