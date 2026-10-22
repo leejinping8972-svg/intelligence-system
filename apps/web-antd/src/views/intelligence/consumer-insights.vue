@@ -19,6 +19,7 @@ import ConsumerReportDialog from './components/ConsumerReportDialog.vue';
 import CountryMarketReportDialog from './components/CountryMarketReportDialog.vue';
 import MarketCollectionDialog from './components/MarketCollectionDialog.vue';
 import PageHeader from './components/PageHeader.vue';
+import PersonaResearchDialog from './components/PersonaResearchDialog.vue';
 import { reportStatus, reportTopics } from './consumer-reports';
 import { marketName, state } from './data';
 import { serverMode, session } from './session';
@@ -184,6 +185,7 @@ AI 配置
       <CountryMarketReportDialog
         @submitted="(id) => router.push(`/consumer-insights/reports/${id}`)"
       />
+      <PersonaResearchDialog v-if="session.user?.role === 'admin'" @submitted="(id) => router.push(`/consumer-insights/reports/${id}`)" />
     </PageHeader>
     <Alert
       v-if="!serverMode"
@@ -205,6 +207,7 @@ AI 配置
           :options="[
             { label: '全部报告类型', value: 'ALL' },
             { label: '国家市场报告', value: 'market' },
+            { label: '人群画像报告', value: 'persona' },
             { label: '消费者话题报告', value: 'consumer' },
           ]"
           aria-label="报告类型筛选"

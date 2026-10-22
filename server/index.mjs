@@ -17,6 +17,7 @@ import {
 import { dailyDiscoveryAction } from './daily-discovery.mjs';
 import { marketResearchAction } from './market-research.mjs';
 import { submitMarketReport } from './market-report-jobs.mjs';
+import { personaResearchAction } from './persona-research-store.mjs';
 import { databaseAction, maintenance } from './database-admin.mjs';
 import {
   currentDatabase,
@@ -82,6 +83,7 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_persona_')) return personaResearchAction(input, user);
   if (input.action?.startsWith('server_keyword_trends_'))
     return keywordTrendsAction(input, user);
   if (input.action?.startsWith('server_competitor_'))

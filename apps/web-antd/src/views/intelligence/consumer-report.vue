@@ -24,6 +24,7 @@ import {
 
 import { cloudRequest } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
+import PersonaResearchReport from './components/PersonaResearchReport.vue';
 import {
   publicEvidenceUrl,
   reportStatus,
@@ -188,6 +189,7 @@ const time = (v: string) =>
     >
       <Button @click="router.push('/consumer-insights')">返回洞察列表</Button><Button :loading="busy" @click="load(true)">刷新报告</Button>
       <Button
+        v-if="report?.reportType !== 'persona'"
         :disabled="
           !modelReady ||
           report?.reportType === 'market' ||
@@ -203,7 +205,8 @@ const time = (v: string) =>
     </PageHeader>
     <Alert v-if="error" type="error" :message="error" show-icon />
     <p v-if="busy && !report" role="status">正在读取报告…</p>
-    <template v-if="report">
+    <PersonaResearchReport v-if="report?.reportType === 'persona'" :id="report.id" />
+    <template v-else-if="report">
       <section class="hci-panel">
         <div class="report-strip">
           <Tag>{{ reportStatus(report.status) }}</Tag><Tag v-if="report.reportType === 'market'" color="blue">

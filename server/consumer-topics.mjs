@@ -78,6 +78,7 @@ export function insightSummary(r) {
     period: r.period,
     endDate: r.endDate,
     marketSnapshot: r.marketSnapshot,
+    personaResearch: r.personaResearch ? { sampling: r.personaResearch.sampling } : undefined,
     createdAt: r.createdAt,
     finishedAt: r.finishedAt,
     status: r.status,

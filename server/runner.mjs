@@ -19,6 +19,7 @@ import { completionProgress } from './platform-product-completion.mjs';
 import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { tickMarketResearch } from './market-research.mjs';
 import { runMarketReport } from './market-report-jobs.mjs';
+import { runPersonaResearch } from './persona-research-store.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   if (
@@ -27,6 +28,7 @@ export function jobTasks(job) {
       'ad_analysis',
       'evidence_analysis',
       'market_analysis',
+      'persona_research',
       'products',
       'platform_products',
     ].includes(job.input.kind)
@@ -36,6 +38,7 @@ export function jobTasks(job) {
       ad_analysis: '广告拆解与分析',
       evidence_analysis: '需求语义分析',
       market_analysis: '国家市场商品与消费者分析',
+      persona_research: '人群画像需求研究',
       products: '站点商品采集',
       platform_products:
         job.input.discoveryDay ? '每日关键词商品发现' : job.input.mode === 'enrich'
@@ -493,6 +496,8 @@ async function runLane(signal, trends = false) {
             )
           )
             await runInsightJob(next);
+          else if (next.input.kind === 'persona_research')
+            await runPersonaResearch(next);
           else if (next.input.kind === 'market_analysis')
             await runMarketReport(next);
           else if (next.input.kind === 'products') await runProductsJob(next);
