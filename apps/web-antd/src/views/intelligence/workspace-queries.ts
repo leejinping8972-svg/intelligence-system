@@ -238,6 +238,17 @@ export function useWorkspaceList<T extends { id: string }>(
     facets,
     reload,
     selectAll,
+    async exportRows(ids: string[] = []): Promise<T[]> {
+      const keys = ids.length ? [...new Set(ids)] : (await selectAll()).map((row) => row.id);
+      const records: T[] = [];
+      for (let offset = 0; offset < keys.length; offset += 50) {
+        const batch = keys.slice(offset, offset + 50);
+        const result = await cloudRequest<{ rows: T[] }>('server_workspace_export', { collection, ids: batch });
+        if (result.rows.length !== batch.length) throw new Error('导出记录已变化，请刷新后重试');
+        records.push(...result.rows);
+      }
+      return records;
+    },
     tableChange,
   };
 }

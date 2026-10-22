@@ -24,6 +24,11 @@ import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import CoreListControls from './components/CoreListControls.vue';
+import EvidenceMetric from './components/EvidenceMetric.vue';
+import { useCoreList } from './use-core-list';
+const core = useCoreList('products');
+const { preset: corePreset, period: corePeriod } = core;
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import { discoveryDecision, discoveryFilters } from './discovery';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
@@ -253,8 +258,9 @@ function siteField(id: string, field: 'brand' | 'domain') {
 }
 async function exportProducts() {
   try {
-    const records = bulkIds.value.length ? bulkSelected.value : serverMode ? await remote.selectAll() : rows.value;
+    const records = serverMode ? await remote.exportRows(bulkIds.value) : bulkIds.value.length ? bulkSelected.value : rows.value;
     exportCsv('商品库.csv', records.map((p) => ({
+      ...core.exportRecord(p),
       商品: p.title, 品牌: p.brand, 国家: p.market, 规格: p.size, 价格: p.price, 币种: p.currency,
       成分: p.ingredient, 剂量: p.dose, 功效卖点: p.benefits.join('、'), 卖点依据: p.benefitEvidence,
       成分分析: p.ingredientInsights.map((item) => `${item.name}｜${item.amount}｜${item.role}`).join('；'),
@@ -481,8 +487,9 @@ async function exportProducts() {
         </div>
       </article>
     </div>
+    <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="products" />
     <Table
-      v-else
+      v-if="viewMode === 'list'"
       :loading="remote.loading.value"
       @change="remote.tableChange"
       class="hci-resource-table"
@@ -491,8 +498,8 @@ async function exportProducts() {
       row-key="id"
       size="middle"
       :pagination="false"
-      :scroll="{ x: 1400 }"
-      :columns="[
+      :scroll="{ x: 'max-content' }"
+      :columns="core.columns([
         { title: '商品', key: 'product', width: 320, fixed: 'left' },
         { title: '市场 / 品类', key: 'category', width: 150 },
         { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: serverMode ? true : (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
@@ -502,10 +509,11 @@ async function exportProducts() {
         { title: '价格', key: 'price', width: 130 },
         { title: '数据来源 / 独立站', key: 'source', width: 220 },
         { title: '操作', key: 'actions', width: 210, fixed: 'right' },
-      ]"
+      ])"
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'product'"
+        <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Product, column.key)" />
+        <template v-else-if="column.key === 'product'"
           ><div class="product-list-name">
             <button
               class="product-list-thumb"
@@ -624,7 +632,7 @@ async function exportProducts() {
       :footer="null"
     >
       <div class="hci-demo-note">
-        保留原币种与规格；未接入汇率，不计算跨币种价格高低。
+        {{ core.metric(comparison[0]!, 'core:priceUsd').reason }}
       </div>
       <div class="hci-comparison">
         <div v-for="p in comparison" :key="p.id">

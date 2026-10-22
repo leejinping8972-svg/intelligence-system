@@ -75,6 +75,7 @@ export async function exerciseWorkspaceReads(
       brand: 'Test brand',
       category: '运动营养',
       benefits: ['睡眠支持'],
+      ingredient: '镁 100mg',
       ingredientInsights: [{ name: '镁', amount: '100mg', role: '矿物质' }],
       siteId: 's1',
       favorite: false,
@@ -193,6 +194,29 @@ export async function exerciseWorkspaceReads(
       .sourceContent.descriptions[0].length,
     50000,
   );
+  const siteEvidence = (await reads.details({ collection: 'sites', id: 's1' })).record.coreSummary.related;
+  assert.equal(siteEvidence.products, 120);
+  assert.equal(siteEvidence.ads, 31);
+  assert.equal(siteEvidence.hasIngredients, true);
+  await pool.query('UPDATE research_keywords SET data=$2 WHERE natural_key=$1', ['key2', { ...keyword(2), seedTerm: keyword(0).term, source: 'Google搜索联想' }]);
+  await putDocument('workspace_documents', 'business:products:metric-qa', {
+    id: 'metric-qa', title: 'Metric QA', market: 'US', sourceProvider: 'Sorftime', sourcePlatform: 'Amazon', sourceProductId: 'ASIN-QA',
+    benefits: [], ingredientInsights: [], sourceMetrics: { collectedAt: '2026-10-22T12:00:00Z' },
+    sourceContent: { descriptions: ['complete source text'] },
+    decisionData: { series: [{ metric: 'sales_volume', provider: 'Sorftime', platform: 'Amazon', productId: 'ASIN-QA', market: 'US', collectedAt: '2026-10-22T12:00:00Z', period: 'day', points: [{ start: '2026-09-22', end: '2026-10-21', value: 60 }] }] },
+  });
+  await drain();
+  const projectedMetric = (await reads.list({ collection: 'products', search: 'Metric QA' })).rows[0];
+  assert.equal(projectedMetric.coreSummary.periods[30].find((metric) => metric.key === 'sales').value, 60);
+  assert.equal(projectedMetric.decisionData, undefined);
+  assert.deepEqual((await reads.details({ collection: 'keywords', id: 'k0' })).record.coreSummary.related.expansions, [{ term: keyword(2).term, source: 'Google搜索联想' }]);
+  const fullExport = await reads.exportRecords({ collection: 'products', ids: ['metric-qa', 'p0'] });
+  assert.equal(fullExport.rows[0].sourceContent.descriptions[0], 'complete source text');
+  assert.equal(fullExport.rows[0].decisionData.series[0].points[0].value, 60);
+  assert.equal(fullExport.rows[1].sourceContent.descriptions[0].length, 50000);
+  await assert.rejects(reads.exportRecords({ collection: 'products', ids: Array.from({ length: 51 }, (_, index) => String(index)) }), /50/);
+  await pool.query('DELETE FROM workspace_documents WHERE name=$1', ['business:products:metric-qa']);
+  await drain();
   const before = await reads.status();
   await pool.query('BEGIN');
   await pool.query(

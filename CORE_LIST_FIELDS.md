@@ -1,0 +1,59 @@
+# 四个核心列表字段交付说明
+
+## 范围与基线
+
+- 基线：testing `1e93b2958a4c39daf1fe2c0f9ca6c2f1a6f8d6da`。
+- 功能分支：`codex/core-list-fields-20261022`。
+- 工作树：`D:/项目代码/Intelligence_System/_worktrees/core-list-fields`。
+- 状态：功能交付，待独立集成发布会话合入、执行候选CI并正式发布。本功能会话不修改共享testing或部署。
+- 参照根目录 `output/PRD-市场选品数据与消费者研究增强-2026-10-22.md`；复用现有采集任务、数据表和四个业务模块。
+
+## 已接通的链路
+
+| 列表 | 采集与保存 | 列表、详情和导出 |
+| --- | --- | --- |
+| 商品 | 修复正式TK解析器的 `product_price_info`、`sold_info`、`rate_info`、`seller_info`、`seo_url` 及嵌套商品结构；保留明确返回的规格、成分、剂量、描述和卖点。平台商品入库保存快照及字段采集时间。 | 30/90/365完整窗口售出件数、日均件数、累计展示已售、来源订单字段、美元与原币价格、规格成分剂量、品牌宣称、卖点及证据。 |
+| 独立站 | 复用Semrush目标市场 `domain_rank`，保存自然/付费搜索估算及关键词覆盖、来源周期；每次有效指标更新保存可比快照。 | 搜索流量变化、关联广告、已保存商品覆盖和参考用途；无来源的全站访问量、营收、转化、ROAS保持未知。 |
+| 广告 | 复用现有公开广告采集与监控，保存状态、素材修订和观察时点；同市场、精确商品落地URL唯一匹配时才补商品关联，排除首页。 | 平台开始日期与系统首次/最近观察分开，展示素材、卖点原文、广告主、商品、站点及落地页。未提供的花费/曝光/点击/购买/ROAS不补猜。 |
+| 关键词 | 复用Semrush搜索量、Google Trends和现有扩词/关联结果；按同市场和种子关系去重。 | 目标市场月搜索量估算、相对热度、30/90/365天趋势、热门/上升查询、联想/AI/其他扩词分别标记，及关联商品/站点。 |
+
+所有指标采用同一证据契约：值、来源、市场、平台、单位、统计周期、起止、时区、采集时间、数据性质、精度、证据URL和缺失/口径说明。缺失值为null；不支持、未收录、待积累、失败、预算截断和待验证分别呈现。真实来源返回的0保留为0。
+
+列表支持决策概览、数据证据、原有列预设；商品/关键词可切换周期。窄屏取消固定列，允许横向浏览指标。详情覆盖全部指标；CSV不依赖当前显示列和周期，输出所有周期、证据字段、当前保留快照、汇率及原始记录JSON。CSV列取所有行的字段并集。
+
+## 口径与覆盖限制
+
+| 项目 | VN优先 | US / MX兼容 | 明确限制 |
+| --- | --- | --- | --- |
+| TK商品 | 合成的正式嵌套响应已验证；VND千分点按整数越南盾解析。 | 合成小数报价及平铺响应已验证。 | 本任务没有进行实际付费TK调用，不能声称真实账号权限或覆盖率已验证；旧记录不会自动重跑。 |
+| 30/90/365销量 | 仅汇总同市场、同商品、同平台、完整连续区间；或市场日午夜边界的精确累计快照差。 | 使用US东部、墨西哥城时区，同样规则。 | 自然月不冒充近30天；非整窗快照仅展示实际观察区间增量；缺历史则待积累，计数回退则不计算。件数不是订单；`order_count`未提供周期时不算日均。 |
+| 独立站/搜索量 | 仅展示来源确实支持VN数据库的值。 | 保持现有US/MX配置，不用US指标代替其他市场。 | Semrush未收录/无权限时未知；付费搜索不是FB/TK流量，搜索估算不是全站访问或实际营收。 |
+| 广告/关键词 | 复用已有公开源能力。 | 保持市场过滤与配置。 | 多次观察不证明持续投放或盈利；相对热度、相关查询与去重扩词数均不是绝对搜索次数。 |
+
+美元换算读取服务端已保存汇率；手动更新复用免费公开ExchangeRate-API接口，每24小时最多1次，先记录请求再联网，失败或未知结果不自动重放。保留汇率日期/来源/取回时间；不自动购买服务或充值。本次验证仅使用合成汇率，真实外部请求为0。
+
+旧TK记录仅有 `reportedSales` 时，旧解析器可能混入sales/order_count，缺少原始字段依据。此类值移入“来源销售字段（口径未知）”，不当作累计售出件数，不参与周期或日均计算；新采集明确取得sold_count后再正常展示。
+
+## 存储与兼容
+
+- 无新数据表和结构迁移。原始业务记录增加可选 `coreEvidence`；来源观察独立保存到现有 `workspace_documents` 的 `core:observation:<kind>:<id>:<hash>`，同一事务、重试幂等，不混入业务工作区同步。
+- 业务记录只携带最近600条以内且160KB以内的来源快照，防止超过现有单条同步大小上限；累计观察数和截断标记单独保留。更早快照仍在服务端独立档案。CSV明确标注当前快照范围，不声称包含所有归档历史。滚动计算缺少完整边界时仍为未知。
+- 浏览器编辑不能覆盖已保存的服务端证据；平台刷新保留已核实的站点关联、来源URL和旧有效字段，不把旧销量/价格/配方时间更新成新采集时间。
+- 共用入口：`data.ts`、五个列表页面、ProductDrawer/SiteDrawer、`trend-comparison.ts`、`product-decisions.ts`；服务端 `index.mjs`、`database.mjs`、`market-jobs.mjs`、`platform-product-data.mjs`、`platform-products-jobs.mjs`、`competitor-monitor-store.mjs`、`site-metrics.mjs`、`tiktok-shop-provider.mjs`。新增契约/组件/快照/汇率服务/测试均独立文件。未改依赖清单或锁文件。
+
+## 验证
+
+- 服务端84项：`node --test server/core-list-fields.test.mjs server/platform-products.test.mjs server/platform-product-completion.test.mjs server/market-jobs.test.mjs server/market-research.test.mjs server/competitor-monitor.test.mjs server/workspace-snapshot.test.mjs`。
+- 前端51项：`vitest run tests/core-list-metrics.test.ts tests/trend-comparison.test.ts tests/product-decisions.test.ts tests/resource-list.test.ts tests/cloud-workspace.test.ts`。
+- 隔离PGlite：实际执行迁库、商品/站点/广告入库、快照归档、重试去重、精确落地关联；禁止外网请求，不连接正式库。
+- 前端源码别名类型检查、完整production应用构建、五个实际业务页面的独立构建通过。本机依赖副本补齐工作区包后完成构建；未修改受版本管理的框架包或依赖清单。构建产物布局工具类检查另有记录。
+- Playwright真实Chrome、合成API：五个列表在1440x1000和390x844视口，列预设、周期、横向滚动后的证据弹层、五份CSV实际下载，以及四类详情；页面脚本错误0，真实外部调用0。截图、CSV、日志保存在本工作树忽略目录 `.artifacts/`。
+- 新增核心运行模块专项Oxlint及 `git diff --check` 通过；不声称全仓历史规范检查通过。
+- 提交使用一次性 `core.hooksPath=NUL` 避免全量自动修复钩子重排共用旧文件；没有修改仓库或全局钩子配置，功能验证以本节显式结果为准。
+- 本机无Docker，未执行MySQL8容器集成/API镜像。已将核心数据库验证接到现有 `platform-products.integration.mjs` 和testing CI，合并后的准确候选必须通过隔离MySQL及CI构建。
+
+## 集成发布注意
+
+根协调记录中按页加载分支 `codex/paged-workspace-20261022` 的交付SHA `252924d20fb6aada93a0178c4acbdbfd1fb22bf7` 与本任务同基线、共用列表/data.ts/index/database入口，需通过Git处理重合修改，不能整份覆盖。尤其要让指标所需的关联计数、详情与完整筛选导出适配服务端分页，避免把一页数据统计为全工作区数量。
+
+发布前按项目流程核对线上未入基线更新、串行部署锁、在途任务与回退版本，保留 `public/data`。用户已明确授权本任务交付后由指定集成发布会话合并、提交并正式上线；本功能会话仅发送交付包，不自行部署。

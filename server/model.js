@@ -434,9 +434,808 @@ function trendComparisons(record) {
     compare("year", "\u8FD1\u4E00\u5E74", history.length > 0 ? history : annual, 12)
   ];
 }
+function rollingTrendComparison(record, days) {
+  const daily = intervals(record.trendDailyPoints, "day", record.trendDailyCollectedAt);
+  const history = intervals(record.trendHistoryPoints, record.trendHistoryResolution, record.trendHistoryCollectedAt);
+  const annual = intervals(record.trendPoints, record.trendResolution, record.trendCollectedAt);
+  const series = days === 30 && daily.length ? daily : history.length ? history : annual;
+  const captured = days === 30 && daily.length ? record.trendDailyCollectedAt : history.length ? record.trendHistoryCollectedAt : record.trendCollectedAt;
+  const end = day(Date.parse(captured || ""));
+  if (!Number.isFinite(end)) return compare("month", `\u8FD1${days}\u5929`, []);
+  return { ...compare("month", `\u8FD1${days}\u5929`, series, 0, { start: end - days * DAY, end, previousStart: end - 2 * days * DAY, previousEnd: end - days * DAY }), collectedAt: captured };
+}
+
+// apps/web-antd/src/views/intelligence/core-list-metrics.ts
+var DAY2 = 864e5;
+var validNumber = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+var zones = {
+  VN: "Asia/Ho_Chi_Minh",
+  US: "America/New_York",
+  MX: "America/Mexico_City"
+};
+var meaningful = (v) => !!v && !/^(平台未返回|未识别|待识别|待补充|未知|暂无|未采集|待核验)/.test(v);
+var isoDay = (v) => new Date(v).toISOString().slice(0, 10);
+function marketDay(at, market) {
+  if (!Number.isFinite(Date.parse(at))) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: zones[market] || "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(at));
+}
+function rollingWindow(at, market, days) {
+  const end = marketDay(at, market);
+  const n = Date.parse(`${end}T00:00:00Z`);
+  return {
+    start: Number.isFinite(n) ? isoDay(n - days * DAY2) : "",
+    end,
+    timezone: zones[market] || "UTC"
+  };
+}
+function missingStatus(status, message = "") {
+  const s = `${status || ""} ${message}`;
+  if (/budget|limit|截断|预算|上限/i.test(s)) return "budget_limited";
+  if (/unsupported|不支持|未开放/i.test(s)) return "unsupported";
+  if (/failed|error|失败|错误/i.test(s)) return "failed";
+  if (/empty|not.indexed|未收录|无数据/i.test(s)) return "not_indexed";
+  if (/pending|queued|running|积累|等待/i.test(s)) return "accumulating";
+  return "unverified";
+}
+function metric(record, key, label, value, unit, meta = {}) {
+  const available = value !== null && value !== void 0 && value !== "";
+  return {
+    key,
+    label,
+    value: available ? value : null,
+    unit,
+    market: record.market,
+    source: "\u6765\u6E90\u672A\u8BB0\u5F55",
+    platform: "",
+    period: "\u6765\u6E90\u672A\u63D0\u4F9B\u7EDF\u8BA1\u5468\u671F",
+    timezone: zones[record.market] || "UTC",
+    collectedAt: "",
+    evidenceUrl: "",
+    nature: "unknown",
+    status: available ? "available" : "unverified",
+    reason: available ? "" : "\u6765\u6E90\u672A\u63D0\u4F9B\u8BE5\u5B57\u6BB5",
+    ...meta
+  };
+}
+function productMeta(p) {
+  return {
+    source: p.sourceProvider || (p.siteId ? "\u5B98\u7F51\u516C\u5F00\u8BE6\u60C5" : "\u6765\u6E90\u672A\u8BB0\u5F55"),
+    platform: p.sourcePlatform || "",
+    collectedAt: p.sourceMetrics?.collectedAt || p.sourceContent?.collectedAt || p.lastCollectedAt || "",
+    evidenceUrl: p.evidenceUrl || p.sourceUrl || "",
+    nature: p.sourceProvider === "Sorftime" ? "third_party_estimate" : "platform_display"
+  };
+}
+function productSales(p, days) {
+  const meta = productMeta(p);
+  const anchor = meta.collectedAt || "";
+  const bounds = rollingWindow(anchor, p.market, days);
+  let sales = metric(p, "sales", `\u8FD1${days}\u5929\u552E\u51FA\u4EF6\u6570`, null, "\u4EF6", {
+    ...meta,
+    ...bounds,
+    period: `${days}\u4E2A\u5B8C\u6574\u5E02\u573A\u65E5 [\u8D77,\u6B62)`,
+    status: "accumulating",
+    reason: "\u6CA1\u6709\u8986\u76D6\u5B8C\u6574\u7A97\u53E3\u7684\u540C\u53E3\u5F84\u9500\u91CF\uFF1B\u5386\u53F2\u9700\u79EF\u7D2F\u6216\u6765\u6E90\u63D0\u4F9B"
+  });
+  for (const s of p.decisionData?.series || []) {
+    if (s.metric !== "sales_volume" || s.market !== p.market || s.productId !== p.sourceProductId || s.platform !== p.sourcePlatform)
+      continue;
+    const points = s.points.filter(
+      (v) => !v.partial && validNumber(v.value) && Number.isFinite(Date.parse(v.start)) && Number.isFinite(Date.parse(v.end)) && v.end >= v.start
+    ).toSorted((a, b) => a.start.localeCompare(b.start));
+    let cursor = bounds.start, total = 0;
+    for (const point of points) {
+      const next = isoDay(Date.parse(`${point.end}T00:00:00Z`) + DAY2);
+      if (point.start !== cursor || next > bounds.end) continue;
+      total += point.value;
+      cursor = next;
+    }
+    if (cursor === bounds.end && bounds.start) {
+      sales = {
+        ...sales,
+        value: total,
+        status: "available",
+        reason: s.basis || "\u5B8C\u6574\u6765\u6E90\u533A\u95F4\u76F8\u52A0\uFF1B\u4E0D\u662F\u8BA2\u5355\u6570",
+        source: s.provider,
+        platform: s.platform,
+        nature: "third_party_estimate",
+        collectedAt: s.collectedAt,
+        evidenceUrl: s.evidenceUrl || ""
+      };
+      break;
+    }
+  }
+  if (sales.value === null) {
+    const history = p.coreEvidence?.history || [];
+    const sameScope = history.filter(
+      (s) => s.market === p.market && s.scope === p.sourceProductId && s.source === meta.source && s.platform === meta.platform && validNumber(s.sold) && s.soldPrecision === "exact"
+    );
+    const midnight = (at) => new Intl.DateTimeFormat("en-GB", {
+      timeZone: zones[p.market] || "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23"
+    }).format(new Date(at)) === "00:00:00";
+    const first = sameScope.find(
+      (s) => marketDay(s.at, p.market) === bounds.start && midnight(s.at)
+    );
+    const last = sameScope.findLast(
+      (s) => marketDay(s.at, p.market) === bounds.end && midnight(s.at)
+    );
+    if (first && last) {
+      const between = sameScope.filter(
+        (s) => s.at >= first.at && s.at <= last.at
+      );
+      const reset = between.some(
+        (s, i) => s.sold < (between[i - 1]?.sold ?? s.sold)
+      );
+      const dates = { start: first.at, end: last.at, collectedAt: last.at };
+      sales = reset ? { ...sales, reason: "\u7D2F\u8BA1\u8BA1\u6570\u53D1\u751F\u56DE\u9000\u6216\u91CD\u7F6E\uFF0C\u4E0D\u80FD\u8BA1\u7B97\u9500\u91CF" } : {
+        ...sales,
+        ...dates,
+        label: `\u8FD1${days}\u5929\u5C55\u793A\u5DF2\u552E\u589E\u91CF`,
+        value: last.sold - first.sold,
+        status: "available",
+        nature: "snapshot_delta",
+        period: `${days}\u4E2A\u5B8C\u6574\u5E02\u573A\u65E5\u7684\u5348\u591C\u8FB9\u754C\u5FEB\u7167`,
+        reason: "\u540C\u5546\u54C1\u540C\u6765\u6E90\u7D2F\u8BA1\u5C55\u793A\u5DEE\u503C\uFF1B\u672A\u89C2\u5BDF\u5230\u56DE\u9000\uFF0C\u975E\u51C0\u6210\u4EA4\uFF0C\u65E0\u8BA2\u5355\u6570\u636E"
+      };
+    }
+  }
+  const completion = p.dataCompletion?.trend_AsinSalesVolume;
+  if (sales.value === null && completion)
+    sales = {
+      ...sales,
+      status: ["done", "completed", "collected"].includes(completion.status) ? "accumulating" : missingStatus(completion.status, completion.message),
+      reason: `${completion.message}\uFF1B${sales.reason}`
+    };
+  const daily = metric(
+    p,
+    "dailySales",
+    `\u65E5\u5747\u4EF6\u6570\uFF08${days}\u5929\uFF09`,
+    typeof sales.value === "number" ? Math.round(sales.value / days * 100) / 100 : null,
+    "\u4EF6/\u5929",
+    {
+      ...sales,
+      key: "dailySales",
+      label: `\u65E5\u5747\u4EF6\u6570\uFF08${days}\u5929\uFF09`,
+      unit: "\u4EF6/\u5929",
+      value: typeof sales.value === "number" ? Math.round(sales.value / days * 100) / 100 : null
+    }
+  );
+  return [sales, daily];
+}
+function productMetrics(p, days, context = {}) {
+  const meta = productMeta(p), sm = p.sourceMetrics;
+  const fieldTime = (key) => p.coreEvidence?.fieldUpdatedAt?.[key] || meta.collectedAt;
+  const fx = context.fx || p.coreEvidence?.fx;
+  const price = p.price > 0 || p.collectionFields?.includes("price") ? p.price : null;
+  const rate = p.currency === "USD" ? 1 : fx?.rates[p.currency];
+  const usd = price !== null && rate && rate > 0 ? Math.round(price / rate * 100) / 100 : null;
+  let usdReason = `\u539F\u5E01\u4FDD\u7559\uFF1B\u6C47\u7387\u65E5 ${fx?.date || "USD\u540C\u5E01\u79CD"}\uFF0C\u975E\u5386\u53F2\u4EF7\u683C\u6362\u7B97`;
+  if (usd === null)
+    usdReason = price === null ? "\u672A\u83B7\u53D6\u539F\u5E01\u4EF7\u683C" : "\u672A\u83B7\u53D6\u6709\u6765\u6E90\u4E0E\u65E5\u671F\u7684\u6C47\u7387";
+  let sellingNature = p.benefitEvidence ? "ai_summary" : "unknown";
+  if (p.sourceContent?.sellingPoints?.length) sellingNature = "brand_claim";
+  const sold = sm?.soldCount;
+  const raw = sm?.soldRaw;
+  const result = [
+    ...productSales(p, days),
+    metric(
+      p,
+      "cumulativeSold",
+      "\u5E73\u53F0\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E",
+      raw || (validNumber(sold) ? sold : null),
+      "\u4EF6",
+      {
+        ...meta,
+        collectedAt: sm?.soldCollectedAt || meta.collectedAt,
+        period: "\u7D2F\u8BA1\u8D77\u7B97\u65E5\u672A\u77E5\uFF1B\u5F53\u524D\u5FEB\u7167",
+        precision: sm?.soldPrecision || "\u672A\u77E5",
+        reason: raw || validNumber(sold) ? "\u7D2F\u8BA1\u5C55\u793A\u4E0D\u7B49\u4E8E\u5468\u671F\u9500\u91CF\u6216\u51C0\u6210\u4EA4" : "\u6765\u6E90\u672A\u8FD4\u56DE\u660E\u786E\u7684\u7D2F\u8BA1\u552E\u51FA\u4EF6\u6570"
+      }
+    ),
+    metric(
+      p,
+      "reportedOrders",
+      "\u6765\u6E90\u62A5\u544A\u8BA2\u5355\u6570",
+      validNumber(sm?.orderCount) ? sm.orderCount : null,
+      "\u8BA2\u5355",
+      {
+        ...meta,
+        collectedAt: fieldTime("orderCount"),
+        period: "\u6765\u6E90\u672A\u63D0\u4F9B\u7EDF\u8BA1\u5468\u671F\uFF1B\u4E0D\u8BA1\u7B97\u65E5\u5747",
+        reason: "\u4EC5\u660E\u786E\u7684\u8BA2\u5355\u5B57\u6BB5\uFF0C\u4E0D\u7528\u552E\u51FA\u4EF6\u6570\u66FF\u4EE3"
+      }
+    ),
+    metric(p, "priceUsd", "\u7F8E\u5143\u5BF9\u6BD4\u4EF7", usd, "USD", {
+      ...meta,
+      collectedAt: fieldTime("price"),
+      nature: p.currency === "USD" ? meta.nature : "third_party_estimate",
+      period: "\u5F53\u524D\u62A5\u4EF7\uFF1B\u672A\u7EDF\u4E00\u7A0E\u8D39/\u8FD0\u8D39\u53CA\u53D8\u4F53",
+      source: p.currency === "USD" ? meta.source : `${meta.source}\uFF1B\u6C47\u7387 ${fx?.source || "\u672A\u83B7\u53D6"}`,
+      reason: usdReason,
+      precision: fx ? `1 USD = ${rate} ${p.currency}` : void 0
+    }),
+    metric(p, "priceOriginal", "\u539F\u5E01\u4EF7\u683C", price, p.currency, {
+      ...meta,
+      collectedAt: fieldTime("price"),
+      period: "\u5F53\u524D\u62A5\u4EF7\uFF1B\u7A0E\u8D39/\u8FD0\u8D39\u662F\u5426\u5305\u542B\u672A\u77E5"
+    }),
+    metric(
+      p,
+      "spec",
+      "\u89C4\u683C / \u5242\u578B",
+      meaningful(p.size) ? `${p.size} / ${p.form}` : null,
+      "\u539F\u6587",
+      {
+        ...meta,
+        collectedAt: fieldTime("size"),
+        nature: "platform_display",
+        period: "\u5F53\u524D\u5546\u54C1\u6807\u7B7E"
+      }
+    ),
+    metric(
+      p,
+      "ingredients",
+      "\u6210\u5206\u4E0E\u6BCF\u4EFD\u5242\u91CF",
+      meaningful(p.ingredient) ? `${p.ingredient}\uFF1B${p.dose || "\u5242\u91CF\u672A\u77E5"}` : null,
+      "\u539F\u6587",
+      {
+        ...meta,
+        collectedAt: fieldTime("ingredient"),
+        reason: p.coreEvidence?.fieldUpdatedAt?.dose ? `\u5242\u91CF\u5B57\u6BB5\u91C7\u96C6\u65F6\u95F4 ${p.coreEvidence.fieldUpdatedAt.dose}` : "\u5242\u91CF\u5B57\u6BB5\u91C7\u96C6\u65F6\u95F4\u672A\u5355\u72EC\u8BB0\u5F55",
+        nature: p.collectionFields?.includes("ingredients") || p.formula?.status === "verified" ? "platform_display" : "unknown",
+        period: "\u5F53\u524D\u5546\u54C1\u6807\u7B7E"
+      }
+    ),
+    metric(p, "claim", "\u54C1\u724C\u529F\u6548\u5BA3\u79F0", p.claim || null, "\u539F\u6587", {
+      ...meta,
+      collectedAt: fieldTime("claim"),
+      nature: "brand_claim",
+      period: "\u5F53\u524D\u54C1\u724C\u63CF\u8FF0",
+      reason: p.claim ? "\u54C1\u724C\u8868\u8FF0\uFF0C\u4E0D\u4EE3\u8868\u5DF2\u9A8C\u8BC1\u7597\u6548" : "\u672A\u83B7\u53D6\u54C1\u724C\u5BA3\u79F0"
+    }),
+    metric(
+      p,
+      "sellingPoints",
+      "\u5356\u70B9",
+      p.sourceContent?.sellingPoints?.join("\uFF1B") || p.benefits?.join("\uFF1B") || null,
+      "\u6587\u672C",
+      {
+        ...meta,
+        collectedAt: fieldTime("benefits"),
+        nature: sellingNature,
+        period: "\u5F53\u524D\u5546\u54C1\u63CF\u8FF0",
+        reason: p.sourceContent?.sellingPoints?.length ? "\u6765\u6E90\u660E\u786E\u8FD4\u56DE\u7684\u5356\u70B9\u539F\u6587\uFF0C\u4E0D\u4EE3\u8868\u7597\u6548\u9A8C\u8BC1" : p.benefitEvidence || "\u672A\u8BB0\u5F55\u5F52\u7EB3\u4F9D\u636E"
+      }
+    )
+  ];
+  for (const s of p.decisionData?.series || []) {
+    if (s.metric !== "sales_volume" || s.market !== p.market) continue;
+    const v = s.points.findLast((v2) => !v2.partial);
+    if (v)
+      result.push(
+        metric(p, "sourceSales", "\u6765\u6E90\u539F\u59CB\u5468\u671F\u9500\u91CF", v.value, "\u4EF6", {
+          ...meta,
+          source: s.provider,
+          nature: "third_party_estimate",
+          start: v.start,
+          end: v.end,
+          period: s.period,
+          collectedAt: s.collectedAt,
+          reason: s.basis || "\u4FDD\u7559\u539F\u59CB\u7A97\u53E3\uFF0C\u4E0D\u7B49\u540C\u8FD130\u5929"
+        })
+      );
+  }
+  const snapshots = (p.coreEvidence?.history || []).filter(
+    (s) => s.market === p.market && s.scope === p.sourceProductId && s.source === meta.source && s.soldPrecision === "exact" && validNumber(s.sold)
+  );
+  const a = snapshots[0], b = snapshots.at(-1);
+  if (a && b && a.at !== b.at) {
+    const reset = snapshots.some(
+      (s, i) => s.sold < (snapshots[i - 1]?.sold ?? s.sold)
+    );
+    const elapsed = (Date.parse(b.at) - Date.parse(a.at)) / DAY2;
+    result.push(
+      metric(
+        p,
+        "observedDelta",
+        "\u5B9E\u9645\u89C2\u5BDF\u533A\u95F4\u5C55\u793A\u5DF2\u552E\u589E\u91CF",
+        reset ? null : b.sold - a.sold,
+        "\u4EF6",
+        {
+          ...meta,
+          nature: "snapshot_delta",
+          start: a.at,
+          end: b.at,
+          period: `\u5B9E\u9645\u89C2\u5BDF${Math.round(elapsed * 100) / 100}\u5929`,
+          status: reset ? "unverified" : "available",
+          reason: reset ? "\u8BA1\u6570\u56DE\u9000/\u91CD\u7F6E\uFF0C\u589E\u91CF\u65E0\u6548" : "\u9996\u5C3E\u5C55\u793A\u5DEE\u503C\uFF0C\u975E\u51C0\u6210\u4EA4\uFF0C\u4E0D\u5916\u63A8\u4E3A30/90/365\u5929\u9500\u91CF"
+        }
+      )
+    );
+  }
+  if (validNumber(sm?.monthlySales))
+    result.push(
+      metric(
+        p,
+        "reportedMonthlySales",
+        "\u6765\u6E90\u62A5\u544A\u6708\u9500\u91CF",
+        sm.monthlySales,
+        "\u4EF6",
+        {
+          ...meta,
+          nature: "third_party_estimate",
+          period: "\u6765\u6E90\u6708\u5EA6\u53E3\u5F84\uFF1B\u8D77\u6B62\u65E5\u672A\u63D0\u4F9B",
+          reason: "\u4E0D\u80FD\u76F4\u63A5\u5F53\u4F5C\u8FD130\u5929\u9500\u91CF"
+        }
+      )
+    );
+  const unclassifiedSales = sm?.unclassifiedSales || (p.sourcePlatform === "TikTok Shop" && validNumber(sm?.reportedSales) && !validNumber(sm?.soldCount) ? String(sm.reportedSales) : "");
+  if (unclassifiedSales)
+    result.push(
+      metric(
+        p,
+        "unclassifiedSales",
+        "\u6765\u6E90\u9500\u552E\u5B57\u6BB5\uFF08\u53E3\u5F84\u672A\u77E5\uFF09",
+        unclassifiedSales,
+        "\u672A\u786E\u8BA4",
+        {
+          ...meta,
+          nature: "unknown",
+          period: "\u7EDF\u8BA1\u7A97\u53E3\u672A\u77E5",
+          reason: "\u4E0A\u6E38sales\u6216\u65E7reportedSales\u672A\u4FDD\u7559\u53EF\u6838\u9A8C\u7684\u7D2F\u8BA1/\u5468\u671F/\u4EF6\u6570/\u8BA2\u5355\u53E3\u5F84\uFF0C\u672A\u53C2\u4E0E\u8BA1\u7B97"
+        }
+      )
+    );
+  return result;
+}
+function siteMetrics(s, context = {}) {
+  const m = s.metrics?.market === s.market ? s.metrics : void 0;
+  const meta = {
+    source: m?.source || "Semrush MCP",
+    collectedAt: m?.collectedAt || "",
+    evidenceUrl: s.evidenceUrl || `https://${s.domain}`,
+    nature: "third_party_estimate",
+    platform: "Google\u641C\u7D22",
+    period: m?.period || "\u6765\u6E90\u6708\u5EA6\u641C\u7D22\u4F30\u7B97\uFF1B\u8D77\u6B62\u65E5\u672A\u63D0\u4F9B",
+    status: missingStatus(s.metricsStatus, s.metricsMessage),
+    reason: s.metricsMessage || "\u5C1A\u672A\u83B7\u53D6\u8BE5\u5E02\u573A\u7684\u6765\u6E90\u6307\u6807"
+  };
+  const entries = [
+    ["organicTraffic", "\u81EA\u7136\u641C\u7D22\u6D41\u91CF\u4F30\u7B97", m?.organicTraffic, "\u6B21/\u6708\uFF08\u4F30\u7B97\uFF09"],
+    ["paidTraffic", "\u4ED8\u8D39\u641C\u7D22\u6D41\u91CF\u4F30\u7B97", m?.paidTraffic, "\u6B21/\u6708\uFF08\u4F30\u7B97\uFF09"],
+    ["organicKeywords", "\u81EA\u7136\u641C\u7D22\u5173\u952E\u8BCD\u8986\u76D6", m?.organicKeywords, "\u8BCD"],
+    ["paidKeywords", "\u4ED8\u8D39\u641C\u7D22\u5173\u952E\u8BCD\u8986\u76D6", m?.paidKeywords, "\u8BCD"]
+  ];
+  const result = entries.map(
+    ([key, label, v, unit]) => metric(s, key, label, validNumber(v) ? v : null, unit, {
+      ...meta,
+      ...validNumber(v) ? {
+        status: "available",
+        reason: key === "paidTraffic" ? "\u4ED8\u8D39\u641C\u7D22\uFF0C\u4E0D\u662FFB/TK\u5E7F\u544A\u6D41\u91CF" : "\u76EE\u6807\u5E02\u573A\u641C\u7D22\u4F30\u7B97\uFF0C\u4E0D\u662F\u5168\u7AD9\u8BBF\u95EE\u91CF"
+      } : {}
+    })
+  );
+  const history = s.coreEvidence?.history || [];
+  const comparable = history.filter(
+    (h) => h.market === s.market && h.source === m?.source && validNumber(h.organicTraffic)
+  );
+  const a = comparable.at(-2), b = comparable.at(-1);
+  result.push(
+    metric(
+      s,
+      "trafficChange",
+      "\u81EA\u7136\u641C\u7D22\u6D41\u91CF\u5FEB\u7167\u53D8\u5316",
+      a && b ? b.organicTraffic - a.organicTraffic : null,
+      "\u4F30\u7B97\u6B21\u6570\u5DEE",
+      {
+        ...meta,
+        status: a && b ? "available" : "accumulating",
+        nature: "snapshot_delta",
+        start: a?.at,
+        end: b?.at,
+        period: a && b ? "\u76F8\u90BB\u6765\u6E90\u5FEB\u7167\uFF0C\u975E\u56FA\u5B9A\u5468\u671F\u589E\u957F\u7387" : "\u5F85\u79EF\u7D2F\u53EF\u6BD4\u5FEB\u7167",
+        reason: a && b ? "\u540C\u6765\u6E90\u540C\u5E02\u573A\u641C\u7D22\u4F30\u7B97\u53D8\u5316\uFF0C\u975E\u5B9E\u9645\u8BBF\u95EE\u91CF\u589E\u957F" : "\u7F3A\u5C11\u4E24\u4E2A\u540C\u5E02\u573A\u540C\u6765\u6E90\u5FEB\u7167"
+      }
+    )
+  );
+  const ads = (context.complete === false ? void 0 : context.ads)?.filter(
+    (a2) => a2.market === s.market && a2.siteIds?.includes(s.id)
+  );
+  const products = (context.complete === false ? void 0 : context.products)?.filter(
+    (p) => p.market === s.market && p.siteId === s.id
+  );
+  const observed = {
+    ...meta,
+    source: "\u7CFB\u7EDF\u5173\u8054\u8BB0\u5F55",
+    nature: "system_observation",
+    period: "\u5F53\u524D\u5DF2\u4FDD\u5B58\u8BB0\u5F55",
+    collectedAt: s.lastCollectedAt || m?.collectedAt || ""
+  };
+  const related = s.coreSummary?.related;
+  const adCount = related?.ads ?? ads?.length;
+  const productCount = related?.products ?? products?.length;
+  result.push(
+    metric(s, "linkedAds", "\u5173\u8054\u5E7F\u544A", adCount ?? null, "\u6761\u5DF2\u4FDD\u5B58", {
+      ...observed,
+      status: adCount !== void 0 ? "available" : "unverified",
+      reason: "\u89C2\u5BDF\u6570\u91CF\u4E0D\u4EE3\u8868\u76C8\u5229\u6216\u5168\u91CF\u6295\u653E"
+    }),
+    metric(
+      s,
+      "linkedProducts",
+      "\u5546\u54C1\u8986\u76D6",
+      productCount ?? null,
+      "\u4EF6\u5DF2\u4FDD\u5B58",
+      {
+        ...observed,
+        status: productCount !== void 0 ? "available" : "unverified",
+        reason: "\u5DF2\u4FDD\u5B58\u5546\u54C1\u8986\u76D6\uFF0C\u4E0D\u662F\u5168\u7AD9\u5546\u54C1\u603B\u6570"
+      }
+    )
+  );
+  const uses = [];
+  if (related?.hasIngredients ?? products?.some((p) => meaningful(p.ingredient)))
+    uses.push("\u914D\u65B9\u53C2\u8003\uFF1A\u6709\u5173\u8054\u5546\u54C1\u6210\u5206\u539F\u6587");
+  if (related?.hasPrices ?? products?.some((p) => p.price > 0)) uses.push("\u4EF7\u683C\u53C2\u8003\uFF1A\u6709\u516C\u5F00\u5546\u54C1\u62A5\u4EF7");
+  if (related?.hasCreatives ?? ads?.some((a2) => a2.imageUrls?.length || a2.videoUrls?.length))
+    uses.push("\u7D20\u6750\u53C2\u8003\uFF1A\u6709\u53EF\u56DE\u67E5\u5173\u8054\u5E7F\u544A");
+  if (s.evidenceUrl || s.domain) uses.push("\u843D\u5730\u9875\u53C2\u8003\uFF1A\u6709\u516C\u5F00\u7AD9\u70B9\u94FE\u63A5");
+  uses.push("\u9500\u552E\u53C2\u8003\u5F85\u8BC1\u5B9E\uFF1A\u65E0\u6388\u6743\u7ECF\u8425\u6570\u636E");
+  result.push(
+    metric(s, "referenceUse", "\u53C2\u8003\u7528\u9014\u53CA\u4F9D\u636E", uses.join("\uFF1B"), "\u7528\u9014", {
+      ...observed,
+      status: "available",
+      reason: "\u7528\u9014\u4E0D\u4EE3\u8868\u7ECF\u8425\u7EE9\u6548\u6216\u5229\u6DA6"
+    })
+  );
+  for (const [key, label, unit] of [
+    ["visits", "\u5168\u7AD9\u8BBF\u95EE\u91CF", "\u6B21"],
+    ["revenue", "\u5B9E\u9645\u8425\u6536", "\u91D1\u989D"],
+    ["conversion", "\u5B9E\u9645\u8F6C\u5316\u7387", "%"],
+    ["roas", "\u5B9E\u9645ROAS", "\u500D"]
+  ])
+    result.push(
+      metric(s, key, label, null, unit, {
+        ...meta,
+        status: "unsupported",
+        reason: "\u5F53\u524D\u6765\u6E90\u672A\u63D0\u4F9B\u6388\u6743\u7684\u5168\u7AD9\u5206\u6790\u6216\u7ECF\u8425\u6570\u636E"
+      })
+    );
+  return result;
+}
+function adMetrics(a, context = {}) {
+  const meta = {
+    source: a.source || "\u6765\u6E90\u672A\u8BB0\u5F55",
+    platform: a.platform,
+    collectedAt: a.lastCollectedAt || "",
+    evidenceUrl: a.evidenceUrl || "",
+    nature: "platform_display",
+    period: "\u5F53\u524D\u6765\u6E90\u8BB0\u5F55"
+  };
+  const result = [
+    metric(
+      a,
+      "status",
+      "\u5E7F\u544A\u72B6\u6001",
+      a.status === "\u672A\u77E5" ? null : a.status,
+      "\u72B6\u6001",
+      meta
+    ),
+    metric(a, "startDate", "\u5E73\u53F0\u5F00\u59CB\u65E5\u671F", a.startDate || null, "\u65E5\u671F", meta),
+    metric(a, "firstObserved", "\u7CFB\u7EDF\u9996\u6B21\u89C2\u5BDF", a.firstSeenAt || null, "\u65F6\u95F4", {
+      ...meta,
+      source: "\u7CFB\u7EDF\u91C7\u96C6\u65E5\u5FD7",
+      nature: "system_observation"
+    }),
+    metric(
+      a,
+      "lastObserved",
+      "\u7CFB\u7EDF\u6700\u8FD1\u89C2\u5BDF",
+      a.lastCollectedAt || null,
+      "\u65F6\u95F4",
+      {
+        ...meta,
+        source: "\u7CFB\u7EDF\u91C7\u96C6\u65E5\u5FD7",
+        nature: "system_observation",
+        reason: "\u9996\u5C3E\u8DE8\u5EA6\u4E0D\u4EE3\u8868\u8FDE\u7EED\u5728\u6295"
+      }
+    ),
+    metric(
+      a,
+      "creative",
+      "\u7D20\u6750\u4E0E\u5F62\u5F0F",
+      [a.format, ...a.imageUrls || [], ...a.videoUrls || []].filter(Boolean).join("\uFF1B") || null,
+      "\u7D20\u6750\u94FE\u63A5",
+      meta
+    ),
+    metric(
+      a,
+      "sellingPoints",
+      "\u7D20\u6750\u5356\u70B9\u539F\u6587",
+      a.headline || a.copy || null,
+      "\u539F\u6587",
+      { ...meta, nature: "brand_claim" }
+    ),
+    metric(
+      a,
+      "advertiser",
+      "\u5E7F\u544A\u4E3B",
+      [a.brand, a.pageId].filter(Boolean).join(" / ") || null,
+      "\u540D\u79F0 / ID",
+      meta
+    ),
+    metric(
+      a,
+      "linkedProducts",
+      "\u5173\u8054\u5546\u54C1",
+      a.productId ? context.products?.find((p) => p.id === a.productId)?.title || a.productId : null,
+      "\u5546\u54C1",
+      {
+        ...meta,
+        nature: "system_observation",
+        reason: a.productId ? "\u4FDD\u5B58\u7684\u5546\u54C1\u5173\u8054\uFF1B\u9700\u56DE\u67E5\u843D\u5730\u8BC1\u636E" : "\u6CA1\u6709\u7CBE\u786E\u5546\u54C1\u843D\u5730\u94FE\u63A5\uFF0C\u4E0D\u6309\u540C\u6807\u9898\u81EA\u52A8\u5173\u8054"
+      }
+    ),
+    metric(
+      a,
+      "landingPages",
+      "\u843D\u5730\u9875",
+      a.landingUrls?.join("\uFF1B") || null,
+      "URL",
+      meta
+    ),
+    metric(
+      a,
+      "linkedSites",
+      "\u5173\u8054\u7AD9\u70B9",
+      a.siteIds?.map((id) => context.sites?.find((s) => s.id === id)?.domain || id).join("\uFF1B") || null,
+      "\u7AD9\u70B9",
+      { ...meta, nature: "system_observation" }
+    )
+  ];
+  for (const [key, label, unit] of [
+    ["spend", "\u5E7F\u544A\u82B1\u8D39", "\u539F\u5E01"],
+    ["impressions", "\u66DD\u5149", "\u6B21"],
+    ["clicks", "\u70B9\u51FB", "\u6B21"],
+    ["purchases", "\u8D2D\u4E70", "\u8BA2\u5355"],
+    ["roas", "ROAS", "\u500D"]
+  ]) {
+    const supported = a.coreEvidence?.metrics?.find(
+      (v) => v.key === key && v.market === a.market && v.source && v.nature !== "unknown"
+    );
+    result.push(
+      supported || metric(a, key, label, null, unit, {
+        ...meta,
+        status: "unsupported",
+        reason: "\u5F53\u524D\u516C\u5F00\u6765\u6E90\u672A\u63D0\u4F9B\u53EF\u6838\u9A8C\u7ECF\u8425\u6307\u6807"
+      })
+    );
+  }
+  const history = a.coreEvidence?.history || [];
+  result.push(
+    metric(
+      a,
+      "observations",
+      "\u6709\u6548\u89C2\u5BDF\u6B21\u6570",
+      a.coreEvidence?.historyCount ?? (history.length > 0 ? history.length : null),
+      "\u6B21",
+      {
+        ...meta,
+        source: "\u7CFB\u7EDF\u4FDD\u5B58\u5FEB\u7167",
+        nature: "system_observation",
+        period: "\u5DF2\u91C7\u96C6\u65F6\u70B9\uFF1B\u95F4\u9694\u5185\u72B6\u6001\u672A\u77E5",
+        reason: "\u591A\u6B21\u89C2\u5BDF\u4E0D\u8BC1\u660E\u8FDE\u7EED\u6295\u653E\u6216\u76C8\u5229"
+      }
+    )
+  );
+  return result;
+}
+function normalizedTerm(v) {
+  return v.normalize("NFKC").trim().toLowerCase().replaceAll(/\s+/g, " ");
+}
+var aiSource = /\bAI\b|OpenAI|模型|人工智能/i;
+function keywordMetrics(k, days, context = {}) {
+  const m = k.metrics?.market === k.market ? k.metrics : void 0;
+  const trend = rollingTrendComparison(k, days);
+  const meta = {
+    source: "Google Trends",
+    platform: "Google",
+    collectedAt: trend.collectedAt || "",
+    evidenceUrl: k.trendSourceUrl || "",
+    period: `\u8FD1${days}\u5929\uFF1BGoogle\u76F8\u5BF9\u5C3A\u5EA6`,
+    nature: "third_party_estimate",
+    start: trend.start,
+    end: trend.end,
+    timezone: "UTC",
+    reason: trend.reason
+  };
+  const result = [
+    metric(
+      k,
+      "searchVolume",
+      "\u76EE\u6807\u5E02\u573A\u6708\u641C\u7D22\u91CF\u4F30\u7B97",
+      validNumber(m?.monthlySearchVolume) ? m.monthlySearchVolume : null,
+      "\u6B21/\u6708\uFF08\u4F30\u7B97\uFF09",
+      {
+        source: m?.source || "Semrush MCP",
+        platform: "Google\u641C\u7D22",
+        collectedAt: m?.collectedAt || "",
+        period: "\u6765\u6E90\u6708\u5EA6\u4F30\u7B97\uFF1B\u8D77\u6B62\u65E5\u672A\u63D0\u4F9B",
+        nature: "third_party_estimate",
+        status: validNumber(m?.monthlySearchVolume) ? "available" : missingStatus(
+          k.semrushCollection?.status,
+          k.semrushCollection?.message
+        ),
+        reason: m ? "\u76EE\u6807\u5E02\u573A\u6765\u6E90\u4F30\u7B97\uFF0C\u4E0D\u662F\u5B9E\u9645\u641C\u7D22\u65E5\u5FD7" : k.semrushCollection?.message || "\u672A\u83B7\u53D6\u8BE5\u5E02\u573A\u641C\u7D22\u91CF\uFF0C\u4E0D\u4F7F\u7528US\u4EE3\u66FF"
+      }
+    ),
+    metric(k, "relativeHeat", "Google\u76F8\u5BF9\u70ED\u5EA6", trend.heat, "0-100", {
+      ...meta,
+      status: trend.heat === null ? missingStatus(k.trendStatus, k.trendMessage) : "available"
+    }),
+    metric(k, "trendChange", `\u8FD1${days}\u5929\u76F8\u5BF9\u70ED\u5EA6\u53D8\u5316`, trend.change, "%", {
+      ...meta,
+      status: trend.change === null ? "accumulating" : "available"
+    })
+  ];
+  const top = k.trendRelatedTop, rising = k.trendRelatedRising;
+  for (const [key, label, list] of [
+    ["relatedTop", "\u70ED\u95E8\u76F8\u5173\u67E5\u8BE2", top],
+    ["relatedRising", "\u4E0A\u5347\u76F8\u5173\u67E5\u8BE2", rising]
+  ])
+    result.push(
+      metric(
+        k,
+        key,
+        label,
+        list?.map((v) => `${v.query} (${v.formattedValue})`).join("\uFF1B") || null,
+        "\u67E5\u8BE2\u8BCD",
+        {
+          ...meta,
+          collectedAt: k.trendCollectedAt || "",
+          period: k.trendInsightsPeriod || "\u6765\u6E90\u76F8\u5173\u67E5\u8BE2\u7A97\u53E3",
+          status: list?.length ? "available" : missingStatus(k.trendInsightsStatus, k.trendInsightsMessage),
+          reason: list?.length ? "\u6765\u6E90\u76F8\u5173\u67E5\u8BE2\uFF0C\u4E0D\u662F\u5B9E\u9645\u641C\u7D22\u6B21\u6570" : k.trendInsightsMessage || "\u6765\u6E90\u672A\u63D0\u4F9B\u76F8\u5173\u67E5\u8BE2"
+        }
+      )
+    );
+  const expanded = k.coreSummary?.related?.expansions ?? (context.complete === false ? void 0 : context.keywords)?.filter(
+    (v) => v.market === k.market && normalizedTerm(v.seedTerm || "") === normalizedTerm(k.term) && normalizedTerm(v.term) !== normalizedTerm(k.term)
+  );
+  const groups = [
+    [
+      "autocomplete",
+      "\u641C\u7D22\u8054\u60F3",
+      expanded?.filter((v) => /联想|autocomplete/i.test(v.source)).map((v) => v.term)
+    ],
+    [
+      "aiSuggestions",
+      "AI\u5EFA\u8BAE",
+      expanded?.filter((v) => aiSource.test(v.source)).map((v) => v.term)
+    ],
+    [
+      "otherExpansion",
+      "\u5176\u4ED6\u6765\u6E90\u6269\u8BCD",
+      expanded?.filter(
+        (v) => !/联想|autocomplete/i.test(v.source) && !aiSource.test(v.source)
+      ).map((v) => v.term)
+    ]
+  ];
+  for (const [key, label, list] of groups)
+    result.push(
+      metric(
+        k,
+        key,
+        label,
+        list ? new Set(list.map((v) => normalizedTerm(v))).size : null,
+        "\u4E2A\u53BB\u91CD\u8BCD",
+        {
+          source: "\u7CFB\u7EDF\u5DF2\u4FDD\u5B58\u6269\u8BCD\u53CA\u6765\u6E90\u6807\u7B7E",
+          platform: "\u591A\u6765\u6E90",
+          collectedAt: k.updatedAt || k.collectedAt || "",
+          nature: key === "aiSuggestions" ? "ai_summary" : "system_observation",
+          period: "\u5F53\u524D\u4FDD\u5B58\u7684\u540C\u5E02\u573A\u79CD\u5B50\u5173\u7CFB",
+          reason: "\u6269\u8BCD\u6570\u91CF\u4E0D\u662F\u641C\u7D22\u6B21\u6570\uFF1B\u6765\u6E90\u7C7B\u578B\u5206\u522B\u4FDD\u7559"
+        }
+      )
+    );
+  const all = [
+    ...(top || []).map((v) => v.query),
+    ...(rising || []).map((v) => v.query),
+    ...(expanded || []).map((v) => v.term)
+  ];
+  result.push(
+    metric(
+      k,
+      "expansionCount",
+      "\u53BB\u91CD\u6269\u8BCD\u6570\u91CF",
+      expanded || top || rising ? new Set(
+        all.map((v) => normalizedTerm(v)).filter((v) => v !== normalizedTerm(k.term))
+      ).size : null,
+      "\u4E2A\u53BB\u91CD\u8BCD",
+      {
+        source: "\u7CFB\u7EDF\u4FDD\u5B58\u7684\u76F8\u5173\u67E5\u8BE2/\u8054\u60F3/\u5EFA\u8BAE",
+        collectedAt: k.updatedAt || k.collectedAt || "",
+        nature: "system_observation",
+        period: "\u5F53\u524D\u4FDD\u5B58\u8BB0\u5F55",
+        reason: "\u8DE8\u7C7B\u578B\u53BB\u91CD\u8BA1\u6570\uFF0C\u4E0D\u662F\u641C\u7D22\u6B21\u6570\u6216\u5B8C\u6574\u9700\u6C42\u89C4\u6A21"
+      }
+    )
+  );
+  for (const [key, label, ids] of [
+    ["linkedProducts", "\u5173\u8054\u5546\u54C1", k.productIds],
+    ["linkedSites", "\u5173\u8054\u7AD9\u70B9", k.siteIds]
+  ])
+    result.push(
+      metric(k, key, label, ids?.length ?? null, "\u6761\u5DF2\u4FDD\u5B58", {
+        source: "\u7CFB\u7EDF\u4FDD\u5B58\u7684\u5173\u8054",
+        collectedAt: k.updatedAt || "",
+        nature: "system_observation",
+        period: "\u5F53\u524D\u5173\u8054\u8BB0\u5F55"
+      })
+    );
+  return result;
+}
+function coreMetrics(kind, record, days = 30, context = {}) {
+  let metrics;
+  switch (kind) {
+    case "products": {
+      metrics = productMetrics(record, days, context);
+      break;
+    }
+    case "sites": {
+      metrics = siteMetrics(record, context);
+      break;
+    }
+    case "ads": {
+      metrics = adMetrics(record, context);
+      break;
+    }
+    default: {
+      metrics = keywordMetrics(record, days, context);
+    }
+  }
+  for (const summary of record.coreSummary?.periods?.[days] || []) {
+    const index = metrics.findIndex((item) => item.key === summary.key);
+    if (index < 0) metrics.push(summary);
+    else metrics[index] = summary;
+  }
+  const collectedAt = metrics.map((m) => m.collectedAt).filter((v) => Number.isFinite(Date.parse(v))).toSorted().at(-1) || "";
+  const sources = [
+    ...new Set(
+      metrics.filter((m) => m.value !== null && m.source !== "\u6765\u6E90\u672A\u8BB0\u5F55").map((m) => m.source)
+    )
+  ].slice(0, 3);
+  return [
+    ...metrics,
+    metric(
+      record,
+      "sourceContext",
+      "\u6765\u6E90 / \u66F4\u65B0\u65F6\u95F4",
+      `${sources.join("\uFF1B") || "\u6765\u6E90\u5F85\u6838\u5BF9"} \xB7 ${collectedAt || "\u65F6\u95F4\u672A\u8BB0\u5F55"}`,
+      "\u6765\u6E90 / \u65F6\u95F4",
+      {
+        source: sources.join("\uFF1B") || "\u6765\u6E90\u672A\u8BB0\u5F55",
+        collectedAt,
+        period: "\u5404\u6307\u6807\u4FDD\u7559\u72EC\u7ACB\u91C7\u96C6\u65F6\u95F4\uFF1B\u6B64\u5904\u5217\u6700\u8FD1\u65F6\u95F4",
+        nature: "system_observation",
+        reason: "\u9010\u9879\u53E3\u5F84\u53CA\u7F3A\u5931\u539F\u56E0\u89C1\u6307\u6807\u8BC1\u636E"
+      }
+    )
+  ];
+}
 
 // server/discovery-newness.mjs
-var DAY2 = 864e5;
+var DAY3 = 864e5;
 function validDiscoveryDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value))
     return void 0;
@@ -449,7 +1248,7 @@ function validDiscoveryDate(value) {
 function discoveryDecision(item, kind, now = Date.now()) {
   const first = item.discovery?.firstSeenAt || item.firstSeenAt;
   const observed = validDiscoveryDate(first);
-  const recentDiscovery = observed !== void 0 && Date.parse(first) <= now && now - observed < 8 * DAY2;
+  const recentDiscovery = observed !== void 0 && Date.parse(first) <= now && now - observed < 8 * DAY3;
   const listing = item.decisionData?.listing;
   const isProduct = kind === "product";
   const date2 = isProduct ? listing?.date : item.startDate;
@@ -469,7 +1268,7 @@ function discoveryDecision(item, kind, now = Date.now()) {
   );
   const windowDays = isProduct ? 90 : 7;
   const known = supported && time !== void 0 && Date.parse(date2) <= Math.min(now, collected);
-  const isNew = known ? Math.floor((now - time) / DAY2) <= windowDays : null;
+  const isNew = known ? Math.floor((now - time) / DAY3) <= windowDays : null;
   let label = isProduct ? "\u65B0\u54C1\u5F85\u6838\u9A8C" : "\u65B0\u5E7F\u544A\u5F85\u6838\u9A8C";
   if (isNew === true) label = isProduct ? "\u65B0\u54C1\uFF0890\u5929\u5185\uFF09" : "\u65B0\u5E7F\u544A\uFF087\u5929\u5185\uFF09";
   if (isNew === false) label = isProduct ? "\u975E\u8FD1\u671F\u65B0\u54C1" : "\u975E\u8FD1\u671F\u65B0\u5E7F\u544A";
@@ -494,7 +1293,7 @@ function productDataSource(product) {
   if (product.dataNature === "demo") return "\u6F14\u793A\u6837\u672C";
   return product.siteId ? "\u5B98\u7F51\u5B9E\u91C7" : "\u4EBA\u5DE5\u5BFC\u5165 / \u6765\u6E90\u5F85\u786E\u8BA4";
 }
-var DAY3 = 864e5;
+var DAY4 = 864e5;
 var day2 = (value) => {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
     return Number.NaN;
@@ -505,10 +1304,10 @@ var sourceOf = (value) => `${value.provider} \xB7 ${value.platform} \xB7 ${value
 var periodName = { day: "\u65E5", week: "\u5468", month: "\u6708" };
 function validPoint(point, period, now) {
   const start = day2(point.start), end = day2(point.end);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end + DAY3 > now || point.partial || typeof point.value !== "number" || !Number.isFinite(point.value) || point.value < 0)
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end + DAY4 > now || point.partial || typeof point.value !== "number" || !Number.isFinite(point.value) || point.value < 0)
     return false;
   if (period === "day") return start === end;
-  if (period === "week") return end - start === 6 * DAY3;
+  if (period === "week") return end - start === 6 * DAY4;
   const date2 = new Date(start);
   return date2.getUTCDate() === 1 && end === Date.UTC(date2.getUTCFullYear(), date2.getUTCMonth() + 1, 0);
 }
@@ -558,9 +1357,9 @@ function productDecisions(product, now = Date.now()) {
       (p) => duplicates.get(p.start) === 1 && validPoint(p, series.period, now)
     ).toSorted((a, b) => day2(a.start) - day2(b.start));
     const current = points.at(-1), previous = points.at(-2);
-    if (!current || !previous || day2(current.start) !== day2(previous.end) + DAY3)
+    if (!current || !previous || day2(current.start) !== day2(previous.end) + DAY4)
       continue;
-    if (now - day2(current.end) > { day: 7, week: 21, month: 45 }[series.period] * DAY3) {
+    if (now - day2(current.end) > { day: 7, week: 21, month: 45 }[series.period] * DAY4) {
       stale = true;
       continue;
     }
@@ -583,7 +1382,7 @@ function productDecisions(product, now = Date.now()) {
     for (let i = points.length - 2; i >= 0 && tail.length < 12; i--) {
       const point = points[i];
       const firstPoint = tail[0];
-      if (!point || !firstPoint || day2(firstPoint.start) !== day2(point.end) + DAY3)
+      if (!point || !firstPoint || day2(firstPoint.start) !== day2(point.end) + DAY4)
         break;
       tail.unshift(point);
     }
@@ -727,7 +1526,7 @@ function productDecisions(product, now = Date.now()) {
       );
   }
   const first = Date.parse(product.firstSeenAt || "");
-  if (Number.isFinite(first) && first <= now && now - first < 14 * DAY3)
+  if (Number.isFinite(first) && first <= now && now - first < 14 * DAY4)
     result.push({
       key: "first_seen",
       label: "\u9996\u6B21\u53D1\u73B0",
@@ -876,6 +1675,7 @@ function classifyKeyword(...values) {
 export {
   assessKeyword,
   classifyKeyword,
+  coreMetrics,
   groupAdvertisers,
   productDataSource,
   productDecisions,

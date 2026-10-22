@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import process from 'node:process';
+import { coreListAction } from './core-list-service.mjs';
 
 import { adminSsoConfig } from './admin-sso-config.mjs';
 import { createSsoStore } from './admin-sso-store.mjs';
@@ -105,6 +106,7 @@ async function api(input, user) {
     case 'server_workspace_facets': return workspaceReads.facets(input);
     case 'server_workspace_selection': return workspaceReads.selection(input);
     case 'server_workspace_detail': return workspaceReads.details(input);
+    case 'server_workspace_export': return workspaceReads.exportRecords(input);
     case 'server_ai_prompts':
     case 'server_ai_prompt_save': { return aiPromptAction(input, user); }
     case 'server_keyword_names': {
@@ -238,7 +240,7 @@ async function api(input, user) {
                 [`business:${entry.key}`],
               );
           } else {
-            if (input.patch || /^(products|ads):/.test(entry.key)) {
+              if (input.patch || /^(products|ads|sites):/.test(entry.key)) {
               const old = (
                 await connection.query(
                   'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
@@ -248,7 +250,8 @@ async function api(input, user) {
               if (input.patch && old) entry.value = { ...old, ...entry.value };
               if (entry.key.startsWith('products:') && !input.importOnly)
                 entry.value = protectPlatformClientEdit(old, entry.value);
-              entry.value = protectDiscoveryEdit(old, entry.value);
+              if (!entry.key.startsWith('sites:')) entry.value = protectDiscoveryEdit(old, entry.value);
+              if (old?.coreEvidence) entry.value.coreEvidence = old.coreEvidence;
             }
             await putDocument(
               'workspace_documents',
@@ -268,6 +271,9 @@ async function api(input, user) {
         connection.release();
       }
     }
+    case 'server_core_rates':
+    case 'server_core_rates_refresh':
+      return coreListAction(input);
     case 'server_status': {
       const { rows } = await pool.query("SELECT input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false");
       const activeCounts = {};
@@ -605,6 +611,8 @@ const server = createServer(async (request, response) => {
             'server_workspace_list',
             'server_workspace_facets',
             'server_workspace_detail',
+            'server_workspace_export',
+            'server_core_rates',
           ].includes(input.action),
         );
     if (input.action?.startsWith('auth_')) {

@@ -67,7 +67,7 @@ function changedFields(previous: string | undefined, value: unknown) {
   if (!previous || !value || typeof value !== 'object') return value;
   const old = JSON.parse(previous);
   return Object.fromEntries(Object.entries(value).filter(([key, next]) =>
-    !['listSummary', 'decisionTags', 'trendSummary', 'score', 'assessment', 'productCount'].includes(key) && JSON.stringify(old[key]) !== JSON.stringify(next),
+    !['listSummary', 'decisionTags', 'trendSummary', 'coreSummary', 'score', 'assessment', 'productCount'].includes(key) && JSON.stringify(old[key]) !== JSON.stringify(next),
   ));
 }
 export function applyWorkspaceRecords(collection: 'ads' | 'keywords' | 'products' | 'sites', records: unknown[]) {
@@ -82,7 +82,7 @@ export function applyWorkspaceRecords(collection: 'ads' | 'keywords' | 'products
         // A compact page refresh must not truncate an already opened detail.
         const full = previous as unknown as Record<string, unknown>;
         const next = merged as unknown as Record<string, unknown>;
-        for (const key of ['series', 'trendPoints', 'ingredientInsights', 'benefits', 'benefitEvidence', 'decisionData', 'copy', 'imageUrls', 'videoUrls', 'videoPosterUrls'])
+        for (const key of ['series', 'trendPoints', 'ingredientInsights', 'benefits', 'benefitEvidence', 'decisionData', 'sourceContent', 'coreEvidence', 'copy', 'imageUrls', 'videoUrls', 'videoPosterUrls'])
           if (full[key] !== undefined) next[key] = full[key];
         merged.listSummary = false;
       }

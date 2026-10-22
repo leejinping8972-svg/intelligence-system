@@ -21,6 +21,11 @@ import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import SiteDrawer from './components/SiteDrawer.vue';
+import CoreListControls from './components/CoreListControls.vue';
+import EvidenceMetric from './components/EvidenceMetric.vue';
+import { useCoreList } from './use-core-list';
+const core = useCoreList('sites');
+const { preset: corePreset, period: corePeriod } = core;
 import BulkSiteWatch from './components/BulkSiteWatch.vue';
 import { emptyScoreFilter, matchesScore, useFilteredSelection } from './resource-list';
 import ProductCollectDialog from './components/ProductCollectDialog.vue';
@@ -194,8 +199,9 @@ const exporting = ref(false);
 async function exportSites() {
   exporting.value = true;
   try {
-    const records = serverMode ? await remote.selectAll() : rows.value;
+    const records = serverMode ? await remote.exportRows(ids.value) : rows.value;
     exportCsv('独立站.csv', records.filter((site) => !ids.value.length || ids.value.includes(site.id)).map((s) => ({
+      ...core.exportRecord(s),
       品牌: s.brand, 域名: s.domain, 市场: s.market, 类别: s.category,
       主要产品: s.mainProducts.join('、'), 股权背景: s.ownershipBackground,
       官网依据: s.ownershipEvidence, 采集时间: siteCollectedAt(s) || '',
@@ -307,16 +313,16 @@ const columns = [
         :message="scoreError"
         type="error"
         show-icon
-      /><Table
+      /><CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="sites" /><Table
         :loading="remote.loading.value"
         @change="remote.tableChange"
         class="hci-resource-table"
         size="small"
         :row-selection="rowSelection"
-        :columns="columns"
+        :columns="core.columns(columns)"
         :data-source="rows"
         row-key="id"
-        :scroll="{ x: 1250 }"
+        :scroll="{ x: 'max-content' }"
         :pagination="{
           total: serverMode ? remote.total.value : rows.length,
           current: page,
@@ -330,6 +336,7 @@ const columns = [
         }"
       >
         <template #bodyCell="{ column, record }">
+          <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Site, column.key)" />
           <template v-if="column.key === 'brand'">
             <button
               class="hci-link"

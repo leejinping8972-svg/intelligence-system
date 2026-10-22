@@ -570,6 +570,7 @@ export function mergePlatformProduct(old, patch) {
     reviewed: old.reviewed ?? false,
     firstSeenAt: old.firstSeenAt || patch.firstSeenAt,
   };
+  if (!patch.siteId && old.siteId) merged.siteId = old.siteId;
   for (const key of [
     'imageUrl',
     'claim',
@@ -580,6 +581,8 @@ export function mergePlatformProduct(old, patch) {
     'brand',
     'category',
     'form',
+    'sourceUrl',
+    'evidenceUrl',
   ]) {
     if (
       !patch[key] ||
@@ -610,6 +613,10 @@ export function mergePlatformProduct(old, patch) {
     ];
   merged.sourceEvidence = merged.sourceEvidence.slice(-100);
   merged.sourceMetrics = { ...old.sourceMetrics, ...patch.sourceMetrics };
+  if ((old.sourceMetrics?.soldRaw || old.sourceMetrics?.soldCount !== undefined || old.sourcePlatform === 'TikTok Shop' && old.sourceMetrics?.reportedSales !== undefined) && !patch.sourceMetrics?.soldRaw && patch.sourceMetrics?.soldCount === undefined && patch.sourceMetrics?.reportedSales === undefined)
+    merged.sourceMetrics.soldCollectedAt = old.sourceMetrics.soldCollectedAt || old.sourceMetrics.collectedAt;
+  if (old.sourceContent?.sellingPoints?.length && !patch.sourceContent?.sellingPoints?.length)
+    merged.sourceContent = { ...merged.sourceContent, sellingPoints: old.sourceContent.sellingPoints };
   for (const key of ['benefits', 'ingredientInsights'])
     if (patch[key]?.length === 0 && old[key]?.length > 0)
       merged[key] = old[key];

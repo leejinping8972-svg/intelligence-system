@@ -320,6 +320,10 @@ try {
     { action: 'server_content_cancel', jobId: transcript.job.id },
     user,
   );
+  const { verifyCoreListFields } = await import('./core-list-fields.integration.mjs');
+  const { upsertProduct } = await import('./platform-products-jobs.mjs');
+  const { mergeBusiness } = await import('./market-jobs.mjs');
+  console.warn(await verifyCoreListFields({ pool, upsertProduct, mergeBusiness, engine }));
   console.warn(
     `PASS ${engine}: product queue/links/refresh/journal/cancel and content API/idempotency/favorites/product links/idle locks/transcript queue; zero external calls`,
   );

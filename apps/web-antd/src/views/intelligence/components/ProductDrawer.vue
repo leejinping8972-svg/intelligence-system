@@ -19,6 +19,7 @@ import ProductDecisionTags from './ProductDecisionTags.vue';
 import ProductCompletionDialog from './ProductCompletionDialog.vue';
 import { productDataSource } from '../product-decisions';
 import PublicContentLauncher from './PublicContentLauncher.vue';
+import CoreMetricsPanel from './CoreMetricsPanel.vue';
 const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
 const router = useRouter();
@@ -79,6 +80,7 @@ function addMonitor() {
       </div></div>
       <ProductCompletionDialog :product-ids="[product.id]" compact />
       <Tabs>
+        <Tabs.TabPane key="core-evidence" tab="销售、价格与数据证据"><CoreMetricsPanel kind="products" :record="product" /></Tabs.TabPane>
         <Tabs.TabPane
           v-if="product.sourceProvider"
           key="platform"

@@ -1,4 +1,5 @@
 import type { DiscoveryObservation } from './discovery';
+import type { CoreEvidence } from './core-list-metrics';
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
 import type {
   ProductCompletion,
@@ -52,6 +53,8 @@ export const categories = [
   '运动营养',
 ];
 export interface Keyword {
+  coreEvidence?: CoreEvidence;
+  coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   listSummary?: boolean;
   trendSummary?: import('./trend-comparison').TrendComparison[];
   adCollection?: {
@@ -157,6 +160,8 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  coreEvidence?: CoreEvidence;
+  coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   listSummary?: boolean;
   decisionTags?: import('./product-decisions').ProductDecision[];
   formula?: {
@@ -181,6 +186,12 @@ export interface Product {
     keyword?: string;
     shopName?: string;
     salesMetricNature?: string;
+    soldCount?: number;
+    soldRaw?: string;
+    soldPrecision?: string;
+    soldCollectedAt?: string;
+    orderCount?: number;
+    unclassifiedSales?: string;
     timestamp?: number | string;
     observedAt?: string;
     urlKind?: string;
@@ -188,6 +199,7 @@ export interface Product {
   sourceContent?: {
     collectedAt: string;
     descriptions: string[];
+    sellingPoints?: string[];
     attributes: Record<string, string>;
     productInfo?: Record<string, string>;
     aPlusImages?: string[];
@@ -242,6 +254,8 @@ export interface SiteAssessment {
   }[];
 }
 export interface Site {
+  coreEvidence?: CoreEvidence;
+  coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   listSummary?: boolean;
   productCount?: number;
   productCollection?: CollectionState;
@@ -267,6 +281,7 @@ export interface Site {
     organicKeywords?: number;
     paidTraffic?: number;
     paidKeywords?: number;
+    period?: string;
   };
   metricsStatus?: string;
   metricsMessage?: string;
@@ -289,6 +304,8 @@ export interface Site {
   dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Ad {
+  coreSummary?: import('./core-list-metrics').CoreMetricSummary;
+  coreEvidence?: CoreEvidence;
   discovery?: DiscoveryObservation;
   archiveId?: string;
   pageId?: string;
@@ -982,7 +999,7 @@ export function csvValue(value: unknown) {
 export function exportCsv(name: string, rows: Record<string, unknown>[]) {
   const [firstRow] = rows;
   if (!firstRow) return;
-  const keys = Object.keys(firstRow);
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))];
   download(
     name,
     `\uFEFF${[

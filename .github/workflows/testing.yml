@@ -48,6 +48,10 @@ jobs:
           pnpm exec vitest run tests/consumer-reports.test.ts
       - name: Country market research and frozen reports (synthetic data)
         run: node --test server/market-research.test.mjs
+      - name: Core list data evidence and nested TikTok fields (synthetic only)
+        run: |
+          node --test server/core-list-fields.test.mjs
+          pnpm exec vitest run tests/core-list-metrics.test.ts
       - name: Frontend type check
         run: pnpm --filter @vben/web-antd run typecheck
       - name: Public branding startup regression

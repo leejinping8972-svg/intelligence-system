@@ -6,6 +6,7 @@ import {
   productDataSource,
   productDecisions,
   trendComparisons,
+  coreMetrics,
 } from './model.js';
 import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
@@ -17,7 +18,8 @@ const collections = new Set([
   'ads',
   'advertisers',
 ]);
-const MODEL_VERSION = 'workspace-reads-v1';
+const MODEL_VERSION = 'workspace-reads-v2-core';
+const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 const pick = (value, keys) =>
   Object.fromEntries(
     keys
@@ -39,6 +41,22 @@ export function projectRecord(collection, value) {
   const data = pick(value, listKeys[collection].split(' '));
   if (!data.id) throw new Error('记录缺少编号');
   data.listSummary = true;
+  if (collection !== 'advertisers') {
+    const evidence = value.coreEvidence;
+    if (evidence) {
+      data.coreEvidence = pick(evidence, ['version', 'fieldUpdatedAt', 'metrics', 'fx', 'historyCount', 'historyTruncated']);
+      if (collection === 'sites') data.coreEvidence.history = (evidence.history || []).filter((item) => item.market === value.market && item.source === value.metrics?.source && typeof item.organicTraffic === 'number').slice(-2);
+    }
+    const historical = collection === 'products'
+      ? value.decisionData?.series?.length || evidence?.history?.length
+      : collection === 'keywords' && (value.trendHistoryPoints?.length || value.trendPoints?.length);
+    if (historical) data.coreSummary = { periods: Object.fromEntries([30, 90, 365].map((days) => [days, coreMetrics(collection, value, days).filter((metric) => ['sales', 'dailySales', 'sourceSales', 'observedDelta', 'relativeHeat', 'trendChange'].includes(metric.key))])) };
+    if (collection === 'products' && value.sourceContent) {
+      const summary = pick(value.sourceContent, ['collectedAt', 'sellingPoints']);
+      if (Object.keys(summary).length) data.sourceContent = summary;
+    }
+    if (collection === 'keywords') Object.assign(data, pick(value, ['trendRelatedTop', 'trendRelatedRising', 'trendInsightsStatus', 'trendInsightsMessage', 'trendInsightsPeriod', 'trendSourceUrl']));
+  }
   if (collection === 'products') {
     data.ingredientInsights = (value.ingredientInsights || [])
       .slice(0, 20)
@@ -92,6 +110,7 @@ export function projectRecord(collection, value) {
   add('products', value.productIds);
   add('sites', value.siteIds);
   add('keyword', value.keywordIds);
+  if (collection === 'keywords' && value.seedTerm) add('seed', [normalizeTerm(value.seedTerm)]);
   add(
     'source',
     collection === 'sites'
@@ -184,6 +203,30 @@ export function createWorkspaceReads({
 }) {
   let flight;
   let lastError = '';
+  async function withRelations(collection, records) {
+    if (!records.length) return records;
+    const values = records.map((record) => record.id);
+    const slots = values.map((_, index) => `$${index + 1}`).join(',');
+    if (collection === 'sites') {
+      const field = (name, alias) => sql(`${alias}.payload->>'${name}'`, `JSON_UNQUOTE(JSON_EXTRACT(${alias}.payload,'$.${name}'))`);
+      const metrics = (await pool.query(`SELECT s.id,
+        (SELECT COUNT(*) FROM workspace_read_rows p WHERE p.collection='products' AND p.site_id=s.id AND p.market=s.market) AS products,
+        (SELECT COUNT(*) FROM workspace_read_rows a WHERE a.collection='ads' AND a.market=s.market AND EXISTS(SELECT 1 FROM workspace_read_links l WHERE l.collection='ads' AND l.id=a.id AND l.relation='sites' AND l.target=s.id)) AS ads,
+        (SELECT COUNT(*) FROM workspace_read_rows p WHERE p.collection='products' AND p.site_id=s.id AND p.market=s.market AND ${field('ingredient', 'p')} IS NOT NULL AND ${field('ingredient', 'p')}<>'') AS ingredients,
+        (SELECT COUNT(*) FROM workspace_read_rows p WHERE p.collection='products' AND p.site_id=s.id AND p.market=s.market AND CAST(${field('price', 'p')} AS DECIMAL(20,4))>0) AS prices,
+        (SELECT COUNT(*) FROM workspace_read_rows a WHERE a.collection='ads' AND a.market=s.market AND (${field('imageUrls', 'a')} NOT IN ('[]','null') OR ${field('videoUrls', 'a')} NOT IN ('[]','null')) AND EXISTS(SELECT 1 FROM workspace_read_links l WHERE l.collection='ads' AND l.id=a.id AND l.relation='sites' AND l.target=s.id)) AS creatives
+        FROM workspace_read_rows s WHERE s.collection='sites' AND s.id IN (${slots})`, values)).rows;
+      const map = new Map(metrics.map((row) => [row.id, { products: Number(row.products), ads: Number(row.ads), hasIngredients: Number(row.ingredients) > 0, hasPrices: Number(row.prices) > 0, hasCreatives: Number(row.creatives) > 0 }]));
+      return records.map((record) => ({ ...record, coreSummary: { ...record.coreSummary, related: map.get(record.id) } }));
+    }
+    if (collection === 'keywords') {
+      const terms = records.map((record) => normalizeTerm(record.term));
+      const field = (name) => sql(`r.payload->>'${name}'`, `JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.${name}'))`);
+      const expansions = (await pool.query(`SELECT r.market,l.target,${field('term')} AS term,${field('source')} AS source FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE l.collection='keywords' AND l.relation='seed' AND l.target IN (${slots})`, terms)).rows;
+      return records.map((record) => ({ ...record, coreSummary: { ...record.coreSummary, related: { expansions: expansions.filter((item) => item.market === record.market && item.target === normalizeTerm(record.term) && normalizeTerm(item.term) !== normalizeTerm(record.term)).map((item) => ({ term: item.term, source: item.source || '' })) } } }));
+    }
+    return records;
+  }
   async function saveProjections(connection, entries) {
     for (let start = 0; start < entries.length; start += 100) {
       const batch = entries.slice(start, start + 100);
@@ -685,11 +728,11 @@ export function createWorkspaceReads({
       [...query.values, pageSize, (page - 1) * pageSize],
     );
     return {
-      rows: result.rows.map((r) =>
+      rows: await withRelations(query.collection, result.rows.map((r) =>
         query.collection === 'sites'
           ? { ...r.payload, productCount: Number(r.product_count) }
           : r.payload,
-      ),
+      )),
       total,
       page,
       pageSize,
@@ -813,7 +856,19 @@ export function createWorkspaceReads({
       record = { ...record, assessment: scoreSite(record) };
     if (input.collection === 'keywords')
       record = { ...record, assessment: assessKeyword(record) };
-    return { record: { ...record, listSummary: false } };
+    return { record: (await withRelations(input.collection, [{ ...record, coreSummary: {}, listSummary: false }]))[0] };
+  }
+  async function exportRecords(input) {
+    if (!['products', 'sites', 'ads', 'keywords'].includes(input.collection) || !Array.isArray(input.ids) || !input.ids.length || input.ids.length > 50 || input.ids.some((id) => typeof id !== 'string' || !id || id.length > 160)) throw new Error('导出批次无效，最多50条');
+    const ids = [...new Set(input.ids)];
+    const slots = ids.map((_, index) => `$${index + 1}`).join(',');
+    const rows = input.collection === 'keywords'
+      ? (await pool.query(`SELECT k.data AS value FROM research_keywords k JOIN workspace_read_rows r ON r.source_key=k.natural_key AND r.collection='keywords' WHERE r.id IN (${slots})`, ids)).rows
+      : (await pool.query(`SELECT value FROM workspace_documents WHERE name IN (${slots})`, ids.map((id) => `business:${input.collection}:${id}`))).rows;
+    const records = rows.map((row) => ({ ...row.value, coreSummary: {}, listSummary: false }));
+    const enriched = await withRelations(input.collection, records);
+    const byId = new Map(enriched.map((record) => [record.id, record]));
+    return { rows: ids.map((id) => byId.get(id)).filter(Boolean) };
   }
   async function bootstrap() {
     const [entries, current, active] = await Promise.all([
@@ -842,6 +897,7 @@ export function createWorkspaceReads({
     facets,
     selection,
     details,
+    exportRecords,
     bootstrap,
   };
 }
