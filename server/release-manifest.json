@@ -1,43 +1,44 @@
 {
-  "title": "画像驱动消费者研究与业务列表归档",
-  "sourceSha": "48e663c519ceb47ff7173c32a534b0142eb3fbd6",
+  "title": "新品雷达及统计页面性能优化",
+  "sourceSha": "d850b33c83f0b63a6e37d4f0d08db3f7e4e94569",
   "includedCommits": [
-    "3391ad5c1a66dc0dc611d86701ce4fe8a88b08f0",
-    "3c7c19fff785d72c467c93093530c3660272113b",
-    "47a500555c9367a123bf3d63f320a6b4f5c32d09",
-    "f2854ab3605dbeb1353545b6835897d242698d57"
+    "d850b33c83f0b63a6e37d4f0d08db3f7e4e94569"
   ],
   "changes": [
-    "增加画像研究入口、当地语言检索计划、有限预算采集与可追溯证据审核。",
-    "形成完整研究报告和下载，明确未知身份与样本限制，未知扣费不自动重放。",
-    "研究查询、公共内容、评论、商品、站点及广告归档到对应业务列表，保留既有数据和人工决策。"
+    "新品雷达改用后台快照、服务端分页和全量汇总，完整报告按需生成。",
+    "机会研究及热门配方后台统计，趋势页仅检索和加载所选关键词。",
+    "报告列表使用紧凑摘要，复用图表和查询缓存，离页停止轮询。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/PersonaResearchDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/PersonaResearchReport.vue",
-    "apps/web-antd/src/views/intelligence/components/PublicContentDrawer.vue",
-    "apps/web-antd/src/views/intelligence/consumer-insights.vue",
-    "apps/web-antd/src/views/intelligence/consumer-report.vue",
-    "apps/web-antd/src/views/intelligence/persona-research.ts",
-    "apps/web-antd/src/views/intelligence/research-reports.ts",
-    "server/PERSONA-RESEARCH.md",
-    "server/consumer-topics.mjs",
+    "apps/web-antd/src/views/intelligence/components/Chart.vue",
+    "apps/web-antd/src/views/intelligence/components/FormulaInsights.vue",
+    "apps/web-antd/src/views/intelligence/components/PageHeader.vue",
+    "apps/web-antd/src/views/intelligence/opportunities.vue",
+    "apps/web-antd/src/views/intelligence/radar.vue",
+    "apps/web-antd/src/views/intelligence/trends.vue",
+    "apps/web-antd/src/views/intelligence/statistics-engine.ts",
+    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+    "server/Dockerfile",
     "server/index.mjs",
-    "server/persona-business-records.mjs",
-    "server/persona-business-records.test.mjs",
-    "server/persona-research-domain.mjs",
-    "server/persona-research-engine.mjs",
-    "server/persona-research-store.mjs",
-    "server/persona-research.integration.test.mjs",
-    "server/persona-research.test.mjs",
-    "server/runner.mjs"
+    "server/insight-jobs.mjs",
+    "server/model.ts",
+    "server/model.js",
+    "server/workspace-read-schema.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs",
+    "server/STATISTICS-PERFORMANCE.md",
+    "server/report-read-summaries.mjs",
+    "server/workspace-statistics.mjs",
+    "server/workspace-statistics.test.mjs",
+    "tests/statistics-queries.test.ts"
   ],
   "validation": [
-    "合并后39项相关Node测试和1项隔离PGlite实际SQL集成通过。",
-    "标准类型检查、前后端构建与准确候选CI由本批执行；发布不触发付费采集。"
+    "功能分支12项前端测试、6项Node含隔离PGlite集成、完整类型检查及生产构建通过。",
+    "合成API浏览器验收通过；准确候选CI包括双前端构建、API镜像与隔离MySQL集成。",
+    "发布不触发收费采集，保留业务数据、任务检查点和public/data。"
   ],
-  "id": "20261022095004-e7c403d8",
-  "builtAt": "2026-10-22T09:50:04.629Z",
-  "sourceDigest": "e7c403d8b3765b2f3d5808852a9852ae7e3812b1e59f61d1a1b786da35f0bcbd",
+  "id": "20261022120051-82f53596",
+  "builtAt": "2026-10-22T12:00:51.650Z",
+  "sourceDigest": "82f535967c9e0d9f471e25f96d67c354d8d63474b93f51e5b8ecd2cf38035720",
   "operator": "Codex"
 }
