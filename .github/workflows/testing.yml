@@ -58,6 +58,11 @@ jobs:
           node --test server/product-resource-domain.test.mjs server/product-resource-engine.test.mjs server/product-resource-public.test.mjs server/product-resource-sorftime.test.mjs
           pnpm exec vitest run apps/web-antd/src/views/intelligence/__tests__/product-resources.test.ts
           HCI_TEST_PGLITE_MODULE=./server/node_modules/@electric-sql/pglite/dist/index.js node --test server/product-resource.integration.test.mjs
+      - name: Chinese product references and public listing/sales completion (synthetic only)
+        run: |
+          node --test server/product-names.test.mjs server/product-public-enrichment.test.mjs
+          pnpm exec vitest run tests/product-reference-enrichment.test.ts apps/web-antd/src/views/intelligence/__tests__/product-chinese-name.test.ts
+          HCI_TEST_PGLITE_MODULE=./server/node_modules/@electric-sql/pglite/dist/index.js node --test server/product-reference-enrichment.integration.test.mjs
       - name: Persona research budget and evidence boundaries (synthetic data)
         run: |
           node --test server/persona-research.test.mjs server/persona-business-records.test.mjs

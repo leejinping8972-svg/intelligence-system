@@ -2,6 +2,7 @@ import trendSnapshots from '../data/trends-snapshots.json' with { type: 'json' }
 import { readSorftimeToken, saveSorftimeToken } from './provider-config.js';
 import { SERVER_ACTIONS, serverRelay } from './server-relay.js';
 import { sorftimeStatus, sorftimeSuggestions } from './sorftime.js';
+import { publicProductFields } from './product-public-fields.js';
 
 const MARKET_OPTIONS = {
   US: {
@@ -484,7 +485,7 @@ export function productFromJsonLd(
     .map(([label]) => label);
   return {
     title: cleanText(product.name || ''),
-    publishedAt: product.releaseDate || product.datePublished || undefined,
+    ...publicProductFields(product),
     brand: cleanText(brand || ''),
     description,
     sku: cleanText(product.sku || product.mpn || product.gtin || ''),
@@ -524,6 +525,7 @@ async function fetchShopifyProduct(pageUrl) {
     '@type': 'Product',
     name: data.title,
     datePublished: data.published_at,
+    ...publicProductFields(data, 'Shopify product JSON'),
     brand: data.vendor,
     description: data.description,
     sku: variant.sku || variant.id || data.id,
@@ -558,6 +560,7 @@ async function fetchShopifyCatalog(pageUrl, limit) {
       '@type': 'Product',
       name: item.title,
       datePublished: item.published_at,
+      ...publicProductFields(item, 'Shopify catalog JSON'),
       brand: item.vendor,
       description: item.body_html,
       sku: variant.sku || variant.id || item.id,

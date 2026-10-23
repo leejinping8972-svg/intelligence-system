@@ -5,6 +5,7 @@ import { collectionBudget, fetchConfiguration } from './site-fetch-config.mjs';
 import { collectionPolicyMessage, resolveCollectionPolicy } from './collection-policy.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
 import { validDiscoveryDate } from './discovery-newness.mjs';
+import { publicProductFields } from './collector.js';
 export function siteHostAllowed(host, domain) {
   const root = String(domain)
     .toLowerCase()
@@ -82,6 +83,8 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     .update(url.toString())
     .digest('hex')
     .slice(0, 24);
+  const publicFields = publicProductFields({ ...p, datePublished: p.publishedAt });
+  const published = publicFields.publishedAt;
   return withFormulaIntelligence({
     id: `${site.market}-product-${hash}`,
     title: p.title,
@@ -108,12 +111,17 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     reviewed: false,
     favorite: false,
     firstSeenAt: at,
-    ...(validDiscoveryDate(p.publishedAt) !== undefined && Date.parse(p.publishedAt) <= Date.parse(at) ? {
+    ...(validDiscoveryDate(published) !== undefined && Date.parse(published) <= Date.parse(at) ? {
       decisionData: { series: [], listing: {
-        date: p.publishedAt.slice(0, 10), provider: '官网公开商品数据', platform: site.platform || '官网',
+        date: published.slice(0, 10), rawDate: published, sourceField: publicFields.publishedSourceField, provider: '官网公开商品数据', platform: site.platform || '官网',
         market: site.market, collectedAt: at, evidenceUrl: url.toString(),
       } },
     } : {}),
+    ...(publicFields.soldCount !== undefined ? { sourceMetrics: {
+      soldCount: publicFields.soldCount, soldRaw: publicFields.soldRaw, soldPrecision: 'exact',
+      collectedAt: at, soldCollectedAt: at, soldProvider: '官网公开商品数据',
+      soldPlatform: site.platform || '官网', soldEvidenceUrl: url.toString(), soldSourceField: publicFields.soldSourceField,
+    } } : {}),
     lastCollectedAt: at,
     evidenceUrl: url.toString(),
     dataNature: 'collected',

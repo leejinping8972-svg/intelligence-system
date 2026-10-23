@@ -9,7 +9,7 @@ import {
   cloudWorkspace,
   syncCloudWorkspace,
 } from '../cloud-workspace';
-import { state } from '../data';
+
 import { serverMode } from '../session';
 const props = defineProps<{ productIds: string[]; compact?: boolean; total?: number; resolveProductIds?: () => Promise<string[]> }>();
 const resolvedIds = ref<string[]>();
@@ -21,16 +21,7 @@ const open = ref(false);
 const maxRequests = ref(1);
 const router = useRouter();
 let requestId = '';
-const supported = computed(
-  () =>
-    state.products.filter(
-      (p) =>
-        productIds.value.includes(p.id) &&
-        p.sourceProvider === 'Sorftime' &&
-        /^[A-Z0-9]{10}$/.test(p.sourceProductId || '') &&
-        ['MX', 'US'].includes(p.market),
-    ).length,
-);
+const plan = ref<{ total: number; sorftime: number; public: number; unsupported: number; estimatedRequests: number; defaultMaxRequests: number }>();
 async function submit() {
   if (busy.value || resolutionFailed.value) return;
   busy.value = true;
@@ -55,12 +46,14 @@ async function submit() {
 async function begin() {
   if (busy.value) return;
   error.value = '';
+  plan.value = undefined;
   resolvedIds.value = undefined;
   resolutionFailed.value = false;
   busy.value = true;
   try {
     if (props.resolveProductIds) resolvedIds.value = await props.resolveProductIds();
-    maxRequests.value = Math.max(1, supported.value * 5);
+    plan.value = await cloudRequest('server_preview_product_enrichment', { productIds: [...productIds.value] });
+    maxRequests.value = plan.value!.defaultMaxRequests;
     requestId = '';
     open.value = true;
   } catch (cause) { resolutionFailed.value = true; error.value = (cause as Error).message; open.value = true; }
@@ -94,12 +87,10 @@ async function begin() {
       件商品。批量入口包括当前筛选的全部记录，不限当前页；不重新搜索商品。
     </p>
     <p>
-      其中 {{ supported }} 件可通过 Sorftime 查询详情、图片/属性、当前 ASIN
-      月销量、大类排名和评论数历史，完整执行最多约
-      {{
-        supported * 5
-      }}
-      次数据请求。有效结果与缓存优先复用；失败、取消或空历史可以再次补全。
+      其中 {{ plan?.sorftime ?? 0 }} 件通过 Sorftime 查询详情、图片/属性及当前 ASIN 月销量、排名和评论数历史，
+      {{ plan?.public ?? 0 }} 件通过精确官网商品链接核验公开上架日期和累计已售。
+      整批预计最多 {{ plan?.estimatedRequests ?? 0 }} 次数据请求；本批默认 {{ plan?.defaultMaxRequests ?? 1 }} 次，可调整下方预算。
+      已保存的有效结果与缓存优先复用。
     </p>
     <label for="completion-request-limit">本任务共用请求上限</label>
     <InputNumber
@@ -112,19 +103,21 @@ async function begin() {
     <Alert
       type="info"
       show-icon
-      :message="`详情、属性和历史共用 ${maxRequests} 次请求预算；预算耗尽后保留部分完成状态和未补全原因。可在监控与任务中取消。消耗已配置平台的现有额度，不自动购买额度。`"
+      :message="`官网公开读取、平台详情与历史共用 ${maxRequests} 次请求预算；预算耗尽后保留部分完成状态和未补全原因。可在监控与任务中取消。消耗已配置平台的现有额度，不自动购买额度。`"
     />
     <p
-      v-if="supported < productIds.length"
+      v-if="(plan?.unsupported ?? 0) > 0"
       class="hci-subtle"
       style="margin-top: 12px"
     >
       另有
       {{
-        productIds.length - supported
+        plan?.unsupported ?? 0
       }}
-      件缺少可核验平台标识，或来源未提供商品历史接口，将逐件记录原因；不将同名
-      Amazon 商品或关键词趋势冒充其销量。
+      件缺少可核验的官网商品链接或平台标识，将逐件记录原因。
+    </p>
+    <p class="hci-subtle" style="margin-top: 12px">
+      官网未披露的上架时间或销量显示“未公开”；累计已售与月销量分别展示，均保留来源。
     </p>
     <Alert
       v-if="error"

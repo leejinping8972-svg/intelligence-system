@@ -1,3 +1,4 @@
+import { publicEvidenceReason, publicEvidenceStatus } from '../../../../../server/product-public-evidence.mjs';
 import type { Ad, Keyword, Product, Site } from './data';
 import { rollingTrendComparison } from './trend-comparison';
 import { discoveryDecision } from './discovery';
@@ -8,6 +9,7 @@ export type MetricStatus =
   | 'available'
   | 'unsupported'
   | 'not_indexed'
+  | 'not_disclosed'
   | 'accumulating'
   | 'failed'
   | 'budget_limited'
@@ -96,6 +98,7 @@ export const metricStatusLabels: Record<MetricStatus, string> = {
   available: '已获取',
   unsupported: '不支持',
   not_indexed: '未收录',
+  not_disclosed: '未公开',
   accumulating: '待积累',
   failed: '失败',
   budget_limited: '预算截断',
@@ -351,6 +354,14 @@ export function productMetrics(
   const sold = sm?.soldCount;
   const raw = sm?.soldRaw;
   const listing = discoveryDecision(p, 'product');
+  const publicEvidence = p.publicDataEvidence;
+  const publicCompletion = p.dataCompletion?.public_detail;
+  const missingPublicMetric = (field: 'listing' | 'sold') => {
+    const evidence = publicEvidence?.[field];
+    if (publicCompletion && ['queued', 'running', 'failed', 'unknown', 'cancelled', 'unsupported'].includes(publicCompletion.status) && (!publicEvidence || Date.parse(publicCompletion.at || '') >= Date.parse(publicEvidence.checkedAt)))
+      return { status: missingStatus(publicCompletion.status, publicCompletion.message), reason: publicCompletion.message, collectedAt: publicCompletion.at || '' };
+    return evidence ? { status: publicEvidenceStatus(evidence.reason), reason: publicEvidenceReason(evidence.reason), collectedAt: publicEvidence!.checkedAt } : {};
+  };
   const result = [
     ...productSales(p, days),
     metric(p, 'listingDate', '商品上架时间', listing.evidenceDate || null, '', {
@@ -361,23 +372,28 @@ export function productMetrics(
       collectedAt: p.decisionData?.listing?.collectedAt || '',
       evidenceUrl: listing.evidenceUrl,
       period: '来源上架日期',
-      reason: listing.reason,
+      reason: listing.reason + (p.decisionData?.listing?.sourceField ? ' 来源字段：' + p.decisionData.listing.sourceField : ''),
+      ...(!listing.evidenceDate ? missingPublicMetric('listing') : {}),
     }),
     metric(
       p,
       'cumulativeSold',
-      '平台累计展示已售',
+      sm?.soldProvider ? '官网累计展示已售' : '平台累计展示已售',
       raw || (validNumber(sold) ? sold : null),
       '件',
       {
         ...meta,
+        source: sm?.soldProvider || meta.source,
+        platform: sm?.soldPlatform || meta.platform,
+        evidenceUrl: sm?.soldEvidenceUrl || meta.evidenceUrl,
         collectedAt: sm?.soldCollectedAt || meta.collectedAt,
         period: '累计起算日未知；当前快照',
         precision: sm?.soldPrecision || '未知',
         reason:
           raw || validNumber(sold)
-            ? '累计展示不等于周期销量或净成交'
+            ? '累计展示不等于周期销量或净成交' + (sm?.soldSourceField ? '；来源字段：' + sm.soldSourceField : '')
             : '来源未返回明确的累计售出件数',
+        ...(!raw && !validNumber(sold) ? missingPublicMetric('sold') : {}),
       },
     ),
     metric(

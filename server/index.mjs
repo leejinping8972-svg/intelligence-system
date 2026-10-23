@@ -50,6 +50,7 @@ import { productResourceAction, resumeResourceJob } from './product-resource-ser
 import {
   cancelPlatformCompletion,
   submitPlatformProductEnrichment,
+  previewPlatformProductEnrichment,
   submitPlatformProducts,
 } from './platform-products-jobs.mjs';
 import { submitProducts } from './product-jobs.mjs';
@@ -162,6 +163,9 @@ async function api(input, user) {
     case 'server_submit_products': {
       const job = await submitProducts(input, user);
       return { jobId: job.id, tasks: jobTasks(job) };
+    }
+    case 'server_preview_product_enrichment': {
+      return previewPlatformProductEnrichment(input);
     }
     case 'server_complete_platform_products': {
       const job = await submitPlatformProductEnrichment(input);

@@ -1,9 +1,13 @@
+import { publicProductUrl } from './product-public-enrichment.mjs';
+
 export const trendTypes = ['AsinSalesVolume', 'Rank', 'ReviewCount'];
 export const completionKey = (work) =>
   work.op === 'trend'
     ? `trend_${work.trendType || 'AsinSalesVolume'}`
     : work.op;
 export function productCompletionWork(product, input, term = '') {
+  if (input.mode === 'enrich' && input.publicCompletionVersion === 1 && publicProductUrl(product))
+    return [{ provider: 'public_product', op: 'public_detail', productId: product.id, term }];
   if (
     product.sourceProvider !== 'Sorftime' ||
     !/^[A-Z0-9]{10}$/.test(product.sourceProductId || '') ||

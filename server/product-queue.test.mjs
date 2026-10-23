@@ -656,3 +656,33 @@ test('catalog 404 falls back without retry, while a real timeout retains its ret
   );
   assert.equal(n.saved.checkpoint.siteWork[0].status, 'retry_wait');
 });
+
+
+test('official refresh retains prior cumulative sales and listing evidence when the new page omits them', async () => {
+  const h = harness(1);
+  const site = h.job.input.records[0];
+  const old = normalizeProduct({ title: 'Creatine Gummies', url: 'https://s0.example/products/creatine', currency: 'USD', price: 19.95, publishedAt: '2020-01-01', soldCount: 100 }, site, '2026-10-22T00:00:00Z');
+  old.sourceMetrics.reviewCount = 12;
+  old.favorite = true;
+  h.docs.set('products:' + old.id, old);
+  await runProductsJob(h.job, h.io);
+  const saved = h.docs.get('products:' + old.id);
+  assert.deepEqual(saved.sourceMetrics, old.sourceMetrics);
+  assert.deepEqual(saved.decisionData.listing, old.decisionData.listing);
+  assert.equal(saved.favorite, true);
+  assert.equal(saved.price, 29.95);
+});
+
+test('official refresh replaces observed cumulative sales while retaining unrelated source metrics', async () => {
+  const h = harness(1);
+  const site = h.job.input.records[0];
+  const old = normalizeProduct({ title: 'Creatine Gummies', url: 'https://s0.example/products/creatine', currency: 'USD', soldCount: 100 }, site, '2026-10-22T00:00:00Z');
+  old.sourceMetrics.reviewCount = 12;
+  h.docs.set('products:' + old.id, old);
+  h.io.fetchPage = async (url) => ({ url, html: JSON.stringify({ products: [{ title: 'Creatine Gummies', handle: 'creatine', sold_count: 125, variants: [] }] }) });
+  await runProductsJob(h.job, h.io);
+  const saved = h.docs.get('products:' + old.id);
+  assert.equal(saved.sourceMetrics.soldCount, 125);
+  assert.equal(saved.sourceMetrics.reviewCount, 12);
+  assert.equal(saved.sourceMetrics.soldSourceField, 'Shopify catalog JSON.sold_count');
+});
