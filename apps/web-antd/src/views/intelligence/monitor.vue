@@ -30,6 +30,7 @@ import { focusedMonitorRows } from './focused-monitors';
 import TaskProgress from './components/TaskProgress.vue';
 import { audit, marketName, state } from './data';
 import { groupTasks } from './task-list';
+import { resourceTaskCanResume } from './product-resources';
 const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
@@ -67,6 +68,19 @@ watch(
   },
 );
 const retrying = ref('');
+const resuming = ref('');
+async function resumeResource(task: Task) {
+  if (!task.cloudJobId || !resourceTaskCanResume(task) || resuming.value) return;
+  resuming.value = task.cloudJobId;
+  try {
+    await cloudRequest<{ jobId: string; tasks: Task[] }>('server_product_resource_resume', { jobId: task.cloudJobId });
+    await syncCloudWorkspace();
+    if (selected.value?.cloudJobId === task.cloudJobId) await showDetails(selected.value);
+    message.success('已恢复同一任务，仅继续尚未执行步骤');
+  } catch (cause) {
+    message.error(cause instanceof Error ? cause.message : '恢复任务失败');
+  } finally { resuming.value = ''; }
+}
 async function retryTrends(task: Task) {
   if (!task.cloudJobId || retrying.value) return;
   retrying.value = task.cloudJobId;
@@ -213,7 +227,7 @@ const statuses = {
     <Drawer
       :open="!!selected"
       title="研究任务详情"
-      :width="960"
+      width="min(960px, 100vw)"
       @close="
         selected = undefined;
         detailsSequence++;
@@ -241,6 +255,8 @@ const statuses = {
           {{ selected.created }} · {{ statuses[selected.status] }}
         </p>
         <TaskProgress :task="selected" detail />
+        <Button v-if="selected.cloudJobId && resourceTaskCanResume(selected)" :loading="resuming === selected.cloudJobId" @click="resumeResource(selected)">继续未执行资源步骤</Button>
+        <p v-if="selected.researchProgress?.resource && selected.status === 'cancelled'" class="hci-subtle">恢复沿用原任务、预算与请求记录；已执行请求不重放。预算截断及未知扣费结果不能通过恢复增加额度。</p>
         <Button
           v-if="
             selected.cloudJobId &&
@@ -260,7 +276,10 @@ const statuses = {
         >
           <span class="hci-market-code">{{ i + 1 }}</span><span style="flex: 1">{{ step }}</span>
         </div>
-        <div v-if="isLiveTask(selected)" class="hci-evidence">
+        <div v-if="selected.researchProgress?.resource" class="hci-evidence">
+          本任务按已配置的资源路径执行。请求、累计预留与已确认用量分别记录；缺少回执的费用需人工核实。
+        </div>
+        <div v-else-if="isLiveTask(selected)" class="hci-evidence">
           本任务已调用已配置的真实采集服务。上方步骤会保留实际返回数量、失败原因和限流状态；外部费用以任务配置为准。
         </div>
         <div v-else class="hci-evidence">

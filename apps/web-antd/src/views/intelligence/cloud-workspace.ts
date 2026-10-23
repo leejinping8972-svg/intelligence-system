@@ -208,7 +208,7 @@ export async function cloudRequest<T>(
     return adminRequest<T>(
       action,
       input,
-      action === 'server_workspace_delta' ? 90_000 : 30_000,
+      action === 'server_workspace_delta' ? 90_000 : action === 'server_product_resource_categories' ? 120_000 : 30_000,
     );
   const { researchApiUrl, researchAccessKey } = state.settings;
   if (!researchApiUrl || !researchAccessKey)

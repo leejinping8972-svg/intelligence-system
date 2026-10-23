@@ -25,6 +25,8 @@ import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import ProductResourceEvidence from './components/ProductResourceEvidence.vue';
+import { resourceExportRecord } from './product-resources';
 import CoreListControls from './components/CoreListControls.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
@@ -273,6 +275,7 @@ async function exportProducts() {
     const records = serverMode ? await remote.exportRows(bulkIds.value) : bulkIds.value.length ? bulkSelected.value : rows.value;
     exportCsv('商品库.csv', records.map((p) => ({
       ...core.exportRecord(p),
+      ...resourceExportRecord(p),
       商品: p.title, 品牌: p.brand, 国家: p.market, 规格: p.size, 价格: p.price, 币种: p.currency,
       成分: p.ingredient, 剂量: p.dose, 功效卖点: p.benefits.join('、'), 卖点依据: p.benefitEvidence,
       成分分析: p.ingredientInsights.map((item) => `${item.name}｜${item.amount}｜${item.role}`).join('；'),
@@ -428,6 +431,7 @@ async function exportProducts() {
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
           <p class="hci-subtle">采集：<CollectionTime :at="productCollectedAt(product)" /></p>
           <ProductDecisionTags :product="product" />
+          <ProductResourceEvidence v-if="product.resourceEvidence" :evidence="product.resourceEvidence" compact />
           <div class="hci-product-meta">
             <Tag>{{ product.category }}</Tag
             ><Tag :color="product.reviewed ? 'green' : 'orange'">
@@ -529,6 +533,7 @@ async function exportProducts() {
         { title: '配方与成分', key: 'ingredient', width: 240 },
         { title: '价格', key: 'price', width: 130 },
         { title: '数据来源 / 独立站', key: 'source', width: 220 },
+        { title: '资源口径 / 覆盖', key: 'resourceEvidence', width: 270 },
         { title: '操作', key: 'actions', width: 210, fixed: 'right' },
       ])"
     >
@@ -603,6 +608,10 @@ async function exportProducts() {
             已采集 {{ record.collectionFields?.length || 0 }}/7 项
           </p></template
         >
+        <template v-else-if="column.key === 'resourceEvidence'">
+          <ProductResourceEvidence v-if="record.resourceEvidence" :evidence="record.resourceEvidence" compact />
+          <span v-else class="hci-subtle">未记录资源排名证据</span>
+        </template>
         <template v-else-if="column.key === 'actions'"
           ><Button size="small" @click="selected = record.id">详情</Button
           ><Button type="link" @click="toggleFavorite(record as Product)">{{

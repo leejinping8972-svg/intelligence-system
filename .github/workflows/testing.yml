@@ -53,6 +53,11 @@ jobs:
           node --test server/product-listing.test.mjs server/semrush-sites.test.mjs server/semrush-sites.integration.test.mjs
           node --test server/core-list-fields.test.mjs
           pnpm exec vitest run tests/core-list-metrics.test.ts
+      - name: Product resource routes, budgets, evidence and isolated storage (synthetic only)
+        run: |
+          node --test server/product-resource-domain.test.mjs server/product-resource-engine.test.mjs server/product-resource-public.test.mjs server/product-resource-sorftime.test.mjs
+          pnpm exec vitest run apps/web-antd/src/views/intelligence/__tests__/product-resources.test.ts
+          HCI_TEST_PGLITE_MODULE=./server/node_modules/@electric-sql/pglite/dist/index.js node --test server/product-resource.integration.test.mjs
       - name: Persona research budget and evidence boundaries (synthetic data)
         run: |
           node --test server/persona-research.test.mjs server/persona-business-records.test.mjs

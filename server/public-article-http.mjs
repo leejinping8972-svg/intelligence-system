@@ -86,7 +86,7 @@ export async function articleDns(hostname, resolve = lookup) {
     clearTimeout(timer);
   }
 }
-function readOnce(url, addresses) {
+export function readPublicArticleOnce(url, addresses) {
   return new Promise((resolve, reject) => {
     const signal = AbortSignal.timeout(25_000);
     const req = request(
@@ -180,7 +180,7 @@ export async function fetchPublicArticle(value, io = {}) {
   let url = articleHttpsUrl(value);
   for (let redirect = 0; redirect <= 2; redirect++) {
     const addresses = await articleDns(url.hostname, io.resolve || lookup);
-    const result = await (io.read || readOnce)(url, addresses);
+    const result = await (io.read || readPublicArticleOnce)(url, addresses);
     if (result.status === 200) return result;
     if (!result.location || redirect === 2)
       throw new ArticleError('原文重定向超过限制，未继续读取', 'blocked');

@@ -9,6 +9,9 @@ import { readKeyword } from './enrichment-jobs.mjs';
 import { collectorEnv } from './local-provider.mjs';
 import { readSorftimeToken } from './collector.js';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
+import { archiveResourceEvidence, validateResourceInput } from './product-resource-domain.mjs';
+import { runProductResourceDiscovery } from './product-resource-engine.mjs';
+import { assertResourceCategory, upsertResourceContent } from './product-resource-service.mjs';
 import {
   completionKey,
   productCompletionWork,
@@ -18,6 +21,7 @@ import {
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 export function validatePlatformProducts(input) {
   if (!uuid.test(input.requestId || '')) throw new Error('缺少有效提交编号');
+  if (input.resourceDiscovery === true) return validateResourceInput(input);
   const seeds = [
     ...new Set(
       String(input.terms || '')
@@ -94,6 +98,7 @@ export async function submitPlatformProducts(input, context = {}) {
       ])
     ).rows[0];
     if (old) return old;
+    if (value.resourceDiscovery) await assertResourceCategory(value.resourcePlan, c);
     const active = (
       await c.query(
         "SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
@@ -104,19 +109,47 @@ export async function submitPlatformProducts(input, context = {}) {
       active.some(
         (j) =>
           j.input.kind === value.kind &&
+          (value.resourceDiscovery
+            ? j.input.resourceDiscovery &&
+              j.input.market === value.market &&
+              j.input.resourcePlan?.routeId === value.resourcePlan.routeId &&
+              j.input.resourcePlan?.mode === value.resourcePlan.mode &&
+              (value.resourcePlan.mode === 'category'
+                ? j.input.resourcePlan.category?.id === value.resourcePlan.category?.id
+                : value.resourcePlan.mode === 'urls'
+                  ? j.input.resourcePlan.urls?.some((url) => value.resourcePlan.urls.includes(url))
+                  : j.input.resourcePlan.terms?.some((term) => value.resourcePlan.terms.includes(term)))
+            : !j.input.resourceDiscovery &&
           ((j.input.mode === 'enrich' &&
             j.input.markets?.includes(value.market)) ||
             (j.input.market === value.market &&
-              j.input.seeds?.some((s) => value.seeds.includes(s)))),
+              j.input.seeds?.some((s) => value.seeds.includes(s))))),
       )
     )
       throw new Error('这些关键词已有平台商品任务，请等待完成');
+    if (value.resourceDiscovery) {
+      const configNames = {
+        sorftime: ['provider:sorftime:mcp:v1', 'credentials'],
+        semrush: ['provider:semrush:mcp:v1'],
+        tiktok_shop: ['provider:scrapecreators:v1'],
+        scrapecreators: ['provider:scrapecreators:v1'],
+        instagram_scrapecreators: ['provider:scrapecreators:v1'],
+        brave: ['credentials'],
+      };
+      const names = configNames[value.resourcePlan.provider] || [];
+      if (names.length) {
+        const configured = await c.query(`SELECT name FROM provider_configs WHERE name IN (${names.map((_, index) => `$${index + 1}`).join(',')})`, names);
+        if (!configured.rows.length) throw new Error('请先在数据源与设置中配置所选来源；本次检查未读取凭据或调用供应商');
+      }
+    }
     if (
+      !value.resourceDiscovery &&
       value.providers.includes('sorftime') &&
       !(await readSorftimeToken(await collectorEnv()))
     )
       throw new Error('请先在数据源与设置中配置 Sorftime MCP Token');
     if (
+      !value.resourceDiscovery &&
       value.providers.includes('semrush') &&
       (
         await c.query('SELECT name FROM provider_configs WHERE name=$1', [
@@ -126,6 +159,7 @@ export async function submitPlatformProducts(input, context = {}) {
     )
       throw new Error('请先配置 Semrush MCP');
     if (
+      !value.resourceDiscovery &&
       value.providers.includes('tiktok_shop') &&
       (
         await c.query('SELECT name FROM provider_configs WHERE name=$1', [
@@ -180,6 +214,7 @@ export async function upsertProduct(patch) {
     const merged = withFormulaIntelligence(observeDiscovery(old, mergePlatformProduct(old, patch), 'product'));
     const value = appendCoreEvidence('products', old, merged, { ...patch, id: merged.id, market: merged.market, sourceProvider: merged.sourceProvider, sourcePlatform: merged.sourcePlatform, sourceProductId: merged.sourceProductId });
     await archiveCoreEvidence('products', value.id, value, (key, snapshot, only) => putDocument('workspace_documents', key, snapshot, only, c), old);
+    await archiveResourceEvidence(value, old, (key, snapshot, only) => putDocument('workspace_documents', key, snapshot, only, c));
     await putDocument('workspace_documents', name, value, false, c);
     await c.query('COMMIT');
     return value;
@@ -397,6 +432,7 @@ export async function runPlatformProducts(job, overrides = {}) {
     collect,
     saveCheckpoint,
     upsertProduct,
+    upsertContent: upsertResourceContent,
     readProduct,
     linkKeyword,
     now: () => Date.now(),
@@ -412,6 +448,7 @@ export async function runPlatformProducts(job, overrides = {}) {
     ...overrides,
   };
   const v = job.input;
+  if (v.resourceDiscovery) return runProductResourceDiscovery(job, io);
   const cp = {
     index: 0,
     requests: 0,

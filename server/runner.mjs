@@ -21,6 +21,7 @@ import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { tickMarketResearch } from './market-research.mjs';
 import { runMarketReport } from './market-report-jobs.mjs';
 import { runPersonaResearch } from './persona-research-store.mjs';
+import { resourceResumeAllowed } from './product-resource-domain.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   if (job.input.kind === 'semrush_sites') return job.input.markets.map((market) => ({
@@ -54,7 +55,7 @@ export function jobTasks(job) {
       persona_research: '人群画像需求研究',
       products: '站点商品采集',
       platform_products:
-        job.input.discoveryDay ? '每日关键词商品发现' : job.input.mode === 'enrich'
+        job.input.resourceCategories ? '平台真实类目查询' : job.input.resourceDiscovery ? '商品资源路径采集' : job.input.discoveryDay ? '每日关键词商品发现' : job.input.mode === 'enrich'
           ? '已有商品全量补全'
           : '平台商品发现与趋势补全',
     };
@@ -108,6 +109,13 @@ export function jobTasks(job) {
               semrushReserved: job.checkpoint.semrushReserved || 0,
               semrushUnitLimit: job.input.semrushUnitLimit,
               current: job.checkpoint.currentTerm || '',
+              ...(job.input.resourceDiscovery ? {
+                resource: { ...job.checkpoint.resourceProgress, budget: job.input.resourcePlan.budget, resumable: resourceResumeAllowed(job) },
+                credits: job.checkpoint.confirmedUsage?.scrapeCredits,
+                semrushUnits: job.checkpoint.confirmedUsage?.semrushUnits,
+                semrushReserved: job.checkpoint.reserved?.semrushUnits,
+                stopReason: (job.checkpoint.stopReasons || []).map((s) => s.message).join('；'),
+              } : {}),
             }
           : {}),
         transcriptSummary: job.checkpoint.transcriptSummary,

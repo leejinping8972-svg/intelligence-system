@@ -1,5 +1,6 @@
 import type { DiscoveryObservation } from './discovery';
 import type { CoreEvidence } from './core-list-metrics';
+import type { ResourceProductEvidence, ResourceTaskProgress } from './product-resources';
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
 import type {
   ProductCompletion,
@@ -160,6 +161,8 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  resourceEvidence?: ResourceProductEvidence;
+  resourceHistory?: ResourceProductEvidence[];
   coreEvidence?: CoreEvidence;
   coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   listSummary?: boolean;
@@ -351,6 +354,7 @@ export interface Review {
 }
 export interface Task {
   researchProgress?: {
+    resource?: ResourceTaskProgress;
     unlimitedRequests?: boolean;
     profile?: string;
     policyWarnings?: string[];

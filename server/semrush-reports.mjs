@@ -113,7 +113,7 @@ export const rowTerm = (row) =>
     .trim();
 const cacheName = (term, market) =>
   `semrush:metrics:${market}:${createHash('sha256').update(term.toLowerCase()).digest('hex')}`;
-export async function client() {
+export async function client(fetcher = fetch) {
   const { rows } = await pool.query(
     'SELECT value FROM provider_configs WHERE name=$1',
     ['provider:semrush:mcp:v1'],
@@ -129,7 +129,7 @@ export async function client() {
   );
   try {
     return {
-      c: await connectSemrush(key),
+      c: await connectSemrush(key, fetcher),
       key,
       semrushKeyId,
     };

@@ -6,9 +6,13 @@ import { computed, onUnmounted, ref } from 'vue';
 import { Alert, Progress, Table, Tag } from 'ant-design-vue';
 
 import { marketName } from '../data';
+import { resourceBudgetRows, resourceHasUnknownCharge, resourceModeLabels, resourceRankingLabels } from '../product-resources';
 
 const props = defineProps<{ task: Task; detail?: boolean }>();
 const p = computed(() => props.task.progress);
+const resource = computed(() => props.task.researchProgress?.resource);
+const resourceBudgets = computed(() => resource.value ? resourceBudgetRows(resource.value) : []);
+const resourceUnknownCharge = computed(() => !!resource.value && (resourceHasUnknownCharge(resource.value) || Number(props.task.researchProgress?.unknownCharges) > 0));
 const now = ref(Date.now());
 const timer = setInterval(() => (now.value = Date.now()), 1000);
 onUnmounted(() => clearInterval(timer));
@@ -125,13 +129,13 @@ const visibleRows = computed(() =>
         >商品 {{ task.researchProgress.products }} 件</span
       ><span v-else>原文 {{ task.researchProgress.evidence }} 条</span
       ><span
-        >请求 {{ task.researchProgress.requests }} /
+        >{{ resource ? '物理HTTP请求' : '请求' }} {{ task.researchProgress.requests }} /
         {{
           task.researchProgress.unlimitedRequests
             ? '补全请求不截断'
             : task.researchProgress.requestLimit
         }}</span
-      ><span v-if="task.researchProgress.credits !== undefined"
+      ><span v-if="!resource && task.researchProgress.credits !== undefined"
         >确认扣除 {{ task.researchProgress.credits }} credits</span
       >
     </div>
@@ -146,7 +150,7 @@ const visibleRows = computed(() =>
       件。逐项原因与历史曲线请到商品详情查看。
     </p>
     <p
-      v-if="task.researchProgress.kind === 'platform_products'"
+      v-if="task.researchProgress.kind === 'platform_products' && !resource"
       class="hci-subtle"
     >
       当前：{{ task.researchProgress.current || '等待处理' }}。Semrush 已确认
@@ -156,6 +160,41 @@ const visibleRows = computed(() =>
         task.researchProgress.semrushUnitLimit || '开放请求'
       }}；报告返回未知时不自动重放收费请求。结果到商品情报库按数据来源查看。
     </p>
+    <template v-if="resource">
+      <p class="hci-subtle">
+        {{ resource.routeId || '资源路径未记录' }} · {{ resource.mode ? resourceModeLabels[resource.mode] : '方式未记录' }} ·
+        {{ resource.requestedWindowDays ? `请求近${resource.requestedWindowDays}天销量统计` : '销量窗口未记录' }} ·
+        目标 {{ resource.requestedQuantity ?? '未记录' }} 件 · {{ resource.ranking ? resourceRankingLabels[resource.ranking] : '排名口径未记录' }}。
+        当前仅覆盖已采集样本，不能声称全平台或全类目前100。
+      </p>
+      <p v-if="resource.completedSteps !== undefined" class="hci-subtle">
+        已处理步骤 {{ resource.completedSteps }} / {{ resource.plannedSteps ?? '未记录' }}；接口发现页 {{ resource.discoveryPages ?? '未记录' }} / {{ resource.budget?.maxPages ?? '未记录' }}；公开落地页 {{ resource.publicPages ?? '未记录' }}（每个入口最多 {{ resource.budget?.maxPages ?? '未记录' }} 页）。
+      </p>
+      <p v-if="resource.contents" class="hci-subtle">已保存公开内容线索 {{ resource.contents }} 条；内容线索不计为已验证商品。</p>
+      <p v-if="resource.rankingSummary?.message" class="hci-subtle">{{ resource.rankingSummary.message }}</p>
+      <Alert v-if="resourceUnknownCharge" type="warning" show-icon message="来源扣费或请求结果未知，已停止该来源；需人工查账，不能自动重放。" style="margin: 12px 0" />
+      <Table
+        :data-source="resourceBudgets" row-key="key" size="small" :pagination="false" :scroll="{ x: 520 }"
+        :columns="[
+          { title: '独立预算单位', dataIndex: 'label', width: 200 },
+          { title: '已确认使用', key: 'confirmed', width: 110 },
+          { title: '累计预留', key: 'reserved', width: 110 },
+          { title: '任务上限', key: 'limit', width: 100 },
+        ]"
+      ><template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'confirmed'">{{ record.confirmed ?? '未确认' }}</template>
+        <template v-else-if="column.key === 'reserved'">{{ record.reserved ?? '未记录' }}</template>
+        <template v-else-if="column.key === 'limit'">{{ record.limit === 0 ? '关闭' : record.limit ?? '未记录' }}</template>
+      </template></Table>
+      <p class="hci-subtle">累计预留包含已确认部分，不是额外扣费；缺回执不按0处理。不同单位分别限制，不能相加作为费用。</p>
+      <div v-for="(stop, index) in resource.stopReasons || []" :key="stop.key || `${stop.reason}:${index}`" class="resource-stop-reason">
+        <Tag :color="stop.status === 'unknown' ? 'orange' : 'default'">{{ stop.status === 'budget_truncated' ? '预算截断' : stop.status === 'unknown' ? '结果未知' : stop.status === 'quantity_reached' ? '目标数量达到' : stop.status === 'not_found' ? '未收录' : stop.status === 'unsupported' ? '不支持' : stop.status === 'failed' ? '失败' : stop.status === 'not_executed' ? '未执行' : stop.status }}</Tag>
+        <span>{{ [stop.provider, stop.op, stop.message].filter(Boolean).join(' · ') }}</span>
+      </div>
+      <p v-for="(source, key) in resource.sourceStates || {}" :key="key" class="hci-subtle">
+        {{ key }}：{{ source.blocked ? '来源已停止' : '按来源独立限速' }}<span v-if="source.reason"> · {{ source.reason }}</span><span v-if="source.nextAllowedAt && !source.blocked"> · 下次可请求 {{ time(new Date(source.nextAllowedAt).toISOString()) }}</span>
+      </p>
+    </template>
     <p v-if="task.researchProgress.transcriptSummary" class="hci-subtle">
       视频转录：成功 {{ task.researchProgress.transcriptSummary.collected }} 条
       · 暂无文本 {{ task.researchProgress.transcriptSummary.unavailable }} 条 ·
@@ -555,6 +594,14 @@ const visibleRows = computed(() =>
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+.resource-stop-reason {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
 }
 .stage-grid {
   display: grid;
