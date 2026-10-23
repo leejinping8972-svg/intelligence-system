@@ -12,6 +12,7 @@ import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
+import { productChineseName } from './product-names.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 
 const collections = new Set([
@@ -22,7 +23,7 @@ const collections = new Set([
   'advertisers',
   'insightReports',
 ]);
-const MODEL_VERSION = 'workspace-reads-v5-listing-resources';
+const MODEL_VERSION = 'workspace-reads-v6-product-reference';
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
@@ -38,7 +39,7 @@ const listKeys = {
   keywords:
     'id term termZh market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
-    'id title brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery',
+    'id title titleZh publicDataEvidence brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery',
   sites:
     'id brand domain market platform type keyword keywordIds category mainProducts ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand market platform headline copy format productId status color archiveId pageId keywordIds query siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
@@ -154,6 +155,7 @@ export function projectRecord(collection, value) {
     value.termZh,
     value.seedTerm,
     value.title,
+    collection === 'products' ? productChineseName(value) : '',
     value.brand,
     value.domain,
     value.keyword,

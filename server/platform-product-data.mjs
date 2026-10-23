@@ -552,7 +552,7 @@ export function attributeTable(raw) {
 export function protectPlatformClientEdit(old, incoming) {
   if (!old?.sourceProvider || !old.sourceProductId)
     return old?.dataCompletion
-      ? { ...incoming, dataCompletion: old.dataCompletion }
+      ? { ...incoming, dataCompletion: old.dataCompletion, publicDataEvidence: old.publicDataEvidence }
       : incoming;
   return {
     ...old,

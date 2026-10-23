@@ -10,6 +10,7 @@ import {
   extractJsonLdProducts,
   productFromJsonLd,
   productPageUrls,
+  publicProductFields,
 } from './collector.js';
 import { mergeBusiness } from './market-jobs.mjs';
 import {
@@ -312,6 +313,7 @@ export function shopifyCatalogProducts(data, base, site) {
           '@type': 'Product',
           name: item.title,
           datePublished: item.published_at,
+          ...publicProductFields(item, 'Shopify catalog JSON'),
           brand: item.vendor || site.brand,
           description: item.body_html || '',
           size,
@@ -453,6 +455,7 @@ async function persistProducts(list, site, work, cp, io) {
     for (const field of ['benefits', 'ingredientInsights'])
       if (!p[field]?.length && old?.[field]?.length)
         preserved[field] = old[field];
+    if (old?.sourceMetrics) preserved.sourceMetrics = { ...old.sourceMetrics, ...product.sourceMetrics };
     if (old?.decisionData) preserved.decisionData = {
       ...old.decisionData,
       ...(product.decisionData?.listing ? { listing: product.decisionData.listing } : {}),

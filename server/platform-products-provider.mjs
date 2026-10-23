@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { connectSorftime, readSorftimeToken } from './collector.js';
 import { pool, putDocument } from './database.mjs';
 import { collectorEnv } from './local-provider.mjs';
+import { enrichPublicProduct } from './product-public-enrichment.mjs';
 import { productResourceRequest } from './product-resource-provider.mjs';
 import {
   matchesProductTerm,
@@ -22,6 +23,8 @@ import {
 } from './semrush-reports.mjs';
 
 export async function platformProductRequest(request, overrides = {}) {
+  if (request.provider === 'public_product' && request.op === 'public_detail')
+    return enrichPublicProduct(request, overrides);
   if (request.resourceDiscovery === true) return productResourceRequest(request, { ...overrides, legacyRequest: platformProductRequest });
   const cache =
     overrides.cache === false

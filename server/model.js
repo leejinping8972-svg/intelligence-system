@@ -445,6 +445,29 @@ function rollingTrendComparison(record, days) {
   return { ...compare("month", `\u8FD1${days}\u5929`, series, 0, { start: end - days * DAY, end, previousStart: end - 2 * days * DAY, previousEnd: end - days * DAY }), collectedAt: captured };
 }
 
+// server/product-public-evidence.mjs
+var publicEvidenceReasons = {
+  not_publicly_provided: "\u5B98\u7F51\u672A\u516C\u5F00\u8BE5\u5B57\u6BB5",
+  unsupported_product_url: "\u7F3A\u5C11\u53EF\u6838\u9A8C\u7684\u5B98\u7F51\u5546\u54C1\u94FE\u63A5",
+  rate_limited: "\u5B98\u7F51\u9650\u6D41\uFF0C\u672C\u6B21\u672A\u53D6\u5F97\u5B8C\u6574\u6570\u636E",
+  request_failed: "\u5B98\u7F51\u8BBF\u95EE\u5931\u8D25\uFF0C\u672C\u6B21\u672A\u53D6\u5F97\u5B8C\u6574\u6570\u636E",
+  product_redirect_mismatch: "\u9875\u9762\u8DF3\u8F6C\u540E\u65E0\u6CD5\u786E\u8BA4\u4ECD\u662F\u540C\u4E00\u5546\u54C1",
+  product_response_mismatch: "\u8FD4\u56DE\u9875\u9762\u4E0E\u8BF7\u6C42\u5546\u54C1\u4E0D\u4E00\u81F4",
+  invalid_product_json: "\u5B98\u7F51\u5546\u54C1\u6570\u636E\u683C\u5F0F\u65E0\u6CD5\u8BC6\u522B",
+  conflicting_public_values: "\u516C\u5F00\u6765\u6E90\u5B57\u6BB5\u76F8\u4E92\u51B2\u7A81\uFF0C\u9700\u6838\u5B9E",
+  request_limit: "\u8BF7\u6C42\u9884\u7B97\u5DF2\u7528\u5B8C\uFF0C\u672A\u5B8C\u6210\u5B57\u6BB5\u6838\u9A8C"
+};
+function publicEvidenceReason(reason) {
+  return publicEvidenceReasons[reason] || "\u672A\u53D6\u5F97\u53EF\u6838\u9A8C\u7684\u516C\u5F00\u5B57\u6BB5";
+}
+function publicEvidenceStatus(reason) {
+  if (reason === "not_publicly_provided") return "not_disclosed";
+  if (reason === "request_limit") return "budget_limited";
+  if (reason === "unsupported_product_url") return "unsupported";
+  if (["rate_limited", "request_failed", "product_redirect_mismatch", "product_response_mismatch", "invalid_product_json"].includes(reason)) return "failed";
+  return "unverified";
+}
+
 // server/discovery-newness.mjs
 var DAY2 = 864e5;
 function validDiscoveryDate(value) {
@@ -678,6 +701,14 @@ function productMetrics(p, days, context = {}) {
   const sold = sm?.soldCount;
   const raw = sm?.soldRaw;
   const listing = discoveryDecision(p, "product");
+  const publicEvidence = p.publicDataEvidence;
+  const publicCompletion = p.dataCompletion?.public_detail;
+  const missingPublicMetric = (field) => {
+    const evidence = publicEvidence?.[field];
+    if (publicCompletion && ["queued", "running", "failed", "unknown", "cancelled", "unsupported"].includes(publicCompletion.status) && (!publicEvidence || Date.parse(publicCompletion.at || "") >= Date.parse(publicEvidence.checkedAt)))
+      return { status: missingStatus(publicCompletion.status, publicCompletion.message), reason: publicCompletion.message, collectedAt: publicCompletion.at || "" };
+    return evidence ? { status: publicEvidenceStatus(evidence.reason), reason: publicEvidenceReason(evidence.reason), collectedAt: publicEvidence.checkedAt } : {};
+  };
   const result = [
     ...productSales(p, days),
     metric(p, "listingDate", "\u5546\u54C1\u4E0A\u67B6\u65F6\u95F4", listing.evidenceDate || null, "", {
@@ -688,20 +719,25 @@ function productMetrics(p, days, context = {}) {
       collectedAt: p.decisionData?.listing?.collectedAt || "",
       evidenceUrl: listing.evidenceUrl,
       period: "\u6765\u6E90\u4E0A\u67B6\u65E5\u671F",
-      reason: listing.reason
+      reason: listing.reason + (p.decisionData?.listing?.sourceField ? " \u6765\u6E90\u5B57\u6BB5\uFF1A" + p.decisionData.listing.sourceField : ""),
+      ...!listing.evidenceDate ? missingPublicMetric("listing") : {}
     }),
     metric(
       p,
       "cumulativeSold",
-      "\u5E73\u53F0\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E",
+      sm?.soldProvider ? "\u5B98\u7F51\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E" : "\u5E73\u53F0\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E",
       raw || (validNumber(sold) ? sold : null),
       "\u4EF6",
       {
         ...meta,
+        source: sm?.soldProvider || meta.source,
+        platform: sm?.soldPlatform || meta.platform,
+        evidenceUrl: sm?.soldEvidenceUrl || meta.evidenceUrl,
         collectedAt: sm?.soldCollectedAt || meta.collectedAt,
         period: "\u7D2F\u8BA1\u8D77\u7B97\u65E5\u672A\u77E5\uFF1B\u5F53\u524D\u5FEB\u7167",
         precision: sm?.soldPrecision || "\u672A\u77E5",
-        reason: raw || validNumber(sold) ? "\u7D2F\u8BA1\u5C55\u793A\u4E0D\u7B49\u4E8E\u5468\u671F\u9500\u91CF\u6216\u51C0\u6210\u4EA4" : "\u6765\u6E90\u672A\u8FD4\u56DE\u660E\u786E\u7684\u7D2F\u8BA1\u552E\u51FA\u4EF6\u6570"
+        reason: raw || validNumber(sold) ? "\u7D2F\u8BA1\u5C55\u793A\u4E0D\u7B49\u4E8E\u5468\u671F\u9500\u91CF\u6216\u51C0\u6210\u4EA4" + (sm?.soldSourceField ? "\uFF1B\u6765\u6E90\u5B57\u6BB5\uFF1A" + sm.soldSourceField : "") : "\u6765\u6E90\u672A\u8FD4\u56DE\u660E\u786E\u7684\u7D2F\u8BA1\u552E\u51FA\u4EF6\u6570",
+        ...!raw && !validNumber(sold) ? missingPublicMetric("sold") : {}
       }
     ),
     metric(

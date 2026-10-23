@@ -25,12 +25,14 @@ import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import ProductChineseName from './components/ProductChineseName.vue';
 import ProductResourceEvidence from './components/ProductResourceEvidence.vue';
 import { resourceExportRecord } from './product-resources';
 import CoreListControls from './components/CoreListControls.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
 import { matchesListingRange, recentListingRange } from '../../../../../server/product-listing.mjs';
+import { productChineseName } from '../../../../../server/product-names.mjs';
 const core = useCoreList('products');
 const { preset: corePreset, period: corePeriod } = core;
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
@@ -184,7 +186,7 @@ watch(
 const rows = computed(() => serverMode ? remote.rows.value :
   filteredProducts.value.filter(
     (p) =>
-      `${p.title} ${p.brand} ${p.size} ${p.form} ${p.claim} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')} ${state.sites.find((site) => site.id === p.siteId)?.domain || ''} ${state.keywords
+      `${p.title} ${productChineseName(p)} ${p.brand} ${p.size} ${p.form} ${p.claim} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')} ${state.sites.find((site) => site.id === p.siteId)?.domain || ''} ${state.keywords
         .filter((keyword) => keyword.productIds.includes(p.id))
         .map((keyword) => `${keyword.term} ${keyword.termZh || ''}`)
         .join(' ')}`
@@ -276,7 +278,7 @@ async function exportProducts() {
     exportCsv('商品库.csv', records.map((p) => ({
       ...core.exportRecord(p),
       ...resourceExportRecord(p),
-      商品: p.title, 品牌: p.brand, 国家: p.market, 规格: p.size, 价格: p.price, 币种: p.currency,
+      商品: p.title, 中文参考: productChineseName(p) || '中文参考待补充', 品牌: p.brand, 国家: p.market, 规格: p.size, 价格: p.price, 币种: p.currency,
       成分: p.ingredient, 剂量: p.dose, 功效卖点: p.benefits.join('、'), 卖点依据: p.benefitEvidence,
       成分分析: p.ingredientInsights.map((item) => `${item.name}｜${item.amount}｜${item.role}`).join('；'),
       商品图片: p.imageUrl || '', 数据来源: [p.sourceProvider, p.sourcePlatform].filter(Boolean).join(' · '),
@@ -428,6 +430,7 @@ async function exportProducts() {
           <button class="hci-product-title hci-clamp-2" @click="selected = product.id">
             {{ product.title }}
           </button>
+          <ProductChineseName :product="product" />
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
           <p class="hci-subtle">采集：<CollectionTime :at="productCollectedAt(product)" /></p>
           <ProductDecisionTags :product="product" />
@@ -562,6 +565,7 @@ async function exportProducts() {
                 @click="selected = record.id"
                 >{{ record.title }}</Button
               >
+              <ProductChineseName :product="record as Product" />
               <p class="hci-subtle">{{ record.brand }}</p>
             </div>
           </div></template
@@ -667,6 +671,7 @@ async function exportProducts() {
       <div class="hci-comparison">
         <div v-for="p in comparison" :key="p.id">
           <h3>{{ p.title }}</h3>
+          <ProductChineseName :product="p" />
           <p>{{ p.brand }} · {{ marketName(p.market) }}</p>
           <p class="hci-price">
             {{ p.price > 0 ? money(p.price, p.currency) : '价格待获取' }}
@@ -697,6 +702,10 @@ async function exportProducts() {
   gap: 12px;
   align-items: center;
   min-width: 0;
+}
+.product-list-name > div {
+  min-width: 0;
+  max-width: 242px;
 }
 .product-list-thumb {
   width: 66px;

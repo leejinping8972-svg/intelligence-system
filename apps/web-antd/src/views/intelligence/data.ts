@@ -176,8 +176,20 @@ export interface Product {
   };
   discovery?: DiscoveryObservation;
   lastCollectedAt?: string;
+  publicDataEvidence?: {
+    checkedAt: string;
+    evidenceUrl: string;
+    requests: number;
+    listing: { status: 'observed' | 'preserved' | 'missing'; reason?: string; evidenceUrl: string; sourceField?: string };
+    sold: { status: 'observed' | 'preserved' | 'missing'; reason?: string; evidenceUrl: string; sourceField?: string };
+    errors?: Array<{ url: string; reason: string; status?: number }>;
+  };
   sourceMetrics?: {
     collectedAt?: string;
+    soldEvidenceUrl?: string;
+    soldSourceField?: string;
+    soldProvider?: string;
+    soldPlatform?: string;
     rating?: number;
     reviewCount?: number;
     monthlySales?: number;
@@ -217,6 +229,7 @@ export interface Product {
   sourceUrl?: string;
   id: string;
   title: string;
+  titleZh?: string;
   brand: string;
   market: Market;
   category: string;

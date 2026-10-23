@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { appendCoreEvidence, archiveCoreEvidence } from './core-evidence.mjs';
 import { lock, unlock, pool, putDocument } from './database.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
+import { publicProductUrl } from './product-public-enrichment.mjs';
 import { mergePlatformProduct } from './platform-product-data.mjs';
 import { observeDiscovery } from './discovery-newness.mjs';
 import { readKeyword } from './enrichment-jobs.mjs';
@@ -274,8 +275,7 @@ const workId = (w) =>
     w.trendType || '',
   ].join('|');
 
-export async function submitPlatformProductEnrichment(input) {
-  if (!uuid.test(input.requestId || '')) throw new Error('缺少有效提交编号');
+function enrichmentIds(input) {
   const ids = input.productIds;
   if (
     !Array.isArray(ids) ||
@@ -285,6 +285,28 @@ export async function submitPlatformProductEnrichment(input) {
     ids.some((id) => typeof id !== 'string' || id.length > 200)
   )
     throw new Error('请选择有效且不重复的商品');
+  return ids;
+}
+export function enrichmentPlan(products) {
+  const sorftime = products.filter((p) => p.sourceProvider === 'Sorftime' && /^[A-Z0-9]{10}$/.test(p.sourceProductId || '') && ['US', 'MX'].includes(p.market)).length;
+  const publicCount = products.filter((p) => publicProductUrl(p)).length;
+  const estimatedRequests = sorftime * 5 + publicCount * 2;
+  return { total: products.length, sorftime, public: publicCount, unsupported: products.length - sorftime - publicCount, estimatedRequests, defaultMaxRequests: Math.max(1, Math.min(150, estimatedRequests)) };
+}
+export async function previewPlatformProductEnrichment(input) {
+  const ids = enrichmentIds(input);
+  const products = [];
+  for (let start = 0; start < ids.length; start += 250) {
+    const batch = ids.slice(start, start + 250);
+    const rows = (await pool.query('SELECT value FROM workspace_documents WHERE name IN (' + batch.map((_, i) => '$' + (i + 1)).join(',') + ')', batch.map((id) => 'business:products:' + id))).rows;
+    if (rows.length !== batch.length) throw new Error('选中的商品已不存在，请刷新列表');
+    products.push(...rows.map((row) => row.value));
+  }
+  return enrichmentPlan(products);
+}
+export async function submitPlatformProductEnrichment(input) {
+  if (!uuid.test(input.requestId || '')) throw new Error('缺少有效提交编号');
+  const ids = enrichmentIds(input);
   const c = await pool.connect();
   let locked = false;
   try {
@@ -332,7 +354,7 @@ export async function submitPlatformProductEnrichment(input) {
       !(await readSorftimeToken(await collectorEnv()))
     )
       throw new Error('请先配置 Sorftime MCP Token');
-    const maxRequests = Number(input.maxRequests ?? Math.max(1, products.length * 5));
+    const maxRequests = Number(input.maxRequests ?? enrichmentPlan(products).defaultMaxRequests);
     if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100_000)
       throw new Error('商品补全请求上限须为1～100000');
     const id = randomUUID(),
@@ -340,13 +362,14 @@ export async function submitPlatformProductEnrichment(input) {
     const value = {
       kind: 'platform_products',
       mode: 'enrich',
+      publicCompletionVersion: 1,
       completeAll: true,
       enrich: input.enrich !== false,
       trend: true,
       seeds: [],
       productIds: ids,
       markets: [...new Set(products.map((p) => p.market))],
-      providers: ['sorftime'],
+      providers: [...new Set(products.flatMap((p) => publicProductUrl(p) ? ['public_product'] : p.sourceProvider === 'Sorftime' ? ['sorftime'] : []))],
       maxProducts: ids.length,
       perKeyword: 1,
       maxRequests,
@@ -358,14 +381,20 @@ export async function submitPlatformProductEnrichment(input) {
     for (const p of products) {
       const work = productCompletionWork(p, value);
       const states = {};
-      if (work.length === 0) states.trend = unsupportedCompletion(p, id, at);
+      if (work.length === 0) {
+        const official = p.sourceProvider !== 'Sorftime';
+        states[official ? 'public_detail' : 'trend'] = {
+          ...unsupportedCompletion(p, id, at),
+          ...(official ? { message: '缺少可核验的官网商品链接，当前来源无法补全该商品的上架时间和销量' } : {}),
+        };
+      }
       for (const step of work) {
         const key = completionKey(step),
           current = p.dataCompletion?.[key];
         const fresh =
           current?.status === 'completed' &&
           Date.now() - Date.parse(current.at) < 86_400_000;
-        if (!input.refresh && fresh) states[key] = { ...current, jobId: id };
+        if (!input.refresh && fresh && (step.provider !== 'public_product' || p.publicDataEvidence?.listing?.status === 'observed' && p.publicDataEvidence?.sold?.status === 'observed')) states[key] = { ...current, jobId: id };
         else {
           value.initialWork.push(step);
           states[key] = {
@@ -502,7 +531,9 @@ export async function runPlatformProducts(job, overrides = {}) {
               message:
                 status === 'cancelled'
                   ? '任务已取消，可重新补全未完成部分'
-                  : '任务未完成该步骤，请查看日志后重试',
+                  : cp.stopReason === 'request_limit'
+                    ? '达到手动设置的请求预算，本步骤未执行'
+                    : '任务未完成该步骤，请查看日志后重试',
             };
             cp.completion[id][key] = ended;
             await io.upsertProduct({ id, dataCompletion: { [key]: ended } });
@@ -533,6 +564,22 @@ export async function runPlatformProducts(job, overrides = {}) {
     }
   }
   const w = cp.work[cp.index];
+  if (w.provider === 'public_product' && !cp.inFlight) {
+    const product = await io.readProduct(w.productId);
+    const url = product && publicProductUrl(product);
+    const host = url ? new URL(url).hostname : '';
+    if (host && cp.publicBlockedHosts?.[host]) {
+      cp.failures++;
+      await setCompletion(w, 'failed', '该官网本批已返回限流或访问受限，后续商品未发起请求；可稍后重新补全');
+      cp.index++;
+      cp.nextRunAt = io.now() + 1500;
+      return cp.index >= cp.work.length ? finish('partial') : io.saveCheckpoint(job, cp, 'running');
+    }
+    if (host && (cp.publicDomainNextAt?.[host] || 0) > io.now()) {
+      cp.nextRunAt = cp.publicDomainNextAt[host];
+      return io.saveCheckpoint(job, cp, 'running');
+    }
+  }
   const termKey = `${w.provider}:${w.term}`;
   cp.currentTerm = w.term || w.productId;
   const addWork = (work) => {
@@ -591,11 +638,16 @@ export async function runPlatformProducts(job, overrides = {}) {
         cp.logs.push(`${w.term}：商品数量已达上限，跳过后续发现请求`);
       } else {
         if (!cp.inFlight) {
-          cp.requests++;
+          const allowance = w.provider === 'public_product' ? Math.min(2, v.maxRequests - cp.requests) : 1;
+          cp.requests += allowance;
+          if (w.provider === 'public_product') {
+            const url = publicProductUrl(product);
+            if (url) (cp.publicDomainNextAt ||= {})[new URL(url).hostname] = io.now() + 30_000;
+          }
           if (isDiscovery) cp.discoveryRequests++;
           await setCompletion(w, 'running', '正在向平台请求数据');
           cp.semrushReserved += units;
-          cp.inFlight = { index: cp.index, units };
+          cp.inFlight = { index: cp.index, units, ...(w.provider === 'public_product' ? { requestAllowance: allowance } : {}) };
           await io.saveCheckpoint(job, cp, 'running');
         }
         const request = {
@@ -604,10 +656,23 @@ export async function runPlatformProducts(job, overrides = {}) {
           market: product?.market || v.market,
           refreshEmpty: v.mode === 'enrich',
           discoveryDay: v.discoveryDay,
+          ...(w.provider === 'public_product' ? { publicRequestLimit: cp.inFlight.requestAllowance || 1 } : {}),
           limit: needsDiscovery ? limit : undefined,
           product,
         };
         const result = await io.collect(job, `platform:${cp.index}`, request);
+        if (w.provider === 'public_product') {
+          const reserved = cp.inFlight.requestAllowance || 1;
+          if (!Number.isInteger(result.providerCalls) || result.providerCalls < 0 || result.providerCalls > reserved)
+            throw new Error('公开商品返回请求计数异常，未释放预留预算');
+          cp.requests -= reserved - result.providerCalls;
+          const errors = result.patch?.publicDataEvidence?.errors || [];
+          if (errors.length) cp.failures++;
+          if (errors.some((e) => e.reason === 'rate_limited' || [401, 403].includes(e.status))) {
+            const url = publicProductUrl(product);
+            if (url) (cp.publicBlockedHosts ||= {})[new URL(url).hostname] = true;
+          }
+        }
         if (w.provider === 'tiktok_shop' && Number.isFinite(result.providerCalls))
           cp.creditsCharged = (cp.creditsCharged || 0) + result.providerCalls;
         if (Number.isFinite(result.apiUnits) && result.apiUnits >= 0)
@@ -733,7 +798,8 @@ export async function runPlatformProducts(job, overrides = {}) {
           await io.upsertProduct(patch);
           await setCompletion(
             w,
-            result.empty || (result.series && result.series.points.length === 0)
+            result.empty && result.patch?.publicDataEvidence?.errors?.length ? 'failed'
+              : result.empty || (result.series && result.series.points.length === 0)
               ? 'empty'
               : 'completed',
             result.message || '已保存来源数据；未返回的字段保持未知',

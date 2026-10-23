@@ -10,11 +10,11 @@ export function evidenceSnapshot(kind, value) {
   if (kind === 'products' && sm?.collectedAt)
     snapshot = {
       at: sm.collectedAt,
-      source: value.sourceProvider || '官网公开详情',
-      platform: value.sourcePlatform || '',
+      source: sold !== undefined ? sm.soldProvider || value.sourceProvider || '官网公开详情' : value.sourceProvider || '官网公开详情',
+      platform: sold !== undefined ? sm.soldPlatform || value.sourcePlatform || '' : value.sourcePlatform || '',
       scope: value.sourceProductId || value.id,
       market: value.market,
-      evidenceUrl: value.evidenceUrl || value.sourceUrl || '',
+      evidenceUrl: sold !== undefined ? sm.soldEvidenceUrl || value.evidenceUrl || value.sourceUrl || '' : value.evidenceUrl || value.sourceUrl || '',
       ...(sold === undefined ? {} : { sold }),
       soldRaw: sm.soldRaw,
       soldPrecision:

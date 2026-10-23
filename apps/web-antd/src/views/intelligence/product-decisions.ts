@@ -34,6 +34,8 @@ export type ProductCompletion = Record<string, ProductCompletionState>;
 export interface ProductDecisionData {
   listing?: {
     date: string;
+    rawDate?: string;
+    sourceField?: string;
     provider: string;
     platform: string;
     market: string;

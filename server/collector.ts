@@ -18,3 +18,5 @@ export {
   calculate30DayGrowth,
   trendSeriesMessage,
 } from '../workers/site-discovery/src/index.js';
+
+export { publicProductFields } from '../workers/site-discovery/src/product-public-fields.js';
