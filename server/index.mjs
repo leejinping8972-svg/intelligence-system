@@ -611,6 +611,8 @@ const server = createServer(async (request, response) => {
     }
     const user = internal
       ? { id: null, role: 'admin' }
+      : ['auth_login', 'auth_setup'].includes(input.action)
+        ? null
       : await sessionUser(
           request,
           ![

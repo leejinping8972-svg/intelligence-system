@@ -11,6 +11,11 @@ export interface AdminUser {
   createdAt: number;
   lastLoginAt: null | number;
 }
+interface SessionStatus {
+  setupRequired: boolean;
+  ssoEnabled: boolean;
+  user: AdminUser | null;
+}
 export const serverMode = import.meta.env.VITE_HCI_SERVER === 'true';
 export const session = reactive({
   checked: false,
@@ -18,11 +23,25 @@ export const session = reactive({
   ssoEnabled: false,
   user: null as AdminUser | null,
 });
+let sessionRequest: Promise<SessionStatus> | undefined;
+let sessionRevision = 0;
+
+function applySession(result: Partial<SessionStatus>) {
+  Object.assign(session, result, { checked: true });
+  if (session.user) startUserActivity();
+}
+
+function invalidateSessionRequest() {
+  sessionRevision += 1;
+  sessionRequest = undefined;
+}
+
 export async function adminRequest<T = Record<string, unknown>>(
   action: string,
   input: Record<string, unknown> = {},
   timeout = 30_000,
 ): Promise<T> {
+  const revision = sessionRevision;
   const response = await fetch('/api', {
     method: 'POST',
     credentials: 'same-origin',
@@ -32,19 +51,40 @@ export async function adminRequest<T = Record<string, unknown>>(
   });
   const result = await response.json();
   if (!response.ok) {
-    if (response.status === 401) session.user = null;
+    if (response.status === 401 && revision === sessionRevision) {
+      invalidateSessionRequest();
+      session.user = null;
+    }
     throw new Error(result.error || '请求未完成，请稍后重试');
   }
   return result as T;
 }
-export async function refreshSession() {
-  const result = await adminRequest<{
-    setupRequired: boolean;
-    ssoEnabled: boolean;
-    user: AdminUser | null;
-  }>('auth_status');
-  Object.assign(session, result, { checked: true });
-  if (session.user) startUserActivity();
+export function refreshSession() {
+  if (sessionRequest) return sessionRequest;
+  const revision = sessionRevision;
+  const request = adminRequest<SessionStatus>('auth_status').then((result) => {
+    // A status request started before login/logout must not replace that result.
+    if (revision === sessionRevision) applySession(result);
+    return result;
+  });
+  sessionRequest = request;
+  const clear = () => {
+    if (sessionRequest === request) sessionRequest = undefined;
+  };
+  void request.then(clear, clear);
+  return request;
+}
+
+export async function login(
+  input: Record<string, unknown>,
+  setup = false,
+) {
+  const result = await adminRequest<{ user: AdminUser }>(
+    setup ? 'auth_setup' : 'auth_login',
+    input,
+  );
+  invalidateSessionRequest();
+  applySession({ user: result.user, setupRequired: false });
   return result;
 }
 let activityStarted = false;
@@ -71,6 +111,7 @@ export function startSso(routePath = '/overview') {
 }
 export async function logout() {
   await adminRequest('auth_logout');
+  invalidateSessionRequest();
   session.user = null;
   leaveSession();
 }

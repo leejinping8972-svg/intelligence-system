@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { Alert, Button, Form, Input } from 'ant-design-vue';
 
 import { state } from './data';
-import { adminRequest, refreshSession, session, startSso } from './session';
+import { login, session, startSso } from './session';
 
 const router = useRouter();
 const route = useRoute();
@@ -31,16 +31,15 @@ async function submit() {
   }
   busy.value = true;
   try {
-    await adminRequest(setup.value ? 'auth_setup' : 'auth_login', {
+    await login({
       username: form.username,
       displayName: form.displayName,
       password: form.password,
       setupCode: form.setupCode,
-    });
+    }, setup.value);
     form.password = '';
     form.confirmPassword = '';
     form.setupCode = '';
-    await refreshSession();
     await router.replace('/overview');
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '登录失败';

@@ -75,22 +75,51 @@ export async function sessionUser(request, touch = false) {
     );
   return user || null;
 }
-async function signIn(user, response) {
+let nextSessionCleanupAt = 0;
+function scheduleSessionCleanup(now) {
+  if (now < nextSessionCleanupAt) return;
+  nextSessionCleanupAt = now + 15 * 60_000;
+  // Expiry is enforced by sessionUser; housekeeping must not delay sign-in.
+  setImmediate(async () => {
+    try {
+      await pool.query(
+        'DELETE FROM admin_sessions WHERE expires_at<$1 OR last_seen_at<$2',
+        [now, now - 30 * 60_000],
+      );
+    } catch {
+      nextSessionCleanupAt = Date.now() + 60_000;
+      console.warn(
+        'Expired session cleanup failed; retrying after one minute.',
+      );
+    }
+  });
+}
+async function signIn(user, response, { action, attemptKey } = {}) {
   const now = Date.now();
   const token = randomBytes(32).toString('hex');
-  await pool.query(
-    'DELETE FROM admin_sessions WHERE expires_at<$1 OR last_seen_at<$2',
-    [now, now - 30 * 60_000],
-  );
-  await pool.query(
-    'INSERT INTO admin_sessions(token_hash,user_id,created_at,expires_at,last_seen_at) VALUES($1,$2,$3,$4,$3)',
-    [sha(token), user.id, now, now + 12 * 60 * 60_000],
-  );
-  await pool.query('UPDATE admin_users SET last_login_at=$2 WHERE id=$1', [
-    user.id,
-    now,
-  ]);
+  const writes = [
+    pool.query(
+      'INSERT INTO admin_sessions(token_hash,user_id,created_at,expires_at,last_seen_at) VALUES($1,$2,$3,$4,$3)',
+      [sha(token), user.id, now, now + 12 * 60 * 60_000],
+    ),
+    pool.query('UPDATE admin_users SET last_login_at=$2 WHERE id=$1', [
+      user.id,
+      now,
+    ]),
+  ];
+  if (attemptKey)
+    writes.push(
+      pool.query('DELETE FROM admin_login_attempts WHERE attempt_key=$1', [
+        attemptKey,
+      ]),
+    );
+  if (action) writes.push(audit(user, action, user.id));
+  // Request accounting must cover remaining writes even when one has failed.
+  const results = await Promise.allSettled(writes);
+  const failed = results.find((result) => result.status === 'rejected');
+  if (failed) throw failed.reason;
   cookie(response, token, 12 * 60 * 60);
+  scheduleSessionCleanup(now);
   return { user: publicUser({ ...user, last_login_at: now }) };
 }
 async function audit(actor, action, target = '') {
@@ -102,14 +131,11 @@ async function audit(actor, action, target = '') {
 export async function adminSsoSignIn(user, response, peerId) {
   requireAdmin(user);
   if (!user.enabled) throw new Error('管理员已停用');
-  await audit(user, `单点登录 ${peerId}`, user.id);
-  return signIn(user, response);
+  return signIn(user, response, { action: `单点登录 ${peerId}` });
 }
 export async function setupRequired() {
-  const { rows } = await pool.query(
-    'SELECT count(*)::integer AS total FROM admin_users',
-  );
-  return Number(rows[0].total) === 0;
+  const { rows } = await pool.query('SELECT id FROM admin_users LIMIT 1');
+  return rows.length === 0;
 }
 export function requireAdmin(user) {
   if (user?.role !== 'admin')
@@ -159,7 +185,10 @@ async function failedAttempt(key, ipKey) {
 }
 export async function authAction(input, request, response, user) {
   if (input.action === 'auth_status')
-    return { setupRequired: await setupRequired(), user: publicUser(user) };
+    return {
+      setupRequired: user?.id ? false : await setupRequired(),
+      user: publicUser(user),
+    };
   if (input.action === 'auth_login' || input.action === 'auth_setup') {
     const ip = String(
       request.headers['x-forwarded-for'] || request.socket.remoteAddress,
@@ -172,11 +201,19 @@ export async function authAction(input, request, response, user) {
       .toLowerCase();
     const ipKey = sha(`ip|${ip}`);
     const key = sha(`${ip}|${username}`);
-    const blocked = await pool.query(
-      'SELECT locked_until FROM admin_login_attempts WHERE (attempt_key=$1 OR attempt_key=$2) AND locked_until>$3',
-      [key, ipKey, Date.now()],
+    const found = await pool.query(
+      input.action === 'auth_setup'
+        ? 'SELECT locked_until FROM admin_login_attempts WHERE (attempt_key=$1 OR attempt_key=$2) AND locked_until>$3'
+        : 'SELECT u.*,EXISTS(SELECT 1 FROM admin_login_attempts WHERE attempt_key IN ($1,$2) AND locked_until>$3) AS login_blocked FROM (SELECT 1 AS marker) AS login_request LEFT JOIN admin_users u ON u.username=$4',
+      input.action === 'auth_setup'
+        ? [key, ipKey, Date.now()]
+        : [key, ipKey, Date.now(), username],
     );
-    if (blocked.rows.length)
+    if (
+      input.action === 'auth_setup'
+        ? found.rows.length
+        : found.rows[0]?.login_blocked
+    )
       throw Object.assign(new Error('尝试次数过多，请15分钟后重试'), {
         status: 429,
       });
@@ -214,14 +251,9 @@ export async function authAction(input, request, response, user) {
           created_at: now,
         };
       });
-      await audit(created, '创建首位管理员', created.id);
-      return signIn(created, response);
+      return signIn(created, response, { action: '创建首位管理员' });
     }
-    const found = await pool.query(
-      'SELECT * FROM admin_users WHERE username=$1',
-      [username],
-    );
-    const foundUser = found.rows[0];
+    const foundUser = found.rows[0]?.id ? found.rows[0] : undefined;
     if (
       !(await verifyPassword(input.password, foundUser?.password_hash)) ||
       !foundUser?.enabled
@@ -229,11 +261,7 @@ export async function authAction(input, request, response, user) {
       await failedAttempt(key, ipKey);
       throw new Error('账号或密码错误，或账号已停用');
     }
-    await pool.query('DELETE FROM admin_login_attempts WHERE attempt_key=$1', [
-      key,
-    ]);
-    await audit(foundUser, '登录', foundUser.id);
-    return signIn(foundUser, response);
+    return signIn(foundUser, response, { action: '登录', attemptKey: key });
   }
   if (!user) throw Object.assign(new Error('请先登录'), { status: 401 });
   if (input.action === 'auth_touch') return { active: true };

@@ -2,18 +2,18 @@ import { createApp, nextTick } from 'vue';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { routerKey } from '../apps/web-antd/node_modules/vue-router/dist/vue-router.js';
+import { routeLocationKey, routerKey } from '../apps/web-antd/node_modules/vue-router/dist/vue-router.js';
 
 const mocks = vi.hoisted(() => ({
-  request: vi.fn(),
-  refresh: vi.fn(),
+  login: vi.fn(),
   replace: vi.fn(),
-  session: { setupRequired: true },
+  session: { setupRequired: true, ssoEnabled: false },
+  startSso: vi.fn(),
 }));
 vi.mock('../apps/web-antd/src/views/intelligence/session', () => ({
-  adminRequest: mocks.request,
-  refreshSession: mocks.refresh,
+  login: mocks.login,
   session: mocks.session,
+  startSso: mocks.startSso,
 }));
 import Login from '../apps/web-antd/src/views/intelligence/admin-login.vue';
 
@@ -34,16 +34,19 @@ async function validSetup() {
   await fill('8～128个字符，支持密码管理器', 'QA-test-password-123');
   await fill('再次输入密码', 'QA-test-password-123');
 }
-beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.session.setupRequired = true;
-  mocks.request.mockResolvedValue({});
-  mocks.refresh.mockResolvedValue({});
-  root = document.createElement('div');
-  document.body.append(root);
+function mountLogin() {
   app = createApp(Login);
   app.provide(routerKey, { replace: mocks.replace });
+  app.provide(routeLocationKey, { query: {} });
   app.mount(root);
+}
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.session.setupRequired = true;
+  mocks.login.mockResolvedValue({});
+  root = document.createElement('div');
+  document.body.append(root);
+  mountLogin();
 });
 afterEach(() => {
   app.unmount();
@@ -56,18 +59,18 @@ describe('real Ant Design login form submission (mock transport, no real account
       .querySelector('button[type="submit"]')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await vi.waitFor(() => expect(root.textContent).toContain('请填写账号'));
-    expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.login).not.toHaveBeenCalled();
   });
   it('submits complete setup once and enters the workspace', async () => {
     await validSetup();
     (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
     await vi.waitFor(() =>
-      expect(mocks.request).toHaveBeenCalledExactlyOnceWith(
-        'auth_setup',
+      expect(mocks.login).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           username: 'qa_admin',
           setupCode: 'QA-code-never-sent',
         }),
+        true,
       ),
     );
     await vi.waitFor(() =>
@@ -80,9 +83,9 @@ describe('real Ant Design login form submission (mock transport, no real account
     await fill('再次输入密码', 'Abcd1234');
     (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
     await vi.waitFor(() =>
-      expect(mocks.request).toHaveBeenCalledWith(
-        'auth_setup',
+      expect(mocks.login).toHaveBeenCalledWith(
         expect.objectContaining({ password: 'Abcd1234' }),
+        true,
       ),
     );
   });
@@ -94,10 +97,10 @@ describe('real Ant Design login form submission (mock transport, no real account
     await vi.waitFor(() =>
       expect(root.textContent).toContain('管理员密码需要8～128个字符'),
     );
-    expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.login).not.toHaveBeenCalled();
   });
   it('shows server rejection beside the submit button and allows retry', async () => {
-    mocks.request.mockRejectedValue(new Error('原研究访问码不正确'));
+    mocks.login.mockRejectedValueOnce(new Error('原研究访问码不正确'));
     await validSetup();
     (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
     await vi.waitFor(() =>
@@ -109,5 +112,37 @@ describe('real Ant Design login form submission (mock transport, no real account
     await vi.waitFor(() =>
       expect(root.querySelector('.ant-btn-loading')).toBeNull(),
     );
+    (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/overview'));
+    expect(mocks.login).toHaveBeenCalledTimes(2);
+  });
+  it('submits a normal login once and clears the password before navigating', async () => {
+    app.unmount();
+    mocks.session.setupRequired = false;
+    mountLogin();
+    await fill('输入账号', 'qa_admin');
+    await fill('输入密码', 'QA-test-password-123');
+    (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/overview'));
+    expect(mocks.login).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ username: 'qa_admin', password: 'QA-test-password-123' }),
+      false,
+    );
+    expect(root.querySelector<HTMLInputElement>('input[placeholder="输入密码"]')!.value).toBe('');
+  });
+  it('ignores repeated submission while busy and clears setup secrets after success', async () => {
+    let signedIn!: () => void;
+    mocks.login.mockReturnValue(new Promise<void>((resolve) => { signedIn = resolve; }));
+    await validSetup();
+    (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(mocks.login).toHaveBeenCalledTimes(1));
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(mocks.login).toHaveBeenCalledTimes(1);
+    signedIn();
+    await vi.waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/overview'));
+    for (const placeholder of ['仅用于首次创建管理员', '8～128个字符，支持密码管理器', '再次输入密码']) {
+      expect(root.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`)!.value).toBe('');
+    }
   });
 });

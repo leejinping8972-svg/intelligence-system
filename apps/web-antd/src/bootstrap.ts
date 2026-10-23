@@ -6,24 +6,21 @@ import { preferences, updatePreferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/antd';
-import './views/intelligence/intelligence.css';
 
 import { useTitle } from '@vueuse/core';
 
 import { $t, setupI18n } from '#/locales';
 
-import { initComponentAdapter } from './adapter/component';
-import { initSetupVbenForm } from './adapter/form';
+import { setupComponentAdapters } from './adapter/setup';
 import App from './app.vue';
 import { router } from './router';
 import { state } from './views/intelligence/data';
+import { serverMode } from './views/intelligence/session';
+
+import './views/intelligence/intelligence.css';
 
 async function bootstrap(namespace: string) {
-  // 初始化组件适配器
-  await initComponentAdapter();
-
-  // 初始化表单组件
-  await initSetupVbenForm();
+  await setupComponentAdapters(router, serverMode);
 
   // // 设置弹窗的默认配置
   // setDefaultModalProps({
@@ -80,6 +77,7 @@ async function bootstrap(namespace: string) {
     useTitle(pageTitle);
   });
 
+  await router.isReady();
   app.mount('#app');
 }
 
