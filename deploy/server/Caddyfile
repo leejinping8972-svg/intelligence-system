@@ -20,7 +20,7 @@ is.luckdate.com {
     Referrer-Policy strict-origin-when-cross-origin
     Strict-Transport-Security "max-age=31536000"
   }
-  @sso path /api/sso/*
+  @sso path /api/sso/* /api/platform-link/v1/*
   header @sso {
     >Referrer-Policy no-referrer
     >Cache-Control no-store
@@ -32,6 +32,7 @@ is.luckdate.com {
   handle @api {
     reverse_proxy api:8080 {
       header_up -X-Server-Key
+      header_up X-Platform-Link-Client-IP {remote_host}
     }
   }
   @rootAssets path /_app-config-*.js /favicon.ico /hci-logo.svg /js/* /jse/* /css/* /maps/*

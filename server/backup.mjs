@@ -3,6 +3,7 @@ import process from 'node:process';
 
 import { engine, pool } from './database.mjs';
 import { encryptConfig } from './secrets.mjs';
+import { platformLinkPersistentTables } from './platform-link-store.mjs';
 
 const connection = await pool.connect();
 try {
@@ -25,6 +26,7 @@ try {
     'admin_sessions',
     'admin_login_attempts',
     'admin_audit',
+    ...platformLinkPersistentTables,
   ])
     tables[table] = (await connection.query(`SELECT * FROM ${table}`)).rows;
   await connection.query('COMMIT');

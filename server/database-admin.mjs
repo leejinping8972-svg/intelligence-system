@@ -15,6 +15,7 @@ import {
 } from './database.mjs';
 import { encryptConfig } from './secrets.mjs';
 import { authSchema, mysqlSchema } from './store.mjs';
+import { platformLinkPersistentTables } from './platform-link-store.mjs';
 
 export let maintenance = false;
 const tables = [
@@ -28,6 +29,7 @@ const tables = [
   'admin_sessions',
   'admin_login_attempts',
   'admin_audit',
+  ...platformLinkPersistentTables,
 ];
 function connectionConfig(input) {
   if (input.tlsMode !== undefined && !['plain', 'ssl'].includes(input.tlsMode)) throw new Error('请选择SSL加密连接或普通连接');
@@ -96,6 +98,7 @@ function normalize(row) {
     'last_login_at',
     'password_changed_at',
     'expires_at',
+    'revoked_at',
     'last_seen_at',
     'locked_until',
   ])

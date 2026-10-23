@@ -1,17 +1,47 @@
 <script setup lang="ts">
-import { watch, watchEffect } from 'vue';
+import { ref, watch, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { BasicLayout } from '@vben/layouts';
 import { updatePreferences } from '@vben/preferences';
 
 import { useMediaQuery } from '@vueuse/core';
-import { Button, Dropdown, Menu, Tag } from 'ant-design-vue';
+import { Button, Dropdown, Menu, message, Tag } from 'ant-design-vue';
 
 import { state } from '#/views/intelligence/data';
+import {
+  launchPlatformLink,
+  PlatformLinkError,
+} from '#/views/intelligence/platform-link';
 import { logout, serverMode, session } from '#/views/intelligence/session';
 
 const router = useRouter();
+const platformLinkBusy = ref(false);
+async function openPlatformLink(event: MouseEvent) {
+  if (!serverMode || !session.platformLinkEnabled) return;
+  event.preventDefault();
+  if (platformLinkBusy.value) return;
+  const userId = session.user?.id;
+  platformLinkBusy.value = true;
+  try {
+    const target = await launchPlatformLink();
+    if (userId && userId === session.user?.id) location.assign(target);
+  } catch (cause) {
+    if (!userId || userId !== session.user?.id) return;
+    if (
+      cause instanceof PlatformLinkError &&
+      cause.code === 'PEER_NOT_CONFIGURED'
+    ) {
+      await router.push('/administration?platformLink=1');
+    } else {
+      message.error(
+        cause instanceof Error ? cause.message : '暂时无法进入 AI 平台',
+      );
+    }
+  } finally {
+    platformLinkBusy.value = false;
+  }
+}
 const mobile = useMediaQuery('(max-width: 767px)');
 watch(mobile, (value) => updatePreferences({ app: { isMobile: value } }), {
   immediate: true,
@@ -35,9 +65,19 @@ watchEffect(() => {
       <div class="hci-header-controls">
         <a
           class="hci-platform-link"
-          href="https://ai.chatviva.com/admin/"
+          title="全球电商AI经营平台"
+          aria-label="全球电商AI经营平台"
+          :href="
+            serverMode && session.platformLinkEnabled
+              ? router.resolve('/administration?platformLink=1').href
+              : 'https://ai.chatviva.com/admin/'
+          "
+          :aria-busy="platformLinkBusy"
+          :aria-disabled="platformLinkBusy"
+          @click="openPlatformLink"
         >
-          全球电商AI经营平台
+          <span class="hci-platform-link-full">全球电商AI经营平台</span>
+          <span class="hci-platform-link-compact">AI 平台</span>
         </a>
         <Tag color="gold">{{ state.branding.environmentLabel }}</Tag>
         <button
@@ -115,6 +155,10 @@ watchEffect(() => {
   outline-offset: 2px;
 }
 
+.hci-platform-link-compact {
+  display: none;
+}
+
 @media (max-width: 767px) {
   .hci-header-controls {
     flex-wrap: nowrap;
@@ -128,6 +172,17 @@ watchEffect(() => {
 
   .hci-mobile-account-button {
     min-height: 36px;
+  }
+}
+
+@media (max-width: 359px) {
+  .hci-platform-link-full {
+    display: none;
+  }
+
+  .hci-platform-link-compact {
+    display: inline;
+    white-space: nowrap;
   }
 }
 </style>

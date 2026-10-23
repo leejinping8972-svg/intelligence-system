@@ -7,9 +7,12 @@ import { coreListAction } from './core-list-service.mjs';
 import { adminSsoConfig } from './admin-sso-config.mjs';
 import { createSsoStore } from './admin-sso-store.mjs';
 import { createAdminSso } from './admin-sso.mjs';
+import { platformLinkConfig } from './platform-link-config.mjs';
+import { createPlatformLinkStore } from './platform-link-store.mjs';
+import { createPlatformLink } from './platform-link.mjs';
 import { serveAdMedia } from './ad-media.mjs';
 import { adsConfig } from './ads-provider.mjs';
-import { adminSsoSignIn, authAction, requireAdmin, sessionUser } from './auth.mjs';
+import { adminSsoSignIn, authAction, platformLinkAudit, platformLinkSignIn, requireAdmin, sessionUser } from './auth.mjs';
 import {
   competitorAction,
   runCompetitorQueue,
@@ -83,8 +86,15 @@ async function refreshWorkspaceReads() {
   const more = !maintenance && await workspaceReads.refresh();
   if (!controller.signal.aborted) readTimer = setTimeout(refreshWorkspaceReads, more ? 10 : 2000);
 }
+const platformLink = createPlatformLink({
+  config: platformLinkConfig(),
+  store: createPlatformLinkStore(pool),
+  sessionUser,
+  signIn: platformLinkSignIn,
+  audit: platformLinkAudit,
+});
 const sso = createAdminSso({
-  config: adminSsoConfig(),
+  config: platformLink.enabled ? null : adminSsoConfig(),
   store: createSsoStore(pool),
   sessionUser,
   signIn: adminSsoSignIn,
@@ -525,6 +535,19 @@ const server = createServer(async (request, response) => {
     response.writeHead(400).end('{"error":"请求地址无效"}');
     return;
   }
+  if (requestUrl.pathname.startsWith('/api/platform-link/v1/')) {
+    if (maintenance) {
+      response.writeHead(503).end('{"ok":false,"code":"LOGIN_DISABLED","message":"正在维护，请稍后重新发起"}');
+      return;
+    }
+    activeRequests++;
+    try {
+      await platformLink.handle(request, response, requestUrl);
+    } finally {
+      activeRequests--;
+    }
+    return;
+  }
   if (requestUrl.pathname.startsWith('/api/sso/')) {
     if (maintenance) {
       response.writeHead(503).end('{"error":"正在切换数据库，请稍后刷新"}');
@@ -640,7 +663,10 @@ const server = createServer(async (request, response) => {
         );
     if (input.action?.startsWith('auth_')) {
       const result = await authAction(input, request, response, user);
-      if (input.action === 'auth_status') result.ssoEnabled = sso.enabled;
+      if (input.action === 'auth_status') {
+        result.ssoEnabled = sso.enabled;
+        result.platformLinkEnabled = platformLink.enabled;
+      }
       response.end(JSON.stringify(result));
       return;
     }

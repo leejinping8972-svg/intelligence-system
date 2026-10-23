@@ -55,7 +55,7 @@ function cookie(response, token = '', seconds = 0) {
     `${cookieName}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${seconds}`,
   );
 }
-export async function sessionUser(request, touch = false) {
+export async function sessionUser(request, touch = false, connection = pool) {
   const token = String(request.headers.cookie || '')
     .split(';')
     .map((part) => part.trim())
@@ -63,13 +63,13 @@ export async function sessionUser(request, touch = false) {
     ?.slice(cookieName.length + 1);
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
   const now = Date.now();
-  const { rows } = await pool.query(
+  const { rows } = await connection.query(
     'SELECT u.*,s.token_hash,s.last_seen_at FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>$2 AND s.last_seen_at>$3 AND u.enabled=1',
     [sha(token), now, now - 30 * 60_000],
   );
   const user = rows[0];
   if (user && touch && Number(user.last_seen_at) < now - 60_000)
-    await pool.query(
+    await connection.query(
       'UPDATE admin_sessions SET last_seen_at=$2 WHERE token_hash=$1',
       [sha(token), now],
     );
@@ -94,26 +94,26 @@ function scheduleSessionCleanup(now) {
     }
   });
 }
-async function signIn(user, response, { action, attemptKey } = {}) {
+async function signIn(user, response, { action, attemptKey, connection = pool } = {}) {
   const now = Date.now();
   const token = randomBytes(32).toString('hex');
   const writes = [
-    pool.query(
+    connection.query(
       'INSERT INTO admin_sessions(token_hash,user_id,created_at,expires_at,last_seen_at) VALUES($1,$2,$3,$4,$3)',
       [sha(token), user.id, now, now + 12 * 60 * 60_000],
     ),
-    pool.query('UPDATE admin_users SET last_login_at=$2 WHERE id=$1', [
+    connection.query('UPDATE admin_users SET last_login_at=$2 WHERE id=$1', [
       user.id,
       now,
     ]),
   ];
   if (attemptKey)
     writes.push(
-      pool.query('DELETE FROM admin_login_attempts WHERE attempt_key=$1', [
+      connection.query('DELETE FROM admin_login_attempts WHERE attempt_key=$1', [
         attemptKey,
       ]),
     );
-  if (action) writes.push(audit(user, action, user.id));
+  if (action) writes.push(audit(user, action, user.id, connection));
   // Request accounting must cover remaining writes even when one has failed.
   const results = await Promise.allSettled(writes);
   const failed = results.find((result) => result.status === 'rejected');
@@ -122,8 +122,8 @@ async function signIn(user, response, { action, attemptKey } = {}) {
   scheduleSessionCleanup(now);
   return { user: publicUser({ ...user, last_login_at: now }) };
 }
-async function audit(actor, action, target = '') {
-  await pool.query(
+async function audit(actor, action, target = '', connection = pool) {
+  await connection.query(
     'INSERT INTO admin_audit(id,actor_id,action,target_id,created_at) VALUES($1,$2,$3,$4,$5)',
     [randomUUID(), actor?.id || null, action, target, Date.now()],
   );
@@ -132,6 +132,14 @@ export async function adminSsoSignIn(user, response, peerId) {
   requireAdmin(user);
   if (!user.enabled) throw new Error('管理员已停用');
   return signIn(user, response, { action: `单点登录 ${peerId}` });
+}
+export async function platformLinkSignIn(user, response, peerId, connection = pool) {
+  if (!user?.enabled || !['admin', 'researcher'].includes(user.role))
+    throw Object.assign(new Error('账号不可用'), { status: 403 });
+  return signIn(user, response, { action: `平台登录 ${peerId}`, connection });
+}
+export function platformLinkAudit(user, action, connection = pool) {
+  return audit(user, action, user.id, connection);
 }
 export async function setupRequired() {
   const { rows } = await pool.query('SELECT id FROM admin_users LIMIT 1');

@@ -77,6 +77,10 @@ jobs:
         run: |
           node --test server/admin-sso.test.mjs server/password-policy.test.mjs
           pnpm exec vitest run tests/admin-sso.test.ts
+      - name: Account key platform link (isolated databases and mocked peer, no production calls)
+        run: |
+          node --test server/platform-link-store.test.mjs server/platform-link-proxy.test.mjs server/platform-link.integration.test.mjs
+          pnpm exec vitest run tests/platform-link.test.ts
       - name: Four-source keyword trend windows and daily budgets (synthetic only)
         run: |
           node --test server/keyword-trends.test.mjs

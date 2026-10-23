@@ -12,6 +12,7 @@ export interface AdminUser {
   lastLoginAt: null | number;
 }
 interface SessionStatus {
+  platformLinkEnabled?: boolean;
   setupRequired: boolean;
   ssoEnabled: boolean;
   user: AdminUser | null;
@@ -19,6 +20,7 @@ interface SessionStatus {
 export const serverMode = import.meta.env.VITE_HCI_SERVER === 'true';
 export const session = reactive({
   checked: false,
+  platformLinkEnabled: false,
   setupRequired: false,
   ssoEnabled: false,
   user: null as AdminUser | null,
