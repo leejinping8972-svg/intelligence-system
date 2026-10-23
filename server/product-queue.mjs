@@ -311,6 +311,7 @@ export function shopifyCatalogProducts(data, base, site) {
         {
           '@type': 'Product',
           name: item.title,
+          datePublished: item.published_at,
           brand: item.vendor || site.brand,
           description: item.body_html || '',
           size,
@@ -452,6 +453,10 @@ async function persistProducts(list, site, work, cp, io) {
     for (const field of ['benefits', 'ingredientInsights'])
       if (!p[field]?.length && old?.[field]?.length)
         preserved[field] = old[field];
+    if (old?.decisionData) preserved.decisionData = {
+      ...old.decisionData,
+      ...(product.decisionData?.listing ? { listing: product.decisionData.listing } : {}),
+    };
     await io.mergeBusiness(`products:${product.id}`, {
       ...product,
       ...preserved,

@@ -83,7 +83,7 @@ export function summarizeSemrushUsage(
     if (row.name && row.step?.startsWith('semrush:')) category = 'monitor';
     else if (/^(?:sem-(?:discover|metric)|metrics):/.test(row.step))
       category = 'keywords';
-    else if (/^(?:domain|site-score):/.test(row.step)) category = 'sites';
+    else if (/^(?:domain|site-score|sem-sites):/.test(row.step)) category = 'sites';
     else if (row.step.startsWith('platform:')) {
       if (record.provider === 'semrush') category = 'products';
       else if (!record.provider) unclassifiedRecords++;

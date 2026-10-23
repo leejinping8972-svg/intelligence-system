@@ -47,6 +47,21 @@ describe('core metrics with database pagination', () => {
   });
 });
 describe('core list evidence and unit boundaries', () => {
+  it('shows only supported listing evidence and exports it independently of cumulative sales', () => {
+    const record = product({
+      firstSeenAt: at,
+      decisionData: { series: [], listing: {
+        date: '2026-10-15', provider: 'Shopify', platform: 'Shopify', market: 'VN',
+        collectedAt: at, evidenceUrl: 'https://brand.example/products/gummies',
+      } },
+    });
+    expect(get(productMetrics(record, 30), 'listingDate')).toMatchObject({
+      value: '2026-10-15', source: 'Shopify', platform: 'Shopify', collectedAt: at,
+    });
+    expect(get(productMetrics(product({ firstSeenAt: at }), 30), 'listingDate').value).toBeNull();
+    expect(get(productMetrics(product({ ...record, market: 'US' }), 30), 'listingDate').value).toBeNull();
+    expect(coreExport('products', record)['listingDate_值']).toBe('2026-10-15');
+  });
   it('uses complete market dates and exact 30/90/365 calendar windows', () => {
     expect(rollingWindow('2026-10-21T18:00:00Z', 'VN', 30)).toMatchObject({
       start: '2026-09-22',

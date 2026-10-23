@@ -10,6 +10,7 @@ import { collect, pool, saveCheckpoint, saveKeyword, usage } from './store.mjs';
 
 import { runEnrichment, patchCollection } from './enrichment-jobs.mjs';
 import { runMarketJob } from './market-jobs.mjs';
+import { runSemrushSitesJob } from './semrush-sites-store.mjs';
 import { runInsightJob } from './insight-jobs.mjs';
 import { runProductsJob } from './product-jobs.mjs';
 import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
@@ -22,6 +23,18 @@ import { runMarketReport } from './market-report-jobs.mjs';
 import { runPersonaResearch } from './persona-research-store.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
+  if (job.input.kind === 'semrush_sites') return job.input.markets.map((market) => ({
+    id: `${job.id}:${market}`, cloudJobId: job.id, market, mode: 'live', stage: 'sites',
+    title: `云端 · Semrush付费流量独立站发现 · ${label[market]}`,
+    status: job.cancelled ? 'cancelled' : job.status,
+    created: job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
+    steps: [`关键词${Math.min(job.checkpoint.index || 0, job.input.seeds.length)}/${job.input.seeds.length}；站点${job.checkpoint.sites || 0}家；已确认${job.checkpoint.semrushUnits || 0} API units；预留${job.checkpoint.semrushReserved || 0}/${job.input.semrushUnitLimit}`, ...(job.checkpoint.logs || [])],
+    collectionProgress: { kind: 'semrush_sites', done: job.checkpoint.index || 0, total: job.input.seeds.length,
+      current: job.checkpoint.currentTerm || '', sites: job.checkpoint.sites || 0, ads: 0,
+      requests: job.checkpoint.requests || 0, semrushUnits: job.checkpoint.semrushUnits || 0,
+      requestLimit: job.input.seeds.length * job.input.maxPages,
+      unknownCharges: job.checkpoint.unknownCharges || 0 },
+  }));
   if (
     [
       'consumer_research',
@@ -500,6 +513,7 @@ async function runLane(signal, trends = false) {
             await runPersonaResearch(next);
           else if (next.input.kind === 'market_analysis')
             await runMarketReport(next);
+          else if (next.input.kind === 'semrush_sites') await runSemrushSitesJob(next);
           else if (next.input.kind === 'products') await runProductsJob(next);
           else if (next.input.kind === 'platform_products')
             await runPlatformProducts(next);

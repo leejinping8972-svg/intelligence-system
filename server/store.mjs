@@ -135,6 +135,7 @@ export async function collect(job, step, request) {
     );
   }
   const semrushRequest =
+    request.sources?.includes('semrush_sites') ||
     request.sources?.includes('semrush') ||
     request.sources?.includes('site_metrics') ||
     (request.sources?.includes('platform_products') &&
@@ -172,7 +173,9 @@ export async function collect(job, step, request) {
     const provider = process.env.COLLECTOR_URL
       ? null
       : await import('./local-provider.mjs');
-    const response = request.sources?.includes('platform_products')
+    const response = request.sources?.includes('semrush_sites')
+      ? Response.json(await (await import('./semrush-sites-provider.mjs')).collectSemrushSites(request))
+      : request.sources?.includes('platform_products')
       ? Response.json(
           await (
             await import('./platform-products-provider.mjs')

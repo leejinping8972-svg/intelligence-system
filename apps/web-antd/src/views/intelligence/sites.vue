@@ -19,6 +19,7 @@ import CollectionTime from './components/CollectionTime.vue';
 import { collectionTimeOrder, siteCollectedAt } from './resource-metadata';
 import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
+import SemrushSitesDialog from './components/SemrushSitesDialog.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import SiteDrawer from './components/SiteDrawer.vue';
 import CoreListControls from './components/CoreListControls.vue';
@@ -243,6 +244,7 @@ const columns = [
     >
       <ProductCollectDialog :site-ids="ids" />
       <BulkSiteWatch :site-ids="ids" />
+      <SemrushSitesDialog />
       <CompetitorWatchPanel kind="site" :site-id="ids.length === 1 ? ids[0] : undefined" />
       <Button
         type="primary"
@@ -276,10 +278,10 @@ const columns = [
       </button>
     </div>
     <section class="hci-panel hci-resource-list">
-      <div class="hci-toolbar">
+      <div class="hci-toolbar hci-filter-toolbar">
         <Input.Search
           v-model:value="search"
-          placeholder="搜索关键词、品牌、网址、商品或成分"
+          placeholder="搜索中英文关键词、品牌、网址、商品或成分"
           allow-clear
         /><Select
           v-model:value="keywordFilter"
@@ -301,11 +303,10 @@ const columns = [
           v-model:value="source"
           :options="sourceOptions"
           aria-label="数据来源"
-        /><span class="hci-toolbar-end hci-subtle"
+        /><ScoreRangeFilter v-model="scoreFilter" label="独立站" /><span class="hci-toolbar-end hci-subtle"
           >{{ serverMode ? remote.total.value : rows.length }} 家站点<span v-if="!serverMode"> · {{ collectedCount }} 家实采</span></span
         >
       </div>
-      <div class="hci-toolbar"><ScoreRangeFilter v-model="scoreFilter" label="独立站" /></div>
       <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
       <SelectionBar :count="ids.length" :total="serverMode ? remote.total.value : selectable.length" :busy="scoring" @all="selectAll" @clear="clear" />
       <Alert

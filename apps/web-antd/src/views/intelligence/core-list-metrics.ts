@@ -1,5 +1,6 @@
 import type { Ad, Keyword, Product, Site } from './data';
 import { rollingTrendComparison } from './trend-comparison';
+import { discoveryDecision } from './discovery';
 
 export type CoreKind = 'products' | 'sites' | 'ads' | 'keywords';
 export type CorePeriod = 30 | 90 | 365;
@@ -349,8 +350,19 @@ export function productMetrics(
   if (p.sourceContent?.sellingPoints?.length) sellingNature = 'brand_claim';
   const sold = sm?.soldCount;
   const raw = sm?.soldRaw;
+  const listing = discoveryDecision(p, 'product');
   const result = [
     ...productSales(p, days),
+    metric(p, 'listingDate', '商品上架时间', listing.evidenceDate || null, '', {
+      ...meta,
+      source: listing.source || '来源未记录',
+      platform: p.decisionData?.listing?.platform || '',
+      nature: 'platform_display',
+      collectedAt: p.decisionData?.listing?.collectedAt || '',
+      evidenceUrl: listing.evidenceUrl,
+      period: '来源上架日期',
+      reason: listing.reason,
+    }),
     metric(
       p,
       'cumulativeSold',

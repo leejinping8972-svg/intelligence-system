@@ -484,6 +484,7 @@ export function productFromJsonLd(
     .map(([label]) => label);
   return {
     title: cleanText(product.name || ''),
+    publishedAt: product.releaseDate || product.datePublished || undefined,
     brand: cleanText(brand || ''),
     description,
     sku: cleanText(product.sku || product.mpn || product.gtin || ''),
@@ -522,6 +523,7 @@ async function fetchShopifyProduct(pageUrl) {
   return {
     '@type': 'Product',
     name: data.title,
+    datePublished: data.published_at,
     brand: data.vendor,
     description: data.description,
     sku: variant.sku || variant.id || data.id,
@@ -555,6 +557,7 @@ async function fetchShopifyCatalog(pageUrl, limit) {
     return {
       '@type': 'Product',
       name: item.title,
+      datePublished: item.published_at,
       brand: item.vendor,
       description: item.body_html,
       sku: variant.sku || variant.id || item.id,

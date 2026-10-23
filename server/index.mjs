@@ -42,6 +42,7 @@ import { keywordTrendsAction } from './keyword-trends-store.mjs';
 import { submitKeywordJob } from './keyword-submit.mjs';
 import { localCollect, migrateCredentials } from './local-provider.mjs';
 import { submitMarketJob } from './market-jobs.mjs';
+import { submitSemrushSites } from './semrush-sites-store.mjs';
 import { analysisConfig } from './model-provider.mjs';
 import { assessKeyword } from './model.js';
 import { protectPlatformClientEdit } from './platform-product-data.mjs';
@@ -170,6 +171,10 @@ async function api(input, user) {
     case 'server_ads_config':
     case 'server_ads_status': {
       return adsConfig(input, user);
+    }
+    case 'server_submit_semrush_sites': {
+      const job = await submitSemrushSites(input);
+      return { jobId: job.id, tasks: jobTasks(job) };
     }
     case 'server_submit_market': {
       const job = await submitMarketJob(input);

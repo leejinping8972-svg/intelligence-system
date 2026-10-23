@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Keyword } from './data';
 import type { ResearchReport } from './research-reports';
+import SemrushSitesDialog from './components/SemrushSitesDialog.vue';
 
 import {
   computed,
@@ -262,7 +263,8 @@ async function exportSelectedKeywords() {
           {{ serverMode ? overview.snapshot.value?.keywords.active ?? '—' : selected.filter(active).length }} 个</span>
       </div>
       <Alert v-if="reportError" type="error" :message="reportError" show-icon />
-      <div class="selected-toolbar">
+      <div class="selected-toolbar hci-toolbar hci-filter-toolbar">
+        <SemrushSitesDialog :terms="collectionSelection.map((k) => k.term)" />
         <ConsumerReportDialog
           :keywords="collectionSelection"
           :disabled="!ids.length || !cloudWorkspace.ready"
@@ -286,7 +288,7 @@ async function exportSelectedKeywords() {
         />
         <Input
           v-model:value="search"
-          placeholder="搜索入选关键词、种子词或品类"
+          placeholder="搜索中英文入选关键词、种子词或品类"
           aria-label="搜索入选关键词"
           allow-clear
           style="width: 310px"

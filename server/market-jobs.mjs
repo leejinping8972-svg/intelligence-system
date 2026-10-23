@@ -20,7 +20,7 @@ const readDoc = async (key) =>
       `business:${key}`,
     ])
   ).rows[0]?.value;
-export async function mergeBusiness(key, patch) {
+export async function mergeBusiness(key, patch, options = {}) {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -31,13 +31,19 @@ export async function mergeBusiness(key, patch) {
           [`business:${key}`],
         )
       ).rows[0]?.value || {};
+    if (options.evidenceOnlyIfExists && old.id) patch = {
+      sources: patch.sources, sourceEvidence: patch.sourceEvidence,
+      lastCollectedAt: Date.parse(patch.lastCollectedAt || '') > Date.parse(old.lastCollectedAt || '1970-01-01') ? patch.lastCollectedAt : old.lastCollectedAt,
+    };
     let value = { ...old, ...patch };
     for (const field of ['sources', 'sourceEvidence', 'keywordIds', 'siteIds'])
       if (old[field] || patch[field])
         value[field] = [
           ...new Map(
             [...(old[field] || []), ...(patch[field] || [])].map((v) => [
-              JSON.stringify(v),
+              field === 'sourceEvidence' && v && typeof v === 'object'
+                ? JSON.stringify(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+                : JSON.stringify(v),
               v,
             ]),
           ).values(),

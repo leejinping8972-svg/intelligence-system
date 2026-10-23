@@ -4,6 +4,7 @@ import { inferCategory } from './collector.js';
 import { collectionBudget, fetchConfiguration } from './site-fetch-config.mjs';
 import { collectionPolicyMessage, resolveCollectionPolicy } from './collection-policy.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
+import { validDiscoveryDate } from './discovery-newness.mjs';
 export function siteHostAllowed(host, domain) {
   const root = String(domain)
     .toLowerCase()
@@ -107,6 +108,12 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     reviewed: false,
     favorite: false,
     firstSeenAt: at,
+    ...(validDiscoveryDate(p.publishedAt) !== undefined && Date.parse(p.publishedAt) <= Date.parse(at) ? {
+      decisionData: { series: [], listing: {
+        date: p.publishedAt.slice(0, 10), provider: '官网公开商品数据', platform: site.platform || '官网',
+        market: site.market, collectedAt: at, evidenceUrl: url.toString(),
+      } },
+    } : {}),
     lastCollectedAt: at,
     evidenceUrl: url.toString(),
     dataNature: 'collected',

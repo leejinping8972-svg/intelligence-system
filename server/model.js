@@ -445,8 +445,60 @@ function rollingTrendComparison(record, days) {
   return { ...compare("month", `\u8FD1${days}\u5929`, series, 0, { start: end - days * DAY, end, previousStart: end - 2 * days * DAY, previousEnd: end - days * DAY }), collectedAt: captured };
 }
 
-// apps/web-antd/src/views/intelligence/core-list-metrics.ts
+// server/discovery-newness.mjs
 var DAY2 = 864e5;
+function validDiscoveryDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value))
+    return void 0;
+  if (value.length > 10 && !Number.isFinite(Date.parse(value)))
+    return void 0;
+  const date2 = value.slice(0, 10);
+  const time = Date.parse(`${date2}T00:00:00Z`);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === date2 ? time : void 0;
+}
+function discoveryDecision(item, kind, now = Date.now()) {
+  const first = item.discovery?.firstSeenAt || item.firstSeenAt;
+  const observed = validDiscoveryDate(first);
+  const recentDiscovery = observed !== void 0 && Date.parse(first) <= now && now - observed < 8 * DAY2;
+  const listing = item.decisionData?.listing;
+  const isProduct = kind === "product";
+  const date2 = isProduct ? listing?.date : item.startDate;
+  const source = isProduct ? listing?.provider : item.source;
+  const collectedAt = isProduct ? listing?.collectedAt : item.lastCollectedAt;
+  const evidenceUrl = isProduct ? listing?.evidenceUrl : item.evidenceUrl;
+  const time = validDiscoveryDate(date2);
+  const collected = Date.parse(collectedAt || "");
+  let publicEvidence = false;
+  try {
+    const url = new URL(evidenceUrl);
+    publicEvidence = ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
+  } catch {
+  }
+  const supported = Boolean(
+    source && publicEvidence && Number.isFinite(collected) && collected <= now && (!isProduct || listing.platform && listing.market === item.market)
+  );
+  const windowDays = isProduct ? 90 : 7;
+  const known = supported && time !== void 0 && Date.parse(date2) <= Math.min(now, collected);
+  const isNew = known ? Math.floor((now - time) / DAY2) <= windowDays : null;
+  let label = isProduct ? "\u65B0\u54C1\u5F85\u6838\u9A8C" : "\u65B0\u5E7F\u544A\u5F85\u6838\u9A8C";
+  if (isNew === true) label = isProduct ? "\u65B0\u54C1\uFF0890\u5929\u5185\uFF09" : "\u65B0\u5E7F\u544A\uFF087\u5929\u5185\uFF09";
+  if (isNew === false) label = isProduct ? "\u975E\u8FD1\u671F\u65B0\u54C1" : "\u975E\u8FD1\u671F\u65B0\u5E7F\u544A";
+  return {
+    version: "discovery-v1",
+    isNew,
+    label,
+    recentDiscovery,
+    windowDays,
+    reason: known ? `${isProduct ? "\u6765\u6E90\u4E0A\u67B6" : "\u5E73\u53F0\u6295\u653E\u5F00\u59CB"}\u65E5\u671F ${date2.slice(0, 10)}\uFF0C${isNew ? "\u5728" : "\u8D85\u8FC7"}${windowDays}\u5929\u7A97\u53E3\uFF1B${isProduct ? "\u4E0D\u7B49\u540C\u4E8E\u54C1\u724C\u9996\u53D1" : "\u6309\u5E7F\u544AID\u5224\u65AD\uFF0C\u4E0D\u5C06\u540C\u7D20\u6750\u590D\u7528\u5408\u5E76"}\u3002` : "\u7F3A\u5C11\u53EF\u6838\u9A8C\u7684\u6765\u6E90\u65E5\u671F\u6216\u6765\u6E90\u4F9D\u636E\uFF1B\u7CFB\u7EDF\u9996\u6B21\u53D1\u73B0\u4E0D\u80FD\u8BC1\u660E\u521A\u4E0A\u5E02\u6216\u521A\u5F00\u59CB\u6295\u653E\u3002",
+    source: source || "",
+    evidenceDate: known ? date2.slice(0, 10) : "",
+    evidenceUrl: evidenceUrl || "",
+    evaluatedAt: new Date(now).toISOString()
+  };
+}
+
+// apps/web-antd/src/views/intelligence/core-list-metrics.ts
+var DAY3 = 864e5;
 var validNumber = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
 var zones = {
   VN: "Asia/Ho_Chi_Minh",
@@ -468,7 +520,7 @@ function rollingWindow(at, market, days) {
   const end = marketDay(at, market);
   const n = Date.parse(`${end}T00:00:00Z`);
   return {
-    start: Number.isFinite(n) ? isoDay(n - days * DAY2) : "",
+    start: Number.isFinite(n) ? isoDay(n - days * DAY3) : "",
     end,
     timezone: zones[market] || "UTC"
   };
@@ -530,7 +582,7 @@ function productSales(p, days) {
     ).toSorted((a, b) => a.start.localeCompare(b.start));
     let cursor = bounds.start, total = 0;
     for (const point of points) {
-      const next = isoDay(Date.parse(`${point.end}T00:00:00Z`) + DAY2);
+      const next = isoDay(Date.parse(`${point.end}T00:00:00Z`) + DAY3);
       if (point.start !== cursor || next > bounds.end) continue;
       total += point.value;
       cursor = next;
@@ -625,8 +677,19 @@ function productMetrics(p, days, context = {}) {
   if (p.sourceContent?.sellingPoints?.length) sellingNature = "brand_claim";
   const sold = sm?.soldCount;
   const raw = sm?.soldRaw;
+  const listing = discoveryDecision(p, "product");
   const result = [
     ...productSales(p, days),
+    metric(p, "listingDate", "\u5546\u54C1\u4E0A\u67B6\u65F6\u95F4", listing.evidenceDate || null, "", {
+      ...meta,
+      source: listing.source || "\u6765\u6E90\u672A\u8BB0\u5F55",
+      platform: p.decisionData?.listing?.platform || "",
+      nature: "platform_display",
+      collectedAt: p.decisionData?.listing?.collectedAt || "",
+      evidenceUrl: listing.evidenceUrl,
+      period: "\u6765\u6E90\u4E0A\u67B6\u65E5\u671F",
+      reason: listing.reason
+    }),
     metric(
       p,
       "cumulativeSold",
@@ -742,7 +805,7 @@ function productMetrics(p, days, context = {}) {
     const reset = snapshots.some(
       (s, i) => s.sold < (snapshots[i - 1]?.sold ?? s.sold)
     );
-    const elapsed = (Date.parse(b.at) - Date.parse(a.at)) / DAY2;
+    const elapsed = (Date.parse(b.at) - Date.parse(a.at)) / DAY3;
     result.push(
       metric(
         p,
@@ -1232,58 +1295,6 @@ function coreMetrics(kind, record, days = 30, context = {}) {
       }
     )
   ];
-}
-
-// server/discovery-newness.mjs
-var DAY3 = 864e5;
-function validDiscoveryDate(value) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value))
-    return void 0;
-  if (value.length > 10 && !Number.isFinite(Date.parse(value)))
-    return void 0;
-  const date2 = value.slice(0, 10);
-  const time = Date.parse(`${date2}T00:00:00Z`);
-  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === date2 ? time : void 0;
-}
-function discoveryDecision(item, kind, now = Date.now()) {
-  const first = item.discovery?.firstSeenAt || item.firstSeenAt;
-  const observed = validDiscoveryDate(first);
-  const recentDiscovery = observed !== void 0 && Date.parse(first) <= now && now - observed < 8 * DAY3;
-  const listing = item.decisionData?.listing;
-  const isProduct = kind === "product";
-  const date2 = isProduct ? listing?.date : item.startDate;
-  const source = isProduct ? listing?.provider : item.source;
-  const collectedAt = isProduct ? listing?.collectedAt : item.lastCollectedAt;
-  const evidenceUrl = isProduct ? listing?.evidenceUrl : item.evidenceUrl;
-  const time = validDiscoveryDate(date2);
-  const collected = Date.parse(collectedAt || "");
-  let publicEvidence = false;
-  try {
-    const url = new URL(evidenceUrl);
-    publicEvidence = ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
-  } catch {
-  }
-  const supported = Boolean(
-    source && publicEvidence && Number.isFinite(collected) && collected <= now && (!isProduct || listing.platform && listing.market === item.market)
-  );
-  const windowDays = isProduct ? 90 : 7;
-  const known = supported && time !== void 0 && Date.parse(date2) <= Math.min(now, collected);
-  const isNew = known ? Math.floor((now - time) / DAY3) <= windowDays : null;
-  let label = isProduct ? "\u65B0\u54C1\u5F85\u6838\u9A8C" : "\u65B0\u5E7F\u544A\u5F85\u6838\u9A8C";
-  if (isNew === true) label = isProduct ? "\u65B0\u54C1\uFF0890\u5929\u5185\uFF09" : "\u65B0\u5E7F\u544A\uFF087\u5929\u5185\uFF09";
-  if (isNew === false) label = isProduct ? "\u975E\u8FD1\u671F\u65B0\u54C1" : "\u975E\u8FD1\u671F\u65B0\u5E7F\u544A";
-  return {
-    version: "discovery-v1",
-    isNew,
-    label,
-    recentDiscovery,
-    windowDays,
-    reason: known ? `${isProduct ? "\u6765\u6E90\u4E0A\u67B6" : "\u5E73\u53F0\u6295\u653E\u5F00\u59CB"}\u65E5\u671F ${date2.slice(0, 10)}\uFF0C${isNew ? "\u5728" : "\u8D85\u8FC7"}${windowDays}\u5929\u7A97\u53E3\uFF1B${isProduct ? "\u4E0D\u7B49\u540C\u4E8E\u54C1\u724C\u9996\u53D1" : "\u6309\u5E7F\u544AID\u5224\u65AD\uFF0C\u4E0D\u5C06\u540C\u7D20\u6750\u590D\u7528\u5408\u5E76"}\u3002` : "\u7F3A\u5C11\u53EF\u6838\u9A8C\u7684\u6765\u6E90\u65E5\u671F\u6216\u6765\u6E90\u4F9D\u636E\uFF1B\u7CFB\u7EDF\u9996\u6B21\u53D1\u73B0\u4E0D\u80FD\u8BC1\u660E\u521A\u4E0A\u5E02\u6216\u521A\u5F00\u59CB\u6295\u653E\u3002",
-    source: source || "",
-    evidenceDate: known ? date2.slice(0, 10) : "",
-    evidenceUrl: evidenceUrl || "",
-    evaluatedAt: new Date(now).toISOString()
-  };
 }
 
 // apps/web-antd/src/views/intelligence/radar-engine.ts

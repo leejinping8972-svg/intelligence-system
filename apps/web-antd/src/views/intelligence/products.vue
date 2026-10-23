@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   Button,
   Checkbox,
+  DatePicker,
   Empty,
   Input,
   message,
@@ -27,6 +28,7 @@ import ProductDrawer from './components/ProductDrawer.vue';
 import CoreListControls from './components/CoreListControls.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
+import { matchesListingRange, recentListingRange } from '../../../../../server/product-listing.mjs';
 const core = useCoreList('products');
 const { preset: corePreset, period: corePeriod } = core;
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
@@ -56,6 +58,12 @@ import {
 const route = useRoute();
 const router = useRouter();
 const search = ref('');
+const listedRange = ref<[string, string] | []>([]);
+const listedQuick = ref(0);
+function setListedQuick(days: number) {
+  listedQuick.value = days;
+  listedRange.value = days ? recentListingRange(days) : [];
+}
 const viewMode = ref<'cards' | 'list'>('list');
 const page = ref(1),
   pageSize = ref(20);
@@ -84,6 +92,7 @@ const remote = useWorkspaceList<Product>('products', computed(() => ({
   benefit: benefitFilter.value, ingredient: ingredientFilter.value, decision: decisionFilter.value,
   newness: newness.value, source: sourceFilter.value, siteId: siteFilter.value,
   keywordId: keywordFilter.value || route.query.keyword,
+  listedFrom: listedRange.value[0], listedTo: listedRange.value[1],
 })), page, pageSize);
 const availableSites = computed(() =>
   state.sites.filter(
@@ -149,6 +158,7 @@ watch(
     ingredientFilter.value = 'ALL';
     sourceFilter.value = 'ALL';
     search.value = '';
+    setListedQuick(0);
     if (
       !serverMode && siteFilter.value &&
       !state.sites.some(
@@ -174,10 +184,11 @@ const rows = computed(() => serverMode ? remote.rows.value :
     (p) =>
       `${p.title} ${p.brand} ${p.size} ${p.form} ${p.claim} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')} ${state.sites.find((site) => site.id === p.siteId)?.domain || ''} ${state.keywords
         .filter((keyword) => keyword.productIds.includes(p.id))
-        .map((keyword) => keyword.term)
+        .map((keyword) => `${keyword.term} ${keyword.termZh || ''}`)
         .join(' ')}`
         .toLowerCase()
         .includes(search.value.toLowerCase()) &&
+      matchesListingRange(p, listedRange.value[0], listedRange.value[1]) &&
       (category.value === 'ALL' || p.category === category.value) &&
       (benefitFilter.value === 'ALL' ||
         p.benefits.includes(benefitFilter.value)) &&
@@ -210,6 +221,7 @@ const pagedRows = computed(() =>
 watch(
   [
     search,
+    listedRange,
     category,
     favorites,
     benefitFilter,
@@ -307,10 +319,10 @@ async function exportProducts() {
       </button>
     </div>
     <section class="hci-panel" style="margin-bottom: 22px">
-      <div class="hci-toolbar" style="margin-bottom: 0">
+      <div class="hci-toolbar hci-filter-toolbar" style="margin-bottom: 0">
         <Input.Search
           v-model:value="search"
-          placeholder="搜索关键词、商品、站点、配方、规格或卖点"
+          placeholder="搜索中英文关键词、商品、站点、配方或卖点"
           allow-clear
         /><Select
           v-model:value="keywordFilter"
@@ -340,7 +352,7 @@ async function exportProducts() {
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
-        /><label for="product-newness">商品新旧标签</label><Select id="product-newness" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /><Select
+        /><Select id="product-newness" aria-label="商品新旧标签" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /><Select
           v-model:value="decisionFilter"
           :options="productDecisionFilters"
           aria-label="按商品决策标签筛选"
@@ -358,6 +370,11 @@ async function exportProducts() {
         >
       </div>
     </section>
+    <div class="hci-toolbar product-listing-filter">
+      <span>上架时间</span>
+      <DatePicker.RangePicker :value="listedRange.length === 2 ? listedRange : undefined" value-format="YYYY-MM-DD" :placeholder="['开始日期', '结束日期']" @change="(_dates, values) => { listedRange = values?.[0] && values?.[1] ? [values[0], values[1]] : []; listedQuick = 0; }" />
+      <Segmented :value="listedQuick" aria-label="上架时间快捷筛选" :options="[{ value: 0, label: '全部' }, ...[7, 30, 90].map((value) => ({ value, label: `近${value}天` }))]" @change="(value) => setListedQuick(Number(value))" />
+    </div>
     <Empty v-if="!rows.length" description="没有符合条件的商品，请调整筛选" />
     <div class="hci-toolbar product-view-toolbar">
       <Segmented
@@ -427,6 +444,8 @@ async function exportProducts() {
             </Tag>
           </div>
           <div class="hci-product-insights">
+            <div><span>累计销量</span><EvidenceMetric :metric="core.metric(product, 'core:cumulativeSold')" /></div>
+            <div><span>上架时间</span><EvidenceMetric :metric="core.metric(product, 'core:listingDate')" /></div>
             <div>
               <span>功效卖点</span>
               <CompactTags :items="product.benefits" label="商品功效卖点" color="green" />
@@ -503,6 +522,8 @@ async function exportProducts() {
         { title: '商品', key: 'product', width: 320, fixed: 'left' },
         { title: '市场 / 品类', key: 'category', width: 150 },
         { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: serverMode ? true : (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
+        { title: '累计销量', key: 'core:cumulativeSold', width: 170 },
+        { title: '上架时间', key: 'core:listingDate', width: 170 },
         { title: '决策标签（点击看依据）', key: 'decisions', width: 280 },
         { title: '规格 / 剂型', key: 'spec', width: 170 },
         { title: '配方与成分', key: 'ingredient', width: 240 },
