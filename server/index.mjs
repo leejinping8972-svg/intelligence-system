@@ -75,6 +75,7 @@ import { workspaceSnapshot } from './workspace-snapshot.mjs';
 import { createWorkspaceReads } from './workspace-reads.mjs';
 import { isWorkspaceSyncKey } from './workspace-sync-keys.mjs';
 import { youtubeAction } from './youtube-config.mjs';
+import { sourceUsageAction } from './source-usage.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const secret = Buffer.from(process.env.SERVER_BRIDGE_KEY || '');
 if (secret.length < 32) throw new Error('SERVER_BRIDGE_KEY must be configured');
@@ -105,6 +106,7 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_source_')) return sourceUsageAction(input, user);
   if (input.action === 'server_product_resource_resume') {
     const job = await resumeResourceJob(input);
     return { jobId: job.id, tasks: jobTasks(job) };

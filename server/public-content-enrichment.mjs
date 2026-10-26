@@ -363,6 +363,7 @@ export async function enrichContentStep(job, step, io) {
   try {
     // Credential checks happen inside providers; unconfigured errors are not charged.
     await saveState('running', '正在补全详情');
+    step.usageAt = new Date().toISOString();
     attempted = true;
     const result =
       step.kind === 'detail_transcript'
@@ -371,6 +372,9 @@ export async function enrichContentStep(job, step, io) {
     if (io.leaseSignal?.aborted) return;
     job.requests += actualRequests || result.requests || 0;
     step.accounted = true;
+    step.creditsCharged = result.creditsCharged;
+    step.quotaUnits = result.quotaUnits;
+    step.actualRequests = actualRequests || result.requests || 0;
     if (step.paid) {
       if (result.creditsCharged === null) job.unknownChargeRequests++;
       else job.creditsCharged += result.creditsCharged;

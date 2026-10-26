@@ -8,9 +8,9 @@ import { pool } from './store.mjs';
 
 const key = () =>
   Buffer.from(process.env.PROVIDER_CONFIG_ENCRYPTION_KEY || '', 'base64');
-export async function readCredentials() {
-  const { rows } = await pool.query(
-    "SELECT value FROM provider_configs WHERE name='credentials'",
+export async function readCredentials(connection = pool, forUpdate = false) {
+  const { rows } = await connection.query(
+    `SELECT value FROM provider_configs WHERE name='credentials'${forUpdate ? ' FOR UPDATE' : ''}`,
   );
   if (!rows[0]) return {};
   const { iv, tag, ciphertext } = rows[0].value;
@@ -38,6 +38,14 @@ export async function migrateCredentials(value) {
     if (typeof value[name] === 'string' && value[name].length <= 4096)
       allowed[name] = value[name];
   if (!allowed.RESEARCH_ACCESS_KEY) throw new Error('迁移配置缺少研究访问码');
+  const record = sealCredentials(allowed);
+  await putDocument('provider_configs', 'credentials', record, true);
+  return {
+    configured: true,
+    message: '服务凭证已在服务器加密保存，不回显密钥',
+  };
+}
+function sealCredentials(allowed) {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key(), iv);
   cipher.setAAD(Buffer.from('intelligence-server-credentials-v1'));
@@ -50,11 +58,19 @@ export async function migrateCredentials(value) {
     tag: cipher.getAuthTag().toString('base64'),
     ciphertext: ciphertext.toString('base64'),
   };
-  await putDocument('provider_configs', 'credentials', record, true);
-  return {
-    configured: true,
-    message: '服务凭证已在服务器加密保存，不回显密钥',
-  };
+  return record;
+}
+export async function saveBraveCredential(apiKey) {
+  if (typeof apiKey !== 'string' || apiKey.trim().length < 10 || apiKey.length > 4096 || /\s/.test(apiKey.trim())) throw new Error('请填写有效的 Brave Search Key');
+  const connection = await pool.connect();
+  try {
+    await connection.query('BEGIN');
+    const existing = await readCredentials(connection, true);
+    await putDocument('provider_configs', 'credentials', sealCredentials({ ...existing, BRAVE_SEARCH_API_KEY: apiKey.trim() }), false, connection);
+    await connection.query('COMMIT');
+    return { configured: true };
+  } catch (error) { await connection.query('ROLLBACK'); throw error; }
+  finally { connection.release(); }
 }
 export async function collectorEnv() {
   return {

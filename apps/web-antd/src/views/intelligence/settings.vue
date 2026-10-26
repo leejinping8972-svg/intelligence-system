@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onDeactivated, reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 
 import {
   Button,
@@ -17,7 +17,10 @@ import SemrushSettings from './components/SemrushSettings.vue';
 import SiteCollectionSettings from './components/SiteCollectionSettings.vue';
 import YouTubeSettings from './components/YouTubeSettings.vue';
 import AdsSettings from './components/AdsSettings.vue';
-import { useRouter } from 'vue-router';
+import AnalysisSettings from './components/AnalysisSettings.vue';
+import SourceUsageDashboard from './components/SourceUsageDashboard.vue';
+import BraveSettings from './components/BraveSettings.vue';
+import SorftimeSettings from './components/SorftimeSettings.vue';
 import {
   audit,
   clearWorkspaceResults,
@@ -27,12 +30,7 @@ import {
   state,
 } from './data';
 import { serverMode } from './session';
-import {
-  keywordSourceStatus,
-  saveSorftimeConfiguration,
-} from './site-discovery';
 
-const router = useRouter();
 const draft = reactive({ ...state.settings });
 const brandingDraft = reactive({ ...state.branding });
 const logoInput = ref<HTMLInputElement>();
@@ -55,57 +53,7 @@ async function resetResults() {
     resetBusy.value = false;
   }
 }
-const sorftimeToken = ref('');
-const providerBusy = ref(false);
 const sorftimeState = ref('尚未检测');
-const providerMessage = ref(
-  '填写 MCP ACCESS TOKEN 后保存到云端，再检测连接。连接检测不会执行关键词数据查询。',
-);
-onDeactivated(() => {
-  sorftimeToken.value = '';
-});
-async function configureSorftime(saveToken = false) {
-  if (!draft.researchApiUrl || !draft.researchAccessKey) {
-    message.warning('请先填写下方研究服务地址与访问码');
-    return;
-  }
-  if (saveToken && !sorftimeToken.value.trim()) {
-    message.warning('请输入 MCP ACCESS TOKEN；留空不会覆盖云端已有密钥');
-    return;
-  }
-  providerBusy.value = true;
-  try {
-    if (saveToken) {
-      const result = await saveSorftimeConfiguration(
-        draft.researchApiUrl,
-        draft.researchAccessKey,
-        sorftimeToken.value,
-      );
-      sorftimeToken.value = '';
-      sorftimeState.value = '已配置 · 待检测';
-      providerMessage.value = result.message;
-      audit('配置 Sorftime MCP', '密钥已加密保存到云端，不记录密钥内容', 'ALL');
-      message.success('Token 已保存，可点击检测连接');
-    } else {
-      const result = await keywordSourceStatus(
-        draft.researchApiUrl,
-        draft.researchAccessKey,
-        true,
-      );
-      sorftimeState.value = '未配置';
-      if (result.sorftime.configured)
-        sorftimeState.value = '已配置 · 连接未通过';
-      if (result.sorftime.ready) sorftimeState.value = '连接正常';
-      providerMessage.value = result.sorftime.message;
-    }
-  } catch (error) {
-    providerMessage.value =
-      error instanceof Error ? error.message : '配置或检测失败';
-    message.error(providerMessage.value);
-  } finally {
-    providerBusy.value = false;
-  }
-}
 const selected = ref<{ name: string; status: string; detail: string }>();
 const sources = [
   {
@@ -310,66 +258,18 @@ function handleLogo(event: Event) {
       title="数据源与设置"
       description="明确每个市场的覆盖边界，控制研究规模与成本。"
     />
-    <SemrushSettings v-if="serverMode" />
-    <SiteCollectionSettings v-if="serverMode" />
-    <YouTubeSettings v-if="serverMode" />
-    <AdsSettings v-if="serverMode" />
-    <section v-if="serverMode" class="hci-panel">
-      <h2>AI 配置</h2>
-      <p class="hci-subtle">
-        模型接口与消费者洞察、广告报告、公共内容整理、关键词翻译提示词已集中管理。
-      </p>
-      <Button @click="router.push('/ai-config')">打开 AI 配置</Button>
-    </section>
-    <section class="hci-panel" id="keyword-providers">
-      <div class="hci-panel-head">
-        <h2>关键词数据源 · Sorftime MCP</h2>
-        <Tag>{{ sorftimeState }}</Tag>
-      </div>
-      <p class="hci-subtle">
-        使用你已有的 MCP ACCESS TOKEN。保存到当前工作区的云端加密存储，不写入
-        源代码，不保存在浏览器长期存储，也不会回显完整密钥。
-      </p>
-      <Form layout="vertical">
-        <Form.Item label="Sorftime MCP ACCESS TOKEN">
-          <Input.Password
-            v-model:value="sorftimeToken"
-            autocomplete="new-password"
-            :maxlength="4096"
-            placeholder="粘贴 Token 本身；已有配置时留空即可"
-          />
-        </Form.Item>
-        <div class="hci-toolbar">
-          <Button
-            type="primary"
-            :loading="providerBusy"
-            :disabled="providerBusy || !sorftimeToken.trim()"
-            @click="configureSorftime(true)"
-          >
-            加密保存到云端
-          </Button>
-          <Button
-            :loading="providerBusy"
-            :disabled="providerBusy"
-            @click="configureSorftime(false)"
-          >
-            检测连接
-          </Button>
-          <a
-            class="hci-link"
-            href="https://open.sorftime.com/mcp"
-            target="_blank"
-            rel="noopener noreferrer"
-            >打开 Sorftime MCP</a
-          >
-        </div>
-      </Form>
-      <p class="hci-evidence">{{ providerMessage }}</p>
-      <p class="hci-subtle">
-        美国、墨西哥：Amazon
-        延伸词；越南不跨国替代。研究时需主动勾选此来源，调用次数根据结果数量、种子词、市场和扩词深度自动安排，达到结果数量即停止。调用使用你的平台额度，系统不会自动购买。此配置由当前工作区管理员管理。
-      </p>
-    </section>
+    <SourceUsageDashboard v-if="serverMode">
+      <template #configuration="{ sourceId }">
+        <SemrushSettings v-if="sourceId === 'semrush'" />
+        <SiteCollectionSettings v-else-if="sourceId === 'firecrawl' || sourceId === 'official_sites'" />
+        <YouTubeSettings v-else-if="sourceId === 'youtube'" />
+        <AdsSettings v-else-if="sourceId === 'scrapecreators'" />
+        <AnalysisSettings v-else-if="sourceId === 'analysis'" />
+        <BraveSettings v-else-if="sourceId === 'brave'" />
+        <SorftimeSettings v-else-if="sourceId === 'sorftime'" :api-url="draft.researchApiUrl" :access-key="draft.researchAccessKey" />
+      </template>
+    </SourceUsageDashboard>
+    <SorftimeSettings v-else :api-url="draft.researchApiUrl" :access-key="draft.researchAccessKey" @status="sorftimeState = $event" />
     <section class="hci-panel">
       <div class="hci-panel-head">
         <div>
@@ -595,7 +495,7 @@ function handleLogo(event: Event) {
         </Form>
       </section>
     </div>
-    <section class="hci-panel">
+    <section v-if="!serverMode" class="hci-panel">
       <div class="hci-panel-head">
         <h2>{{ marketName(state.market) }} · 数据来源</h2>
         <span class="hci-subtle">平台密钥仅在服务器加密保存</span>

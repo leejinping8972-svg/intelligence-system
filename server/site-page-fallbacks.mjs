@@ -77,7 +77,7 @@ export async function hostedProductPage(
     Buffer.byteLength(html) > 2_000_000
   )
     throw new Error('托管结果无有效页面或超过大小上限');
-  return { html, url: final, method: 'hosted' };
+  return { html, url: final, method: 'hosted', creditsCharged: typeof result.data?.metadata?.creditsUsed === 'number' ? result.data.metadata.creditsUsed : null };
 }
 
 // All browser HTTP is fulfilled through the DNS-pinned public-page reader.
