@@ -129,6 +129,19 @@ export async function exerciseWorkspaceReads(
       dataNature: 'collected',
     });
   await drain();
+  const dates = Array.from({ length: 365 }, (_, i) => ({ date: new Date(Date.parse('2026-10-26T00:00:00Z') - (365 - i) * 86400000).toISOString().slice(0, 10), value: 50 }));
+  const saved = { ...keyword(0), series: dates.map((p) => p.value), trendPoints: dates, trendResolution: 'day', trendCollectedAt: '2026-10-26T00:00:00Z', trendDailyPoints: dates.slice(-60), trendDailyCollectedAt: '2026-10-26T00:00:00Z', trendRelatedTop: Array.from({ length: 25 }, (_, i) => ({ query: `saved query ${i}`, value: i, formattedValue: String(i) })) };
+  await pool.query('UPDATE research_keywords SET data=$1 WHERE natural_key=$2', [saved, 'key0']);
+  // Simulate a v6 projection that predates calendar summaries; no rebuild is needed.
+  await pool.query("UPDATE workspace_read_rows SET payload=$1 WHERE collection='keywords' AND id='k0'", [{ ...keyword(0), listSummary: true, trendPoints: [], trendRelatedTop: [] }]);
+  const savedPage = await reads.list({ collection: 'keywords', search: 'magnesium gummies 0' });
+  const savedRow = savedPage.rows.find((r) => r.id === 'k0');
+  assert.equal(savedRow.trendPoints.length, 365);
+  assert.equal(savedRow.trendCalendarSummary.length, 4);
+  assert.equal(savedRow.trendCalendarSummary[1].heat, 50);
+  assert.equal(savedRow.trendRelatedTop.length, 25);
+  assert.equal(savedRow.trendDailyPoints, undefined);
+  await drain();
   const overview = await reads.overview({ market: 'ALL' });
   assert.equal(overview.snapshot.counts.keywords, 34);
   assert.equal(overview.snapshot.counts.products, 240);

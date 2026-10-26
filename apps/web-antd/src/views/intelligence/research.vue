@@ -15,6 +15,7 @@ import {
   message,
   Modal,
   Select,
+  Spin,
   Table,
   Tag,
   Tooltip,
@@ -26,6 +27,7 @@ import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
 import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 import { researchSourceTags } from './competitor-monitor';
 import CompactTags from './components/CompactTags.vue';
+import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
@@ -88,10 +90,14 @@ function clearSelection() {
   selectionSnapshots.value = new Map();
 }
 const detailId = ref('');
+const detailLoading = ref(false);
+const detailError = ref('');
+let detailSequence = 0;
+function closeDetail() { detailSequence += 1; detailId.value = ''; detailLoading.value = false; detailError.value = ''; }
 watch(
   () => state.market,
   () => {
-    detailId.value = '';
+    closeDetail();
     tagFilter.value = [];
   },
 );
@@ -213,9 +219,7 @@ const detail = computed(() =>
   state.keywords.find((record) => record.id === detailId.value),
 );
 const assessment = computed(() =>
-  detail.value
-    ? allRows.value.find((row) => row.id === detail.value?.id)?.assessment
-    : undefined,
+  detail.value ? assessKeyword(detail.value) : undefined,
 );
 const summary = computed(() => serverMode ? overview.snapshot.value?.keywords || { total: 0, priority: 0, pending: 0, selected: 0 } : ({
   total: allRows.value.length,
@@ -530,13 +534,23 @@ const metricsForm = reactive({
   note: '',
 });
 async function openDetail(value: Record<string, unknown>) {
-  if (serverMode) {
-    try { await loadWorkspaceDetail('keywords', String(value.id)); }
-    catch (error) { message.error((error as Error).message); return; }
+  const ticket = ++detailSequence;
+  const id = String(value.id);
+  detailId.value = id;
+  detailError.value = '';
+  detailLoading.value = serverMode;
+  try {
+    if (serverMode) await loadWorkspaceDetail('keywords', id);
+    if (ticket !== detailSequence || detailId.value !== id) return;
+    const record = state.keywords.find((item) => item.id === id);
+    if (record) fillMetrics(record);
+  } catch (error) {
+    if (ticket === detailSequence) detailError.value = (error as Error).message;
+  } finally {
+    if (ticket === detailSequence) detailLoading.value = false;
   }
-  const record = state.keywords.find((item) => item.id === value.id);
-  if (!record) return;
-  detailId.value = record.id;
+}
+function fillMetrics(record: Keyword) {
   metricsForm.monthlySearchVolume =
     record.metrics?.monthlySearchVolume ?? undefined;
   metricsForm.difficulty = record.metrics?.difficulty ?? undefined;
@@ -824,7 +838,8 @@ function saveMetrics() {
         :scroll="{ x: 'max-content' }"
       >
         <template #bodyCell="{ column, record }">
-          <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Keyword, column.key)" />
+          <KeywordRelatedQueries v-if="column.key === 'core:relatedTop' || column.key === 'core:relatedRising'" :keyword="record as Keyword" :kind="column.key === 'core:relatedTop' ? 'relatedTop' : 'relatedRising'" />
+          <EvidenceMetric v-else-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Keyword, column.key)" />
           <template v-else-if="column.key === 'term'">
             <button class="hci-link keyword-term" @click="openDetail(record)">
               {{ record.term }}
@@ -869,7 +884,7 @@ function saveMetrics() {
           </template>
           <template v-else-if="column.key === 'trend'">
             <KeywordTrendDialog
-              v-if="record.series.length"
+              v-if="record.series.length || record.trendPoints?.length"
               :keyword="record as Keyword"
             />
             <Tooltip v-else :title="record.trendMessage || '尚未采集趋势'">
@@ -1096,13 +1111,20 @@ function saveMetrics() {
     </Modal>
 
     <Drawer
-      :open="!!detail"
+      :open="!!detailId"
       title="关键词评分与人工决策"
       root-class-name="hci-resource-drawer"
       width="min(940px, 100vw)"
-      @close="detailId = ''"
+      @close="closeDetail"
     >
-      <template v-if="detail && assessment">
+      <div v-if="detailLoading" role="status" aria-live="polite" aria-busy="true" style="padding: 32px 0">
+        <h2 class="keyword-detail-title">{{ detail?.term }}</h2>
+        <Spin tip="正在加载关键词详情…"><div style="height: 120px"></div></Spin>
+      </div>
+      <Alert v-else-if="detailError" type="error" message="关键词详情加载失败" :description="detailError" show-icon>
+        <template #action><Button @click="openDetail({ id: detailId })">重试</Button></template>
+      </Alert>
+      <template v-else-if="detail && assessment">
         <CoreMetricsPanel kind="keywords" :record="detail" />
         <h2 class="keyword-detail-title hci-resource-title">
           {{ detail.term }}

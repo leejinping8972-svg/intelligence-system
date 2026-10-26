@@ -410,6 +410,48 @@ function compare(key, label, source, months = 0, bounds) {
   result.reason = "\u4E0E\u6B64\u524D\u7B49\u957F\u5468\u671F\u5E73\u5747\u70ED\u5EA6\u6BD4\u8F83";
   return result;
 }
+function fourPeriodComparisons(record) {
+  if (record.listSummary && record.trendCalendarSummary?.length === 4)
+    return record.trendCalendarSummary;
+  const daily = intervals(
+    record.trendDailyPoints,
+    "day",
+    record.trendDailyCollectedAt
+  );
+  const history = intervals(
+    record.trendHistoryPoints,
+    record.trendHistoryResolution,
+    record.trendHistoryCollectedAt
+  );
+  const annual = intervals(
+    record.trendPoints,
+    record.trendResolution,
+    record.trendCollectedAt
+  );
+  const captured = Date.parse(record.trendDailyCollectedAt || "");
+  const end = Number.isFinite(captured) ? day(captured) : daily.at(-1)?.end ?? day(Date.parse(record.trendCollectedAt || (/* @__PURE__ */ new Date()).toISOString()));
+  const d = new Date(end);
+  const weekStart = end - (d.getUTCDay() + 6) % 7 * DAY;
+  const monthStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  const priorMonth = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1);
+  const long = history.length ? history : annual;
+  return [
+    compare("week", "\u672C\u5468", daily, 0, {
+      start: weekStart,
+      end,
+      previousStart: weekStart - 7 * DAY,
+      previousEnd: end - 7 * DAY
+    }),
+    compare("month", "\u672C\u6708", daily, 0, {
+      start: monthStart,
+      end,
+      previousStart: priorMonth,
+      previousEnd: Math.min(monthStart, priorMonth + end - monthStart)
+    }),
+    compare("quarter", "\u8FD13\u4E2A\u6708", long, 3),
+    compare("halfYear", "\u8FD16\u4E2A\u6708", long, 6)
+  ];
+}
 function trendComparisons(record) {
   if (record.listSummary && record.trendSummary?.length === 3)
     return record.trendSummary;
@@ -2369,6 +2411,7 @@ export {
   classifyKeyword,
   coreMetrics,
   formulaStatistics,
+  fourPeriodComparisons,
   groupAdvertisers,
   opportunityRows,
   productDataSource,

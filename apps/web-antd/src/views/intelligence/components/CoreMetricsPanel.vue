@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { Select, Table } from 'ant-design-vue';
-import type { Ad, Keyword, Product, Site } from '../data';
 import type {
   CoreKind,
   CorePeriod,
   EvidenceMetric as MetricValue,
 } from '../core-list-metrics';
+import type { Ad, Keyword, Product, Site } from '../data';
+
+import { computed, onMounted, ref } from 'vue';
+
+import { Select, Table } from 'ant-design-vue';
+
+import { coreListContext, loadCoreRates } from '../core-list-context';
 import { coreMetrics } from '../core-list-metrics';
 import { state } from '../data';
 import { serverMode } from '../session';
-import { coreListContext, loadCoreRates } from '../core-list-context';
 import EvidenceMetric from './EvidenceMetric.vue';
+import KeywordRelatedQueries from './KeywordRelatedQueries.vue';
 const props = defineProps<{
   kind: CoreKind;
-  record: Product | Site | Ad | Keyword;
+  record: Ad | Keyword | Product | Site;
 }>();
 const period = ref<CorePeriod>(30);
 onMounted(() => {
@@ -52,11 +56,13 @@ const columns = [
       :pagination="false"
       :scroll="{ x: 560 }"
     >
-      <template #bodyCell="{ column, record: row }"
-        ><EvidenceMetric
-          v-if="column.key === 'value'"
+      <template #bodyCell="{ column, record: row }">
+        <KeywordRelatedQueries v-if="column.key === 'value' && kind === 'keywords' && (row.key === 'relatedTop' || row.key === 'relatedRising')" :keyword="record as Keyword" :kind="row.key" />
+        <EvidenceMetric
+          v-else-if="column.key === 'value'"
           :metric="row as MetricValue"
-      /></template>
+        />
+      </template>
     </Table>
     <details v-if="record.coreEvidence?.history?.length">
       <summary>

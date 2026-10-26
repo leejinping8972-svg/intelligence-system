@@ -12,6 +12,7 @@ import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
+import { keywordTrendList } from './keyword-trend-list.mjs';
 import { productChineseName } from './product-names.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 
@@ -88,8 +89,7 @@ export function projectRecord(collection, value) {
     data.assessment = assessKeyword(value);
     data.score = data.assessment.score;
     data.trendSummary = trendComparisons(value);
-    data.series = (value.series || []).slice(-52);
-    data.trendPoints = (value.trendPoints || []).slice(-104);
+    Object.assign(data, keywordTrendList(value));
     data.productIds ||= [];
     data.siteIds ||= [];
   }
@@ -735,6 +735,16 @@ export function createWorkspaceReads({
     }
     return { collection, values, where: clauses.join(' AND ') };
   }
+  async function withKeywordTrends(records) {
+    if (!records.length) return records;
+    // Read current saved trends for this page without rebuilding the full index.
+    const ids = records.map((record) => record.id);
+    const rows = (await pool.query(
+      `SELECT k.data FROM research_keywords k JOIN workspace_read_rows r ON r.source_key=k.natural_key AND r.collection='keywords' WHERE r.id IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids,
+    )).rows;
+    const trends = new Map(rows.map(({ data }) => [data.id, keywordTrendList(data)]));
+    return records.map((record) => ({ ...record, ...trends.get(record.id) }));
+  }
   async function list(input) {
     const query = filter(input);
     const pageSize = Math.max(
@@ -765,12 +775,13 @@ export function createWorkspaceReads({
       `SELECT r.payload,${query.collection === 'sites' ? "(SELECT COUNT(*) FROM workspace_read_rows p WHERE p.collection='products' AND p.site_id=r.id)" : '0'} AS product_count FROM workspace_read_rows r WHERE ${query.where} ORDER BY CASE WHEN ${sortColumn} IS NULL THEN 1 ELSE 0 END,${sortColumn} ${direction},r.id ASC LIMIT $${query.values.length + 1} OFFSET $${query.values.length + 2}`,
       [...query.values, pageSize, (page - 1) * pageSize],
     );
-    return {
-      rows: await withRelations(query.collection, result.rows.map((r) =>
+    const records = result.rows.map((r) =>
         query.collection === 'sites'
           ? { ...r.payload, productCount: Number(r.product_count) }
           : r.payload,
-      )),
+      );
+    return {
+      rows: await withRelations(query.collection, query.collection === 'keywords' ? await withKeywordTrends(records) : records),
       total,
       page,
       pageSize,

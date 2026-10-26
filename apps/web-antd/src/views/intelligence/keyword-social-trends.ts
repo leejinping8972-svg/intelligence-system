@@ -1,6 +1,7 @@
-import { reactive } from 'vue';
+import { reactive, watch } from 'vue';
 
 import { cloudRequest } from './cloud-workspace';
+import { session } from './session';
 
 export interface SocialPeriod {
   collectedAt?: string;
@@ -69,28 +70,52 @@ export const socialTrends = reactive({
   summaries: [] as SocialSummary[],
   error: '',
   loading: false,
+  loadedIds: [] as string[],
+  loadingIds: [] as string[],
+  errors: {} as Record<string, string>,
+  loadedAll: false,
 });
-let flight: Promise<TrendSnapshot> | undefined;
-let flightKey = '';
+const flights = new Map<string, Promise<TrendSnapshot>>();
+let generation = 0;
+watch(() => session.user?.id, () => {
+  generation += 1;
+  flights.clear();
+  Object.assign(socialTrends, { summaries: [], error: '', loading: false, loadedIds: [], loadingIds: [], errors: {}, loadedAll: false });
+});
 export function loadSocialTrends(keywordIds?: string[]): Promise<TrendSnapshot> {
-  const key = JSON.stringify(keywordIds?.toSorted());
-  if (flight && flightKey === key) return flight;
-  flightKey = key;
+  const ids = keywordIds ? [...new Set(keywordIds)].toSorted() : undefined;
+  const key = JSON.stringify(ids || null);
+  const existing = flights.get(key);
+  if (existing) return existing;
+  const ticket = generation;
   socialTrends.loading = true;
-  const request = cloudRequest<TrendSnapshot>('server_keyword_trends_snapshot', keywordIds ? { keywordIds } : {})
+  socialTrends.loadingIds = [...new Set([...socialTrends.loadingIds, ...(ids || [])])];
+  const request = cloudRequest<TrendSnapshot>('server_keyword_trends_snapshot', ids ? { keywordIds: ids } : {})
     .then((value) => {
-      if (flightKey === key) socialTrends.summaries = value.summaries;
+      if (ticket !== generation) return value;
+      // A second list or page must not erase another visible page's saved values.
+      socialTrends.summaries = ids
+        ? [...socialTrends.summaries.filter((s) => !ids.includes(s.keywordId)), ...value.summaries]
+        : value.summaries;
+      socialTrends.loadedIds = [...new Set([...socialTrends.loadedIds, ...(ids || value.summaries.map((s) => s.keywordId))])];
+      if (!ids) socialTrends.loadedAll = true;
+      for (const id of ids || []) delete socialTrends.errors[id];
       socialTrends.error = '';
       return value;
     })
     .catch((error: unknown) => {
-      socialTrends.error =
-        error instanceof Error ? error.message : '趋势读取失败';
+      if (ticket === generation) {
+        socialTrends.error = error instanceof Error ? error.message : '趋势读取失败';
+        for (const id of ids || []) socialTrends.errors[id] = socialTrends.error;
+      }
       throw error;
     })
     .finally(() => {
-      if (flightKey === key) { flight = undefined; socialTrends.loading = false; }
+      if (ticket !== generation) return;
+      flights.delete(key);
+      socialTrends.loadingIds = socialTrends.loadingIds.filter((id) => !ids?.includes(id) || [...flights.keys()].some((k) => (JSON.parse(k) || []).includes(id)));
+      socialTrends.loading = flights.size > 0;
     });
-  flight = request;
+  flights.set(key, request);
   return request;
 }
