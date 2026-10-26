@@ -40,6 +40,7 @@ import { useCoreList } from './use-core-list';
 const core = useCoreList('keywords');
 const { preset: corePreset, period: corePeriod } = core;
 const evidenceKeyword = ref<Keyword>();
+import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import { keywordChineseName } from './keyword-names';
 import SelectionBar from './components/SelectionBar.vue';
@@ -342,7 +343,8 @@ async function exportSelectedKeywords() {
         }"
       >
         <template #bodyCell="{ column, record }">
-          <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Keyword, column.key)" />
+          <KeywordRelatedQueries v-if="column.key === 'core:relatedTop' || column.key === 'core:relatedRising'" :keyword="record as Keyword" :kind="column.key === 'core:relatedTop' ? 'relatedTop' : 'relatedRising'" />
+          <EvidenceMetric v-else-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Keyword, column.key)" />
           <template v-else-if="column.key === 'term'">
             <Button type="link" @click="evidenceKeyword = record as Keyword">{{ record.term }}</Button>
             <p class="hci-subtle">
@@ -448,7 +450,7 @@ async function exportSelectedKeywords() {
           </template>
           <template v-else-if="column.key === 'trend'">
             <KeywordTrendDialog
-              v-if="record.series.length"
+              v-if="record.series.length || record.trendPoints?.length"
               :keyword="record as Keyword"
             />
             <KeywordTrendComparison :keyword="record as Keyword" />

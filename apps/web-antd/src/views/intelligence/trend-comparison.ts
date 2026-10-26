@@ -6,6 +6,7 @@ export interface TrendPoint {
 interface TrendRecord {
   listSummary?: boolean;
   trendSummary?: TrendComparison[];
+  trendCalendarSummary?: TrendComparison[];
   trendDailyPoints?: TrendPoint[];
   trendDailyCollectedAt?: string;
   trendPoints?: TrendPoint[];
@@ -167,6 +168,8 @@ function compare(
 // Calendar week/month to the last complete UTC day; compare the matching
 // elapsed part of the previous week/month. Legacy scoring keeps its 30d metric.
 export function fourPeriodComparisons(record: TrendRecord): TrendComparison[] {
+  if (record.listSummary && record.trendCalendarSummary?.length === 4)
+    return record.trendCalendarSummary;
   const daily = intervals(
     record.trendDailyPoints,
     'day',
