@@ -1,5 +1,6 @@
 // Invoked by the daily collector. Only public observations are written to stdout.
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +15,8 @@ try {
     const child = spawn(
       process.execPath,
       [
+        '--import',
+        new URL('./source-usage-public-hook.mjs', import.meta.url).href,
         new URL('./public-sources/collect-free-sources.mjs', import.meta.url)
           .pathname,
       ],
@@ -21,6 +24,7 @@ try {
         env: {
           ...process.env,
           YOUTUBE_API_KEY: key,
+          HCI_SOURCE_USAGE_JOB_ID: randomUUID(),
           HCI_FREE_SOURCE_OUTPUT: output,
           HCI_FREE_SOURCES_PREVIOUS_URL:
             'https://is.luckdate.com/admin/data/free-source-observations.json',

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { pool, putDocument } from './database.mjs';
+import { recordSourceCall } from './source-usage.mjs';
 import { saveCheckpoint } from './store.mjs';
 import { fetchPublicPage } from './safe-web.mjs';
 import {
@@ -489,8 +490,8 @@ export async function runProductsJob(job, overrides = {}) {
       ])
     ).rows[0]?.value;
   const io = {
-    fetchPage: fetchPublicPage,
-    fetchFallback: fetchFallbackPage,
+    fetchPage: (...args) => recordSourceCall({ jobId: job.id, task: '独立站商品采集', step: '官网公开页面读取', sourceId: 'official_sites', market: job.input.market, project: () => ({ requests: 1 }) }, () => fetchPublicPage(...args)),
+    fetchFallback: (url, site, mode) => recordSourceCall({ jobId: job.id, task: '独立站商品采集', step: mode === 'hosted' ? 'Firecrawl 托管备用' : '服务器浏览器渲染', sourceId: mode === 'hosted' ? 'firecrawl' : 'official_sites', market: site.market, project: (result) => mode === 'hosted' ? { creditsCharged: result.creditsCharged } : { requests: 1 } }, () => fetchFallbackPage(url, site, mode)),
     saveCheckpoint,
     mergeBusiness,
     now: () => Date.now(),

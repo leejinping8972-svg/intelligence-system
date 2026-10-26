@@ -66,7 +66,7 @@ export async function collect(job, step, request) {
   if (cached.rows[0]) {
     const row = cached.rows[0];
     if (row.status === 'done') {
-      const { semrushKeyId: _internalSemrushKeyId, ...publicResult } =
+      const { semrushKeyId: _internalSemrushKeyId, requestUsage: _usage, ...publicResult } =
         row.response || {};
       return publicResult;
     }
@@ -101,13 +101,19 @@ export async function collect(job, step, request) {
       // will remain unattributed rather than being assigned to a guessed key.
     }
   }
+  const requestUsage = {
+    startedAt: new Date().toISOString(),
+    sources: request.sources || [],
+    provider: request.provider || null,
+    operation: request.op || null,
+  };
   await pool.query(
     "INSERT INTO research_requests(job_id,step,paid_allowance,status,response) VALUES($1,$2,$3,'started',$4)",
     [
       job.id,
       step,
       request.sorftimeRequestLimit || 0,
-      semrushKeyId ? { semrushKeyId } : null,
+      { requestUsage, ...(semrushKeyId ? { semrushKeyId } : {}) },
     ],
   );
   try {
@@ -189,6 +195,7 @@ export async function collect(job, step, request) {
       throw new Error(result.error || `采集服务HTTP ${response.status}`);
     const persistedResult = {
       ...result,
+      requestUsage,
       ...(result.semrushKeyId || semrushKeyId
         ? { semrushKeyId: result.semrushKeyId || semrushKeyId }
         : {}),
@@ -197,7 +204,7 @@ export async function collect(job, step, request) {
       "UPDATE research_requests SET status='done',response=$3 WHERE job_id=$1 AND step=$2",
       [job.id, step, persistedResult],
     );
-    const { semrushKeyId: _internalSemrushKeyId, ...publicResult } =
+    const { semrushKeyId: _internalSemrushKeyId, requestUsage: _usage, ...publicResult } =
       persistedResult;
     return publicResult;
   } catch (error) {

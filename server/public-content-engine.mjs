@@ -81,6 +81,7 @@ export async function executeContentJob(job, io) {
     if (io.leaseSignal?.aborted) return;
     if (io.signal?.aborted) return; // Current step is still pending and safe to resume.
     step.status = 'running';
+    step.usageAt = new Date().toISOString();
     await save();
     if (step.kind === 'article_detail') {
       await collectArticleStep(job, step, io);
@@ -108,6 +109,7 @@ export async function executeContentJob(job, io) {
         if (io.leaseSignal?.aborted) return;
         job.requests++;
         step.accounted = true;
+        step.creditsCharged = result.creditsCharged;
         if (result.creditsCharged === null) job.unknownChargeRequests++;
         else job.creditsCharged += result.creditsCharged;
         if (job.mode === 'comments') {
@@ -189,6 +191,9 @@ export async function executeContentJob(job, io) {
         step.pageLimit = result.pageLimit;
         step.candidateCount = result.candidateCount;
         step.cached = Boolean(cached);
+        step.creditsCharged = result.creditsCharged;
+        step.quotaUnits = result.quotaUnits;
+        step.actualRequests = cached ? 0 : 1;
         step.status = 'success';
         step.message = `本页返回${result.rawCount}条，本组处理上限${result.pageLimit ?? '未知'}条，安全候选${result.candidateCount ?? result.items.length}条，词面相关${result.items.length}条，新增${added}条${result.items.length === 0 ? '；候选未通过链接/相关性过滤' : ''}${result.rawCount > (result.pageLimit ?? Infinity) ? '；超出本组上限的候选未处理' : ''}`;
         if (result.rawCount === 0)
@@ -239,6 +244,7 @@ export async function executeContentJob(job, io) {
       job.aiMessage = '没有可整理的内容';
     } else {
       job.aiStatus = 'running';
+      job.aiUsageAt = new Date().toISOString();
       await save();
       try {
         const sample = contentAiInput(records.filter((r) => !r.ai));
