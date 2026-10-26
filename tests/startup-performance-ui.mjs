@@ -12,6 +12,7 @@ const build = resolve(
 );
 const label = process.argv[3] || 'optimized';
 const output = resolve('.artifacts/startup-performance');
+const statusDelay = Number(process.env.HCI_QA_STATUS_DELAY || 600);
 await mkdir(output, { recursive: true });
 const branding = {
   appName: 'QA Performance Workspace',
@@ -44,7 +45,7 @@ const server = createServer(async (request, response) => {
           result = branding;
           break;
         case 'auth_status':
-          await delay(600);
+          await delay(statusDelay);
           result = {
             setupRequired: false,
             ssoEnabled: false,
@@ -164,6 +165,13 @@ if (label === 'preview') {
         () => !document.querySelector('#__app-loading__'),
       );
       const loginReadyMs = Date.now() - started;
+      if (process.env.HCI_QA_DIRECT_LOGIN === 'true') {
+        assert.equal(await page.locator('#__app-loading__').count(), 0);
+        assert.ok(
+          loginReadyMs < statusDelay,
+          'Login fields must appear before slow status returns',
+        );
+      }
       const loginResources = await page.evaluate(() => {
         const scripts = performance
           .getEntriesByType('resource')
@@ -248,7 +256,7 @@ if (label === 'preview') {
     }
     await writeFile(
       resolve(output, `${label}.json`),
-      `${JSON.stringify({ build, delays: { branding: 3000, status: 600, login: 600 }, measurements }, null, 2)}\n`,
+      `${JSON.stringify({ build, delays: { branding: 3000, status: statusDelay, login: 600 }, measurements }, null, 2)}\n`,
     );
     console.log(JSON.stringify({ label, measurements }, null, 2));
   } catch (error) {
