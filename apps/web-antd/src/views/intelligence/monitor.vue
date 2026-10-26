@@ -29,7 +29,7 @@ import { useCompetitorWorkspace } from './competitor-workspace';
 import { focusedMonitorRows } from './focused-monitors';
 import TaskProgress from './components/TaskProgress.vue';
 import { audit, marketName, state } from './data';
-import { groupTasks } from './task-list';
+import { groupTasks, taskStatus, taskStatuses } from './task-list';
 import { resourceTaskCanResume } from './product-resources';
 const route = useRoute();
 const router = useRouter();
@@ -150,14 +150,6 @@ const auditRows = computed(() =>
     (e) => state.market === 'ALL' || e.market === state.market,
   ),
 );
-const statuses = {
-  awaiting_review: '采集已完成 · 待人工筛选',
-  queued: '待执行',
-  running: '执行中',
-  completed: '已完成',
-  partial: '部分完成',
-  cancelled: '已取消',
-};
 </script>
 <template>
   <main class="hci-page">
@@ -247,12 +239,12 @@ const statuses = {
         <Spin v-if="detailsLoading" tip="正在读取任务详情" />
         <p class="hci-subtle">
           覆盖市场：{{
-            selected.markets.map(marketName).join(' / ')
+            selected.markets.map((market) => market === 'ALL' ? '市场未记录' : marketName(market)).join(' / ')
           }}；进度为整项任务合计。
         </p>
         <h2 style="font-size: 22px">{{ selected.title }}</h2>
         <p class="hci-subtle" style="margin: 12px 0">
-          {{ selected.created }} · {{ statuses[selected.status] }}
+          {{ selected.created }} · {{ taskStatuses[taskStatus(selected)]?.label }}
         </p>
         <TaskProgress :task="selected" detail />
         <Button v-if="selected.cloudJobId && resourceTaskCanResume(selected)" :loading="resuming === selected.cloudJobId" @click="resumeResource(selected)">继续未执行资源步骤</Button>
@@ -276,7 +268,10 @@ const statuses = {
         >
           <span class="hci-market-code">{{ i + 1 }}</span><span style="flex: 1">{{ step }}</span>
         </div>
-        <div v-if="selected.researchProgress?.resource" class="hci-evidence">
+        <div v-if="selected.readOnly" class="hci-evidence">
+          当前展示已保存的任务摘要，原任务和检查点保留。
+        </div>
+        <div v-else-if="selected.researchProgress?.resource" class="hci-evidence">
           本任务按已配置的资源路径执行。请求、累计预留与已确认用量分别记录；缺少回执的费用需人工核实。
         </div>
         <div v-else-if="isLiveTask(selected)" class="hci-evidence">

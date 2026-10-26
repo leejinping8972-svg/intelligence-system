@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { projectJobTasks } from './task-projection.mjs';
 
 const digest = (rows) =>
   createHash('sha256').update(JSON.stringify(rows)).digest('hex');
@@ -74,7 +75,7 @@ export async function workspaceSnapshot(
             'SELECT * FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
           );
           result.tasks = rows.flatMap((job) =>
-            jobTasks(job).map((task) => compactTask(task)),
+            projectJobTasks(job, jobTasks).map((task) => compactTask(task)),
           );
         })(),
   ]);

@@ -460,12 +460,17 @@ export interface Task {
   };
   id: string;
   cloudJobId?: string;
+  readOnly?: boolean;
   title: string;
-  market: Market;
+  market: Market | 'ALL';
   mode?: 'demo' | 'live';
   stage?: 'keywords' | 'products' | 'sites';
   status:
     | 'awaiting_review'
+    | 'bulk_running'
+    | 'bulk_paused'
+    | 'bulk_blocked'
+    | 'unavailable'
     | 'cancelled'
     | 'completed'
     | 'partial'
