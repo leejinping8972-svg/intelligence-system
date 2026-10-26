@@ -42,6 +42,10 @@ test('supplementation requires the selected count, received list and target to a
       }),
     /数量、名单/,
   );
+  assert.throws(() => validateJob({
+    ...input,
+    existingRecords: [...records.slice(0, 33), { ...records[0], id: 'another-id', term: '  CREATINE   0 ' }],
+  }), /数量、名单/);
 });
 
 test('accepts 100 keyword jobs and derives Sorftime calls from the result target and depth', () => {

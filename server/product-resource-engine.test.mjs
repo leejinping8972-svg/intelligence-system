@@ -394,8 +394,8 @@ test('matching enrichment retains the source variant and never inserts a second 
   assert.equal(saved.dataCompletion.resourceDetail.status, 'completed');
 });
 
-test('Semrush discovery and shopping are separate journal steps with independently bounded unit reservations', async () => {
-  const h = harness(plan({ provider: 'semrush', routeId: 'shopping-semrush', maxProducts: 1, budget: budget({ semrushUnits: 50 }) }), async (request) => request.op === 'domains'
+test('Semrush discovery and shopping keep separate usage records without a unit cap', async () => {
+  const h = harness(plan({ provider: 'semrush', routeId: 'shopping-semrush', maxProducts: 1, budget: budget({ semrushUnits: 0 }) }), async (request) => request.op === 'domains'
     ? { domains: ['merchant.example'], apiUnits: 20, providerCalls: 1 }
     : { products: [product('PLA1', { sourceProvider: 'Semrush' })], apiUnits: 30, providerCalls: 1 });
   await h.drain();
@@ -405,11 +405,13 @@ test('Semrush discovery and shopping are separate journal steps with independent
   assert.equal(h.products.size, 1);
 });
 
-test('reported charges exceeding reservation stop future calls while exposing the actual units', async () => {
-  const h = harness(plan({ provider: 'semrush', routeId: 'shopping-semrush', terms: ['one', 'two'], maxProducts: 1, budget: budget({ semrushUnits: 20 }) }), async () => ({ domains: ['merchant.example'], apiUnits: 21, providerCalls: 1 }));
+test('reported Semrush units above estimates are accounted without stopping later requests', async () => {
+  const h = harness(plan({ provider: 'semrush', routeId: 'shopping-semrush', maxProducts: 1, budget: budget({ semrushUnits: 20 }) }), async (request) => request.op === 'domains'
+    ? { domains: ['merchant.example'], apiUnits: 21, providerCalls: 1 }
+    : { products: [product('PLA1', { sourceProvider: 'Semrush' })], apiUnits: 31, providerCalls: 1 });
   await h.drain();
-  assert.equal(h.requests.length, 1);
-  assert.equal(h.job.checkpoint.reserved.semrushUnits, 21);
-  assert.equal(h.job.checkpoint.confirmedUsage.semrushUnits, 21);
-  assert.equal(h.job.checkpoint.sourceStates.semrush.reason, 'reported_cost_limit');
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.job.checkpoint.reserved.semrushUnits, 52);
+  assert.equal(h.job.checkpoint.confirmedUsage.semrushUnits, 52);
+  assert.notEqual(h.job.checkpoint.sourceStates.semrush.blocked, true);
 });

@@ -3,7 +3,7 @@ import process from 'node:process';
 import { ssoSchema } from './admin-sso-store.mjs';
 import { platformLinkSchema } from './platform-link-store.mjs';
 import { engine, pool, sql } from './database.mjs';
-import { cleanKeyword, naturalKey } from './domain.mjs';
+import { createKeywordSaver } from './keyword-store.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 
@@ -51,68 +51,7 @@ export const mysqlSchema = [
   `CREATE TABLE IF NOT EXISTS provider_configs (name varchar(160) PRIMARY KEY, value json NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS workspace_documents (name varchar(180) PRIMARY KEY, value json NOT NULL, revision integer NOT NULL DEFAULT 1)`,
 ];
-export async function saveKeyword(value, importOnly = false, client = pool) {
-  const record = cleanKeyword(value);
-  if (importOnly) {
-    const found = await client.query(
-      'SELECT data FROM research_keywords WHERE natural_key=$1 FOR UPDATE',
-      [naturalKey(record)],
-    );
-    const old = found.rows[0]?.data;
-    if (old) {
-      const sources = [
-        ...new Set([...old.source.split(' / '), ...record.source.split(' / ')]),
-      ].join(' / ');
-      const richer =
-        !old.series?.length && record.series.length > 0
-          ? {
-              ...record,
-              ...Object.fromEntries(
-                [
-                  'id',
-                  'favorite',
-                  'reviewStatus',
-                  'reviewNote',
-                  'termZh',
-                  'metrics',
-                  'productIds',
-                ]
-                  .filter((key) => old[key] !== undefined)
-                  .map((key) => [key, old[key]]),
-              ),
-            }
-          : old;
-      await client.query(
-        'UPDATE research_keywords SET data=$2,updated_at=now() WHERE natural_key=$1',
-        [naturalKey(record), { ...richer, source: sources }],
-      );
-      return;
-    }
-  }
-  const merge = importOnly
-    ? 'DO NOTHING'
-    : `DO UPDATE SET data = EXCLUDED.data || jsonb_build_object(
-    'id', research_keywords.data->'id', 'favorite', research_keywords.data->'favorite',
-    'reviewStatus', research_keywords.data->'reviewStatus', 'reviewNote', research_keywords.data->'reviewNote',
-    'source', concat_ws(' / ', EXCLUDED.data->>'source', CASE WHEN research_keywords.data->>'source' LIKE '%竞品上新%' AND EXCLUDED.data->>'source' NOT LIKE '%竞品上新%' THEN '竞品上新' END, CASE WHEN research_keywords.data->>'source' LIKE '%Semrush热词%' AND EXCLUDED.data->>'source' NOT LIKE '%Semrush热词%' THEN 'Semrush热词' END),
-    'termZh', COALESCE(research_keywords.data->'termZh', EXCLUDED.data->'termZh'),
-    'metrics', research_keywords.data->'metrics',
-    'productIds', COALESCE(research_keywords.data->'productIds', EXCLUDED.data->'productIds'),
-    'siteIds', research_keywords.data->'siteIds', 'siteCollection', research_keywords.data->'siteCollection', 'semrushCollection', research_keywords.data->'semrushCollection', 'adCollection', research_keywords.data->'adCollection'), updated_at=now()`;
-  await client.query(
-    sql(
-      `INSERT INTO research_keywords(natural_key,data) VALUES($1,$2) ON CONFLICT(natural_key) ${merge}`,
-      `INSERT ${importOnly ? 'IGNORE' : ''} INTO research_keywords(natural_key,data) VALUES($1,$2) ${importOnly ? '' : `ON DUPLICATE KEY UPDATE data=JSON_SET(VALUES(data), '$.source',CONCAT_WS(' / ',JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')),IF(JSON_UNQUOTE(JSON_EXTRACT(data,'$.source')) LIKE '%竞品上新%' AND JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')) NOT LIKE '%竞品上新%','竞品上新',NULL),IF(JSON_UNQUOTE(JSON_EXTRACT(data,'$.source')) LIKE '%Semrush热词%' AND JSON_UNQUOTE(JSON_EXTRACT(VALUES(data),'$.source')) NOT LIKE '%Semrush热词%','Semrush热词',NULL)), '$.id',JSON_EXTRACT(data,'$.id'),'$.favorite',JSON_EXTRACT(data,'$.favorite'),'$.reviewStatus',JSON_EXTRACT(data,'$.reviewStatus'),'$.reviewNote',JSON_EXTRACT(data,'$.reviewNote'),'$.termZh',COALESCE(JSON_EXTRACT(data,'$.termZh'),JSON_EXTRACT(VALUES(data),'$.termZh')),'$.metrics',JSON_EXTRACT(data,'$.metrics'),'$.productIds',COALESCE(JSON_EXTRACT(data,'$.productIds'),JSON_EXTRACT(VALUES(data),'$.productIds')),'$.siteIds',JSON_EXTRACT(data,'$.siteIds'),'$.siteCollection',JSON_EXTRACT(data,'$.siteCollection'),'$.semrushCollection',JSON_EXTRACT(data,'$.semrushCollection'),'$.adCollection',JSON_EXTRACT(data,'$.adCollection')),updated_at=now()`}`,
-    ),
-    [naturalKey(record), record],
-  );
-  return (
-    await client.query(
-      'SELECT data FROM research_keywords WHERE natural_key=$1',
-      [naturalKey(record)],
-    )
-  ).rows[0]?.data;
-}
+export const saveKeyword = createKeywordSaver({ pool, sql });
 export async function saveCheckpoint(job, checkpoint, status = 'running') {
   await pool.query(
     "UPDATE research_jobs SET checkpoint=$2,status=CASE WHEN cancelled THEN 'cancelled' ELSE $3 END,updated_at=now() WHERE id=$1",

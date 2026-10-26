@@ -124,11 +124,8 @@ export async function executeHotwords(config, io) {
     const requestsBefore = run.requests;
     try {
       const result = await io.fetchSeed(seed, async (key, call) => {
-        if (
-          run.reservedUnits + 2000 > config.unitLimit ||
-          run.requests >= config.maxRequests
-        )
-          throw new Error('已达到Semrush每日预算');
+        if (run.requests >= config.maxRequests)
+          throw new Error('已达到Semrush每日请求次数上限');
         run.requests++;
         run.reservedUnits += 2000;
         await io.saveRun(run);

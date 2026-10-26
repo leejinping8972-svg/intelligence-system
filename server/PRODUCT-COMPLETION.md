@@ -6,7 +6,7 @@
 通过现有Sorftime MCP对公开商品Hilma `B0BQZJ9MBD`做了3次真实工具探测：AsinSalesVolume、SalesVolume、Rank，返回25个月的历史。探测只读，没有写正式任务/业务数据，没有自动购买额度。SalesVolume可能包含变体口径，实际功能仅使用当前ASIN的AsinSalesVolume。其余验证全部使用合成数据，没有复用正式业务数据作为测试样本。
 
 ## 新行为
-- 新建任务默认completeAll/enrich/trend开启；发现请求和Semrush单位预算默认0表示开放请求，不再默认只补前5件。旧存量任务保留原行为，避免部署后自动扩大正在执行的收费范围。
+- 新建任务默认completeAll/enrich/trend开启，不再默认只补前5件。当前发现请求上限由表单配置；2026-10-26起Semrush不设积分上限，旧积分参数也不再截断任务，详情范围等其他旧任务参数保留。详见 `KEYWORD-REFRESH.md`。
 - 所有已保存、可核验的Sorftime Amazon商品逐件安排product_detail、product_content，以及product_trend的AsinSalesVolume、Rank、ReviewCount。发现商品目标仍由表单决定；发现预算只停止找更多新商品，不截断已发现商品的详情/历史。重复搜索页停止翻页，平台真实结束则结束发现。
 - 新增server_complete_platform_products：按商品ID补全既有记录，无须重跑搜索。商品库顶部覆盖当前筛选全部记录，跨分页；详情可单件补全。提交事务写入排队状态。重复requestId复用任务，交叉商品和同市场发现任务双向互斥。
 - 每步持久化状态、原因和来源；可取消，可在已有商品入口重新提交未完成部分。成功24小时内直接复用，空历史短缓存15分钟且补全动作允许重查；底层详情/内容缓存最长7天，历史24小时。断点恢复使用已有请求journal，不自动重放结果未知的收费请求。

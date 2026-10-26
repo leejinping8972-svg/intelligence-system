@@ -26,7 +26,6 @@ const form = reactive({
   perPage: 20,
   maxPages: 3,
   maxSites: 200,
-  semrushUnitLimit: 2000,
 });
 const count = computed(
   () =>
@@ -121,22 +120,10 @@ async function submit() {
             :max="1000"
             :precision="0"
         /></Form.Item>
-        <Form.Item label="Semrush积分上限"
-          ><InputNumber
-            v-model:value="form.semrushUnitLimit"
-            :min="20"
-            :max="100000"
-            :precision="0"
-        /></Form.Item>
       </div>
       <p class="hci-subtle">
-        {{ count }} 个关键词 · 最多
-        {{
-          Math.min(
-            count * form.perPage * form.maxPages * 20,
-            form.semrushUnitLimit,
-          )
-        }}
+        {{ count }} 个关键词 · 按当前页数预估最多
+        {{ count * form.perPage * form.maxPages * 20 }}
         API units
       </p>
       <Alert

@@ -116,16 +116,20 @@ export function validateResourceInput(input) {
   }
   const maxProducts = input.maxProducts ?? 100;
   if (!Number.isInteger(maxProducts) || maxProducts < 1 || maxProducts > 100) throw new Error('本次商品目标须为1至100，不自动扫描全市场');
-  const defaults = { requests: 30, providerCalls: 20, sorftimeCalls: r.provider === 'sorftime' ? 10 : 0, scrapeCredits: ['tiktok_shop', 'scrapecreators'].includes(r.provider) ? 10 : 0, semrushUnits: r.provider === 'semrush' ? 2000 : 0, braveRequests: r.provider === 'brave' ? 5 : 0, browserPages: 0, modelTokens: 0, maxPages: 5, maxDetailProducts: 10 };
-  const maximums = { requests: 500, providerCalls: 200, sorftimeCalls: 100, scrapeCredits: 100, semrushUnits: 100_000, braveRequests: 50, browserPages: 0, modelTokens: 0, maxPages: 10, maxDetailProducts: 100 };
+  const defaults = { requests: 30, providerCalls: 20, sorftimeCalls: r.provider === 'sorftime' ? 10 : 0, scrapeCredits: ['tiktok_shop', 'scrapecreators'].includes(r.provider) ? 10 : 0, semrushUnits: 0, braveRequests: r.provider === 'brave' ? 5 : 0, browserPages: 0, modelTokens: 0, maxPages: 5, maxDetailProducts: 10 };
+  const maximums = { requests: 500, providerCalls: 200, sorftimeCalls: 100, scrapeCredits: 100, braveRequests: 50, browserPages: 0, modelTokens: 0, maxPages: 10, maxDetailProducts: 100 };
   const budget = {};
   for (const [key, fallback] of Object.entries(defaults)) {
+    if (key === 'semrushUnits') {
+      budget[key] = 0;
+      continue;
+    }
     const value = input.budget?.[key] ?? fallback;
     if (!Number.isInteger(value) || value < (['requests', 'maxPages'].includes(key) ? 1 : 0) || value > (key === 'maxPages' ? r.limits.maxPages : maximums[key])) throw new Error(`${key}预算超出范围；此路径不使用模型或浏览器`);
     budget[key] = value;
   }
   const required = { sorftime: 'sorftimeCalls', tiktok_shop: 'scrapeCredits', scrapecreators: 'scrapeCredits', semrush: 'semrushUnits', brave: 'braveRequests' }[r.provider];
-  if (required && (!budget[required] || !budget.providerCalls)) throw new Error('所选来源预算为0，请设置有限来源额度或改用公开链接');
+  if (required && ((required !== 'semrushUnits' && !budget[required]) || !budget.providerCalls)) throw new Error('所选来源预算为0，请设置有限来源额度或改用公开链接');
   if (input.includeHistory && !r.history.supported) throw new Error(r.history.reason);
   if (input.includeDetails && !r.operations.includes('detail')) throw new Error('此来源没有可用详情接口；可使用公开商品链接补全');
   const websiteDomain = clean(input.websiteDomain).toLowerCase();

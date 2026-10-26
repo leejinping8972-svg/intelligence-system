@@ -39,7 +39,7 @@ test('schedule and hotword validation bound paid requests', () => {
     maxRequests: 100,
   });
   assert.equal(v.maxRequests, 2);
-  assert.equal(v.unitLimit, 4000);
+  assert.equal(v.unitLimit, 0);
 });
 test('ranking deduplicates, preserves missing data and limits to top100', () => {
   const rows = Array.from({ length: 110 }, (_, i) => ({
@@ -221,7 +221,7 @@ function hotFixture({ failureAt = -1, unknown = false, empty = false } = {}) {
 test('hotwords reserve known worst-case units before every request', async () => {
   const f = hotFixture();
   const run = await executeHotwords(
-    { seeds: ['collagen', 'magnesium'], unitLimit: 4000, maxRequests: 2 },
+    { seeds: ['collagen', 'magnesium'], unitLimit: 1, maxRequests: 2 },
     f.io,
   );
   assert.equal(run.status, 'completed');

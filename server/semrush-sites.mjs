@@ -27,17 +27,16 @@ export function validateSemrushSites(input) {
     perPage: input.perPage ?? 20,
     maxPages: input.maxPages ?? 3,
     maxSites: input.maxSites ?? 200,
-    semrushUnitLimit: input.semrushUnitLimit ?? 2000,
+    semrushUnitLimit: 0,
   };
   for (const [key, min, max] of [
     ['perPage', 1, 100],
     ['maxPages', 1, 10],
     ['maxSites', 1, 1000],
-    ['semrushUnitLimit', 20, 100000],
   ])
     if (!Number.isInteger(value[key]) || value[key] < min || value[key] > max)
       throw new Error(
-        '每页1～100条、每词1～10页、站点1～1000家、积分上限20～100000',
+        '每页1～100条、每词1～10页、站点1～1000家',
       );
   return value;
 }
@@ -131,15 +130,7 @@ export async function runSemrushSites(job, io) {
           cp.logs.push('达到站点数量上限，已有结果保留');
           return save('partial');
         }
-        const remaining = Math.floor(
-          (v.semrushUnitLimit - cp.semrushReserved) /
-            SEMRUSH_ADVERTISER_ROW_UNITS,
-        );
-        const limit = cp.inFlight?.limit ?? Math.min(v.perPage, remaining);
-        if (limit < 1) {
-          cp.logs.push('达到Semrush积分上限，已有结果保留');
-          return save('partial');
-        }
+        const limit = cp.inFlight?.limit ?? v.perPage;
         const offset = cp.inFlight?.offset ?? cp.page * v.perPage;
         cp.currentTerm = `${term} · 第${cp.page + 1}页`;
         if (!cp.inFlight) {

@@ -59,8 +59,7 @@ export function validatePlatformProducts(input) {
     maxRequests: input.maxRequests ?? 150,
     maxDetailProducts: input.maxDetailProducts ?? 20,
     maxDomains: input.maxDomains ?? 3,
-    semrushUnitLimit:
-      input.semrushUnitLimit ?? (input.providers.includes('semrush') ? 2000 : 0),
+    semrushUnitLimit: 0,
   };
   for (const [key, min, max] of [
     ['maxProducts', 1, 1000],
@@ -68,10 +67,9 @@ export function validatePlatformProducts(input) {
     ['maxRequests', 1, 100_000],
     ['maxDetailProducts', 0, 1000],
     ['maxDomains', 1, 5],
-    ['semrushUnitLimit', 0, 100_000],
   ])
     if (!Number.isInteger(value[key]) || value[key] < min || value[key] > max)
-      throw new Error('商品数量、请求次数或单位预算不在允许范围');
+      throw new Error('商品数量或请求次数不在允许范围');
   if (value.market === 'VN' && value.providers.includes('sorftime'))
     throw new Error(
       '当前 Sorftime 商品来源为 Amazon，不支持越南；可选择 Semrush，不跨国替代',
@@ -613,15 +611,12 @@ export async function runPlatformProducts(job, overrides = {}) {
         `${w.provider}：此前鉴权或结构检查失败，本步骤未发起请求，其他来源继续`,
       );
     } else if (
-      !cp.inFlight &&
-      (exhausted ||
-        (v.semrushUnitLimit > 0 &&
-          cp.semrushReserved + units > v.semrushUnitLimit))
+      !cp.inFlight && exhausted
     ) {
       cp.failures++;
       await setCompletion(w, 'failed', '达到手动设置的请求预算，本步骤未执行');
       cp.logs.push(
-        `${w.provider} · ${cp.currentTerm}：达到任务调用或 Semrush 单位预算，未发起请求`,
+        `${w.provider} · ${cp.currentTerm}：达到任务调用预算，未发起请求`,
       );
     } else {
       const product = w.productId
@@ -682,7 +677,7 @@ export async function runPlatformProducts(job, overrides = {}) {
         if (w.provider === 'semrush' && result.apiUnits > units) {
           cp.semrushReserved += result.apiUnits - units;
           cp.logs.push(
-            'Semrush 返回用量高于当前预留费率，已修正预留并按新余额停止后续超预算请求',
+            'Semrush 返回用量高于当前预留费率，已按实际用量修正记录',
           );
         }
         if (result.cached) {

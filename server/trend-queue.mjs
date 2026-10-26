@@ -59,10 +59,11 @@ export function initializeTrendQueue(
   cp.trendDeadlineAt = now + TREND_WINDOW;
   cp.trendWork = (cp.keywords || []).map((r, i) => {
     const annual =
-      comparisonVersion === 2
+      !cp.refreshTrends &&
+      (comparisonVersion === 2
         ? r.trendHistoryPoints?.length > 0
-        : r.series?.length > 0;
-    const daily = r.trendDailyPoints?.length > 0;
+        : r.series?.length > 0);
+    const daily = !cp.refreshTrends && r.trendDailyPoints?.length > 0;
     const prior = r.trendParts;
     const part = (has) => ({
       status: has ? 'done' : 'pending',
@@ -71,9 +72,10 @@ export function initializeTrendQueue(
       message: '',
     });
     const work = { annual: part(annual), daily: part(daily) };
-    // Genuine empty responses are terminal data outcomes, including on later supplementation.
+    // Supplementation reuses terminal results; a new research run refreshes both parts.
     for (const phase of ['annual', 'daily'])
       if (
+        !cp.refreshTrends &&
         prior?.[phase]?.status === 'empty' &&
         (phase !== 'annual' ||
           comparisonVersion !== 2 ||
@@ -360,7 +362,7 @@ export async function runTrendJob(job, overrides = {}) {
     record.trendParts = structuredClone(cp.trendWork[index]);
     record.updatedAt = new Date(io.now()).toISOString();
     const stored = await io.saveKeyword(record);
-    if (stored?.id) record.id = stored.id;
+    if (stored?.id) Object.assign(record, stored);
     cp.trendDispatches = (cp.trendDispatches || 0) + 1;
     await io.checkCancelled(job.id);
     await io.saveCheckpoint(

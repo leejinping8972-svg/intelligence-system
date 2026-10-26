@@ -70,7 +70,7 @@ const form = reactive<Plan>({
   perKeyword: 10,
   adRequestBudget: 100,
   productRequestBudget: 100,
-  semrushUnitBudget: 10_000,
+  semrushUnitBudget: 0,
 });
 const canEdit = computed(() => session.user?.role === 'admin');
 const statusLabel: Record<string, string> = {
@@ -222,14 +222,6 @@ async function save() {
             :min="1"
             :max="10000"
             aria-label="每日商品请求上限"
-          />
-        </Form.Item>
-        <Form.Item label="每日 Semrush 单位上限">
-          <InputNumber
-            v-model:value="form.semrushUnitBudget"
-            :min="1"
-            :max="100000"
-            aria-label="每日 Semrush 单位上限"
           />
         </Form.Item>
         <Form.Item label="每词广告页数">

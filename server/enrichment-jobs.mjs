@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { lock, unlock, sql, putDocument } from './database.mjs';
 import { collect, pool, saveCheckpoint } from './store.mjs';
+import { mergeKeywordMetrics } from './keyword-data.mjs';
 
 const fieldFor = (kind) =>
   kind === 'sites' ? 'siteCollection' : 'semrushCollection';
@@ -49,6 +50,8 @@ export async function patchCollection(
         value.status === 'queued')
     ) {
       const updated = { ...current, ...extra, [field]: value };
+      if ('metrics' in extra)
+        updated.metrics = mergeKeywordMetrics(current, extra.metrics);
       if (extra.siteIds)
         updated.siteIds = [
           ...new Set([...(current.siteIds || []), ...extra.siteIds]),

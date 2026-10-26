@@ -12,6 +12,37 @@ import {
   rowMetrics,
 } from './semrush-reports.mjs';
 import { runTrendJob } from './trend-queue.mjs';
+import { mergeKeyword } from './keyword-data.mjs';
+
+test('rerunning a seed reuses the persisted ID for metric patches and refreshes existing trends', async () => {
+  const current = {
+    id: 'original', term: 'magnesium', market: 'US', source: 'Semrush热词',
+    favorite: true, reviewStatus: 'selected', productIds: ['p1'], siteIds: [],
+    series: [10], trendCollectedAt: '2026-10-20T00:00:00Z',
+    trendHistoryPoints: [{ date: '2026-10-19', value: 10 }],
+    trendDailyPoints: [{ date: '2026-10-19', value: 10 }],
+    trendParts: { annual: { status: 'done' }, daily: { status: 'done' } },
+  };
+  for (const existingRecords of [undefined, [{ ...current, id: 'stale-browser-id' }]]) {
+    const patches = [];
+    let checkpoint;
+    await runJob({ id: 'rerun', input: validateJob({ seeds: existingRecords ? [] : ['MAGNESIUM'], markets: ['US'], sources: ['semrush'], limit: 1, existingRecords }), checkpoint: {} }, {
+      checkCancelled: async () => {},
+      usage: async () => ({ confirmed: 0, reserved: 0 }),
+      saveKeyword: async (record) => mergeKeyword(current, record),
+      patchCollection: async (id, _field, _value, extra) => patches.push({ id, extra }),
+      collect: async () => ({ apiUnits: 10, metrics: { market: 'US', source: 'Semrush', monthlySearchVolume: 250, collectedAt: '2026-10-26T00:00:00Z' } }),
+      saveCheckpoint: async (_job, value) => { checkpoint = structuredClone(value); },
+    });
+    assert.ok(patches.every((patch) => patch.id === 'original'));
+    assert.equal(checkpoint.keywords.length, 1);
+    assert.equal(checkpoint.keywords[0].id, 'original');
+    assert.equal(checkpoint.keywords[0].favorite, true);
+    assert.equal(checkpoint.keywords[0].metrics.monthlySearchVolume, 250);
+    assert.equal(checkpoint.trendWork[0].annual.status, existingRecords ? 'done' : 'pending');
+    assert.equal(checkpoint.trendWork[0].daily.status, existingRecords ? 'done' : 'pending');
+  }
+});
 
 test('one supplementation job refreshes Semrush and Trends without expansion or repeating metrics after a cooldown', async () => {
   const at = new Date().toISOString();

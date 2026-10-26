@@ -29,7 +29,7 @@ export function jobTasks(job) {
     title: `云端 · Semrush付费流量独立站发现 · ${label[market]}`,
     status: job.cancelled ? 'cancelled' : job.status,
     created: job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
-    steps: [`关键词${Math.min(job.checkpoint.index || 0, job.input.seeds.length)}/${job.input.seeds.length}；站点${job.checkpoint.sites || 0}家；已确认${job.checkpoint.semrushUnits || 0} API units；预留${job.checkpoint.semrushReserved || 0}/${job.input.semrushUnitLimit}`, ...(job.checkpoint.logs || [])],
+    steps: [`关键词${Math.min(job.checkpoint.index || 0, job.input.seeds.length)}/${job.input.seeds.length}；站点${job.checkpoint.sites || 0}家；已确认${job.checkpoint.semrushUnits || 0} API units；预留${job.checkpoint.semrushReserved || 0}（不限积分）`, ...(job.checkpoint.logs || [])],
     collectionProgress: { kind: 'semrush_sites', done: job.checkpoint.index || 0, total: job.input.seeds.length,
       current: job.checkpoint.currentTerm || '', sites: job.checkpoint.sites || 0, ads: 0,
       requests: job.checkpoint.requests || 0, semrushUnits: job.checkpoint.semrushUnits || 0,
@@ -107,7 +107,7 @@ export function jobTasks(job) {
               unlimitedRequests: false,
               semrushUnits: job.checkpoint.semrushUnits || 0,
               semrushReserved: job.checkpoint.semrushReserved || 0,
-              semrushUnitLimit: job.input.semrushUnitLimit,
+              semrushUnitLimit: 0,
               current: job.checkpoint.currentTerm || '',
               ...(job.input.resourceDiscovery ? {
                 resource: { ...job.checkpoint.resourceProgress, budget: job.input.resourcePlan.budget, resumable: resourceResumeAllowed(job) },
@@ -261,13 +261,17 @@ export async function runJob(job, overrides = {}) {
       cp.keywords.push(record);
     }
     const stored = await io.saveKeyword(record);
-    if (stored?.id) record.id = stored.id;
+    if (stored?.id) Object.assign(record, stored);
   };
   try {
     if (!cp.initialized) {
+      cp.refreshTrends = !input.existingRecords;
       if (input.existingRecords) {
         cp.keywords = input.existingRecords;
-        for (const record of cp.keywords) await io.saveKeyword(record);
+        for (const record of cp.keywords) {
+          const stored = await io.saveKeyword(record);
+          if (stored?.id) Object.assign(record, stored);
+        }
       } else {
         for (const market of input.markets)
           for (const seed of input.seeds)

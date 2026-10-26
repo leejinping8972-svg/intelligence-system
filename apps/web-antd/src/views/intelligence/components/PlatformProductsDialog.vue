@@ -79,7 +79,7 @@ const resourceForm = reactive({
     providerCalls: 30,
     sorftimeCalls: 20,
     scrapeCredits: 30,
-    semrushUnits: 1000,
+    semrushUnits: 0,
     braveRequests: 10,
     browserPages: 0,
     modelTokens: 0,
@@ -295,7 +295,6 @@ const form = reactive({
   completeAll: false,
   maxDetailProducts: 20,
   maxDomains: 3,
-  semrushUnitLimit: 2000,
   enrich: true,
   trend: true,
 });
@@ -747,15 +746,6 @@ async function submitResource() {
                         :precision="0"
                     /></Form.Item>
                     <Form.Item
-                      label="Semrush API units 上限"
-                      :name="['budget', 'semrushUnits']"
-                      ><InputNumber
-                        v-model:value="resourceForm.budget.semrushUnits"
-                        :min="0"
-                        :max="100000"
-                        :precision="0"
-                    /></Form.Item>
-                    <Form.Item
                       label="Brave 请求上限"
                       :name="['budget', 'braveRequests']"
                       ><InputNumber
@@ -988,13 +978,6 @@ async function submitResource() {
                 v-model:value="form.maxDomains"
                 :min="1"
                 :max="5"
-                :disabled="!form.providers.includes('semrush')"
-            /></Form.Item>
-            <Form.Item label="Semrush API units 上限（0为关闭）"
-              ><InputNumber
-                v-model:value="form.semrushUnitLimit"
-                :min="0"
-                :max="100000"
                 :disabled="!form.providers.includes('semrush')"
             /></Form.Item>
           </div>

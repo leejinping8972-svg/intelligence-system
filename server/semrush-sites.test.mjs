@@ -63,7 +63,6 @@ test('validates bounded jobs and deduplicates normalized terms', () => {
     { perPage: 0 },
     { maxPages: 11 },
     { maxSites: 1001 },
-    { semrushUnitLimit: -1 },
     { market: 'ALL' },
   ])
     assert.throws(() => validateSemrushSites({ ...request, ...patch }));
@@ -102,15 +101,21 @@ test('paginates only Semrush, merges domains and links each keyword', async () =
   assert.equal(h.job.checkpoint.semrushReserved, 60);
   assert.equal(h.linked.length, 2);
 });
-test('fits the final report to remaining units and stops at the budget', async () => {
-  const h = harness([{ rows: [{ domain: 'one.com' }], apiUnits: 20 }], {
+test('ignores legacy unit caps and requests complete pages until the report ends', async () => {
+  const h = harness([
+    { rows: [{ domain: 'one.com' }, { domain: 'two.com' }], apiUnits: 40 },
+    { rows: [{ domain: 'three.com' }], apiUnits: 20 },
+  ], {
     semrushUnitLimit: 20,
   });
+  assert.equal(h.job.input.semrushUnitLimit, 0);
+  // Older persisted tasks may still contain their former unit cap.
+  h.job.input.semrushUnitLimit = 20;
   await runSemrushSites(h.job, h.io);
-  assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0].limit, 1);
-  assert.equal(h.status, 'partial');
-  assert.equal(h.job.checkpoint.semrushReserved, 20);
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls[0].limit, 2);
+  assert.equal(h.status, 'completed');
+  assert.equal(h.job.checkpoint.semrushReserved, 60);
 });
 test('stops at the unique-site cap and preserves an empty report as completed', async () => {
   const cap = harness(

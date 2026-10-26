@@ -127,6 +127,8 @@ export function validateJob(value) {
       input.expectedKeywordCount !== input.existingRecords.length ||
       new Set(input.existingRecords.map((r) => r.id)).size !==
         input.existingRecords.length ||
+      new Set(input.existingRecords.map(naturalKey)).size !==
+        input.existingRecords.length ||
       input.existingRecords.some(
         (record) => !input.markets.includes(record.market),
       )

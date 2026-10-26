@@ -57,7 +57,6 @@ test('plan defaults off, finite budgets, explicit acknowledgement, validation an
   assert.throws(() => validateDailyPlan({ enabled: true }), /确认/);
   for (const patch of [
     { adRequestBudget: 0 },
-    { semrushUnitBudget: 0 },
     { time: '24:00' },
     { providers: [] },
     { markets: ['ALL'] },
@@ -122,7 +121,13 @@ test('daily product requests disable unbounded details and trends; ad query sees
   assert.equal(p.trend, false);
   assert.equal(p.maxRequests, 3);
   assert.equal(p.maxProducts, 20);
-  assert.equal(p.semrushUnitLimit, 320);
+  assert.equal(p.semrushUnitLimit, 0);
+});
+test('daily scheduling ignores legacy Semrush unit budgets while retaining unit estimates', () => {
+  const result = run({ semrushUnitBudget: 1 }, [keyword('1'), keyword('2'), keyword('3')]);
+  assert.equal(result.work.filter((entry) => entry.status === 'pending').length, 6);
+  assert.equal(result.reserved.semrush, 960);
+  assert.equal(result.plan.semrushUnitBudget, 0);
 });
 function memory() {
   const jobs = new Map(),

@@ -46,7 +46,7 @@ export function validateHotwords(input) {
     market: input.market,
     seeds,
     maxRequests: seeds.length,
-    unitLimit: seeds.length * 2000,
+    unitLimit: 0,
   };
 }
 export function rankHotwords(rows, previous = []) {

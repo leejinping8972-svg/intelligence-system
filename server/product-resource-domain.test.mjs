@@ -38,6 +38,11 @@ test('operations and independent budgets are fixed for category, URL, Semrush an
   assert.equal(plan({ routeId: 'tiktok-detail-scrapecreators', market: 'US', mode: 'urls', urls: 'https://www.tiktok.com/shop/pdp/123' }).initialOperation, 'detail');
   assert.equal(plan({ routeId: 'tiktok-shop-scrapecreators', mode: 'urls', urls: 'https://www.tiktok.com/shop/qa', ranking: 'platform_bestsellers' }).initialOperation, 'shop_products');
   assert.equal(plan({ routeId: 'shopping-semrush' }).initialOperation, 'domains');
+  for (const semrushUnits of [0, 1, 200_000]) {
+    const p = plan({ routeId: 'shopping-semrush', budget: { semrushUnits } });
+    assert.equal(p.budget.semrushUnits, 0);
+  }
+  assert.throws(() => plan({ routeId: 'shopping-semrush', budget: { providerCalls: 0 } }), /预算为0/);
   assert.equal(plan({ routeId: 'amazon-public', market: 'US', mode: 'urls', urls: 'https://www.amazon.com/dp/B000000001' }).initialOperation, 'public_page');
   assert.throws(() => plan({ routeId: 'website-public', mode: 'urls', urls: 'https://brand.example/product' }), /域名/);
 });

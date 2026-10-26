@@ -215,7 +215,7 @@ export function resourceBudgetRows(progress: ResourceTaskProgress) {
     label,
     confirmed: progress.usage?.[key] ?? null,
     reserved: progress.reserved?.[key] ?? null,
-    limit: progress.budget?.[key] ?? null,
+    limit: key === 'semrushUnits' ? '不限积分' : progress.budget?.[key] ?? null,
   }));
 }
 
@@ -318,7 +318,7 @@ export const resourceBudgetMaximums: ResourceBudget = {
   providerCalls: 200,
   sorftimeCalls: 100,
   scrapeCredits: 100,
-  semrushUnits: 100_000,
+  semrushUnits: 0,
   braveRequests: 50,
   browserPages: 0,
   modelTokens: 0,
@@ -445,9 +445,10 @@ export function validateResourceInput(
   if (
     (Object.keys(resourceBudgetMaximums) as Array<keyof ResourceBudget>).some(
       (key) =>
-        !Number.isInteger(input.budget[key]) ||
-        input.budget[key] < 0 ||
-        input.budget[key] > resourceBudgetMaximums[key],
+        key !== 'semrushUnits' &&
+        (!Number.isInteger(input.budget[key]) ||
+          input.budget[key] < 0 ||
+          input.budget[key] > resourceBudgetMaximums[key]),
     )
   )
     return '预算必须为有限非负整数';
@@ -456,7 +457,11 @@ export function validateResourceInput(
   if (route.limits.maxPages && input.budget.maxPages > route.limits.maxPages)
     return `此路径最多翻页${route.limits.maxPages}次`;
   const required = providerBudgetKeys[route.provider];
-  if (required && (!input.budget[required] || !input.budget.providerCalls))
+  if (
+    required &&
+    ((required !== 'semrushUnits' && !input.budget[required]) ||
+      !input.budget.providerCalls)
+  )
     return '所选来源额度为0，请设置有限额度或使用公开链接';
   if (
     input.includeDetails &&

@@ -273,6 +273,13 @@ describe('resource discovery contracts', () => {
 });
 
 describe('resource task budgets and recovery', () => {
+  it('accepts Semrush without a unit budget and retains provider call limits', () => {
+    const semrush = { ...route, id: 'shopping-semrush', provider: 'semrush', operations: ['domains', 'shopping'], history: { supported: false } };
+    for (const semrushUnits of [0, 1, 200_000]) {
+      expect(validateResourceInput(input({ routeId: semrush.id, includeDetails: false, budget: { ...input().budget, semrushUnits } }), semrush)).toBe('');
+    }
+    expect(validateResourceInput(input({ routeId: semrush.id, includeDetails: false, budget: { ...input().budget, providerCalls: 0 } }), semrush)).toContain('额度为0');
+  });
   it('keeps missing accounting distinct from confirmed zero and independent units', () => {
     const rows = resourceBudgetRows({
       usage: { requests: 0, scrapeCredits: 2 },
@@ -292,7 +299,7 @@ describe('resource task budgets and recovery', () => {
     expect(rows.find((row) => row.key === 'semrushUnits')).toMatchObject({
       confirmed: null,
       reserved: null,
-      limit: null,
+      limit: '不限积分',
     });
     expect(rows.find((row) => row.key === 'modelTokens')?.limit).toBe(0);
   });
