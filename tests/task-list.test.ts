@@ -6,6 +6,8 @@ import { RequestFlight } from '../apps/web-antd/src/views/intelligence/request-f
 import {
   groupTasks,
   taskStatus,
+  taskStatuses,
+  taskSummary,
   taskTitle,
 } from '../apps/web-antd/src/views/intelligence/task-list';
 const task = (id: string, extra: Partial<Task> = {}): Task => ({
@@ -19,6 +21,29 @@ const task = (id: string, extra: Partial<Task> = {}): Task => ({
   ...extra,
 });
 describe('monitor task grouping', () => {
+  it('shows persisted bulk states and an unrecorded market without inventing progress', () => {
+    const bulk = task('bulk:US', {
+      cloudJobId: 'bulk',
+      status: 'bulk_running',
+      readOnly: true,
+      title: '云端 · Semrush 批量数据补全 · 美国',
+      steps: ['已请求 0；剩余 3'],
+    });
+    expect(taskStatuses[taskStatus(bulk)]?.label).toBe('批处理待确认');
+    expect(taskSummary(bulk)).toEqual({
+      percent: null,
+      label: '批处理待确认',
+      result: '已请求 0；剩余 3',
+    });
+    const unknown = task('unknown:ALL', {
+      cloudJobId: 'unknown',
+      market: 'ALL',
+      status: 'unavailable',
+    });
+    expect(groupTasks([bulk, unknown])).toHaveLength(2);
+    expect(groupTasks([bulk, unknown], 'VN')).toHaveLength(0);
+    expect(groupTasks([bulk, unknown], 'US')).toHaveLength(1);
+  });
   it('groups one multi-market job once without combining distinct jobs with the same title or timestamp', () => {
     const rows = [
       task('j1:US'),

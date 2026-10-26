@@ -134,7 +134,7 @@ const columns = [
         </template>
         <template v-if="column.key === 'market'">
           <Tag v-for="market in task.markets" :key="market">
-            {{ marketName(market) }}
+            {{ market === 'ALL' ? '市场未记录' : marketName(market) }}
           </Tag>
         </template>
         <template v-if="column.key === 'status'">
@@ -161,7 +161,7 @@ const columns = [
           <div class="task-actions">
             <Button size="small" @click="emit('details', task)">查看详情</Button><Button
               v-if="
-                ['queued', 'running'].includes(task.status) &&
+                !task.readOnly && ['queued', 'running'].includes(task.status) &&
                 (task.cloudJobId || !live(task))
               "
               size="small"
@@ -175,7 +175,7 @@ const columns = [
             >
               模拟执行
 </Button><Button
-              v-if="['partial', 'cancelled'].includes(task.status)"
+              v-if="!task.readOnly && ['partial', 'cancelled'].includes(task.status)"
               size="small"
               @click="live(task) ? emit('research') : emit('retry', task)"
             >
@@ -208,7 +208,7 @@ const columns = [
         </Tag>
       </div>
       <div class="task-card-meta">
-        <span>{{ task.markets.map(marketName).join(' / ') }}</span><time>{{ date(task.created) }}</time>
+        <span>{{ task.markets.map((market) => market === 'ALL' ? '市场未记录' : marketName(market)).join(' / ') }}</span><time>{{ date(task.created) }}</time>
       </div>
       <div>{{ taskSummary(task).label }}</div>
       <Progress
@@ -221,7 +221,7 @@ const columns = [
       <div class="task-actions">
         <Button size="small" @click="emit('details', task)">查看详情</Button><Button
           v-if="
-            ['queued', 'running'].includes(task.status) &&
+            !task.readOnly && ['queued', 'running'].includes(task.status) &&
             (task.cloudJobId || !live(task))
           "
           size="small"
@@ -235,7 +235,7 @@ const columns = [
         >
           模拟执行
 </Button><Button
-          v-if="['partial', 'cancelled'].includes(task.status)"
+          v-if="!task.readOnly && ['partial', 'cancelled'].includes(task.status)"
           size="small"
           @click="live(task) ? emit('research') : emit('retry', task)"
         >

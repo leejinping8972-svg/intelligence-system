@@ -22,8 +22,12 @@ import { tickMarketResearch } from './market-research.mjs';
 import { runMarketReport } from './market-report-jobs.mjs';
 import { runPersonaResearch } from './persona-research-store.mjs';
 import { resourceResumeAllowed } from './product-resource-domain.mjs';
+import { projectJobTasks } from './task-projection.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
+  return projectJobTasks(job, projectKnownJob);
+}
+function projectKnownJob(job) {
   if (job.input.kind === 'semrush_sites') return job.input.markets.map((market) => ({
     id: `${job.id}:${market}`, cloudJobId: job.id, market, mode: 'live', stage: 'sites',
     title: `云端 · Semrush付费流量独立站发现 · ${label[market]}`,

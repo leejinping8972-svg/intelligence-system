@@ -1,7 +1,7 @@
-import type { Market, MarketFilter, Task } from './data';
+import type { MarketFilter, Task } from './data';
 
 export interface TaskGroup extends Task {
-  markets: Market[];
+  markets: Task['market'][];
   taskIds: string[];
 }
 export const taskStatuses: Record<string, { label: string; color: string }> = {
@@ -12,6 +12,10 @@ export const taskStatuses: Record<string, { label: string; color: string }> = {
   completed: { label: '已完成', color: 'green' },
   partial: { label: '部分完成', color: 'orange' },
   cancelled: { label: '已取消', color: 'default' },
+  bulk_running: { label: '批处理待确认', color: 'orange' },
+  bulk_paused: { label: '批处理已暂停', color: 'orange' },
+  bulk_blocked: { label: '批处理受阻', color: 'red' },
+  unavailable: { label: '资料待检查', color: 'orange' },
 };
 export function taskStatus(task: Task) {
   return task.status === 'running' &&
@@ -23,7 +27,7 @@ export function taskStatus(task: Task) {
 export function taskTitle(task: Task) {
   return task.title
     .replace(/^云端\s*·\s*/, '')
-    .replace(/\s*·\s*(美国|墨西哥|越南)$/, '');
+    .replace(/\s*·\s*(美国|墨西哥|越南|市场未记录)$/, '');
 }
 export function groupTasks(
   tasks: Task[],
