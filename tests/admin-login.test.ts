@@ -2,12 +2,20 @@ import { createApp, nextTick } from 'vue';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { routeLocationKey, routerKey } from '../apps/web-antd/node_modules/vue-router/dist/vue-router.js';
+import {
+  routeLocationKey,
+  routerKey,
+} from '../apps/web-antd/node_modules/vue-router/dist/vue-router.js';
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(),
   replace: vi.fn(),
-  session: { setupRequired: true, ssoEnabled: false },
+  session: {
+    checked: true,
+    user: null,
+    setupRequired: true,
+    ssoEnabled: false,
+  },
   startSso: vi.fn(),
 }));
 vi.mock('../apps/web-antd/src/views/intelligence/session', () => ({
@@ -53,7 +61,7 @@ afterEach(() => {
   root.remove();
 });
 
-describe('real Ant Design login form submission (mock transport, no real accounts)', () => {
+describe('shared lightweight login form (mock transport, no real accounts)', () => {
   it('shows validation errors when the button is clicked with missing fields', async () => {
     root
       .querySelector('button[type="submit"]')!
@@ -113,7 +121,9 @@ describe('real Ant Design login form submission (mock transport, no real account
       expect(root.querySelector('.ant-btn-loading')).toBeNull(),
     );
     (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
-    await vi.waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/overview'));
+    await vi.waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith('/overview'),
+    );
     expect(mocks.login).toHaveBeenCalledTimes(2);
   });
   it('submits a normal login once and clears the password before navigating', async () => {
@@ -123,26 +133,50 @@ describe('real Ant Design login form submission (mock transport, no real account
     await fill('输入账号', 'qa_admin');
     await fill('输入密码', 'QA-test-password-123');
     (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
-    await vi.waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/overview'));
+    await vi.waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith('/overview'),
+    );
     expect(mocks.login).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ username: 'qa_admin', password: 'QA-test-password-123' }),
+      expect.objectContaining({
+        username: 'qa_admin',
+        password: 'QA-test-password-123',
+      }),
       false,
     );
-    expect(root.querySelector<HTMLInputElement>('input[placeholder="输入密码"]')!.value).toBe('');
+    expect(
+      root.querySelector<HTMLInputElement>('input[placeholder="输入密码"]')!
+        .value,
+    ).toBe('');
   });
   it('ignores repeated submission while busy and clears setup secrets after success', async () => {
     let signedIn!: () => void;
-    mocks.login.mockReturnValue(new Promise<void>((resolve) => { signedIn = resolve; }));
+    mocks.login.mockReturnValue(
+      new Promise<void>((resolve) => {
+        signedIn = resolve;
+      }),
+    );
     await validSetup();
     (root.querySelector('button[type="submit"]') as HTMLButtonElement).click();
     await vi.waitFor(() => expect(mocks.login).toHaveBeenCalledTimes(1));
-    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    root
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await nextTick();
     expect(mocks.login).toHaveBeenCalledTimes(1);
     signedIn();
-    await vi.waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/overview'));
-    for (const placeholder of ['仅用于首次创建管理员', '8～128个字符，支持密码管理器', '再次输入密码']) {
-      expect(root.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`)!.value).toBe('');
+    await vi.waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith('/overview'),
+    );
+    for (const placeholder of [
+      '仅用于首次创建管理员',
+      '8～128个字符，支持密码管理器',
+      '再次输入密码',
+    ]) {
+      expect(
+        root.querySelector<HTMLInputElement>(
+          `input[placeholder="${placeholder}"]`,
+        )!.value,
+      ).toBe('');
     }
   });
 });

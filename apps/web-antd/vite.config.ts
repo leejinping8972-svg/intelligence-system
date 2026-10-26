@@ -1,9 +1,15 @@
+import process from 'node:process';
+
 import { defineConfig } from '@vben/vite-config';
+
+import { loadEnv } from 'vite';
+
 import { tailwindSources } from './tailwind-sources';
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ mode }) => {
+  const env = loadEnv(mode, process.cwd());
   return {
-    application: {},
+    application: { injectAppLoading: env.VITE_HCI_SERVER !== 'true' },
     vite: {
       plugins: [tailwindSources()],
       server: {
