@@ -1,46 +1,44 @@
 {
-  "title": "登录直达与任务列表恢复",
-  "sourceSha": "59f274bc17ce79828a91f121f2d74745ad70afc0",
+  "title": "关键词趋势直显与即时详情",
+  "sourceSha": "bd87815043d96bb35236851461acfcbddffc29a8",
   "includedCommits": [
-    "d2fb92687d1ce1ad0e951e2640a5301998402d4b",
-    "433485dbc43cc63010b11427fba3da8e3097badc"
+    "203db5880c4001799cc90209ec5d97d240ebe091"
   ],
   "files": [
-    "apps/web-antd/LOGIN-ENTRY.md",
-    "apps/web-antd/src/application.ts",
-    "apps/web-antd/src/login-entry.ts",
-    "apps/web-antd/src/login-screen.vue",
-    "apps/web-antd/src/main.ts",
-    "apps/web-antd/src/views/intelligence/admin-login.vue",
-    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
+    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
+    "apps/web-antd/src/views/intelligence/components/KeywordRelatedQueries.vue",
+    "apps/web-antd/src/views/intelligence/components/KeywordTrendDialog.vue",
+    "apps/web-antd/src/views/intelligence/components/SocialTrendCell.vue",
     "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/monitor.vue",
-    "apps/web-antd/src/views/intelligence/task-list.ts",
-    "apps/web-antd/vite.config.ts",
-    "server/TASK-SNAPSHOT-RECOVERY.md",
-    "server/runner.mjs",
-    "server/task-projection.mjs",
-    "server/task-projection.test.mjs",
-    "server/workspace-snapshot.mjs",
-    "tests/admin-login.test.ts",
-    "tests/application-startup.test.ts",
-    "tests/login-entry.test.ts",
-    "tests/startup-performance-ui.mjs",
-    "tests/task-list.test.ts"
+    "apps/web-antd/src/views/intelligence/keyword-social-trends.ts",
+    "apps/web-antd/src/views/intelligence/keyword-trend-preview.ts",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
+    "apps/web-antd/src/views/intelligence/social-trend-status.ts",
+    "apps/web-antd/src/views/intelligence/trend-comparison.ts",
+    "server/KEYWORD-TREND-DISPLAY.md",
+    "server/keyword-trend-list.mjs",
+    "server/model.js",
+    "server/model.ts",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs",
+    "tests/keyword-social-cache.test.ts",
+    "tests/keyword-trend-display.test.ts"
   ],
   "changes": [
-    "服务器模式跳过品牌启动遮罩，先显示轻量可填写登录表单，认证成功后加载完整后台。",
-    "修复批量补全任务错误进入关键词投影导致所有任务同步失败；列表及详情展示已保存摘要和待确认状态。",
-    "任务读取逐条隔离，异常任务保留只读占位，其他任务正常显示；不重启或重放遗留批量任务。"
+    "关键词研究及已入选列表直接显示已保存年度曲线与四周期汇总，无需先打开曲线。",
+    "TK、INS、FB趋势保留跨页已获取数据，区分读取中、读取失败和未采集，不新增来源请求。",
+    "关键词详情和趋势弹窗先显示，再加载完整数据；支持失败重试及关闭后迟到响应保护。",
+    "热门及上升相关查询在列表和详情中点击气泡查看全部已保存搜索词与来源数值。"
   ],
   "validation": [
-    "登录功能开发：36项相关测试、完整类型检查、独立server/history构建、专项lint及桌面/手机合成浏览器检查通过。",
-    "任务修复功能开发：16项Node、13项前端测试及完整web类型检查通过；新模块及任务列表专项lint通过。",
-    "发布阶段重复单测、回归、类型检查、lint、隔离数据库、UI验收、验证构建和CI等待按用户策略跳过。",
-    "无schema、迁移或启动写入变更，完整数据库备份按用户策略跳过；保留17锁、队列、应用回退、全部数据一致性及public/data保护和上线确认。"
+    "功能开发：45项前端专项测试、2项隔离PGlite读模型测试、完整web类型检查、server/history构建及专项lint通过。",
+    "功能开发合成浏览器：4秒慢接口下抽屉先开后loading、关闭/切换/失败重试、25条完整热门与上升词表验收通过。",
+    "发布阶段重复单测、回归、类型、lint、隔离数据库、UI验收、验证构建及CI等待按用户策略跳过。",
+    "无schema、迁移或启动写入变更；完整数据库备份按策略跳过，保留17锁、全部队列、业务数据及public/data保护、应用回退与上线确认。"
   ],
-  "id": "20261026082956-00af19fe",
-  "builtAt": "2026-10-26T08:29:56.896Z",
-  "sourceDigest": "00af19fea95e13eb3fe324b0ae742504f127417f332dcb91fc5102711098b9e2",
+  "id": "20261026151433-e9196a2a",
+  "builtAt": "2026-10-26T15:14:33.437Z",
+  "sourceDigest": "e9196a2a3d7ae2f152e0fa825a308f0574c809e08329e7289a1e69aa9a5a3870",
   "operator": "Codex"
 }
