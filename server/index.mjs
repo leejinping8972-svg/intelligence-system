@@ -10,6 +10,9 @@ import { createAdminSso } from './admin-sso.mjs';
 import { platformLinkConfig } from './platform-link-config.mjs';
 import { createPlatformLinkStore } from './platform-link-store.mjs';
 import { createPlatformLink } from './platform-link.mjs';
+import { identityConfig } from './identity-config.mjs';
+import { createIdentityStore } from './identity-store.mjs';
+import { createIdentity } from './identity.mjs';
 import { serveAdMedia } from './ad-media.mjs';
 import { adsConfig } from './ads-provider.mjs';
 import { adminSsoSignIn, authAction, platformLinkAudit, platformLinkSignIn, requireAdmin, sessionUser } from './auth.mjs';
@@ -88,15 +91,24 @@ async function refreshWorkspaceReads() {
   const more = !maintenance && await workspaceReads.refresh();
   if (!controller.signal.aborted) readTimer = setTimeout(refreshWorkspaceReads, more ? 10 : 2000);
 }
+const unifiedIdentityConfig = identityConfig();
+const identity = await createIdentity({
+  config: unifiedIdentityConfig,
+  store: unifiedIdentityConfig ? createIdentityStore(pool, { ...unifiedIdentityConfig, sql }) : null,
+  sessionUser, authAction, lock, unlock, pool,
+  onError: (error) => {
+    if (!error.status || error.status >= 500) console.warn('Identity request failed', error.name, error.code || 'internal');
+  },
+});
 const platformLink = createPlatformLink({
-  config: platformLinkConfig(),
+  config: unifiedIdentityConfig ? platformLinkConfig({}) : platformLinkConfig(),
   store: createPlatformLinkStore(pool),
   sessionUser,
   signIn: platformLinkSignIn,
   audit: platformLinkAudit,
 });
 const sso = createAdminSso({
-  config: platformLink.enabled ? null : adminSsoConfig(),
+  config: identity.enabled || platformLink.enabled ? null : adminSsoConfig(),
   store: createSsoStore(pool),
   sessionUser,
   signIn: adminSsoSignIn,
@@ -544,6 +556,16 @@ const server = createServer(async (request, response) => {
     response.writeHead(400).end('{"error":"请求地址无效"}');
     return;
   }
+  if (requestUrl.pathname === '/api/identity' || requestUrl.pathname.startsWith('/api/identity/')) {
+    if (maintenance) {
+      response.writeHead(503).end('{"error":"正在维护，请稍后重试"}');
+      return;
+    }
+    activeRequests++;
+    try { await identity.handle(request, response, requestUrl); }
+    finally { activeRequests--; }
+    return;
+  }
   if (requestUrl.pathname.startsWith('/api/platform-link/v1/')) {
     if (maintenance) {
       response.writeHead(503).end('{"ok":false,"code":"LOGIN_DISABLED","message":"正在维护，请稍后重新发起"}');
@@ -671,10 +693,16 @@ const server = createServer(async (request, response) => {
           ].includes(input.action),
         );
     if (input.action?.startsWith('auth_')) {
+      if (input.action === 'auth_identity_directory') {
+        if (!identity.enabled) throw Object.assign(new Error('统一登录尚未启用'), { status: 503 });
+        response.end(JSON.stringify(await identity.directory(user)));
+        return;
+      }
       const result = await authAction(input, request, response, user);
       if (input.action === 'auth_status') {
         result.ssoEnabled = sso.enabled;
         result.platformLinkEnabled = platformLink.enabled;
+        result.identityEnabled = identity.enabled;
       }
       response.end(JSON.stringify(result));
       return;

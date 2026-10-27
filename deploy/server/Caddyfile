@@ -25,6 +25,11 @@ is.luckdate.com {
     >Referrer-Policy no-referrer
     >Cache-Control no-store
   }
+  @identity path /api/identity/*
+  header @identity {
+    >Referrer-Policy strict-origin
+    >Cache-Control no-store
+  }
   handle /health {
     respond "ok" 200
   }

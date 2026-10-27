@@ -22,6 +22,7 @@ import {
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import PlatformLinkSettings from './components/PlatformLinkSettings.vue';
+import UnifiedIdentitySettings from './components/UnifiedIdentitySettings.vue';
 import { adminRequest, leaveSession, session } from './session';
 
 const isAdmin = computed(() => session.user?.role === 'admin');
@@ -276,7 +277,8 @@ async function migrateDatabase() {
         <Button html-type="submit" :loading="busy">保存账号与密码</Button>
       </Form>
     </section>
-    <PlatformLinkSettings v-if="session.user" />
+    <UnifiedIdentitySettings v-if="session.identityEnabled" />
+    <PlatformLinkSettings v-else-if="session.user" />
     <template v-if="isAdmin">
       <section class="hci-panel">
         <div class="hci-panel-head">
