@@ -1,36 +1,30 @@
 {
-  "title": "手动添加竞品独立站与西之月越南每日新品监控",
-  "sourceSha": "f96c343b3e6d4498af608a9c3ee757dbc90d9b87",
+  "title": "统计快照每天北京时间09:00更新",
+  "sourceSha": "cf441f87169ef172cbca058ae252c473fce1bd80",
   "includedCommits": [
-    "5cbfa65a84ca252a2bebda1b29077378c630dfc5"
+    "3641303fe752c6bbdacd745338a49f9b620b2985"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ManualSiteDialog.vue",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "server/MANUAL-SITE.md",
-    "server/competitor-monitor-providers.mjs",
-    "server/index.mjs",
-    "server/manual-site.mjs",
-    "server/manual-site.test.mjs",
-    "server/product-jobs.mjs",
-    "server/product-queue.mjs",
-    "server/westmonth-catalog.mjs",
-    "server/westmonth-catalog.test.mjs"
+    "server/KEYWORD-SOCIAL-RADAR.md",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs",
+    "server/workspace-statistics.mjs",
+    "server/workspace-statistics.test.mjs"
   ],
   "changes": [
-    "竞品独立站支持手动填写公开网址、市场和品牌，读取官网资料并可提交既有商品采集任务。",
-    "同市场域名去重、人工字段保留、请求幂等和站点任务原子保存；自动收费备用预算为0。",
-    "西之月普通商品采集使用公开目录，每日上新监控使用公开新品榜并遵守分页及请求上限；按用户要求归档越南。",
-    "保留目录证据与原始时间，不将未知价格、模糊销量或目录时间当作已核验商品指标。"
+    "雷达、机会与配方保存统计统一改为每天北京时间09:00汇总一次。",
+    "取消五分钟定时及业务增量排空后的立即重算；列表继续只读已保存的分页统计表。",
+    "使用成功快照时间实现重启去重，故障恢复后补当天一次；失败保留旧快照。",
+    "忙投影队列之前检查每日计划；不改变原始采集、任务、投影处理或收费来源计划。"
   ],
   "validation": [
-    "功能开发60项相关测试、完整web类型检查、独立server/history构建、新模块和组件专项lint通过；Chrome1440/390合成表单校验、提交及成功状态通过。",
-    "发布阶段重复单测/回归/类型/lint/隔离库/UI/验证构建及CI等待按用户策略跳过。",
-    "无schema、迁移、依赖或锁文件变更。完整数据库备份按用户策略跳过；保留部署17锁、队列检查点、数据一致性核验、public/data及应用回退。",
-    "上线后启用已登记的VN西之月每日计划，并核验公开新品榜首次基线；不新增收费来源调用。"
+    "功能开发11项专项测试通过，含PGlite真实SQL、09:00时区/日历边界、重启去重、忙队列、原子失败和分页读取；语法及diff检查通过。",
+    "完整Oxlint遇到既有规则/旧代码告警，未记为通过；发布阶段重复测试、类型/lint、回归、隔离库/UI验收、验证构建及CI等待按用户策略跳过。",
+    "无schema、迁移、依赖或启动业务写入变更；按策略跳过完整数据库备份，保留17锁、队列检查点/journal、业务/public-data一致性核验及应用回退。",
+    "上线只读确认保存快照、当前不应重复汇总与下次09:00计划，不触发真实来源或再次全量统计。"
   ],
-  "id": "20261027062000-64b8a7e4",
-  "builtAt": "2026-10-27T06:20:00.310Z",
-  "sourceDigest": "64b8a7e4bbe1eb49f8f12be3882ce4a64d9123880f61162f9f4431597be837f0",
+  "id": "20261027070200-35142d70",
+  "builtAt": "2026-10-27T07:02:00.370Z",
+  "sourceDigest": "35142d707713c9ce608ab80f62ba567bb1c3e4c003d180ef7ee300a31277750a",
   "operator": "Codex"
 }
