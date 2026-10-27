@@ -1,44 +1,45 @@
 {
-  "title": "关键词趋势直显与即时详情",
-  "sourceSha": "bd87815043d96bb35236851461acfcbddffc29a8",
+  "title": "关键词统一社媒趋势与新品雷达分页快照",
+  "sourceSha": "588f2c9984dbd8ac168ae0f93647cc975f027884",
   "includedCommits": [
-    "203db5880c4001799cc90209ec5d97d240ebe091"
+    "924c4ebac8dc05419d1d4e10ef81e9e01f42659e"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/KeywordRelatedQueries.vue",
-    "apps/web-antd/src/views/intelligence/components/KeywordTrendDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/SocialTrendCell.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/keyword-social-trends.ts",
-    "apps/web-antd/src/views/intelligence/keyword-trend-preview.ts",
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
+    "apps/web-antd/src/views/intelligence/components/ResearchTrendOptions.vue",
+    "apps/web-antd/src/views/intelligence/keyword-research.ts",
+    "apps/web-antd/src/views/intelligence/radar.vue",
     "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
     "apps/web-antd/src/views/intelligence/social-trend-status.ts",
-    "apps/web-antd/src/views/intelligence/trend-comparison.ts",
-    "server/KEYWORD-TREND-DISPLAY.md",
-    "server/keyword-trend-list.mjs",
-    "server/model.js",
-    "server/model.ts",
-    "server/workspace-reads.mjs",
+    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+    "server/KEYWORD-SOCIAL-RADAR.md",
+    "server/domain.mjs",
+    "server/index.mjs",
+    "server/keyword-research-trends.mjs",
+    "server/keyword-research-trends.test.mjs",
+    "server/keyword-submit.mjs",
+    "server/keyword-trends-engine.mjs",
+    "server/keyword-trends-store.mjs",
+    "server/runner.mjs",
     "server/workspace-reads.test.mjs",
-    "tests/keyword-social-cache.test.ts",
-    "tests/keyword-trend-display.test.ts"
+    "server/workspace-statistics.mjs",
+    "server/workspace-statistics.test.mjs",
+    "tests/statistics-queries.test.ts"
   ],
   "changes": [
-    "关键词研究及已入选列表直接显示已保存年度曲线与四周期汇总，无需先打开曲线。",
-    "TK、INS、FB趋势保留跨页已获取数据，区分读取中、读取失败和未采集，不新增来源请求。",
-    "关键词详情和趋势弹窗先显示，再加载完整数据；支持失败重试及关闭后迟到响应保护。",
-    "热门及上升相关查询在列表和详情中点击气泡查看全部已保存搜索词与来源数值。"
+    "新建关键词研究及已有词补齐同时选择Google/TK/INS/FB；所选社媒复用既有独立趋势队列和共享预算。",
+    "持久化派发标记、同日分页去重、取消及未知扣费保护；列表区分已排队和已采集，不自动补抓旧关键词。",
+    "新品雷达候选逐条保存在统计表，列表只读取并解压当前页；后台定时与数据变化触发更新、只写入变化记录。",
+    "雷达快照事务切换与旧格式兼容，加载中不误显示零条，翻页保留汇总且合并重复刷新请求。"
   ],
   "validation": [
-    "功能开发：45项前端专项测试、2项隔离PGlite读模型测试、完整web类型检查、server/history构建及专项lint通过。",
-    "功能开发合成浏览器：4秒慢接口下抽屉先开后loading、关闭/切换/失败重试、25条完整热门与上升词表验收通过。",
-    "发布阶段重复单测、回归、类型、lint、隔离数据库、UI验收、验证构建及CI等待按用户策略跳过。",
-    "无schema、迁移或启动写入变更；完整数据库备份按策略跳过，保留17锁、全部队列、业务数据及public/data保护、应用回退与上线确认。"
+    "功能开发：63项后端专项（含隔离PGlite真实SQL）和12项前端测试、最终完整web类型检查、独立server/history构建及新增模块/组件专项lint通过。",
+    "Chrome合成验收新建/补齐提交来源与预算、未确认不提交、慢雷达加载/分页及桌面/390px移动端通过，页面错误0；隔离MySQL未运行。",
+    "发布阶段重复单测/回归/类型/lint/隔离库/UI/验证构建及CI等待按用户策略跳过。",
+    "无schema或业务迁移；统计v3到v4由后台事务重建。按策略跳过完整数据库备份，保留17锁、队列检查点/journal、业务数据/public-data、应用回退及上线确认。"
   ],
-  "id": "20261026151433-e9196a2a",
-  "builtAt": "2026-10-26T15:14:33.437Z",
-  "sourceDigest": "e9196a2a3d7ae2f152e0fa825a308f0574c809e08329e7289a1e69aa9a5a3870",
+  "id": "20261027044001-5bcce302",
+  "builtAt": "2026-10-27T04:40:01.552Z",
+  "sourceDigest": "5bcce3026424b14050f8aeabe5101ce447eff21911d995f7f06610c28b4ecaee",
   "operator": "Codex"
 }
