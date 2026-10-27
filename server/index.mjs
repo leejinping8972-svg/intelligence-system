@@ -57,6 +57,7 @@ import {
   submitPlatformProducts,
 } from './platform-products-jobs.mjs';
 import { submitProducts } from './product-jobs.mjs';
+import { addManualSite } from './manual-site.mjs';
 import { publicBranding } from './public-branding.mjs';
 import {
   publicContentAction,
@@ -122,6 +123,7 @@ async function api(input, user) {
   if (input.action?.startsWith('server_market_collection_'))
     return marketResearchAction(input, user);
   switch (input.action) {
+    case 'server_manual_site_add': return addManualSite(input);
     case 'server_workspace_bootstrap': return workspaceReads.bootstrap();
     case 'server_workspace_overview': return workspaceReads.overview(input);
     case 'server_workspace_statistics': return workspaceReads.statistics(input);

@@ -92,7 +92,7 @@ jobs:
           node --test server/advertiser-monitor-batch.test.mjs
           pnpm exec vitest run tests/advertiser-monitor.test.ts tests/competitor-workspace.test.ts
       - name: Site collection fallbacks (synthetic, no paid calls)
-        run: node --test server/site-page-fallbacks.test.mjs server/product-queue.test.mjs
+        run: node --test server/site-page-fallbacks.test.mjs server/product-queue.test.mjs server/manual-site.test.mjs server/westmonth-catalog.test.mjs
       - name: Competitor monitoring and Semrush ranking tests (mocked providers)
         run: node --test server/competitor-monitor.test.mjs server/monitor-public-recovery.test.mjs
       - name: Compact resources, bulk monitoring and Semrush balance (synthetic data)

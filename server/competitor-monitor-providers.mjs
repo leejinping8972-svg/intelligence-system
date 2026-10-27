@@ -14,6 +14,7 @@ import {
   shopifyCatalogProducts,
 } from './product-queue.mjs';
 import { fetchPublicPage } from './safe-web.mjs';
+import { fetchWestmonthCatalog, isWestmonth, isWestmonthCatalog, westmonthEntry } from './westmonth-catalog.mjs';
 import { safeSemrushError } from './semrush-mcp.mjs';
 import {
   client,
@@ -48,7 +49,7 @@ export async function scanSite(
     ...(site.platform === 'Shopify'
       ? [`${base}/products.json?limit=50&page=1`]
       : []),
-    ...fallbackProductUrls(site),
+    ...(isWestmonth(site) ? [westmonthEntry(true)] : fallbackProductUrls(site)),
   ];
   const attempted = new Set();
   const errors = [];
@@ -98,7 +99,9 @@ export async function scanSite(
         () =>
           mode === 'browser'
             ? fetchBrowser(url, site)
-            : fetchPage(url, 0, [
+            : isWestmonthCatalog(url, site)
+              ? fetchWestmonthCatalog(url, site, fetchPage)
+              : fetchPage(url, 0, [
                 'text/html',
                 'application/xml',
                 'text/xml',
@@ -116,7 +119,11 @@ export async function scanSite(
           status: 403,
         });
       let list;
-      if (/\/products\.json/.test(url)) {
+      if (page.catalogProducts) {
+        list = page.catalogProducts;
+        for (const next of page.catalogLinks)
+          if (!visited.has(next) && !queue.includes(next)) queue.push(next);
+      } else if (/\/products\.json/.test(url)) {
         const data = JSON.parse(page.html);
         list = shopifyCatalogProducts(data, base, site);
         if (data.products.length === 50) {
