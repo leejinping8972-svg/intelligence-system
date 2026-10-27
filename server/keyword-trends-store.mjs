@@ -7,6 +7,7 @@ import { validateJob } from './domain.mjs';
 import { submitKeywordJob } from './keyword-submit.mjs';
 import { advanceTrendQueue, trendAction } from './keyword-trends-engine.mjs';
 import { fetchSocialTrend } from './keyword-trends-provider.mjs';
+import { dispatchResearchTrends } from './keyword-research-trends.mjs';
 
 export function keywordTrendIO(c = pool, overrides = {}) {
   const read = async (name) =>
@@ -64,6 +65,10 @@ export function keywordTrendIO(c = pool, overrides = {}) {
       return record ? openAdsKey(record) : '';
     },
     fetch: fetchSocialTrend,
+    researchActive: async (id) => {
+      const job = (await c.query('SELECT cancelled FROM research_jobs WHERE id=$1', [id])).rows[0];
+      return !!job && !job.cancelled;
+    },
     submitGoogle: async (word, requestId) =>
       (
         await submitKeywordJob(
@@ -105,4 +110,19 @@ export async function keywordTrendsAction(input, user) {
 // and deployment drains. One request per tick allows pause/save between calls.
 export async function tickKeywordTrends(c, overrides = {}) {
   if (!maintenance) await advanceTrendQueue(keywordTrendIO(c, overrides));
+}
+
+export async function submitResearchTrends(job, words, now) {
+  const c = await pool.connect();
+  let held = false;
+  try {
+    held = await lock(c, 'competitor-runner');
+    if (!held) return null;
+    const io = keywordTrendIO(c);
+    if (!await io.researchActive(job.id)) throw new Error('任务已取消；已获取的结果保留');
+    return await dispatchResearchTrends(io, job, words, now);
+  } finally {
+    try { if (held) await unlock(c, 'competitor-runner'); }
+    finally { c.release(); }
+  }
 }

@@ -370,6 +370,11 @@ async function api(input, user) {
         };
       }
       const value = validateJob(requested);
+      if (value.socialTrends) {
+        requireAdmin(user);
+        const configured = await pool.query('SELECT name FROM provider_configs WHERE name=$1', ['provider:scrapecreators:v1']);
+        if (!configured.rows.length) throw new Error('请先在数据源与设置配置 ScrapeCreators');
+      }
       if (value.existingRecords) {
         const current = await pool.query(
           'SELECT data FROM research_keywords ORDER BY updated_at DESC LIMIT 10000',

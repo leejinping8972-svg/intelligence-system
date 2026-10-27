@@ -1,10 +1,11 @@
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { isDeepStrictEqual } from 'node:util';
 import {
   buildRadarFindings, buildCollectedRadarFindings, buildFreeSourceRadarFindings,
   buildSourceCoverage, buildRadarReport, opportunityRows, formulaStatistics, radarStatistics,
 } from './model.js';
 
-const VERSION = 3;
+const VERSION = 4;
 export const encodeStatistic = value => ({ codec: 'deflate-json-v1', body: deflateRawSync(Buffer.from(JSON.stringify(value))).toString('base64') });
 export const decodeStatistic = value => value?.codec === 'deflate-json-v1'
   ? JSON.parse(inflateRawSync(Buffer.from(value.body, 'base64'), { maxOutputLength: 4 * 1024 * 1024 }).toString('utf8'))
@@ -78,22 +79,31 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     const references = new Map();
     for (const [days, rows] of allRadar) {
       references.set(days, new Map(rows.map((row, index) => [row, index])));
-      await putDocument('workspace_documents', `read:radar-payload:${days}`, { revision: String(revision), data: encodeStatistic(rows) }, false, connection);
+      await save('radar-data', 'ALL', String(days), rows, {});
     }
     async function save(kind, market, variant, rows, summary) {
-      await connection.query('DELETE FROM workspace_statistic_rows WHERE kind=$1 AND market=$2 AND variant=$3', [kind, market, variant]);
-      for (let start = 0; start < rows.length;) {
+      const existing = new Map((await connection.query('SELECT position,subtype,payload FROM workspace_statistic_rows WHERE kind=$1 AND market=$2 AND variant=$3', [kind, market, variant])).rows.map(row => [Number(row.position), row]));
+      const changes = [];
+      for (let position = 0; position < rows.length; position++) {
+        const row = rows[position];
+        const payload = kind === 'radar' ? references.get(Number(variant)).get(row) : kind === 'radar-data' ? encodeStatistic(row) : row;
+        const prior = existing.get(position);
+        if (prior?.subtype === (row.type || '') && isDeepStrictEqual(prior.payload, payload)) continue;
+        // MySQL JSON columns require scalar JSON as text.
+        changes.push([kind, market, variant, position, row.type || '', kind === 'radar' ? String(payload) : payload]);
+      }
+      await connection.query('DELETE FROM workspace_statistic_rows WHERE kind=$1 AND market=$2 AND variant=$3 AND position>=$4', [kind, market, variant, rows.length]);
+      for (let start = 0; start < changes.length;) {
         const batch = [];
         let bytes = 0;
-        while (start + batch.length < rows.length && batch.length < 1000) {
-          const row = rows[start + batch.length];
-          // MySQL JSON columns require scalar JSON as text, rather than numeric SQL parameters.
-          const payload = kind === 'radar' ? String(references.get(Number(variant)).get(row)) : row;
-          const size = Buffer.byteLength(JSON.stringify(payload));
+        while (start + batch.length < changes.length && batch.length < 1000) {
+          const row = changes[start + batch.length];
+          const size = Buffer.byteLength(JSON.stringify(row[5]));
           if (batch.length && bytes + size > 512 * 1024) break;
-          batch.push([kind, market, variant, start + batch.length, row.type || '', payload]);
+          batch.push(row);
           bytes += size;
         }
+        await connection.query(`DELETE FROM workspace_statistic_rows WHERE kind=$1 AND market=$2 AND variant=$3 AND position IN (${batch.map((_, i) => `$${i + 4}`).join(',')})`, [kind, market, variant, ...batch.map(row => row[3])]);
         await connection.query(`INSERT INTO workspace_statistic_rows(kind,market,variant,position,subtype,payload) VALUES ${batch.map((_, i) => `(${Array.from({ length: 6 }, (_, j) => `$${i * 6 + j + 1}`).join(',')})`).join(',')}`, batch.flat());
         start += batch.length;
       }
@@ -106,13 +116,14 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
         const summaries = Object.fromEntries(types.map(type => [type, radarStatistics(rows.filter(row => type === 'all' || row.type === type))]));
         const scopedCollector = publicData.collector ? { ...publicData.collector, observations: publicData.collector.observations.filter(row => market === 'ALL' || row.market === market) } : null;
         const scopedFree = publicData.free ? { ...publicData.free, signals: publicData.free.signals.filter(row => market === 'ALL' || row.market === market || row.market === 'GLOBAL') } : null;
-        await save('radar', market, String(days), rows, { radarPayloadKey: `read:radar-payload:${days}`, summaries, coverage: buildSourceCoverage(scoped, scopedCollector, scopedFree), publicDataStale: !!(publicData.collectorStale || publicData.freeStale) });
+        await save('radar', market, String(days), rows, { radarRows: true, summaries, coverage: buildSourceCoverage(scoped, scopedCollector, scopedFree), publicDataStale: !!(publicData.collectorStale || publicData.freeStale) });
       }
       for (const tab of tabs) await save('opportunities', market, tab, opportunityRows(scoped, tab), {});
       const formula = formulaStatistics(scoped.products);
       await save('formulas', market, 'all', formula.rows, { coverage: formula.coverage });
     }
     await putDocument('workspace_documents', 'read:statistics-version', { version: VERSION, revision: String(revision), at: now }, false, connection);
+    await connection.query("DELETE FROM workspace_documents WHERE name LIKE 'read:radar-payload:%'");
   }
   function due() { if (Date.now() < nextCheck) return false; nextCheck = Date.now() + 30_000; return true; }
   async function readSnapshot(input, connection) {
@@ -124,6 +135,20 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     const snapshot = (await connection.query('SELECT value FROM workspace_documents WHERE name=$1', [keyOf(kind, market, variant)])).rows[0]?.value;
     if (!snapshot) return { rows: [], total: 0, page: 1, pageSize: 20, snapshot: null, indexing: true };
     async function resolveRows(values) {
+      if (snapshot.radarRows) {
+        if (!values.length) return [];
+        const found = new Map();
+        // Only export loads more than a page; keep its SQL parameters bounded too.
+        for (let start = 0; start < values.length; start += 500) {
+          const batch = values.slice(start, start + 500);
+          const rows = (await connection.query(`SELECT position,payload FROM workspace_statistic_rows WHERE kind='radar-data' AND market='ALL' AND variant=$1 AND position IN (${batch.map((_, i) => `$${i + 2}`).join(',')})`, [variant, ...batch])).rows;
+          for (const row of rows) found.set(Number(row.position), row.payload);
+        }
+        return values.map(index => {
+          if (!found.has(index)) throw new Error('Radar candidate unavailable');
+          return decodeStatistic(found.get(index));
+        });
+      }
       if (!snapshot.radarPayloadKey) return values.map(decodeStatistic);
       let cached = radarCache.get(snapshot.radarPayloadKey);
       if (cached?.revision !== snapshot.revision) {

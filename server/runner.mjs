@@ -23,6 +23,7 @@ import { runMarketReport } from './market-report-jobs.mjs';
 import { runPersonaResearch } from './persona-research-store.mjs';
 import { resourceResumeAllowed } from './product-resource-domain.mjs';
 import { projectJobTasks } from './task-projection.mjs';
+import { submitResearchTrends } from './keyword-trends-store.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   return projectJobTasks(job, projectKnownJob);
@@ -216,6 +217,7 @@ export async function runJob(job, overrides = {}) {
     saveKeyword,
     usage,
     checkCancelled,
+    submitResearchTrends,
     now: () => Date.now(),
     ...overrides,
   };
@@ -400,6 +402,20 @@ export async function runJob(job, overrides = {}) {
         });
       }
     cp.discoveryComplete = true;
+    if (input.socialTrends && !cp.socialTrendDispatch) {
+      await io.checkCancelled(job.id);
+      const dispatched = await io.submitResearchTrends(job, cp.keywords, io.now());
+      if (!dispatched) {
+        cp.nextRunAt = io.now() + 5000;
+        cp.waitReason = 'social_queue';
+        await io.saveCheckpoint(job, cp);
+        return;
+      }
+      cp.socialTrendDispatch = dispatched;
+      cp.waitReason = '';
+      cp.logs.push(`TK/INS/FB 所选来源已提交独立趋势队列：${dispatched.accepted}项（复用${dispatched.reused}项）；完成后写回列表，尚不代表已采集`);
+      await io.saveCheckpoint(job, cp);
+    }
     if (input.sources.includes('semrush')) {
       for (; cp.metricIndex < cp.keywords.length; cp.metricIndex++) {
         await io.checkCancelled(job.id);

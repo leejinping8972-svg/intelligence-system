@@ -18,15 +18,15 @@ let user = 0;
 const response = (id: string) => ({ rows: [{ id }], total: 120, snapshot: { generatedAt: '2026-10-22', revision: '1' }, page: 1, pageSize: 20 });
 const settle = async () => { await vi.advanceTimersByTimeAsync(150); await nextTick(); };
 function setup(enabled = true) {
-  const market = ref('US'), open = ref(enabled);
+  const market = ref('US'), open = ref(enabled), page = ref(1);
   let data!: ReturnType<typeof useStatistics<{ id: string }>>;
   const app = createApp({ setup() {
-    data = useStatistics(computed(() => ({ kind: 'radar', market: market.value, enabled: open.value })));
+    data = useStatistics(computed(() => ({ kind: 'radar', market: market.value, page: page.value, enabled: open.value })));
     return () => null;
   } });
   app.mount(document.createElement('div'));
   dispose = () => app.unmount();
-  return { market, open, data };
+  return { market, open, page, data };
 }
 beforeEach(() => {
   vi.useFakeTimers();
@@ -67,4 +67,18 @@ it('retains the last successful snapshot on a refresh failure', async () => {
   await data.reload(true);
   expect(data.rows.value[0]?.id).toBe('US');
   expect(data.error.value).toBe('offline');
+});
+it('keeps scope totals during pagination and debounces data-change notifications', async () => {
+  const { page, data } = setup(); await settle();
+  let finish!: (value: unknown) => void;
+  mock.request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  page.value = 2; await settle();
+  expect(data.snapshot.value?.revision).toBe('1');
+  expect(data.total.value).toBe(120);
+  expect(data.loading.value).toBe(true);
+  finish({ ...response('page2'), page: 2 }); await settle();
+  for (let i = 0; i < 5; i++) { mock.cloud.publishedRevision = String(i + 2); await nextTick(); await vi.advanceTimersByTimeAsync(50); }
+  expect(mock.request).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(550);
+  expect(mock.request).toHaveBeenCalledTimes(3);
 });

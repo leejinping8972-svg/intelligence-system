@@ -16,7 +16,17 @@ export interface KeywordResearchInput {
   expectedKeywordCount?: number;
   signal?: AbortSignal;
   sorftimeRequestLimit?: number;
+  socialTrends?: ResearchSocialTrends;
 }
+export interface ResearchSocialTrends {
+  sources: string[];
+  maxRequests: number;
+  maxPages: number;
+  budgetAcknowledged: boolean;
+}
+export const defaultResearchTrends = (): ResearchSocialTrends => ({
+  sources: ['tiktok', 'instagram', 'facebook'], maxRequests: 100, maxPages: 11, budgetAcknowledged: false,
+});
 export interface KeywordResearchCallbacks {
   onKeyword: (keyword: Keyword) => void;
   onTrend: (trend: TrendGroup, generatedAt: string) => void;

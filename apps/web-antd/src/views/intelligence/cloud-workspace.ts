@@ -557,6 +557,7 @@ async function doSubmitCloudResearch(
         }
       : {}),
     sorftimeRequestLimit: input.sorftimeRequestLimit,
+    ...(input.socialTrends ? { socialTrends: input.socialTrends } : {}),
     ...(existingRecords ? { existingRecords } : {}),
   };
   const signature = JSON.stringify(payload);
