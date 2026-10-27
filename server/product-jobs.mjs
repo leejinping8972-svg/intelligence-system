@@ -107,6 +107,7 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     imageUrl: p.image || undefined,
     collectionFields: p.collectionFields || [],
     extractionMethod: p.extractionMethod || '官网结构化商品数据',
+    ...(p.catalogEvidenceUrl ? { catalogEvidenceUrl: p.catalogEvidenceUrl, catalogScope: p.catalogScope, catalogListedAtRaw: p.catalogListedAtRaw } : {}),
     color: '#e9f4f0',
     reviewed: false,
     favorite: false,

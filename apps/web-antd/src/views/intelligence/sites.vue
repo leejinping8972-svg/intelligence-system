@@ -20,6 +20,7 @@ import { collectionTimeOrder, siteCollectedAt } from './resource-metadata';
 import CompactTags from './components/CompactTags.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SemrushSitesDialog from './components/SemrushSitesDialog.vue';
+import ManualSiteDialog from './components/ManualSiteDialog.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import SiteDrawer from './components/SiteDrawer.vue';
 import CoreListControls from './components/CoreListControls.vue';
@@ -242,6 +243,7 @@ const columns = [
       title="竞品独立站"
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"
     >
+      <ManualSiteDialog @saved="remote.reload(true)" />
       <ProductCollectDialog :site-ids="ids" />
       <BulkSiteWatch :site-ids="ids" />
       <SemrushSitesDialog />

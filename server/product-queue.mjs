@@ -3,6 +3,7 @@ import { pool, putDocument } from './database.mjs';
 import { recordSourceCall } from './source-usage.mjs';
 import { saveCheckpoint } from './store.mjs';
 import { fetchPublicPage } from './safe-web.mjs';
+import { fetchWestmonthCatalog, isWestmonth, isWestmonthCatalog, westmonthEntry } from './westmonth-catalog.mjs';
 import {
   fetchFallbackPage,
   renderedPageNeeded,
@@ -63,6 +64,7 @@ export function canonicalCatalogUrl(value, base) {
     for (const key of [...u.searchParams.keys()])
       if (
         !['page','paged','limit','id','pid','product_id','productid','sku','variant','handle'].includes(key.toLowerCase()) &&
+        !(new URL(base).hostname.replace(/^www\./, '') === 'westmonth.com' && key === 'ranking_type' && u.searchParams.get(key) === 'new') &&
         !(/sitemap.*\.xml/i.test(u.pathname) && ['from', 'to'].includes(key))
       )
         u.searchParams.delete(key);
@@ -73,6 +75,7 @@ export function canonicalCatalogUrl(value, base) {
   }
 }
 export function fallbackProductUrls(site) {
+  if (isWestmonth(site)) return [westmonthEntry()];
   const base = siteBase(site);
   return [
     ...new Set(
@@ -714,7 +717,9 @@ export async function runProductsJob(job, overrides = {}) {
       page =
         method !== 'direct'
           ? await io.fetchFallback(url, site, method)
-          : await io.fetchPage(
+          : isWestmonthCatalog(url, site)
+            ? await fetchWestmonthCatalog(url, site, io.fetchPage)
+            : await io.fetchPage(
               url,
               0,
               ['text/html', 'application/xml', 'text/xml', 'application/json'],
@@ -819,7 +824,10 @@ export async function runProductsJob(job, overrides = {}) {
         throw new Error('页面跳转到其他域名，未采集');
       let list = [],
         links = [];
-      if (/\/products\.json$/.test(new URL(url).pathname)) {
+      if (page.catalogProducts) {
+        list = page.catalogProducts;
+        links = [...page.catalogLinks, ...list.map((product) => product.url)];
+      } else if (/\/products\.json$/.test(new URL(url).pathname)) {
         let data;
         try {
           data = JSON.parse(page.html);
