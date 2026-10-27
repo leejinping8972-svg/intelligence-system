@@ -1,45 +1,36 @@
 {
-  "title": "关键词统一社媒趋势与新品雷达分页快照",
-  "sourceSha": "588f2c9984dbd8ac168ae0f93647cc975f027884",
+  "title": "手动添加竞品独立站与西之月越南每日新品监控",
+  "sourceSha": "f96c343b3e6d4498af608a9c3ee757dbc90d9b87",
   "includedCommits": [
-    "924c4ebac8dc05419d1d4e10ef81e9e01f42659e"
+    "5cbfa65a84ca252a2bebda1b29077378c630dfc5"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/components/ResearchTrendOptions.vue",
-    "apps/web-antd/src/views/intelligence/keyword-research.ts",
-    "apps/web-antd/src/views/intelligence/radar.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/social-trend-status.ts",
-    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
-    "server/KEYWORD-SOCIAL-RADAR.md",
-    "server/domain.mjs",
+    "apps/web-antd/src/views/intelligence/components/ManualSiteDialog.vue",
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "server/MANUAL-SITE.md",
+    "server/competitor-monitor-providers.mjs",
     "server/index.mjs",
-    "server/keyword-research-trends.mjs",
-    "server/keyword-research-trends.test.mjs",
-    "server/keyword-submit.mjs",
-    "server/keyword-trends-engine.mjs",
-    "server/keyword-trends-store.mjs",
-    "server/runner.mjs",
-    "server/workspace-reads.test.mjs",
-    "server/workspace-statistics.mjs",
-    "server/workspace-statistics.test.mjs",
-    "tests/statistics-queries.test.ts"
+    "server/manual-site.mjs",
+    "server/manual-site.test.mjs",
+    "server/product-jobs.mjs",
+    "server/product-queue.mjs",
+    "server/westmonth-catalog.mjs",
+    "server/westmonth-catalog.test.mjs"
   ],
   "changes": [
-    "新建关键词研究及已有词补齐同时选择Google/TK/INS/FB；所选社媒复用既有独立趋势队列和共享预算。",
-    "持久化派发标记、同日分页去重、取消及未知扣费保护；列表区分已排队和已采集，不自动补抓旧关键词。",
-    "新品雷达候选逐条保存在统计表，列表只读取并解压当前页；后台定时与数据变化触发更新、只写入变化记录。",
-    "雷达快照事务切换与旧格式兼容，加载中不误显示零条，翻页保留汇总且合并重复刷新请求。"
+    "竞品独立站支持手动填写公开网址、市场和品牌，读取官网资料并可提交既有商品采集任务。",
+    "同市场域名去重、人工字段保留、请求幂等和站点任务原子保存；自动收费备用预算为0。",
+    "西之月普通商品采集使用公开目录，每日上新监控使用公开新品榜并遵守分页及请求上限；按用户要求归档越南。",
+    "保留目录证据与原始时间，不将未知价格、模糊销量或目录时间当作已核验商品指标。"
   ],
   "validation": [
-    "功能开发：63项后端专项（含隔离PGlite真实SQL）和12项前端测试、最终完整web类型检查、独立server/history构建及新增模块/组件专项lint通过。",
-    "Chrome合成验收新建/补齐提交来源与预算、未确认不提交、慢雷达加载/分页及桌面/390px移动端通过，页面错误0；隔离MySQL未运行。",
+    "功能开发60项相关测试、完整web类型检查、独立server/history构建、新模块和组件专项lint通过；Chrome1440/390合成表单校验、提交及成功状态通过。",
     "发布阶段重复单测/回归/类型/lint/隔离库/UI/验证构建及CI等待按用户策略跳过。",
-    "无schema或业务迁移；统计v3到v4由后台事务重建。按策略跳过完整数据库备份，保留17锁、队列检查点/journal、业务数据/public-data、应用回退及上线确认。"
+    "无schema、迁移、依赖或锁文件变更。完整数据库备份按用户策略跳过；保留部署17锁、队列检查点、数据一致性核验、public/data及应用回退。",
+    "上线后启用已登记的VN西之月每日计划，并核验公开新品榜首次基线；不新增收费来源调用。"
   ],
-  "id": "20261027044001-5bcce302",
-  "builtAt": "2026-10-27T04:40:01.552Z",
-  "sourceDigest": "5bcce3026424b14050f8aeabe5101ce447eff21911d995f7f06610c28b4ecaee",
+  "id": "20261027062000-64b8a7e4",
+  "builtAt": "2026-10-27T06:20:00.310Z",
+  "sourceDigest": "64b8a7e4bbe1eb49f8f12be3882ce4a64d9123880f61162f9f4431597be837f0",
   "operator": "Codex"
 }
