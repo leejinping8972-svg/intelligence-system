@@ -6,6 +6,16 @@ import {
 } from './model.js';
 
 const VERSION = 4;
+const DAY_MS = 86_400_000;
+export function statisticsRefreshSchedule(previous, now = Date.now()) {
+  // Shanghai stays UTC+8; UTC accessors keep the schedule independent of host TZ.
+  const local = new Date(now + 8 * 3_600_000);
+  const scheduledAt = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 1);
+  const due = now >= scheduledAt && !(Number(previous?.at) >= scheduledAt);
+  let nextAt = scheduledAt;
+  if (now >= scheduledAt) nextAt = due ? now : scheduledAt + DAY_MS;
+  return { due, scheduledAt, nextAt };
+}
 export const encodeStatistic = value => ({ codec: 'deflate-json-v1', body: deflateRawSync(Buffer.from(JSON.stringify(value))).toString('base64') });
 export const decodeStatistic = value => value?.codec === 'deflate-json-v1'
   ? JSON.parse(inflateRawSync(Buffer.from(value.body, 'base64'), { maxOutputLength: 4 * 1024 * 1024 }).toString('utf8'))
@@ -53,7 +63,11 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
   async function rebuild(connection, revision) {
     const now = Date.now();
     const previous = (await connection.query("SELECT value FROM workspace_documents WHERE name='read:statistics-version'")).rows[0]?.value;
-    if (previous?.version === VERSION && previous.revision === String(revision) && now - previous.at < 300_000) return;
+    const schedule = statisticsRefreshSchedule(previous, now);
+    if (!schedule.due) {
+      nextCheck = schedule.nextAt;
+      return;
+    }
     const state = { keywords: [], products: [], sites: [], ads: [] };
     // Use compact projections in bounded batches, never raw business evidence documents.
     for (const collection of Object.keys(state)) {
@@ -125,7 +139,13 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     await putDocument('workspace_documents', 'read:statistics-version', { version: VERSION, revision: String(revision), at: now }, false, connection);
     await connection.query("DELETE FROM workspace_documents WHERE name LIKE 'read:radar-payload:%'");
   }
-  function due() { if (Date.now() < nextCheck) return false; nextCheck = Date.now() + 30_000; return true; }
+  function due() {
+    const now = Date.now();
+    if (now < nextCheck) return false;
+    const schedule = statisticsRefreshSchedule(null, now);
+    nextCheck = schedule.due ? now + 60_000 : schedule.nextAt;
+    return schedule.due;
+  }
   async function readSnapshot(input, connection) {
     const kind = input.kind;
     if (!['radar', 'opportunities', 'formulas'].includes(kind)) throw new Error('未知统计类型');

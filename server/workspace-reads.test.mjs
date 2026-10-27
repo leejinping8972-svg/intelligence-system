@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 import { createWorkspaceReads, projectRecord } from './workspace-reads.mjs';
 import { readReportSummaries } from './report-read-summaries.mjs';
@@ -41,12 +41,21 @@ const keyword = (i) => ({
   dataNature: 'collected',
 });
 
-export async function exerciseWorkspaceReads(
+export async function exerciseWorkspaceReads(pool, sql, engine, lock, unlock) {
+  let now = Date.parse('2026-10-27T00:00:00Z');
+  const clock = mock.method(Date, 'now', () => now);
+  try {
+    return await exerciseReadModel(pool, sql, engine, lock, unlock, () => { now = Date.parse('2026-10-27T01:00:00Z'); });
+  } finally { clock.mock.restore(); }
+}
+
+async function exerciseReadModel(
   pool,
   sql,
   engine,
   lock = async () => true,
   unlock = async () => {},
+  advanceStatistics,
 ) {
   await migrateWorkspaceReads(pool, engine);
   // Running migrations twice must preserve the queue and existing revisions.
@@ -146,6 +155,9 @@ export async function exerciseWorkspaceReads(
   assert.equal(overview.snapshot.counts.keywords, 34);
   assert.equal(overview.snapshot.counts.products, 240);
   assert.equal(overview.snapshot.productMarkets.US, 120);
+  assert.equal((await reads.statistics({ kind: 'radar' })).snapshot, null);
+  advanceStatistics();
+  await reads.refresh();
   const radar = await reads.statistics({ kind: 'radar', type: 'product', pageSize: 20 });
   assert.equal(radar.total, 240);
   assert.equal(radar.rows.length, 20);

@@ -366,6 +366,7 @@ export function createWorkspaceReads({
       locked = await lock(connection, 'workspace-reads');
       if (!locked) return false;
       await seed(connection);
+      if (statistics.due()) await refreshStatistics(connection);
       const dirty = (
         await connection.query(
           'SELECT kind,source_key,revision FROM workspace_read_dirty ORDER BY kind,source_key LIMIT 100',
@@ -376,7 +377,6 @@ export function createWorkspaceReads({
           'SELECT market FROM workspace_overview_snapshots LIMIT 1',
         );
         if (!snapshot.rows.length) await buildOverview(connection);
-        if (statistics.due()) await refreshStatistics(connection);
         return false;
       }
       await connection.query('BEGIN');
@@ -504,7 +504,6 @@ export function createWorkspaceReads({
           await putDocument('workspace_documents', 'read:reports-ready', { ready: true }, false, connection);
         }
         await connection.query('COMMIT');
-        if (!remaining.rows.length) await refreshStatistics(connection);
         lastError = (
           await connection.query(
             "SELECT name FROM workspace_documents WHERE name LIKE 'read:failure:%' LIMIT 1",

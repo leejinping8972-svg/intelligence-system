@@ -1,7 +1,60 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formulaStatistics, opportunityRows, radarStatistics } from './model.js';
-import { createPublicObservationReader, createWorkspaceStatistics, encodeStatistic, decodeStatistic } from './workspace-statistics.mjs';
+import { createWorkspaceReads } from './workspace-reads.mjs';
+import { createPublicObservationReader, createWorkspaceStatistics, encodeStatistic, decodeStatistic, statisticsRefreshSchedule } from './workspace-statistics.mjs';
+
+test('statistics schedule uses 09:00 Shanghai, persisted daily success and calendar boundaries', () => {
+  const schedule = (at, previous) => statisticsRefreshSchedule(previous, Date.parse(at));
+  assert.equal(schedule('2026-10-27T00:59:59.999Z').due, false);
+  assert.equal(schedule('2026-10-27T00:59:59.999Z').nextAt, Date.parse('2026-10-27T01:00:00Z'));
+  assert.equal(schedule('2026-10-27T01:00:00Z').due, true);
+  assert.equal(schedule('2026-10-27T15:59:59Z').due, true);
+  const saved = { at: Date.parse('2026-10-27T01:00:00Z'), revision: '1' };
+  assert.equal(schedule('2026-10-27T08:00:00Z', saved).due, false);
+  assert.equal(schedule('2026-10-27T08:00:00Z', saved).nextAt, Date.parse('2026-10-28T01:00:00Z'));
+  assert.equal(schedule('2026-10-27T16:00:00Z', saved).due, false);
+  assert.equal(schedule('2026-10-28T00:59:59Z', saved).due, false);
+  assert.equal(schedule('2026-10-28T01:00:00Z', saved).due, true);
+  assert.equal(schedule('2027-01-01T01:00:00Z', { at: Date.parse('2026-12-31T02:00:00Z') }).due, true);
+});
+
+test('worker checks sleep until 09:00 and failed attempts remain retryable', context => {
+  let now = Date.parse('2026-10-27T00:59:59Z');
+  context.mock.method(Date, 'now', () => now);
+  const stats = createWorkspaceStatistics({});
+  assert.equal(stats.due(), false);
+  now += 1000;
+  assert.equal(stats.due(), true);
+  assert.equal(stats.due(), false);
+  now += 60_000;
+  assert.equal(stats.due(), true);
+});
+
+test('daily aggregation runs before reading a busy projection queue', async context => {
+  context.mock.method(Date, 'now', () => Date.parse('2026-10-27T01:00:00Z'));
+  const queries = [];
+  const connection = {
+    async query(statement) {
+      queries.push(statement);
+      if (statement.includes('SELECT revision FROM workspace_read_versions')) return { rows: [{ revision: '2' }] };
+      if (statement.startsWith('SELECT kind,source_key')) return { rows: [{ kind: 'business', source_key: 'business:ignored:1', revision: 1 }] };
+      if (statement === 'SELECT kind FROM workspace_read_dirty LIMIT 1') return { rows: [{ kind: 'business' }] };
+      return { rows: [] };
+    }, release() {},
+  };
+  let publicReads = 0;
+  const reads = createWorkspaceReads({
+    pool: { connect: async () => connection }, sql: pg => pg,
+    lock: async () => true, unlock: async () => {}, putDocument: async () => {},
+    loadPublic: async () => { publicReads++; return {}; },
+  });
+  await reads.refresh();
+  assert.equal(publicReads, 1);
+  assert.ok(queries.findIndex(q => q.includes("name='read:statistics-version'")) < queries.findIndex(q => q.startsWith('SELECT kind,source_key')));
+  await reads.refresh();
+  assert.equal(publicReads, 1);
+});
 
 test('compressed findings preserve every field and legacy rows remain readable', () => {
   const row = { id: 'radar-qa', title: '补充剂', evidence: Array.from({ length: 30 }, () => ({ detail: 'Evidence text '.repeat(100), url: 'https://example.com/product' })), score: null };
@@ -64,7 +117,7 @@ test('public feed cache makes no requests during TTL and keeps last good feed af
   assert.equal(result.freeStale, true);
 });
 
-test('cold radar pagination reads only page candidates; refresh is atomic, revision-driven and periodic', async (context) => {
+test('cold radar pagination is bounded; daily refresh survives restart and failure atomically', async (context) => {
   const { PGlite } = await import('@electric-sql/pglite');
   const db = new PGlite();
   let now = Date.parse('2026-10-27T05:00:00Z'), fail = false;
@@ -107,8 +160,20 @@ test('cold radar pagination reads only page candidates; refresh is atomic, revis
     now += 300_001;
     reads.length = 0;
     await rebuild('1');
+    await rebuild('changed-revision');
+    await create().rebuild(connection, 'restart-revision');
+    assert.ok(reads.every(row => !row.statement.includes('FROM workspace_read_rows')));
+    await putDocument('', 'read:statistics-version', { at: now - 86400000 }, false, connection);
+    reads.length = 0;
+    await create().rebuild(connection, '1');
+    assert.ok(reads.some(row => row.statement.includes('FROM workspace_read_rows')));
     assert.ok(reads.every(row => !row.statement.startsWith('INSERT INTO workspace_statistic_rows')));
+    now += 86400000;
+    reads.length = 0;
+    await rebuild('1');
+    assert.ok(reads.some(row => row.statement.includes('FROM workspace_read_rows')));
     await connection.query("DELETE FROM workspace_read_rows WHERE id='p0'");
+    now += 86400000;
     fail = true;
     await assert.rejects(rebuild('2'), /write failed/);
     assert.equal((await create().read({ kind: 'radar', type: 'product' })).total, 45);
