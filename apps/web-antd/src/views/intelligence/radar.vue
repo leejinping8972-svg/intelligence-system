@@ -15,6 +15,7 @@ import {
   Progress,
   Segmented,
   Select,
+  Spin,
   Switch,
   Table,
   Tag,
@@ -49,6 +50,7 @@ const freeSourceData = ref<FreeSourceData | null>(null);
 const page = ref(1), pageSize = ref(20);
 watch(() => [state.market, windowDays.value, findingType.value], () => { page.value = 1; selected.value = undefined; reportOpen.value = false; });
 const remote = useStatistics<RadarFinding>(computed(() => ({ kind: 'radar', market: state.market, days: windowDays.value, type: findingType.value, page: page.value, pageSize: pageSize.value })));
+const awaitingSnapshot = computed(() => serverMode && !remote.snapshot.value);
 watch(remote.pagination, value => { page.value = value.page; });
 
 const allFindings = computed(() => serverMode ? remote.rows.value : [
@@ -296,28 +298,28 @@ function openRelated(item: RadarFinding) {
     <section class="hci-stats hci-radar-stats">
       <button class="hci-stat" @click="findingType = 'ad'">
         <div class="hci-stat-label"><span>新广告线索</span><Tag>投放证据</Tag></div>
-        <div class="hci-stat-value">{{ counts.ad }}</div>
+        <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : counts.ad }}</div>
         <div class="hci-stat-foot">区分近期投放与首次发现</div>
       </button>
       <button class="hci-stat" @click="findingType = 'product'">
         <div class="hci-stat-label">
           <span>新品候选</span><Tag>商品事实</Tag>
         </div>
-        <div class="hci-stat-value">{{ counts.product }}</div>
+        <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : counts.product }}</div>
         <div class="hci-stat-foot">区分确认上市与近期新发现</div>
       </button>
       <button class="hci-stat" @click="findingType = 'concept'">
         <div class="hci-stat-label">
           <span>新概念候选</span><Tag>多源聚类</Tag>
         </div>
-        <div class="hci-stat-value">{{ counts.concept }}</div>
+        <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : counts.concept }}</div>
         <div class="hci-stat-foot">卖点、人群、场景与成分组合</div>
       </button>
       <button class="hci-stat" @click="findingType = 'ingredient'">
         <div class="hci-stat-label">
           <span>新成分候选</span><Tag>标签证据</Tag>
         </div>
-        <div class="hci-stat-value">{{ counts.ingredient }}</div>
+        <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : counts.ingredient }}</div>
         <div class="hci-stat-foot">广告提及不会直接确认成分</div>
       </button>
       <button class="hci-stat" @click="findingType = 'all'">
@@ -325,10 +327,11 @@ function openRelated(item: RadarFinding) {
           <span>平均机会分</span><Tag color="green">决策辅助</Tag>
         </div>
         <div class="hci-stat-value">{{ averageScore ?? '—' }}</div>
-        <div class="hci-stat-foot">可信度≥70：{{ counts.verified }} 项</div>
+        <div class="hci-stat-foot">可信度≥70：{{ awaitingSnapshot ? '...' : counts.verified }} 项</div>
       </button>
     </section>
 
+    <Spin :spinning="awaitingSnapshot">
     <section class="hci-two-col">
       <div class="hci-panel">
         <div class="hci-panel-head">
@@ -349,6 +352,7 @@ function openRelated(item: RadarFinding) {
         <Chart :options="typeOption" />
       </div>
     </section>
+    </Spin>
 
     <section class="hci-panel">
       <div class="hci-panel-head">
@@ -356,13 +360,13 @@ function openRelated(item: RadarFinding) {
           <h2>候选清单</h2>
           <p>新鲜度可信度与商业机会分分开计算，缺失数据不会按零分处理。</p>
         </div>
-        <span class="hci-subtle">{{ serverMode ? remote.total.value : findings.length }} 项结果</span>
+        <span class="hci-subtle">{{ awaitingSnapshot ? '...' : serverMode ? remote.total.value : findings.length }} 项结果</span>
       </div>
-      <div v-if="findings.length" class="hci-data-table">
+      <div v-if="findings.length || (serverMode && (remote.loading.value || awaitingSnapshot))" class="hci-data-table">
         <Table
           :columns="columns"
           :data-source="findings"
-          :loading="remote.loading.value"
+          :loading="remote.loading.value || awaitingSnapshot"
           :pagination="serverMode ? { current: page, pageSize, total: remote.total.value, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], onChange: (p: number, size: number) => { page = p; pageSize = size; } } : { pageSize: 8, hideOnSinglePage: true }"
           :scroll="{ x: 1150 }"
           row-key="id"

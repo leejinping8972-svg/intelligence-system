@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { validateResearchTrends } from './keyword-research-trends.mjs';
 
 export const normalizeTerm = (value) =>
   String(value || '')
@@ -158,6 +159,8 @@ export function validateJob(value) {
       input.depth === 2
         ? Math.min(input.limit, supportedPairs + remaining)
         : supportedPairs;
+  if (value.socialTrends !== undefined)
+    input.socialTrends = validateResearchTrends(value.socialTrends, input.markets);
   return input;
 }
 export function editableKeywordPatch(patch) {

@@ -39,6 +39,8 @@ import { useCoreList } from './use-core-list';
 const core = useCoreList('keywords');
 const { preset: corePreset, period: corePeriod } = core;
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
+import ResearchTrendOptions from './components/ResearchTrendOptions.vue';
+import { defaultResearchTrends } from './keyword-research';
 import SocialTrendCell from './components/SocialTrendCell.vue';
 import { keywordChineseName } from './keyword-names';
 import { emptyScoreFilter, matchesScore } from './resource-list';
@@ -72,6 +74,8 @@ const router = useRouter();
 const open = ref(false);
 const modelOpen = ref(false);
 const supplementSubmitting = ref(false);
+const supplementOpen = ref(false);
+const supplementTrends = ref(defaultResearchTrends());
 const researchError = ref('');
 const checkingSource = ref(false);
 const search = ref('');
@@ -121,6 +125,7 @@ const form = reactive({
   sources: ['google_autocomplete', 'amazon_autocomplete', 'semrush'],
   depth: 1,
   limit: Math.min(100, state.settings.trendLimit),
+  socialTrends: defaultResearchTrends(),
 });
 const automaticSorftimeCalls = computed(() => {
   const seedCount = new Set(
@@ -359,6 +364,10 @@ function toggleFavorite(record: Record<string, unknown>) {
 }
 async function createResearch() {
   if (checkingSource.value || keywordJob.running) return;
+  if (form.socialTrends.sources.length && !form.socialTrends.budgetAcknowledged) {
+    researchError.value = '请确认社媒趋势的来源额度预算';
+    return;
+  }
   const seeds = [
     ...new Set(
       form.seeds
@@ -435,6 +444,7 @@ async function createResearch() {
     ),
     depth: form.depth,
     limit: form.limit,
+    ...(form.socialTrends.sources.length ? { socialTrends: { ...form.socialTrends } } : {}),
   };
   try {
     await startKeywordJob(config);
@@ -450,6 +460,10 @@ async function createResearch() {
 }
 async function supplementSelected() {
   if (supplementSubmitting.value) return;
+  if (supplementTrends.value.sources.length && !supplementTrends.value.budgetAcknowledged) {
+    message.warning('请确认社媒趋势的来源额度预算');
+    return;
+  }
   if (selectedIds.value.length === 0 || selectedIds.value.length > 100) {
     message.warning('请勾选1～100个关键词');
     return;
@@ -480,12 +494,14 @@ async function supplementSelected() {
         depth: 1,
         limit: submittedIds.length,
         expectedKeywordCount: submittedIds.length,
+        ...(supplementTrends.value.sources.length ? { socialTrends: { ...supplementTrends.value } } : {}),
       },
       records,
     );
     message.success(
       `已勾选${submittedIds.length}个词，后台已接收${result.acceptedKeywords ?? records.length}个；指标与趋势补齐后自动重评`,
     );
+    supplementOpen.value = false;
     await router.push('/monitor?tab=tasks');
   } catch (error) {
     message.error(
@@ -785,7 +801,7 @@ function saveMetrics() {
                 supplementSubmitting
               "
               :loading="supplementSubmitting"
-              @click="supplementSelected"
+              @click="supplementOpen = true; supplementTrends = defaultResearchTrends()"
             >
               一键补齐数据并重评
             </Button>
@@ -957,7 +973,7 @@ function saveMetrics() {
 
     <Modal
       v-model:open="open"
-      title="新建关键词研究 · 第一步"
+      title="新建关键词研究"
       :width="720"
       ok-text="开始找词与评级"
       cancel-text="取消"
@@ -1051,13 +1067,7 @@ function saveMetrics() {
             />
           </Form.Item>
         </div>
-        <Form.Item label="趋势与评分">
-          <p>
-            每个入库关键词均单独查询过去一年 Google
-            Trends，并尝试补齐30天日数据；勾选 Semrush
-            后同步补搜索量、KD、意图，再计算五维评分、评级和标签。
-          </p>
-        </Form.Item>
+        <ResearchTrendOptions v-model="form.socialTrends" />
       </Form>
       <Alert
         v-if="researchError"
@@ -1070,6 +1080,13 @@ function saveMetrics() {
         使用你的账户额度。Semrush
         勾选后自动补充搜索量与自然搜索KD，也可在评分详情中手动补充，来源与日期会保留。提交成功后由腾讯云后台执行，任务和关键词结果保存到数据库，关闭浏览器后继续运行。
       </p>
+    </Modal>
+
+    <Modal v-model:open="supplementOpen" title="补齐关键词数据" ok-text="提交采集" :confirm-loading="supplementSubmitting" :mask-closable="!supplementSubmitting" @ok="supplementSelected">
+      <Form layout="vertical">
+        <Form.Item label="关键词">已勾选 {{ selectedIds.length }} 个；补齐 Semrush 指标与所选趋势</Form.Item>
+        <ResearchTrendOptions v-model="supplementTrends" />
+      </Form>
     </Modal>
 
     <Modal

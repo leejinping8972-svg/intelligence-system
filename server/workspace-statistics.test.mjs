@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formulaStatistics, opportunityRows, radarStatistics } from './model.js';
-import { createPublicObservationReader, encodeStatistic, decodeStatistic } from './workspace-statistics.mjs';
+import { createPublicObservationReader, createWorkspaceStatistics, encodeStatistic, decodeStatistic } from './workspace-statistics.mjs';
 
 test('compressed findings preserve every field and legacy rows remain readable', () => {
   const row = { id: 'radar-qa', title: '补充剂', evidence: Array.from({ length: 30 }, () => ({ detail: 'Evidence text '.repeat(100), url: 'https://example.com/product' })), score: null };
@@ -62,4 +62,68 @@ test('public feed cache makes no requests during TTL and keeps last good feed af
   const result = await unavailable();
   assert.equal(result.free, null);
   assert.equal(result.freeStale, true);
+});
+
+test('cold radar pagination reads only page candidates; refresh is atomic, revision-driven and periodic', async (context) => {
+  const { PGlite } = await import('@electric-sql/pglite');
+  const db = new PGlite();
+  let now = Date.parse('2026-10-27T05:00:00Z'), fail = false;
+  const reads = [];
+  context.mock.method(Date, 'now', () => now);
+  const connection = {
+    query: async (statement, params = []) => {
+      if (fail && statement.startsWith('INSERT INTO workspace_statistic_rows')) throw new Error('write failed');
+      const result = await db.query(statement, params.map(value => value && typeof value === 'object' ? JSON.stringify(value) : value));
+      reads.push({ statement, params, count: result.rows.length });
+      return result;
+    }, release() {},
+  };
+  const pool = { connect: async () => connection };
+  const putDocument = async (_table, name, value, _importOnly, c) => c.query('INSERT INTO workspace_documents(name,value) VALUES($1,$2) ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value', [name, value]);
+  const create = () => createWorkspaceStatistics({ pool, sql: pg => pg, putDocument, loadPublic: async () => ({}) });
+  const stats = create();
+  const rebuild = async revision => {
+    await connection.query('BEGIN');
+    try { await stats.rebuild(connection, revision); await connection.query('COMMIT'); }
+    catch (error) { await connection.query('ROLLBACK'); throw error; }
+  };
+  try {
+    await db.exec('CREATE TABLE workspace_documents(name text PRIMARY KEY,value jsonb); CREATE TABLE workspace_read_rows(collection text,id text,payload jsonb); CREATE TABLE workspace_statistic_rows(kind text,market text,variant text,position integer,subtype text,payload jsonb,PRIMARY KEY(kind,market,variant,position));');
+    for (let i = 0; i < 45; i++) await connection.query('INSERT INTO workspace_read_rows VALUES($1,$2,$3)', ['products', `p${i}`, { id: `p${i}`, title: `Product ${i}`, market: i % 2 ? 'MX' : 'US', dataNature: 'collected', firstSeenAt: new Date(now - 86400000).toISOString(), ingredientInsights: [], benefits: [] }]);
+    await rebuild('1');
+    reads.length = 0;
+    const page = await create().read({ kind: 'radar', type: 'product', page: 2, pageSize: 20 });
+    assert.equal(page.total, 45);
+    assert.equal(page.rows.length, 20);
+    assert.ok(page.rows.every(row => row.title && Array.isArray(row.evidence)));
+    const payloadReads = reads.filter(row => row.statement.includes("kind='radar-data'"));
+    assert.equal(payloadReads.length, 1);
+    assert.equal(payloadReads[0].count, 20);
+    assert.equal(payloadReads[0].params.length, 21);
+    assert.ok(reads.every(row => !row.statement.includes('read:radar-payload')));
+    reads.length = 0;
+    await rebuild('1');
+    assert.ok(reads.every(row => !row.statement.startsWith('INSERT INTO workspace_statistic_rows')));
+    now += 300_001;
+    reads.length = 0;
+    await rebuild('1');
+    assert.ok(reads.every(row => !row.statement.startsWith('INSERT INTO workspace_statistic_rows')));
+    await connection.query("DELETE FROM workspace_read_rows WHERE id='p0'");
+    fail = true;
+    await assert.rejects(rebuild('2'), /write failed/);
+    assert.equal((await create().read({ kind: 'radar', type: 'product' })).total, 45);
+    fail = false;
+    await rebuild('2');
+    assert.equal((await stats.read({ kind: 'radar', type: 'product' })).total, 44);
+    // A quiet database still expires observations when the rolling window moves.
+    now += 31 * 86400000;
+    await rebuild('2');
+    assert.equal((await stats.read({ kind: 'radar', type: 'product' })).total, 0);
+    // A pre-upgrade snapshot stays readable until its background replacement commits.
+    const legacy = { id: 'legacy', title: 'Saved legacy' };
+    await putDocument('', 'read:radar-payload:7', { revision: 'old', data: encodeStatistic([legacy]) }, false, connection);
+    await putDocument('', 'read:statistics:radar:ALL:7', { generatedAt: 'old', revision: 'old', radarPayloadKey: 'read:radar-payload:7' }, false, connection);
+    await connection.query("INSERT INTO workspace_statistic_rows VALUES('radar','ALL','7',0,'product','0')");
+    assert.deepEqual((await create().read({ kind: 'radar' })).rows, [legacy]);
+  } finally { await db.close(); }
 });

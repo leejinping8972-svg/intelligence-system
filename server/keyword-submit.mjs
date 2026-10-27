@@ -15,6 +15,11 @@ export function researchSignature(input) {
     depth: input.depth,
     limit: input.limit,
     sorftimeRequestLimit: input.sorftimeRequestLimit,
+    socialTrends: input.socialTrends ? {
+      sources: sorted(input.socialTrends.sources),
+      maxRequests: input.socialTrends.maxRequests,
+      maxPages: input.socialTrends.maxPages,
+    } : null,
     existingRecords: input.existingRecords
       ? sorted(input.existingRecords.map((r) => `${r.market}|${r.id}`))
       : null,
