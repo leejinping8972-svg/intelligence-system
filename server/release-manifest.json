@@ -1,40 +1,42 @@
 {
-  "title": "新品雷达证据与误判修复",
-  "sourceSha": "e3c221e1835587d7fe6a80cd00057bf979530bc4",
+  "title": "西之月商品上架时间与展示销量修复",
+  "sourceSha": "9686c108e2eec8f35de7d58f96d447180dca7f28",
   "includedCommits": [
-    "f9611f7682d5c7b65515e8002e0880c148922f33"
+    "1f83b040bd9f0760ea9fe39b448b8751c8d36abe"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/radar-engine.ts",
-    "apps/web-antd/src/views/intelligence/radar.vue",
-    "apps/web-antd/src/views/intelligence/statistics-engine.ts",
-    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
-    "server/RADAR-EVIDENCE.md",
-    "server/collector.js",
+    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "server/WESTMONTH-METRICS.md",
+    "server/competitor-monitor-domain.mjs",
     "server/model.js",
-    "server/model.ts",
-    "server/radar-evidence.test.mjs",
-    "server/workspace-statistics.mjs",
-    "server/workspace-statistics.test.mjs",
-    "workers/site-discovery/src/index.js",
-    "workers/site-discovery/src/product-signal-rules.d.ts",
-    "workers/site-discovery/src/product-signal-rules.js"
+    "server/product-jobs.mjs",
+    "server/product-public-enrichment.mjs",
+    "server/product-reference-enrichment.integration.test.mjs",
+    "server/westmonth-catalog.mjs",
+    "server/westmonth-catalog.test.mjs",
+    "server/westmonth-metrics-backfill.mjs",
+    "server/westmonth-metrics-backfill.test.mjs",
+    "server/westmonth-product-metrics.mjs",
+    "server/westmonth-product-metrics.test.mjs",
+    "tests/core-list-metrics.test.ts"
   ],
   "changes": [
-    "过滤免责声明、用量警告、非成分标签和不含成分声明，统一采集及存量汇总规则并去重。",
-    "区分近期发现与有来源支持的90天内上架；评分仅使用直接关联趋势或真实广告，无依据显示空值。",
-    "界面使用证据完整度和线索评分，监管召回不计成分；观察窗口与快照日期对齐。",
-    "雷达口径升级至2，正常后台检查原子替换旧口径，失败保留快照；旧口径候选和评分在刷新前隐藏。"
+    "首次采集及每日监控写入官网上架时间与展示销量，更新已有商品的这两项缺失信息。",
+    "商品补全支持精确商品详情，保留已抓取目录的原始上架日期和来源。",
+    "销量原样保留100+、3000+等展示值及来源证据，不推定准确销量或月销量。",
+    "列表使用展示销量名称，并保留原有人工字段、其他指标和证据历史。"
   ],
   "validation": [
-    "功能开发42项Node测试（含PGlite SQL、升级与失败恢复）和19项Vitest通过；完整web类型检查、专项ESLint/diff/commitlint及独立server/history构建通过。",
-    "桌面1440x1000及手机390x844合成验收通过，页面错误0、手机无全局溢出；未运行真实收费采集或MySQL功能专项。",
-    "发布阶段重复测试、类型/lint、回归、隔离库/UI、验证构建及CI等待按用户策略跳过。",
-    "本批无schema、迁移、依赖或启动业务写入变更，跳过完整数据库备份；保留17锁、业务/认证/配置/任务/journal及public/data核验与应用回退。",
-    "上线核对SHA、入口、健康、任务恢复及后台保存的雷达口径2；不触发来源采集或重放任务。"
+    "功能开发79项相关Node测试、9项真实PGlite SQL和30项前端测试通过；完整Web类型检查和独立server/history构建通过。",
+    "新增模块及补全模块专项ESLint通过；既有历史样式告警未扩展修复，完整lint及提交钩子未记通过。",
+    "发布阶段重复测试、类型/lint、回归、隔离库/UI、验证构建和CI等待按用户策略跳过。",
+    "代码无schema、依赖或启动写入变更；完整数据库备份按用户策略跳过，应用回退、17锁和业务/认证/配置/任务/journal/public-data保护保留。",
+    "772件正式商品定向回填已单独授权，写入前保存私有逐条恢复副本，完成后核对业务记录及列表投影；不触发收费或重放旧任务。"
   ],
-  "id": "20261028024723-9286a5a2",
-  "builtAt": "2026-10-28T02:47:23.103Z",
-  "sourceDigest": "9286a5a2a0875b69558e2b0c2e98d113c409ca88db6e22f90fb6d8c94896ed8f",
+  "id": "20261028041551-9088b8fe",
+  "builtAt": "2026-10-28T04:15:51.072Z",
+  "sourceDigest": "9088b8fefbf6710655fe1d45e8dd19cef964a805800e37f1b840af8e543251c0",
   "operator": "Codex"
 }
