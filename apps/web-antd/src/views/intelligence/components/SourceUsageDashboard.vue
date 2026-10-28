@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import type { EchartsUIType } from '@vben/plugins/echarts';
 
-import type { SourceUsageSnapshot, UsageSource } from '../source-usage';
+import type { SourceUsagePending, SourceUsageSnapshot, UsageSource } from '../source-usage';
 
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 
 import { createIconifyIcon } from '@vben/icons';
 import { EchartsUI, useEcharts } from '@vben/plugins/echarts';
@@ -72,36 +81,66 @@ const unknownCount = computed(
 const totals = computed(() => [
   {
     label: '已配置来源',
-    value: `${data.value?.sources.filter((s) => s.configured).length || 0} / ${data.value?.sources.length || 0}`,
+    value: data.value
+      ? `${data.value.sources.filter((s) => s.configured).length} / ${data.value.sources.length}`
+      : '未获取',
   },
-  { label: '今日已确认消耗', value: `${activeToday.value} 个来源` },
-  { label: '扣费待确认', value: `${unknownCount.value} 条` },
-  { label: '历史未定日期', value: `${data.value?.undated || 0} 条` },
+  { label: '今日已确认消耗', value: data.value ? `${activeToday.value} 个来源` : '未获取' },
+  { label: '扣费待确认', value: data.value ? `${unknownCount.value} 条` : '未获取' },
+  { label: '历史未定日期', value: data.value ? `${data.value.undated} 条` : '未获取' },
 ]);
 let revision = 0;
-async function load() {
+let loadingController: AbortController | undefined;
+async function waitForRetry(signal: AbortSignal, milliseconds: number) {
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, milliseconds);
+    signal.addEventListener('abort', done, { once: true });
+    if (signal.aborted) done();
+  });
+}
+async function load(refresh = false) {
   if (!isAdmin.value) return;
   const current = ++revision;
+  loadingController?.abort();
+  const controller = new AbortController();
+  loadingController = controller;
   busy.value = true;
   error.value = '';
   try {
-    const result = await adminRequest<SourceUsageSnapshot>(
-      'server_source_usage',
-      {
-        days: days.value,
-        sourceId: sourceId.value,
-        billing: billing.value,
-        query: query.value.trim(),
-        page: page.value,
-        undated: undated.value,
-        ...(dateRange.value
-          ? { start: dateRange.value[0], end: dateRange.value[1] }
-          : {}),
-      },
-    );
-    if (current === revision) {
+    for (;;) {
+      const result = await adminRequest<SourceUsagePending | SourceUsageSnapshot>(
+        'server_source_usage',
+        {
+          days: days.value,
+          refresh: refresh === true,
+          sourceId: sourceId.value,
+          billing: billing.value,
+          query: query.value.trim(),
+          page: page.value,
+          undated: undated.value,
+          ...(dateRange.value
+            ? { start: dateRange.value[0], end: dateRange.value[1] }
+            : {}),
+        },
+      );
+      if (current !== revision || controller.signal.aborted) return false;
+      if ('loading' in result) {
+        await waitForRetry(
+          controller.signal,
+          Math.max(1000, Math.min(5000, result.retryAfterMs || 2000)),
+        );
+        if (current !== revision || controller.signal.aborted) return false;
+        refresh = false;
+        continue;
+      }
       data.value = result;
       await draw();
+      return true;
     }
   } catch (cause) {
     if (current === revision)
@@ -109,6 +148,7 @@ async function load() {
   } finally {
     if (current === revision) busy.value = false;
   }
+  return false;
 }
 async function draw() {
   await nextTick();
@@ -180,13 +220,15 @@ async function saveQuota() {
   }
 }
 async function refreshQuota(source: UsageSource, quiet = false) {
-  if (quotaBusy.value) return;
+  if (quotaBusy.value) return false;
   quotaBusy.value = true;
+  let available = false;
   try {
     const result = await adminRequest<{ available: boolean; message: string }>(
       'server_source_quota_refresh',
       { sourceId: source.id },
     );
+    available = result.available;
     if (!quiet) {
       if (result.available) message.success(result.message);
       else message.warning(result.message);
@@ -204,6 +246,7 @@ async function refreshQuota(source: UsageSource, quiet = false) {
         (s) => s.id === selected.value?.id,
       );
   }
+  return available;
 }
 async function closeEditor() {
   selected.value = undefined;
@@ -233,12 +276,26 @@ async function filterTask(jobId: string) {
   await applyFilters();
 }
 watch(chartSource, () => void draw());
+function stopLoading() {
+  revision++;
+  loadingController?.abort();
+  busy.value = false;
+}
+onBeforeUnmount(stopLoading);
+onDeactivated(stopLoading);
+onActivated(() => {
+  if (loadingController?.signal.aborted) void load();
+});
 onMounted(async () => {
-  await load();
-  for (const source of data.value?.sources || [])
+  if (!(await load())) return;
+  const mountedController = loadingController;
+  let quotaChanged = false;
+  for (const source of data.value?.sources || []) {
+    if (mountedController?.signal.aborted) return;
     if (source.automatic && source.configured && !source.quota)
-      await refreshQuota(source, true);
-  await load();
+      quotaChanged = (await refreshQuota(source, true)) || quotaChanged;
+  }
+  if (quotaChanged && !mountedController?.signal.aborted) await load();
 });
 </script>
 
@@ -259,12 +316,12 @@ onMounted(async () => {
             {{
               data?.checkedAt
                 ? `更新于 ${usageTime(data.checkedAt)}`
-                : '正在读取'
+                : error ? '读取失败' : '正在读取'
             }}
           </p>
         </div>
         <Tooltip title="刷新系统消耗记录">
-<Button :loading="busy" aria-label="刷新消耗记录" @click="load">
+<Button :loading="busy" aria-label="刷新消耗记录" @click="load(true)">
 <template #icon><RefreshIcon /></template>
 </Button>
 </Tooltip>
@@ -272,7 +329,7 @@ onMounted(async () => {
       <Alert
         v-if="error"
         :message="error"
-        description="已有数据保留为上次结果"
+        :description="data ? '已有数据保留为上次结果' : '消耗记录未获取，请重试'"
         type="error"
         show-icon
       />
@@ -377,7 +434,7 @@ onMounted(async () => {
           </div>
         </article>
       </div>
-      <div class="source-trend">
+      <div v-if="data" class="source-trend">
         <div class="source-heading">
           <div>
             <h2>每日消耗</h2>
@@ -398,7 +455,7 @@ onMounted(async () => {
           {{ chartProvider.unknown }} 条记录扣费待确认，图表仅展示已确认部分。
         </p>
       </div>
-      <div class="source-detail" id="source-usage-details">
+      <div v-if="data" class="source-detail" id="source-usage-details">
         <div class="source-heading">
           <h2>消耗明细</h2>
           <span>{{ data?.total || 0 }} 条记录</span>
@@ -526,7 +583,7 @@ onMounted(async () => {
           :page-size="25"
           :show-size-changer="false"
           show-less-items
-          @change="load"
+          @change="load()"
         />
       </div>
       <Modal

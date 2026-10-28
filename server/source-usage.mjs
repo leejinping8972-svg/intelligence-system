@@ -1,37 +1,25 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { requireAdmin } from './auth.mjs';
-import { pool, putDocument, sql } from './database.mjs';
+import { engine, pool, putDocument, sql } from './database.mjs';
 import { semrushAction } from './semrush-config.mjs';
 import { openFetchKey } from './site-fetch-config.mjs';
 import {
   contentEvents,
-  requestSources,
   researchEvents,
   sourceById,
   summarizeUsage,
   usageEvent,
   validateQuota,
 } from './source-usage-domain.mjs';
+import {
+  accountingProjection,
+  createMonitorUsageReader,
+  createUsageEventCache,
+  usageReadWithin,
+} from './source-usage-reader.mjs';
 
-// Only project accounting fields. Provider payloads and credentials never leave this module.
-const fields = [
-  'apiUnits',
-  'cached',
-  'provider',
-  'providerCalls',
-  'usage',
-  'unknownCharges',
-  'creditsCharged',
-  'requestUsage',
-  'requests',
-  'quotaUnits',
-];
-export function accountingProjection(column, engine = 'postgres') {
-  return engine === 'mysql'
-    ? `JSON_OBJECT(${fields.map((f) => `'${f}',JSON_EXTRACT(${column},'$.${f}')`).join(',')})`
-    : `jsonb_build_object(${fields.map((f) => `'${f}',${column}->'${f}'`).join(',')})`;
-}
+export { accountingProjection } from './source-usage-reader.mjs';
 const jsonText = (column, field) =>
   sql(
     `${column}->>'${field}'`,
@@ -41,13 +29,16 @@ const configStamp = (source, config) =>
   createHash('sha256')
     .update(String(config?.key?.ciphertext || config?.ciphertext || ''))
     .digest('hex');
+const readMonitorEvents = createMonitorUsageReader({
+  engine,
+  write: (name, value, connection) =>
+    putDocument('workspace_documents', name, value, false, connection),
+});
 export async function readSourceEvents(connection = pool) {
   const research = await connection.query(
     `SELECT r.job_id,r.step,r.status,r.paid_allowance,${sql(accountingProjection('r.response'), accountingProjection('r.response', 'mysql'))} AS record,COALESCE(${jsonText('j.input', 'kind')},'keyword_research') AS task,${jsonText('j.input', 'market')} AS market FROM research_requests r JOIN research_jobs j ON j.id=r.job_id`,
   );
-  const monitor = await connection.query(
-    `SELECT name,${jsonText('value', 'at')} AS at,${jsonText('value', 'step')} AS step,${jsonText('value', 'status')} AS status,${sql(accountingProjection("value->'response'"), accountingProjection("JSON_EXTRACT(value,'$.response')", 'mysql'))} AS record FROM workspace_documents WHERE name LIKE 'competitor:request:%'`,
-  );
+  const monitor = await readMonitorEvents(connection);
   const content = await connection.query(
     `SELECT name,${sql("jsonb_build_object('id',value->'id','mode',value->'mode','steps',value->'steps','input',jsonb_build_object('query',value->'input'->'query','market',value->'input'->'market'),'aiUsage',value->'aiUsage','aiStatus',value->'aiStatus','aiUsageAt',value->'aiUsageAt')", "JSON_OBJECT('id',JSON_EXTRACT(value,'$.id'),'mode',JSON_EXTRACT(value,'$.mode'),'steps',JSON_EXTRACT(value,'$.steps'),'input',JSON_OBJECT('query',JSON_EXTRACT(value,'$.input.query'),'market',JSON_EXTRACT(value,'$.input.market')),'aiUsage',JSON_EXTRACT(value,'$.aiUsage'),'aiStatus',JSON_EXTRACT(value,'$.aiStatus'),'aiUsageAt',JSON_EXTRACT(value,'$.aiUsageAt'))")} AS value FROM workspace_documents WHERE name LIKE 'content:job:%'`,
   );
@@ -58,22 +49,13 @@ export async function readSourceEvents(connection = pool) {
     ...researchEvents(
       research.rows.map((r) => ({ ...r, id: `${r.job_id}:${r.step}` })),
     ),
-    ...monitor.rows.map((r) =>
-      usageEvent(
-        {
-          ...r,
-          id: r.name,
-          job_id: r.name.split(':').slice(3, -1).join(':'),
-          task: '定时监控',
-        },
-        requestSources(r.step, r.record)[0],
-      ),
-    ),
+    ...monitor,
     ...contentEvents(content.rows),
     ...direct.rows.map((r) => r.value),
   ];
   return [...new Map(events.map((e) => [e.id, e])).values()];
 }
+const cachedSourceEvents = createUsageEventCache(readSourceEvents);
 export async function recordSourceCall(
   context,
   callback,
@@ -94,6 +76,7 @@ export async function recordSourceCall(
     record: {},
   };
   await io.write(name, usageEvent(row, context.sourceId));
+  cachedSourceEvents.invalidate();
   let result;
   try {
     result = await callback();
@@ -102,6 +85,7 @@ export async function recordSourceCall(
       name,
       usageEvent({ ...row, status: 'failed' }, context.sourceId),
     );
+    cachedSourceEvents.invalidate();
     throw error;
   }
   await io.write(
@@ -115,6 +99,7 @@ export async function recordSourceCall(
       context.sourceId,
     ),
   );
+  cachedSourceEvents.invalidate();
   return result;
 }
 const QUOTA_PREFIX = 'source-usage:quota:';
@@ -122,7 +107,7 @@ export async function sourceUsageAction(input, user, overrides = {}) {
   requireAdmin(user);
   const io = {
     pool,
-    readEvents: readSourceEvents,
+    readEvents: cachedSourceEvents,
     write: (name, value) => putDocument('provider_configs', name, value),
     semrush: semrushAction,
     fetcher: fetch,
@@ -249,12 +234,16 @@ export async function sourceUsageAction(input, user, overrides = {}) {
     return { available: Boolean(automatic), message };
   }
   if (input.action !== 'server_source_usage') throw new Error('未知数据源操作');
-  const [events, configsResult] = await Promise.all([
-    io.readEvents(io.pool),
+  const [eventResult, configsResult] = await Promise.all([
+    usageReadWithin(
+      io.readEvents(io.pool, { refresh: input.refresh === true }),
+    ),
     io.pool.query(
       "SELECT name,value FROM provider_configs WHERE name LIKE 'provider:%' OR name LIKE 'source-usage:quota:%' OR name IN ('credentials','sorftime-mcp')",
     ),
   ]);
+  if (eventResult.loading) return { loading: true, retryAfterMs: 2000 };
+  const events = eventResult.events;
   const configs = Object.fromEntries(
     configsResult.rows.map((r) => [r.name, r.value]),
   );

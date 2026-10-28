@@ -156,14 +156,15 @@ export const SOURCE_CATALOG = [
 export const sourceById = (id) => SOURCE_CATALOG.find((s) => s.id === id);
 const number = (v) =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+const usageDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 export function usageDay(value) {
   if (!value || !Number.isFinite(Date.parse(value))) return null;
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(value));
+  return usageDateFormatter.format(new Date(value));
 }
 export function requestSources(step = '', record = {}, allowance = 0) {
   const sources = record.requestUsage?.sources || [];

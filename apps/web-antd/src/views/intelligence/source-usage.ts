@@ -58,6 +58,10 @@ export interface SourceUsageSnapshot {
   unattributed: number;
   coverage: string;
 }
+export interface SourceUsagePending {
+  loading: true;
+  retryAfterMs: number;
+}
 export const billingLabels = {
   cached: '缓存复用',
   confirmed: '已确认',
