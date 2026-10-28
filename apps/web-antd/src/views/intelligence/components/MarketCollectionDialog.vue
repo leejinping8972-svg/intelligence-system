@@ -178,6 +178,7 @@ async function cancel(run: CollectionRun) {
 onUnmounted(() => {
   if (timer) clearTimeout(timer);
 });
+import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
   <Button @click="open = true">国家市场采集计划</Button>
@@ -335,9 +336,9 @@ onUnmounted(() => {
     </Form>
     <section v-if="runs.length" class="run-list">
       <h3>最近运行</h3>
-      <Button size="small" :loading="busy" @click="load(false)"
-        >刷新运行状态</Button
-      >
+      <Button size="small" :loading="busy" @click="load(false)">
+        刷新运行状态
+      </Button>
       <div v-for="run in runs" :key="run.id" class="run-card">
         <p>
           <b>{{ new Date(run.startedAt).toLocaleString('zh-CN') }}</b> ·
@@ -365,6 +366,10 @@ onUnmounted(() => {
         <p v-if="run.message" class="hci-subtle">{{ run.message }}</p>
       </div>
     </section>
+    <CollectionEstimate
+      v-if="open"
+      :input="{ kind: 'market_collection', ...payload() }"
+    />
   </Modal>
 </template>
 <style scoped>

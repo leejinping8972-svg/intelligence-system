@@ -1,16 +1,18 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { pool, putDocument } from './database.mjs';
-import { requireAdmin } from './auth.mjs';
-import { landingUrl } from './safe-web.mjs';
+
 import { transcriptFailure } from './ad-transcript.mjs';
+import { requireAdmin } from './auth.mjs';
+import { pool, putDocument } from './database.mjs';
+import { landingUrl } from './safe-web.mjs';
+import { scheduleSource } from './source-scheduler.mjs';
 const NAME = 'provider:scrapecreators:v1';
 const aad = Buffer.from(NAME);
 export function sealAdsKey(
   key,
   secret = process.env.PROVIDER_CONFIG_ENCRYPTION_KEY,
 ) {
-  const iv = randomBytes(12),
-    c = createCipheriv('aes-256-gcm', Buffer.from(secret, 'base64'), iv);
+  const iv = randomBytes(12);
+  const c = createCipheriv('aes-256-gcm', Buffer.from(secret, 'base64'), iv);
   c.setAAD(aad);
   return {
     iv: iv.toString('base64'),
@@ -98,27 +100,41 @@ export async function scrapeRequest(
   if (method === 'GET')
     for (const [name, value] of Object.entries(params))
       if (value !== undefined) url.searchParams.set(name, String(value));
-  const response = await fetcher(url, {
-    method: path.includes('/account/') ? 'GET' : method,
-    redirect: 'manual',
-    headers: { 'x-api-key': key, 'content-type': 'application/json' },
-    ...(path.includes('/account/') || method === 'GET'
-      ? {}
-      : { body: JSON.stringify(params) }),
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!response.ok) {
-    if (path === '/v1/facebook/adLibrary/ad/transcript')
-      throw await transcriptFailure(response);
-    await response.body?.cancel();
-    throw new Error(
-      `ScrapeCreators HTTP ${response.status}：${[401, 403].includes(response.status) ? '密钥无效或权限不足' : response.status === 429 ? '上游限流，请稍后重试' : '接口请求未成功'}`,
-    );
-  }
-  const result = await response.json();
-  if (result.success === false)
-    throw new Error('ScrapeCreators 未成功返回数据，请核对账户额度与接口权限');
-  return result;
+  return scheduleSource(
+    'scrapecreators',
+    async () => {
+      const response = await fetcher(url, {
+        method: path.includes('/account/') ? 'GET' : method,
+        redirect: 'manual',
+        headers: { 'x-api-key': key, 'content-type': 'application/json' },
+        ...(path.includes('/account/') || method === 'GET'
+          ? {}
+          : { body: JSON.stringify(params) }),
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!response.ok) {
+        if (path === '/v1/facebook/adLibrary/ad/transcript')
+          throw await transcriptFailure(response);
+        await response.body?.cancel();
+        throw Object.assign(
+          new Error(
+            `ScrapeCreators HTTP ${response.status}：${[401, 403].includes(response.status) ? '密钥无效或权限不足' : response.status === 429 ? '上游限流，请稍后重试' : '接口请求未成功'}`,
+          ),
+          {
+            status: response.status,
+            retryAfterSeconds: Number(response.headers.get('retry-after')) || 0,
+          },
+        );
+      }
+      const result = await response.json();
+      if (result.success === false)
+        throw new Error(
+          'ScrapeCreators 未成功返回数据，请核对账户额度与接口权限',
+        );
+      return result;
+    },
+    { intervalMs: fetcher === fetch ? 1000 : 0 },
+  );
 }
 const txt = (v) =>
   typeof v === 'string'
@@ -129,7 +145,7 @@ const txt = (v) =>
 const mediaUrl = (v) => {
   try {
     const u = new URL(v);
-    return ['https:', 'http:'].includes(u.protocol) ? u.toString() : undefined;
+    return ['http:', 'https:'].includes(u.protocol) ? u.toString() : undefined;
   } catch {
     return undefined;
   }
@@ -140,8 +156,8 @@ export function normalizeAds(payload, record, at = new Date().toISOString()) {
   const ads = new Map();
   for (const raw of payload.searchResults) {
     if (!/^\d+$/.test(String(raw.ad_archive_id || ''))) continue;
-    const s = raw.snapshot || {},
-      cards = Array.isArray(s.cards) ? s.cards : [];
+    const s = raw.snapshot || {};
+    const cards = Array.isArray(s.cards) ? s.cards : [];
     const links = [s.link_url, ...cards.map((c) => c.link_url)]
       .map(landingUrl)
       .filter(Boolean);

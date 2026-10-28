@@ -1,20 +1,53 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { cloudWorkspace, setWorkspaceReadMode, startCloudSync } from '../cloud-workspace';
+
+import {
+  cloudWorkspace,
+  setWorkspaceReadMode,
+  startCloudSync,
+} from '../cloud-workspace';
 import { state, storageError } from '../data';
 import { serverMode } from '../session';
 import MarketSwitcher from './MarketSwitcher.vue';
+import RepeatResearchDialog from './RepeatResearchDialog.vue';
 const props = withDefaults(
-  defineProps<{ title: string; description: string; showMarket?: boolean; mode?: 'legacy' | 'paged' | 'tasks' }>(),
+  defineProps<{
+    title: string;
+    description: string;
+    showMarket?: boolean;
+    mode?: 'legacy' | 'paged' | 'tasks';
+  }>(),
   { showMarket: true },
 );
 const route = useRoute();
-watch(() => [route.path, props.mode] as const, ([path, mode]) => {
-  const page = path.split('/').filter(Boolean).at(-1);
-  setWorkspaceReadMode(mode || (page === 'monitor' ? 'tasks' : ['overview', 'research', 'selected-keywords', 'products', 'sites', 'ads', 'settings', 'radar', 'opportunities', 'trends'].includes(page || '') ? 'paged' : 'legacy'));
-  startCloudSync();
-}, { immediate: true });
+watch(
+  () => [route.path, props.mode] as const,
+  ([path, mode]) => {
+    const page = path.split('/').filter(Boolean).at(-1);
+    setWorkspaceReadMode(
+      mode ||
+        (page === 'monitor'
+          ? 'tasks'
+          : [
+                'ads',
+                'opportunities',
+                'overview',
+                'products',
+                'radar',
+                'research',
+                'selected-keywords',
+                'settings',
+                'sites',
+                'trends',
+              ].includes(page || '')
+            ? 'paged'
+            : 'legacy'),
+    );
+    startCloudSync();
+  },
+  { immediate: true },
+);
 </script>
 <template>
   <div class="hci-page-head">
@@ -47,4 +80,5 @@ watch(() => [route.path, props.mode] as const, ([path, mode]) => {
   >
     正在读取最新数据；如有上次成功内容会继续显示，不会先清空再刷新。
   </div>
+  <RepeatResearchDialog />
 </template>

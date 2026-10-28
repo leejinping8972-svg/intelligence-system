@@ -8,8 +8,8 @@ import {
   summarizeSocial,
   trendDay,
   trendDigest,
-  validateTrendPlan,
   updateHistory,
+  validateTrendPlan,
 } from './keyword-trends-domain.mjs';
 
 export const TREND_PREFIX = 'keyword-trends:';
@@ -19,9 +19,17 @@ const identity = (a, b) =>
 export function trendSnapshotName(keywordId, source, day) {
   return `${P}snapshot:v2:${trendDigest(keywordId)}:${source}:${day}`;
 }
-export async function enqueueTrendWork(db, words, plan, now, trigger, parentJobId) {
-  const day = trendDay(now),
-    name = `${P}run:${day}`;
+export async function enqueueTrendWork(
+  db,
+  words,
+  plan,
+  now,
+  trigger,
+  parentJobId,
+) {
+  if (db.enqueue) return db.enqueue(words, plan, now, trigger, parentJobId);
+  const day = trendDay(now);
+  const name = `${P}run:${day}`;
   const run = (await db.read(name)) || {
     day,
     createdAt: new Date(now).toISOString(),
@@ -37,7 +45,12 @@ export async function enqueueTrendWork(db, words, plan, now, trigger, parentJobI
   const keys = new Set(run.work.map((w) => w.key));
   for (const w of added)
     if (!keys.has(w.key))
-      run.work.push({ ...w, trigger, ...(parentJobId ? { researchParents: [parentJobId] } : {}), maxPages: plan.maxPages });
+      run.work.push({
+        ...w,
+        trigger,
+        ...(parentJobId ? { researchParents: [parentJobId] } : {}),
+        maxPages: plan.maxPages,
+      });
   // An explicit resubmission may continue NEW pages after a user raises the
   // budget/cap. Completed or uncertain requests are never repeated.
   if (trigger === 'manual' || trigger === 'research')
@@ -67,7 +80,7 @@ export async function enqueueTrendWork(db, words, plan, now, trigger, parentJobI
         if (!run.work.some((e) => e.key === next.key)) run.work.push(next);
       } else if (
         tail &&
-        ['skipped', 'failed'].includes(tail.status) &&
+        ['failed', 'skipped'].includes(tail.status) &&
         !(await db.read(`${P}request:${day}:${tail.key}`)) &&
         tail.comparisonVersion === 2
       ) {
@@ -80,9 +93,18 @@ export async function enqueueTrendWork(db, words, plan, now, trigger, parentJobI
       }
     }
   for (const work of run.work) {
-    if (work.status !== 'pending' || !added.some(w => w.keywordId === work.keywordId && w.source === work.source)) continue;
+    if (
+      work.status !== 'pending' ||
+      !added.some(
+        (w) => w.keywordId === work.keywordId && w.source === work.source,
+      )
+    )
+      continue;
     if (!parentJobId) delete work.researchParents;
-    else if (work.researchParents) work.researchParents = [...new Set([...work.researchParents, parentJobId])];
+    else if (work.researchParents)
+      work.researchParents = [
+        ...new Set([...work.researchParents, parentJobId]),
+      ];
   }
   // Request budget is shared by manual and scheduled work for the entire day.
   run.maxRequests = plan.maxRequests;
@@ -96,18 +118,44 @@ export async function enqueueTrendWork(db, words, plan, now, trigger, parentJobI
 export async function trendAction(input, user, io) {
   const { db, now = Date.now() } = io;
   if (input.action === 'server_keyword_trends_snapshot') {
-    const words = await io.keywords(input.keywordIds),
-      byId = new Map(words.map((k) => [k.id, k]));
-    const summaries = (await (io.summaries ? io.summaries(input.keywordIds) : db.list(`${P}summary:`)))
+    const words = await io.keywords(input.keywordIds);
+    const byId = new Map(words.map((k) => [k.id, k]));
+    const summaries = (
+      await (io.summaries
+        ? io.summaries(input.keywordIds)
+        : db.list(`${P}summary:`))
+    )
       .map((r) => r.value)
       .filter((s) => identity(byId.get(s.keywordId), s))
       .map((summary) => presentSocialSummary(summary));
     const run = await db.read(`${P}run:${trendDay(now)}`);
     for (const work of run?.work || []) {
-      if (work.source === 'google' || work.status !== 'pending' || !identity(byId.get(work.keywordId), work)) continue;
-      const existing = summaries.find(s => s.keywordId === work.keywordId && s.source === work.source);
-      if (existing) Object.assign(existing, { status: 'pending', attemptMessage: '已排队，等待后台采集' });
-      else summaries.push({ keywordId: work.keywordId, term: work.term, market: work.market, source: work.source, comparisonVersion: 2, metric: 'publication_daily_rate', periods: [], status: 'pending', attemptMessage: '已排队，等待后台采集' });
+      if (
+        work.source === 'google' ||
+        work.status !== 'pending' ||
+        !identity(byId.get(work.keywordId), work)
+      )
+        continue;
+      const existing = summaries.find(
+        (s) => s.keywordId === work.keywordId && s.source === work.source,
+      );
+      if (existing)
+        Object.assign(existing, {
+          status: 'pending',
+          attemptMessage: '已排队，等待后台采集',
+        });
+      else
+        summaries.push({
+          keywordId: work.keywordId,
+          term: work.term,
+          market: work.market,
+          source: work.source,
+          comparisonVersion: 2,
+          metric: 'publication_daily_rate',
+          periods: [],
+          status: 'pending',
+          attemptMessage: '已排队，等待后台采集',
+        });
     }
     const savedPlan = await db.read(`${P}plan`);
     return {
@@ -129,9 +177,9 @@ export async function trendAction(input, user, io) {
   if (input.action === 'server_keyword_trends_save') {
     const plan = validateTrendPlan(input.plan || {});
     await db.write(`${P}plan`, plan);
-    if (!plan.enabled) {
-      const name = `${P}run:${trendDay(now)}`,
-        run = await db.read(name);
+    if (!plan.enabled && !io.deferDailyPause) {
+      const name = `${P}run:${trendDay(now)}`;
+      const run = await db.read(name);
       if (run) {
         for (const w of run.work)
           if (w.trigger === 'daily' && w.status === 'pending')
@@ -159,12 +207,12 @@ export async function trendAction(input, user, io) {
     ...input.plan,
     enabled: false,
   });
-  const all = await io.keywords(),
-    words = ids.map((id) => all.find((w) => w.id === id));
+  const all = await io.keywords();
+  const words = ids.map((id) => all.find((w) => w.id === id));
   if (
     words.some(
       (w) =>
-        !w || w.dataNature === 'demo' || !['US', 'MX', 'VN'].includes(w.market),
+        !w || w.dataNature === 'demo' || !['MX', 'US', 'VN'].includes(w.market),
     )
   )
     throw new Error(
@@ -174,8 +222,8 @@ export async function trendAction(input, user, io) {
 }
 export async function advanceTrendQueue(io) {
   const { db, now = Date.now() } = io;
-  const day = trendDay(now),
-    runName = `${P}run:${day}`;
+  const day = trendDay(now);
+  const runName = `${P}run:${day}`;
   const savedPlan = await db.read(`${P}plan`);
   const plan = currentTrendPlan(savedPlan);
   // Never catch up missed paid runs, nor create work from legacy research jobs.
@@ -235,7 +283,11 @@ export async function advanceTrendQueue(io) {
     return finish('skipped', '旧版步骤不自动升级或重放，请重新提交历史回查');
   if (entry.researchParents?.length) {
     let active = false;
-    for (const id of entry.researchParents) if (await io.researchActive(id)) { active = true; break; }
+    for (const id of entry.researchParents)
+      if (await io.researchActive(id)) {
+        active = true;
+        break;
+      }
     if (!active) return finish('skipped', '所属关键词研究已取消或删除');
   }
   const word = (await io.keywords()).find((k) => k.id === entry.keywordId);

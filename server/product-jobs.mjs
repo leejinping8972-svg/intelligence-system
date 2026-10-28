@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { pool, lock, unlock } from './database.mjs';
+
+import {
+  collectionPolicyMessage,
+  resolveCollectionPolicy,
+} from './collection-policy.mjs';
 import { inferCategory } from './collector.js';
-import { collectionBudget, fetchConfiguration } from './site-fetch-config.mjs';
-import { collectionPolicyMessage, resolveCollectionPolicy } from './collection-policy.mjs';
-import { withFormulaIntelligence } from './formula-intelligence.mjs';
-import { validDiscoveryDate } from './discovery-newness.mjs';
 import { publicProductFields } from './collector.js';
+import { lock, pool, unlock } from './database.mjs';
+import { validDiscoveryDate } from './discovery-newness.mjs';
+import { withFormulaIntelligence } from './formula-intelligence.mjs';
+import { collectionBudget, fetchConfiguration } from './site-fetch-config.mjs';
 import { isWestmonth } from './westmonth-catalog.mjs';
 import { westmonthMetricPatch } from './westmonth-product-metrics.mjs';
 export function siteHostAllowed(host, domain) {
@@ -50,7 +54,7 @@ export function catalogLinks(html, pageUrl, sitemap = false) {
           const u = new URL(v.replaceAll('&amp;', '&'), pageUrl);
           if (
             u.hostname.replace(/^www\./, '') !== host ||
-            !['https:', 'http:'].includes(u.protocol) ||
+            !['http:', 'https:'].includes(u.protocol) ||
             u.username ||
             u.password ||
             /\.(?:jpe?g|png|webp|pdf|mp4)$/i.test(u.pathname)
@@ -72,7 +76,7 @@ export function catalogLinks(html, pageUrl, sitemap = false) {
 export function normalizeProduct(p, site, at = new Date().toISOString()) {
   const url = new URL(p.url);
   if (
-    !['https:', 'http:'].includes(url.protocol) ||
+    !['http:', 'https:'].includes(url.protocol) ||
     url.username ||
     url.password ||
     !siteHostAllowed(url.hostname, site.domain)
@@ -85,7 +89,10 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     .update(url.toString())
     .digest('hex')
     .slice(0, 24);
-  const publicFields = publicProductFields({ ...p, datePublished: p.publishedAt });
+  const publicFields = publicProductFields({
+    ...p,
+    datePublished: p.publishedAt,
+  });
   const published = publicFields.publishedAt;
   return withFormulaIntelligence({
     id: `${site.market}-product-${hash}`,
@@ -97,6 +104,9 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     size: p.size || '官网未公开',
     price: Number.isFinite(p.price) ? p.price : 0,
     currency: p.currency,
+    ...(p.priceEvidence
+      ? { priceEvidence: { ...p.priceEvidence, collectedAt: at } }
+      : {}),
     ingredient: p.ingredients || '官网未公开可验证配方',
     dose: p.servingSize || '官网未公开每份用量',
     claim: p.description || '',
@@ -109,24 +119,69 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     imageUrl: p.image || undefined,
     collectionFields: p.collectionFields || [],
     extractionMethod: p.extractionMethod || '官网结构化商品数据',
-    ...(p.catalogEvidenceUrl ? { catalogEvidenceUrl: p.catalogEvidenceUrl, catalogScope: p.catalogScope, catalogListedAtRaw: p.catalogListedAtRaw } : {}),
+    ...(p.catalogEvidenceUrl
+      ? {
+          catalogEvidenceUrl: p.catalogEvidenceUrl,
+          catalogScope: p.catalogScope,
+          catalogDeliveryRegionId: p.catalogDeliveryRegionId,
+          catalogSkuId: p.catalogSkuId,
+          catalogListedAtRaw: p.catalogListedAtRaw,
+        }
+      : {}),
     color: '#e9f4f0',
     reviewed: false,
     favorite: false,
     firstSeenAt: at,
-    ...(validDiscoveryDate(published) !== undefined && Date.parse(published) <= Date.parse(at) ? {
-      decisionData: { series: [], listing: {
-        date: published.slice(0, 10), rawDate: published, sourceField: publicFields.publishedSourceField, provider: '官网公开商品数据', platform: site.platform || '官网',
-        market: site.market, collectedAt: at, evidenceUrl: url.toString(),
-      } },
-    } : {}),
-    ...(publicFields.soldCount !== undefined ? { sourceMetrics: {
-      soldCount: publicFields.soldCount, soldRaw: publicFields.soldRaw, soldPrecision: 'exact',
-      collectedAt: at, soldCollectedAt: at, soldProvider: '官网公开商品数据',
-      soldPlatform: site.platform || '官网', soldEvidenceUrl: url.toString(), soldSourceField: publicFields.soldSourceField,
-    } } : {}),
+    ...(validDiscoveryDate(published) !== undefined &&
+    Date.parse(published) <= Date.parse(at)
+      ? {
+          decisionData: {
+            series: [],
+            listing: {
+              date: published.slice(0, 10),
+              rawDate: published,
+              sourceField: publicFields.publishedSourceField,
+              provider: '官网公开商品数据',
+              platform: site.platform || '官网',
+              market: site.market,
+              collectedAt: at,
+              evidenceUrl: url.toString(),
+            },
+          },
+        }
+      : {}),
+    ...(publicFields.soldCount !== undefined
+      ? {
+          sourceMetrics: {
+            soldCount: publicFields.soldCount,
+            soldRaw: publicFields.soldRaw,
+            soldPrecision: 'exact',
+            collectedAt: at,
+            soldCollectedAt: at,
+            soldProvider: '官网公开商品数据',
+            soldPlatform: site.platform || '官网',
+            soldEvidenceUrl: url.toString(),
+            soldSourceField: publicFields.soldSourceField,
+          },
+        }
+      : {}),
     ...(isWestmonth(site) && p.catalogEvidenceUrl && p.catalogProductMetrics
-      ? westmonthMetricPatch(p.catalogProductMetrics, { market: site.market, at, evidenceUrl: p.catalogEvidenceUrl })
+      ? (() => {
+          const patch = westmonthMetricPatch(p.catalogProductMetrics, {
+            market: site.market,
+            at,
+            evidenceUrl: p.catalogEvidenceUrl,
+          });
+          return {
+            ...patch,
+            collectionFields: [
+              ...new Set([
+                ...(p.collectionFields || []),
+                ...(patch.collectionFields || []),
+              ]),
+            ],
+          };
+        })()
       : {}),
     lastCollectedAt: at,
     evidenceUrl: url.toString(),
@@ -150,7 +205,13 @@ export async function submitProducts(input, user) {
     throw new Error('请选择1～100家站点');
   const siteCount = new Set(input.siteIds).size;
   const policy = resolveCollectionPolicy(input, siteCount);
-  const { maxProducts, maxDetailProducts, maxRequests, maxRequestsPerSite: perSite, maxBrowserPages } = policy;
+  const {
+    maxProducts,
+    maxDetailProducts,
+    maxRequests,
+    maxRequestsPerSite: perSite,
+    maxBrowserPages,
+  } = policy;
   if (
     !Number.isInteger(maxProducts) ||
     maxProducts < 1 ||

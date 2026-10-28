@@ -9,9 +9,13 @@ import {
   cloudWorkspace,
   syncCloudWorkspace,
 } from '../cloud-workspace';
-
 import { serverMode } from '../session';
-const props = defineProps<{ productIds: string[]; compact?: boolean; total?: number; resolveProductIds?: () => Promise<string[]> }>();
+const props = defineProps<{
+  productIds: string[];
+  compact?: boolean;
+  total?: number;
+  resolveProductIds?: () => Promise<string[]>;
+}>();
 const resolvedIds = ref<string[]>();
 const resolutionFailed = ref(false);
 const productIds = computed(() => resolvedIds.value || props.productIds);
@@ -21,7 +25,14 @@ const open = ref(false);
 const maxRequests = ref(1);
 const router = useRouter();
 let requestId = '';
-const plan = ref<{ total: number; sorftime: number; public: number; unsupported: number; estimatedRequests: number; defaultMaxRequests: number }>();
+const plan = ref<{
+  total: number;
+  sorftime: number;
+  public: number;
+  unsupported: number;
+  estimatedRequests: number;
+  defaultMaxRequests: number;
+}>();
 async function submit() {
   if (busy.value || resolutionFailed.value) return;
   busy.value = true;
@@ -31,7 +42,11 @@ async function submit() {
     requestId ||= crypto.randomUUID();
     const result = await cloudRequest<{ jobId: string }>(
       'server_complete_platform_products',
-      { requestId, productIds: [...productIds.value], maxRequests: maxRequests.value },
+      {
+        requestId,
+        productIds: [...productIds.value],
+        maxRequests: maxRequests.value,
+      },
     );
     await syncCloudWorkspace();
     open.value = false;
@@ -51,14 +66,23 @@ async function begin() {
   resolutionFailed.value = false;
   busy.value = true;
   try {
-    if (props.resolveProductIds) resolvedIds.value = await props.resolveProductIds();
-    plan.value = await cloudRequest('server_preview_product_enrichment', { productIds: [...productIds.value] });
+    if (props.resolveProductIds)
+      resolvedIds.value = await props.resolveProductIds();
+    plan.value = await cloudRequest('server_preview_product_enrichment', {
+      productIds: [...productIds.value],
+    });
     maxRequests.value = plan.value!.defaultMaxRequests;
     requestId = '';
     open.value = true;
-  } catch (cause) { resolutionFailed.value = true; error.value = (cause as Error).message; open.value = true; }
-  finally { busy.value = false; }
+  } catch (cause) {
+    resolutionFailed.value = true;
+    error.value = (cause as Error).message;
+    open.value = true;
+  } finally {
+    busy.value = false;
+  }
 }
+import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
   <Button
@@ -67,7 +91,9 @@ async function begin() {
     :loading="busy"
     @click="begin"
   >
-    {{ compact ? '补全此商品' : `补全商品数据（${total ?? productIds.length}）` }}
+    {{
+      compact ? '补全此商品' : `补全商品数据（${total ?? productIds.length}）`
+    }}
   </Button>
   <Modal
     v-model:open="open"
@@ -81,15 +107,15 @@ async function begin() {
   >
     <p>
       本次覆盖
-      {{
-        productIds.length
-      }}
+      {{ productIds.length }}
       件商品。批量入口包括当前筛选的全部记录，不限当前页；不重新搜索商品。
     </p>
     <p>
-      其中 {{ plan?.sorftime ?? 0 }} 件通过 Sorftime 查询详情、图片/属性及当前 ASIN 月销量、排名和评论数历史，
+      其中 {{ plan?.sorftime ?? 0 }} 件通过 Sorftime 查询详情、图片/属性及当前
+      ASIN 月销量、排名和评论数历史，
       {{ plan?.public ?? 0 }} 件通过精确官网商品链接核验公开上架日期和累计已售。
-      整批预计最多 {{ plan?.estimatedRequests ?? 0 }} 次数据请求；本批默认 {{ plan?.defaultMaxRequests ?? 1 }} 次，可调整下方预算。
+      整批预计最多 {{ plan?.estimatedRequests ?? 0 }} 次数据请求；本批默认
+      {{ plan?.defaultMaxRequests ?? 1 }} 次，可调整下方预算。
       已保存的有效结果与缓存优先复用。
     </p>
     <label for="completion-request-limit">本任务共用请求上限</label>
@@ -111,9 +137,7 @@ async function begin() {
       style="margin-top: 12px"
     >
       另有
-      {{
-        plan?.unsupported ?? 0
-      }}
+      {{ plan?.unsupported ?? 0 }}
       件缺少可核验的官网商品链接或平台标识，将逐件记录原因。
     </p>
     <p class="hci-subtle" style="margin-top: 12px">
@@ -124,6 +148,15 @@ async function begin() {
       type="error"
       :message="error"
       style="margin-top: 12px"
+    />
+    <CollectionEstimate
+      v-if="open"
+      :input="{
+        kind: 'platform_products',
+        mode: 'enrich',
+        productIds,
+        maxRequests,
+      }"
     />
   </Modal>
 </template>

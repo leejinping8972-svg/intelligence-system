@@ -8,6 +8,7 @@ import {
   articleHttpsUrl,
   readPublicArticleOnce,
 } from './public-article-http.mjs';
+import { scheduleSource } from './source-scheduler.mjs';
 
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const text = (value, limit = 12_000) =>
@@ -35,7 +36,9 @@ function platformId(value) {
     storefront: 'website',
     independent: 'website',
   };
-  const key = String(value || '').toLowerCase().replaceAll(/[\s_-]/g, '');
+  const key = String(value || '')
+    .toLowerCase()
+    .replaceAll(/[\s_-]/g, '');
   return aliases[key] || key;
 }
 
@@ -48,14 +51,16 @@ function websiteHost(value) {
   try {
     return articleHttpsUrl(
       String(value).includes('://') ? value : `https://${value}`,
-    ).hostname.toLowerCase().replace(/^www\./, '');
+    )
+      .hostname.toLowerCase()
+      .replace(/^www\./, '');
   } catch {
     return undefined;
   }
 }
 
 export function resourceHosts(platform, market, websiteDomain) {
-  if (!['US', 'MX', 'VN'].includes(market)) return [];
+  if (!['MX', 'US', 'VN'].includes(market)) return [];
   switch (platformId(platform)) {
     case 'amazon':
       return { US: ['amazon.com'], MX: ['amazon.com.mx'] }[market] || [];
@@ -64,7 +69,7 @@ export function resourceHosts(platform, market, websiteDomain) {
     case 'mercado_libre':
       return market === 'MX' ? ['mercadolibre.com.mx'] : [];
     case 'temu':
-      return ['US', 'MX'].includes(market) ? ['temu.com'] : [];
+      return ['MX', 'US'].includes(market) ? ['temu.com'] : [];
     case 'tiktok_shop':
       return ['tiktok.com'];
     case 'instagram':
@@ -93,8 +98,13 @@ function checkUrl(value, request) {
   )
     throw publicError('该链接不属于所选平台及国家的已允许公开域名');
   if (platformId(request.platform) === 'temu') {
-    const pathCountry = /^\/(?:([a-z]{2})-[a-z]{2}|(us|mx))(?:\/|$)/i.exec(url.pathname);
-    if (pathCountry && (pathCountry[1] || pathCountry[2]).toUpperCase() !== request.market)
+    const pathCountry = /^\/(?:([a-z]{2})-[a-z]{2}|(us|mx))(?:\/|$)/i.exec(
+      url.pathname,
+    );
+    if (
+      pathCountry &&
+      (pathCountry[1] || pathCountry[2]).toUpperCase() !== request.market
+    )
       throw publicError('该Temu链接的国家路径与所选市场不一致');
   }
   const queryKeys = [...url.searchParams.keys()];
@@ -183,17 +193,22 @@ export async function searchProductResourceLeads(request, overrides = {}) {
   });
   let response;
   try {
-    response = await (overrides.fetcher || fetch)(
-      `https://api.search.brave.com/res/v1/web/search?${params}`,
-      {
-        headers: {
-          accept: 'application/json',
-          'x-subscription-token': key,
-          'x-loc-country': request.market,
-        },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(15_000),
-      },
+    response = await scheduleSource(
+      'brave',
+      () =>
+        (overrides.fetcher || fetch)(
+          `https://api.search.brave.com/res/v1/web/search?${params}`,
+          {
+            headers: {
+              accept: 'application/json',
+              'x-subscription-token': key,
+              'x-loc-country': request.market,
+            },
+            redirect: 'manual',
+            signal: AbortSignal.timeout(15_000),
+          },
+        ),
+      { intervalMs: overrides.fetcher ? 0 : 1000 },
     );
     if (!response.ok)
       throw publicError(
@@ -202,19 +217,29 @@ export async function searchProductResourceLeads(request, overrides = {}) {
       );
     const payload = await responseJson(response);
     if (!Array.isArray(payload.web?.results))
-      throw publicError('Brave未返回可识别网页结果，未作为空商品成功', 'failed');
+      throw publicError(
+        'Brave未返回可识别网页结果，未作为空商品成功',
+        'failed',
+      );
     const seen = new Set();
-    const leads = payload.web.results.flatMap((row) => {
-      const url = candidateUrl(row.url, undefined, request);
-      if (!url || seen.has(url)) return [];
-      seen.add(url);
-      return [{
-        url,
-        title: text(row.title, 500),
-        kind: platformId(request.platform) === 'instagram' ? 'content' : 'product_page',
-        source: 'Brave',
-      }];
-    }).slice(0, limit);
+    const leads = payload.web.results
+      .flatMap((row) => {
+        const url = candidateUrl(row.url, undefined, request);
+        if (!url || seen.has(url)) return [];
+        seen.add(url);
+        return [
+          {
+            url,
+            title: text(row.title, 500),
+            kind:
+              platformId(request.platform) === 'instagram'
+                ? 'content'
+                : 'product_page',
+            source: 'Brave',
+          },
+        ];
+      })
+      .slice(0, limit);
     const hasMore = payload.query?.more_results_available === true && page < 10;
     return {
       products: [],
@@ -263,30 +288,38 @@ function structuredNodes($) {
     for (const child of Object.values(value))
       if (child && typeof child === 'object') visit(child, depth + 1);
   }
-  $('script[type="application/ld+json"]').slice(0, 50).each((_index, element) => {
-    const raw = $(element).text();
-    if (Buffer.byteLength(raw) > 1_000_000) return;
-    try {
-      visit(JSON.parse(raw));
-    } catch {}
-  });
+  $('script[type="application/ld+json"]')
+    .slice(0, 50)
+    .each((_index, element) => {
+      const raw = $(element).text();
+      if (Buffer.byteLength(raw) > 1_000_000) return;
+      try {
+        visit(JSON.parse(raw));
+      } catch {}
+    });
   return nodes;
 }
 
 function breadcrumb(nodes, url, request, at) {
-  const paths = nodes.filter((node) => types(node).includes('BreadcrumbList'))
-    .map((node) => list(node.itemListElement).toSorted((a, b) =>
-      Number(a?.position || 0) - Number(b?.position || 0),
-    ).flatMap((entry) => {
-      const item = entry?.item;
-      const name = text(entry?.name || item?.name, 500);
-      const href = candidateUrl(
-        typeof item === 'string' ? item : item?.['@id'] || item?.url || entry?.url,
-        url,
-        request,
-      );
-      return name && href ? [{ id: href, name, url: href }] : [];
-    })).filter((path) => path.length > 0);
+  const paths = nodes
+    .filter((node) => types(node).includes('BreadcrumbList'))
+    .map((node) =>
+      list(node.itemListElement)
+        .toSorted((a, b) => Number(a?.position || 0) - Number(b?.position || 0))
+        .flatMap((entry) => {
+          const item = entry?.item;
+          const name = text(entry?.name || item?.name, 500);
+          const href = candidateUrl(
+            typeof item === 'string'
+              ? item
+              : item?.['@id'] || item?.url || entry?.url,
+            url,
+            request,
+          );
+          return name && href ? [{ id: href, name, url: href }] : [];
+        }),
+    )
+    .filter((path) => path.length > 0);
   const originalPath = paths.toSorted((a, b) => b.length - a.length)[0];
   if (!originalPath) return undefined;
   const productRows = nodes.filter((node) => types(node).includes('Product'));
@@ -294,12 +327,13 @@ function breadcrumb(nodes, url, request, at) {
     const value = row.url || row['@id'];
     return value
       ? candidateUrl(value, url, request) === url
-      : productRows.length === 1 && productPath(url, platformId(request.platform));
+      : productRows.length === 1 &&
+          productPath(url, platformId(request.platform));
   });
-  const path = currentProduct && originalPath.length > 1 &&
-    originalPath.at(-1).url === url
-    ? originalPath.slice(0, -1)
-    : originalPath;
+  const path =
+    currentProduct && originalPath.length > 1 && originalPath.at(-1).url === url
+      ? originalPath.slice(0, -1)
+      : originalPath;
   return {
     id: path.at(-1).id,
     path,
@@ -319,7 +353,7 @@ function propertyTable(row) {
   for (const property of list(row.additionalProperty)) {
     const key = text(property?.name || property?.propertyID, 200);
     const value = property?.value;
-    if (key && ['string', 'number'].includes(typeof value))
+    if (key && ['number', 'string'].includes(typeof value))
       values[key] = String(value).slice(0, 4000);
   }
   return values;
@@ -341,50 +375,70 @@ function originalPrice(row) {
     offer?.priceCurrency || offer?.priceSpecification?.priceCurrency,
     3,
   ).toUpperCase();
-  const rawText = ['string', 'number'].includes(typeof raw) ? String(raw) : '';
+  const rawText = ['number', 'string'].includes(typeof raw) ? String(raw) : '';
   const valid = /^\d+(?:\.\d+)?$/.test(rawText) && /^[A-Z]{3}$/.test(currency);
   const numeric = valid ? Number(rawText) : undefined;
-  const usable = numeric !== undefined && Number.isFinite(numeric) &&
+  const usable =
+    numeric !== undefined &&
+    Number.isFinite(numeric) &&
     numeric <= Number.MAX_SAFE_INTEGER;
   return {
     ...(usable ? { price: numeric, currency } : {}),
-    ...(rawText ? {
-      priceRaw: rawText,
-      priceCurrencyRaw: currency || undefined,
-      pricePrecision: typeof raw === 'string' ? 'source_decimal' : 'source_number',
-      priceDecimalPlaces: rawText.includes('.') ? rawText.split('.')[1].length : 0,
-    } : {}),
-    ...(offer?.lowPrice !== undefined || offer?.highPrice !== undefined ? {
-      priceRange: {
-        lowRaw: String(offer.lowPrice ?? ''),
-        highRaw: String(offer.highPrice ?? ''),
-        currency: currency || undefined,
-      },
-    } : {}),
+    ...(rawText
+      ? {
+          priceRaw: rawText,
+          priceCurrencyRaw: currency || undefined,
+          pricePrecision:
+            typeof raw === 'string' ? 'source_decimal' : 'source_number',
+          priceDecimalPlaces: rawText.includes('.')
+            ? rawText.split('.')[1].length
+            : 0,
+        }
+      : {}),
+    ...(offer?.lowPrice !== undefined || offer?.highPrice !== undefined
+      ? {
+          priceRange: {
+            lowRaw: String(offer.lowPrice ?? ''),
+            highRaw: String(offer.highPrice ?? ''),
+            currency: currency || undefined,
+          },
+        }
+      : {}),
   };
 }
 
 function nativeId(url, platform) {
   const u = new URL(url);
   if (platform === 'amazon')
-    return /\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:[/?]|$)/i.exec(u.pathname)?.[1]?.toUpperCase();
+    return /\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:[/?]|$)/i
+      .exec(u.pathname)?.[1]
+      ?.toUpperCase();
   if (platform === 'shopee') {
     const match = /(?:-i\.|\/product\/)(\d+)[./](\d+)/.exec(u.pathname);
     return match ? `${match[1]}.${match[2]}` : undefined;
   }
   if (platform === 'mercado_libre') {
     const id = /\bMLM-?(\d+)\b/i.exec(u.pathname)?.[1];
-    return id ? `${/\/p\/MLM/i.test(u.pathname) ? 'catalog:' : ''}MLM${id}` : undefined;
+    return id
+      ? `${/\/p\/MLM/i.test(u.pathname) ? 'catalog:' : ''}MLM${id}`
+      : undefined;
   }
   if (platform === 'temu')
-    return /-g-(\d+)\.html/.exec(u.pathname)?.[1] || u.searchParams.get('goods_id') || undefined;
+    return (
+      /-g-(\d+)\.html/.exec(u.pathname)?.[1] ||
+      u.searchParams.get('goods_id') ||
+      undefined
+    );
   if (platform === 'tiktok_shop')
-    return /\/(?:pdp|product)\/(?:[^/]+\/)?(\d+)(?:[/?]|$)/.exec(u.pathname)?.[1];
+    return /\/(?:pdp|product)\/(?:[^/]+\/)?(\d+)(?:[/?]|$)/.exec(
+      u.pathname,
+    )?.[1];
 }
 
 function regionCodes(value) {
   return list(value).flatMap((item) => {
-    if (typeof item === 'string') return /^[a-z]{2}$/i.test(item) ? [item.toUpperCase()] : [];
+    if (typeof item === 'string')
+      return /^[a-z]{2}$/i.test(item) ? [item.toUpperCase()] : [];
     if (!item || typeof item !== 'object') return [];
     return regionCodes(item.addressCountry || item.identifier || item.name);
   });
@@ -392,22 +446,26 @@ function regionCodes(value) {
 
 function marketProof(row, url, request) {
   const platform = platformId(request.platform);
-  const regions = [...new Set([
-    ...regionCodes(row.sale_region || row.saleRegion),
-    ...regionCodes(row.areaServed),
-    ...list(row.offers).flatMap((offer) => [
-      ...regionCodes(offer?.eligibleRegion),
-      ...list(offer?.shippingDetails).flatMap((shipping) =>
-        regionCodes(shipping?.shippingDestination),
-      ),
+  const regions = [
+    ...new Set([
+      ...regionCodes(row.sale_region || row.saleRegion),
+      ...regionCodes(row.areaServed),
+      ...list(row.offers).flatMap((offer) => [
+        ...regionCodes(offer?.eligibleRegion),
+        ...list(offer?.shippingDetails).flatMap((shipping) =>
+          regionCodes(shipping?.shippingDestination),
+        ),
+      ]),
     ]),
-  ])];
+  ];
   if (regions.length > 0)
     return regions.includes(request.market) ? 'source_sale_region' : undefined;
-  if (['amazon', 'shopee', 'mercado_libre'].includes(platform))
+  if (['amazon', 'mercado_libre', 'shopee'].includes(platform))
     return 'country_specific_platform_host';
   if (platform === 'temu') {
-    const country = /^\/(us|mx)(?:[-_/]|$)/i.exec(new URL(url).pathname)?.[1]?.toUpperCase();
+    const country = /^\/(us|mx)(?:[-_/]|$)/i
+      .exec(new URL(url).pathname)?.[1]
+      ?.toUpperCase();
     return country === request.market ? 'explicit_country_path' : undefined;
   }
   if (platform === 'website') return 'research_scope_only';
@@ -418,7 +476,10 @@ function rawProduct(row) {
   const raw = JSON.stringify(row);
   return raw.length <= 64_000
     ? { structuredProduct: row }
-    : { structuredProductTruncated: true, structuredProductBytes: Buffer.byteLength(raw) };
+    : {
+        structuredProductTruncated: true,
+        structuredProductBytes: Buffer.byteLength(raw),
+      };
 }
 
 function productFromSchema(row, context) {
@@ -435,33 +496,75 @@ function productFromSchema(row, context) {
   const productId = text(row.productID, 300);
   const native = nativeId(url, platform);
   const id = native || productId || sku || url;
-  const variantId = sku || (native && productId !== native ? productId : '') || undefined;
+  const variantId =
+    sku || (native && productId !== native ? productId : '') || undefined;
   const identity = JSON.stringify([id, sku || null, productId || null]);
-  const identityHost = platform === 'website'
-    ? new URL(url).hostname.replace(/^www\./, '')
-    : resourceHosts(request.platform, request.market)[0];
+  const identityHost =
+    platform === 'website'
+      ? new URL(url).hostname.replace(/^www\./, '')
+      : resourceHosts(request.platform, request.market)[0];
   const attributes = propertyTable(row);
   const price = originalPrice(row);
-  const ingredient = explicitProperty(row, attributes, ['ingredients', 'Ingredients', 'Thành phần', 'Ingredientes']);
-  const dose = explicitProperty(row, attributes, ['servingSize', 'Serving Size', 'Dosage', 'Liều dùng']);
-  const size = explicitProperty(row, attributes, ['size', 'Size', 'Unit Count', 'Quy cách', 'Contenido neto']);
+  const ingredient = explicitProperty(row, attributes, [
+    'ingredients',
+    'Ingredients',
+    'Thành phần',
+    'Ingredientes',
+  ]);
+  const dose = explicitProperty(row, attributes, [
+    'servingSize',
+    'Serving Size',
+    'Dosage',
+    'Liều dùng',
+  ]);
+  const size = explicitProperty(row, attributes, [
+    'size',
+    'Size',
+    'Unit Count',
+    'Quy cách',
+    'Contenido neto',
+  ]);
   const description = text(row.description);
-  const image = list(row.image).map((item) =>
-    typeof item === 'string' ? item : item?.url || item?.contentUrl,
-  ).filter((item) => {
-    try {
-      return articleHttpsUrl(item);
-    } catch {
-      return false;
-    }
-  }).slice(0, 20);
-  const seller = list(row.offers).length === 1 ? list(row.offers)[0]?.seller : undefined;
-  const shopName = text(typeof seller === 'string' ? seller : seller?.name, 500);
+  const image = list(row.image)
+    .map((item) =>
+      typeof item === 'string' ? item : item?.url || item?.contentUrl,
+    )
+    .filter((item) => {
+      try {
+        return articleHttpsUrl(item);
+      } catch {
+        return false;
+      }
+    })
+    .slice(0, 20);
+  const seller =
+    list(row.offers).length === 1 ? list(row.offers)[0]?.seller : undefined;
+  const shopName = text(
+    typeof seller === 'string' ? seller : seller?.name,
+    500,
+  );
   const shopId = text(seller?.identifier || seller?.['@id'], 500) || undefined;
   const variant = Object.fromEntries(
-    ['sku', 'productID', 'inProductGroupWithID', 'size', 'color', 'material', 'pattern', 'gtin', 'gtin8', 'gtin12', 'gtin13', 'gtin14', 'mpn']
-      .filter((key) => ['string', 'number'].includes(typeof row[key]))
-      .map((key) => [key, typeof row[key] === 'string' ? text(row[key], 1000) : row[key]]),
+    [
+      'sku',
+      'productID',
+      'inProductGroupWithID',
+      'size',
+      'color',
+      'material',
+      'pattern',
+      'gtin',
+      'gtin8',
+      'gtin12',
+      'gtin13',
+      'gtin14',
+      'mpn',
+    ]
+      .filter((key) => ['number', 'string'].includes(typeof row[key]))
+      .map((key) => [
+        key,
+        typeof row[key] === 'string' ? text(row[key], 1000) : row[key],
+      ]),
   );
   const fieldNames = [
     'title',
@@ -475,12 +578,16 @@ function productFromSchema(row, context) {
   return {
     id: `${request.market}-platform-public-${hash(`${platform}|${identityHost}|${identity}`).slice(0, 24)}`,
     title,
-    brand: text(typeof row.brand === 'string' ? row.brand : row.brand?.name, 500) || '品牌待确认',
+    brand:
+      text(typeof row.brand === 'string' ? row.brand : row.brand?.name, 500) ||
+      '品牌待确认',
     market: request.market,
     category: category?.name || text(row.category, 500) || '待分类',
     form: explicitProperty(row, attributes, ['form', 'Item Form']) || '待识别',
     size: size || '官网未公开规格',
-    ...(price.price === undefined ? {} : { price: price.price, currency: price.currency }),
+    ...(price.price === undefined
+      ? {}
+      : { price: price.price, currency: price.currency }),
     ingredient: ingredient || '官网未公开可核验配方',
     dose: dose || '官网未公开每份剂量',
     claim: description,
@@ -506,19 +613,25 @@ function productFromSchema(row, context) {
     sourceCategoryId: category?.id,
     sourceCategoryPath: category?.path,
     resourceRaw: {
-      ...(category ? { category: {
-        ...category,
-        path: category.path.map((item) => item.name),
-        evidencePath: category.path,
-      } } : {}),
+      ...(category
+        ? {
+            category: {
+              ...category,
+              path: category.path.map((item) => item.name),
+              evidencePath: category.path,
+            },
+          }
+        : {}),
       ...price,
       shopName: shopName || undefined,
       shopId,
       variantId,
-      ...(Object.keys(variant).length ? {
-        variants: [variant],
-        variantBasis: '当前Product节点的原始变体字段；不代表完整变体目录',
-      } : {}),
+      ...(Object.keys(variant).length
+        ? {
+            variants: [variant],
+            variantBasis: '当前Product节点的原始变体字段；不代表完整变体目录',
+          }
+        : {}),
       marketEvidence: proof,
     },
     sourceContent: {
@@ -537,15 +650,17 @@ function productFromSchema(row, context) {
     },
     collectionFields: fieldNames,
     dataNature: 'collected',
-    sourceEvidence: [{
-      provider: '公开网页',
-      platform: platforms[platform],
-      market: request.market,
-      collectedAt: at,
-      evidenceUrl: base,
-      fields: fieldNames,
-      basis: 'JSON-LD Product原始结构化字段',
-    }],
+    sourceEvidence: [
+      {
+        provider: '公开网页',
+        platform: platforms[platform],
+        market: request.market,
+        collectedAt: at,
+        evidenceUrl: base,
+        fields: fieldNames,
+        basis: 'JSON-LD Product原始结构化字段',
+      },
+    ],
     decisionData: { series: [] },
   };
 }
@@ -553,7 +668,9 @@ function productFromSchema(row, context) {
 function productPath(url, platform) {
   if (nativeId(url, platform)) return true;
   if (platform === 'website')
-    return /\/(?:products?|shop|item)(?:\/|\.html?)/i.test(new URL(url).pathname);
+    return /\/(?:products?|shop|item)(?:\/|\.html?)/i.test(
+      new URL(url).pathname,
+    );
   return false;
 }
 
@@ -565,8 +682,12 @@ export function parsePublicProductResource(html, request, options = {}) {
   const $ = load(html);
   const heading = `${$('title').text()} ${$('h1').first().text()}`;
   if (
-    /captcha|robot check|access denied|verify (?:that )?you are human|security verification|just a moment|人机验证|安全验证/i.test(heading) ||
-    $('form[action*="captcha"], #captcha, #challenge-form, input[type="password"]').length > 0 ||
+    /captcha|robot check|access denied|verify (?:that )?you are human|security verification|just a moment|人机验证|安全验证/i.test(
+      heading,
+    ) ||
+    $(
+      'form[action*="captcha"], #captcha, #challenge-form, input[type="password"]',
+    ).length > 0 ||
     (/sign in|log in|login|đăng nhập|iniciar sesi[oó]n/i.test(heading) &&
       $('input[type="email"], input[type="tel"]').length > 0)
   )
@@ -580,7 +701,11 @@ export function parsePublicProductResource(html, request, options = {}) {
   if (platformId(request.platform) !== 'instagram')
     for (const row of rows) {
       const product = productFromSchema(row, {
-        request, at, category, base: url, multiple: rows.length > 1,
+        request,
+        at,
+        category,
+        base: url,
+        multiple: rows.length > 1,
       });
       if (!product || seen.has(product.id)) continue;
       seen.add(product.id);
@@ -591,20 +716,34 @@ export function parsePublicProductResource(html, request, options = {}) {
   const seenUrls = new Set(products.map((product) => product.sourceUrl));
   function addLead(value, title, reason = 'structured_item_link') {
     const href = candidateUrl(value, url, request);
-    if (!href || seenUrls.has(href) || href === url || leads.length >= limit) return;
+    if (!href || seenUrls.has(href) || href === url || leads.length >= limit)
+      return;
     seenUrls.add(href);
-    leads.push({ url: href, title: text(title, 500), kind: 'product_page', source: '公开网页', reason });
+    leads.push({
+      url: href,
+      title: text(title, 500),
+      kind: 'product_page',
+      source: '公开网页',
+      reason,
+    });
   }
   for (const node of nodes.filter((item) => types(item).includes('ItemList')))
     for (const entry of list(node.itemListElement)) {
       const item = entry?.item || entry;
-      addLead(typeof item === 'string' ? item : item?.url || item?.['@id'] || entry?.url, item?.name || entry?.name);
+      addLead(
+        typeof item === 'string'
+          ? item
+          : item?.url || item?.['@id'] || entry?.url,
+        item?.name || entry?.name,
+      );
     }
-  $('a[href]').slice(0, 3000).each((_index, element) => {
-    const href = candidateUrl($(element).attr('href'), url, request);
-    if (href && productPath(href, platformId(request.platform)))
-      addLead(href, $(element).text(), 'visible_product_link');
-  });
+  $('a[href]')
+    .slice(0, 3000)
+    .each((_index, element) => {
+      const href = candidateUrl($(element).attr('href'), url, request);
+      if (href && productPath(href, platformId(request.platform)))
+        addLead(href, $(element).text(), 'visible_product_link');
+    });
   const nextValue = $('link[rel="next"], a[rel="next"]').first().attr('href');
   const nextUrl = nextValue && candidateUrl(nextValue, url, request);
   const differentNext = nextUrl && nextUrl !== url ? nextUrl : undefined;
@@ -617,9 +756,15 @@ export function parsePublicProductResource(html, request, options = {}) {
     nextUrl: differentNext,
     nextCursor: differentNext,
     hasMore: Boolean(differentNext),
-    pageFingerprint: hash(JSON.stringify([url, [...seen].toSorted(), [...seenUrls].toSorted()])),
+    pageFingerprint: hash(
+      JSON.stringify([url, [...seen].toSorted(), [...seenUrls].toSorted()]),
+    ),
     providerCalls: 0,
-    status: products.length ? 'collected' : leads.length ? 'leads_only' : 'unavailable',
+    status: products.length
+      ? 'collected'
+      : leads.length
+        ? 'leads_only'
+        : 'unavailable',
     message: products.length
       ? `保存${products.length}件结构化商品；未把页面排名、评论或片段当销量`
       : `页面未提供满足商品身份及国家校验的JSON-LD Product；保留${leads.length}条可核验线索，未填造商品或销量`,
@@ -632,27 +777,44 @@ export async function collectPublicProductResource(request, overrides = {}) {
   if (platformId(request.platform) === 'instagram')
     return {
       products: [],
-      leads: [{ url: url.href, title: '', kind: 'content', source: '公开网页' }],
+      leads: [
+        { url: url.href, title: '', kind: 'content', source: '公开网页' },
+      ],
       hasMore: false,
       collectedAt: overrides.at || new Date().toISOString(),
       pageFingerprint: hash(url.href),
       providerCalls: 0,
       usage: { publicRequests: 0 },
       status: 'leads_only',
-      message: 'Instagram仅作为品牌、内容与落地商品线索；内容采集使用既有公共情报入口，不提供交易销量',
+      message:
+        'Instagram仅作为品牌、内容与落地商品线索；内容采集使用既有公共情报入口，不提供交易销量',
     };
   let attempted = false;
   try {
     const addresses = await articleDns(url.hostname, overrides.resolve);
     attempted = true;
-    const page = await (overrides.read || readPublicArticleOnce)(url, addresses);
+    const page = await (overrides.read || readPublicArticleOnce)(
+      url,
+      addresses,
+    );
     if (page.status >= 300 && page.status < 400) {
-      const redirectUrl = page.location && candidateUrl(page.location, url, request);
+      const redirectUrl =
+        page.location && candidateUrl(page.location, url, request);
       if (!redirectUrl || redirectUrl === url.href)
-        throw publicError('公开页跳转到未允许的域名或循环地址，已停止', 'blocked');
+        throw publicError(
+          '公开页跳转到未允许的域名或循环地址，已停止',
+          'blocked',
+        );
       return {
         products: [],
-        leads: [{ url: redirectUrl, title: '', kind: 'product_page', reason: 'redirect' }],
+        leads: [
+          {
+            url: redirectUrl,
+            title: '',
+            kind: 'product_page',
+            reason: 'redirect',
+          },
+        ],
         hasMore: false,
         collectedAt: overrides.at || new Date().toISOString(),
         pageFingerprint: hash(`${url.href}|redirect|${redirectUrl}`),
@@ -663,9 +825,16 @@ export async function collectPublicProductResource(request, overrides = {}) {
       };
     }
     if (page.status !== 200)
-      throw publicError(`公开页HTTP ${page.status}，未作为空商品成功`, page.status === 429 ? 'rate_limited' : 'failed');
+      throw publicError(
+        `公开页HTTP ${page.status}，未作为空商品成功`,
+        page.status === 429 ? 'rate_limited' : 'failed',
+      );
     return {
-      ...parsePublicProductResource(page.text, { ...request, url: url.href }, { at: overrides.at }),
+      ...parsePublicProductResource(
+        page.text,
+        { ...request, url: url.href },
+        { at: overrides.at },
+      ),
       usage: { publicRequests: 1 },
     };
   } catch (error) {

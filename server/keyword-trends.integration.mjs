@@ -1,20 +1,21 @@
-/* eslint-disable unicorn/no-await-expression-member, no-console -- Disposable SQL fixture assertions and test result output. */
+/* eslint-disable unicorn/no-await-expression-member -- Disposable SQL fixture assertions and test result output. */
 import assert from 'node:assert/strict';
-import { socialWindows } from './keyword-trends-domain.mjs';
 
-import {
-  keywordTrendsAction,
-  keywordTrendIO,
-} from './keyword-trends-store.mjs';
+import { socialWindows } from './keyword-trends-domain.mjs';
 import {
   advanceTrendQueue,
   TREND_PREFIX as P,
 } from './keyword-trends-engine.mjs';
+import {
+  drainTrendInbox,
+  keywordTrendIO,
+  keywordTrendsAction,
+} from './keyword-trends-store.mjs';
 
 // Called exclusively by the existing disposable PostgreSQL/MySQL fixture.
 export async function verifyKeywordTrends(c) {
-  const admin = { role: 'admin' },
-    reader = { role: 'researcher' };
+  const admin = { role: 'admin' };
+  const reader = { role: 'researcher' };
   const k = {
     id: 'synthetic-multitrend-keyword',
     term: 'synthetic creatine',
@@ -85,6 +86,7 @@ export async function verifyKeywordTrends(c) {
       };
     },
   });
+  await drainTrendInbox(c, io);
   for (let n = 0; n < 5; n++) await advanceTrendQueue(io);
   assert.equal(calls, 2);
   let value = await keywordTrendsAction(
@@ -115,6 +117,7 @@ export async function verifyKeywordTrends(c) {
     },
     admin,
   );
+  await drainTrendInbox(c, io);
   await advanceTrendQueue(io);
   assert.equal(calls, 2);
   // A manually selected Google-only task uses the real existing submission
@@ -128,6 +131,7 @@ export async function verifyKeywordTrends(c) {
     },
     admin,
   );
+  await drainTrendInbox(c, io);
   await advanceTrendQueue(io);
   value = await keywordTrendsAction(
     { action: 'server_keyword_trends_snapshot' },

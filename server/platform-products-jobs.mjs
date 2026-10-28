@@ -1,23 +1,30 @@
 /* eslint-disable unicorn/no-await-expression-member -- Keep SQL row access consistent with existing server modules. */
 import { randomUUID } from 'node:crypto';
+
+import { readSorftimeToken } from './collector.js';
 import { appendCoreEvidence, archiveCoreEvidence } from './core-evidence.mjs';
-import { lock, unlock, pool, putDocument } from './database.mjs';
-import { collect, saveCheckpoint } from './store.mjs';
-import { publicProductUrl } from './product-public-enrichment.mjs';
-import { mergePlatformProduct } from './platform-product-data.mjs';
+import { lock, pool, putDocument, unlock } from './database.mjs';
 import { observeDiscovery } from './discovery-newness.mjs';
 import { readKeyword } from './enrichment-jobs.mjs';
-import { collectorEnv } from './local-provider.mjs';
-import { readSorftimeToken } from './collector.js';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
-import { archiveResourceEvidence, validateResourceInput } from './product-resource-domain.mjs';
-import { runProductResourceDiscovery } from './product-resource-engine.mjs';
-import { assertResourceCategory, upsertResourceContent } from './product-resource-service.mjs';
+import { collectorEnv } from './local-provider.mjs';
 import {
   completionKey,
   productCompletionWork,
   unsupportedCompletion,
 } from './platform-product-completion.mjs';
+import { mergePlatformProduct } from './platform-product-data.mjs';
+import { publicProductUrl } from './product-public-enrichment.mjs';
+import {
+  archiveResourceEvidence,
+  validateResourceInput,
+} from './product-resource-domain.mjs';
+import { runProductResourceDiscovery } from './product-resource-engine.mjs';
+import {
+  assertResourceCategory,
+  upsertResourceContent,
+} from './product-resource-service.mjs';
+import { collect, saveCheckpoint } from './store.mjs';
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 export function validatePlatformProducts(input) {
@@ -37,12 +44,14 @@ export function validatePlatformProducts(input) {
     seeds.some((s) => s.length > 200)
   )
     throw new Error('请输入1～100个关键词，每行一个，每词不超过200字符');
-  if (!['US', 'MX', 'VN'].includes(input.market))
+  if (!['MX', 'US', 'VN'].includes(input.market))
     throw new Error('请选择支持的目标市场');
   if (
     !Array.isArray(input.providers) ||
     input.providers.length === 0 ||
-    input.providers.some((p) => !['sorftime', 'semrush', 'tiktok_shop'].includes(p))
+    input.providers.some(
+      (p) => !['semrush', 'sorftime', 'tiktok_shop'].includes(p),
+    )
   )
     throw new Error('请选择 Sorftime、Semrush 或 TikTok Shop 来源');
   const value = {
@@ -84,8 +93,8 @@ export function validatePlatformProducts(input) {
   return value;
 }
 export async function submitPlatformProducts(input, context = {}) {
-  const value = validatePlatformProducts(input),
-    c = await pool.connect();
+  const c = await pool.connect();
+  const value = validatePlatformProducts(input);
   if (context.discoveryDay) value.discoveryDay = context.discoveryDay;
   let locked = false;
   try {
@@ -97,7 +106,8 @@ export async function submitPlatformProducts(input, context = {}) {
       ])
     ).rows[0];
     if (old) return old;
-    if (value.resourceDiscovery) await assertResourceCategory(value.resourcePlan, c);
+    if (value.resourceDiscovery)
+      await assertResourceCategory(value.resourcePlan, c);
     const active = (
       await c.query(
         "SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
@@ -114,15 +124,20 @@ export async function submitPlatformProducts(input, context = {}) {
               j.input.resourcePlan?.routeId === value.resourcePlan.routeId &&
               j.input.resourcePlan?.mode === value.resourcePlan.mode &&
               (value.resourcePlan.mode === 'category'
-                ? j.input.resourcePlan.category?.id === value.resourcePlan.category?.id
+                ? j.input.resourcePlan.category?.id ===
+                  value.resourcePlan.category?.id
                 : value.resourcePlan.mode === 'urls'
-                  ? j.input.resourcePlan.urls?.some((url) => value.resourcePlan.urls.includes(url))
-                  : j.input.resourcePlan.terms?.some((term) => value.resourcePlan.terms.includes(term)))
+                  ? j.input.resourcePlan.urls?.some((url) =>
+                      value.resourcePlan.urls.includes(url),
+                    )
+                  : j.input.resourcePlan.terms?.some((term) =>
+                      value.resourcePlan.terms.includes(term),
+                    ))
             : !j.input.resourceDiscovery &&
-          ((j.input.mode === 'enrich' &&
-            j.input.markets?.includes(value.market)) ||
-            (j.input.market === value.market &&
-              j.input.seeds?.some((s) => value.seeds.includes(s))))),
+              ((j.input.mode === 'enrich' &&
+                j.input.markets?.includes(value.market)) ||
+                (j.input.market === value.market &&
+                  j.input.seeds?.some((s) => value.seeds.includes(s))))),
       )
     )
       throw new Error('这些关键词已有平台商品任务，请等待完成');
@@ -137,8 +152,14 @@ export async function submitPlatformProducts(input, context = {}) {
       };
       const names = configNames[value.resourcePlan.provider] || [];
       if (names.length) {
-        const configured = await c.query(`SELECT name FROM provider_configs WHERE name IN (${names.map((_, index) => `$${index + 1}`).join(',')})`, names);
-        if (!configured.rows.length) throw new Error('请先在数据源与设置中配置所选来源；本次检查未读取凭据或调用供应商');
+        const configured = await c.query(
+          `SELECT name FROM provider_configs WHERE name IN (${names.map((_, index) => `$${index + 1}`).join(',')})`,
+          names,
+        );
+        if (!configured.rows.length)
+          throw new Error(
+            '请先在数据源与设置中配置所选来源；本次检查未读取凭据或调用供应商',
+          );
       }
     }
     if (
@@ -210,10 +231,28 @@ export async function upsertProduct(patch) {
       await c.query('COMMIT');
       return undefined;
     }
-    const merged = withFormulaIntelligence(observeDiscovery(old, mergePlatformProduct(old, patch), 'product'));
-    const value = appendCoreEvidence('products', old, merged, { ...patch, id: merged.id, market: merged.market, sourceProvider: merged.sourceProvider, sourcePlatform: merged.sourcePlatform, sourceProductId: merged.sourceProductId });
-    await archiveCoreEvidence('products', value.id, value, (key, snapshot, only) => putDocument('workspace_documents', key, snapshot, only, c), old);
-    await archiveResourceEvidence(value, old, (key, snapshot, only) => putDocument('workspace_documents', key, snapshot, only, c));
+    const merged = withFormulaIntelligence(
+      observeDiscovery(old, mergePlatformProduct(old, patch), 'product'),
+    );
+    const value = appendCoreEvidence('products', old, merged, {
+      ...patch,
+      id: merged.id,
+      market: merged.market,
+      sourceProvider: merged.sourceProvider,
+      sourcePlatform: merged.sourcePlatform,
+      sourceProductId: merged.sourceProductId,
+    });
+    await archiveCoreEvidence(
+      'products',
+      value.id,
+      value,
+      (key, snapshot, only) =>
+        putDocument('workspace_documents', key, snapshot, only, c),
+      old,
+    );
+    await archiveResourceEvidence(value, old, (key, snapshot, only) =>
+      putDocument('workspace_documents', key, snapshot, only, c),
+    );
     await putDocument('workspace_documents', name, value, false, c);
     await c.query('COMMIT');
     return value;
@@ -286,18 +325,38 @@ function enrichmentIds(input) {
   return ids;
 }
 export function enrichmentPlan(products) {
-  const sorftime = products.filter((p) => p.sourceProvider === 'Sorftime' && /^[A-Z0-9]{10}$/.test(p.sourceProductId || '') && ['US', 'MX'].includes(p.market)).length;
+  const sorftime = products.filter(
+    (p) =>
+      p.sourceProvider === 'Sorftime' &&
+      /^[A-Z0-9]{10}$/.test(p.sourceProductId || '') &&
+      ['MX', 'US'].includes(p.market),
+  ).length;
   const publicCount = products.filter((p) => publicProductUrl(p)).length;
   const estimatedRequests = sorftime * 5 + publicCount * 2;
-  return { total: products.length, sorftime, public: publicCount, unsupported: products.length - sorftime - publicCount, estimatedRequests, defaultMaxRequests: Math.max(1, Math.min(150, estimatedRequests)) };
+  return {
+    total: products.length,
+    sorftime,
+    public: publicCount,
+    unsupported: products.length - sorftime - publicCount,
+    estimatedRequests,
+    defaultMaxRequests: Math.max(1, Math.min(150, estimatedRequests)),
+  };
 }
 export async function previewPlatformProductEnrichment(input) {
   const ids = enrichmentIds(input);
   const products = [];
   for (let start = 0; start < ids.length; start += 250) {
     const batch = ids.slice(start, start + 250);
-    const rows = (await pool.query('SELECT value FROM workspace_documents WHERE name IN (' + batch.map((_, i) => '$' + (i + 1)).join(',') + ')', batch.map((id) => 'business:products:' + id))).rows;
-    if (rows.length !== batch.length) throw new Error('选中的商品已不存在，请刷新列表');
+    const rows = (
+      await pool.query(
+        'SELECT value FROM workspace_documents WHERE name IN (' +
+          batch.map((_, i) => '$' + (i + 1)).join(',') +
+          ')',
+        batch.map((id) => 'business:products:' + id),
+      )
+    ).rows;
+    if (rows.length !== batch.length)
+      throw new Error('选中的商品已不存在，请刷新列表');
     products.push(...rows.map((row) => row.value));
   }
   return enrichmentPlan(products);
@@ -352,11 +411,17 @@ export async function submitPlatformProductEnrichment(input) {
       !(await readSorftimeToken(await collectorEnv()))
     )
       throw new Error('请先配置 Sorftime MCP Token');
-    const maxRequests = Number(input.maxRequests ?? enrichmentPlan(products).defaultMaxRequests);
-    if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 100_000)
+    const maxRequests = Number(
+      input.maxRequests ?? enrichmentPlan(products).defaultMaxRequests,
+    );
+    if (
+      !Number.isInteger(maxRequests) ||
+      maxRequests < 1 ||
+      maxRequests > 100_000
+    )
       throw new Error('商品补全请求上限须为1～100000');
-    const id = randomUUID(),
-      at = new Date().toISOString();
+    const at = new Date().toISOString();
+    const id = randomUUID();
     const value = {
       kind: 'platform_products',
       mode: 'enrich',
@@ -367,7 +432,17 @@ export async function submitPlatformProductEnrichment(input) {
       seeds: [],
       productIds: ids,
       markets: [...new Set(products.map((p) => p.market))],
-      providers: [...new Set(products.flatMap((p) => publicProductUrl(p) ? ['public_product'] : p.sourceProvider === 'Sorftime' ? ['sorftime'] : []))],
+      providers: [
+        ...new Set(
+          products.flatMap((p) =>
+            publicProductUrl(p)
+              ? ['public_product']
+              : p.sourceProvider === 'Sorftime'
+                ? ['sorftime']
+                : [],
+          ),
+        ),
+      ],
       maxProducts: ids.length,
       perKeyword: 1,
       maxRequests,
@@ -383,16 +458,30 @@ export async function submitPlatformProductEnrichment(input) {
         const official = p.sourceProvider !== 'Sorftime';
         states[official ? 'public_detail' : 'trend'] = {
           ...unsupportedCompletion(p, id, at),
-          ...(official ? { message: '缺少可核验的官网商品链接，当前来源无法补全该商品的上架时间和销量' } : {}),
+          ...(official
+            ? {
+                message:
+                  '缺少可核验的官网商品链接，当前来源无法补全该商品的上架时间和销量',
+              }
+            : {}),
         };
       }
       for (const step of work) {
-        const key = completionKey(step),
-          current = p.dataCompletion?.[key];
+        const key = completionKey(step);
+        const current = p.dataCompletion?.[key];
         const fresh =
           current?.status === 'completed' &&
           Date.now() - Date.parse(current.at) < 86_400_000;
-        if (!input.refresh && fresh && (step.provider !== 'public_product' || p.publicDataEvidence?.listing?.status === 'observed' && p.publicDataEvidence?.sold?.status === 'observed')) states[key] = { ...current, jobId: id };
+        if (
+          !input.refresh &&
+          fresh &&
+          (step.provider !== 'public_product' ||
+            (p.publicDataEvidence?.listing?.status === 'observed' &&
+              p.publicDataEvidence?.sold?.status === 'observed' &&
+              (!p.catalogEvidenceUrl?.includes('westmonth.com') ||
+                p.priceEvidence?.kind === 'discount')))
+        )
+          states[key] = { ...current, jobId: id };
         else {
           value.initialWork.push(step);
           states[key] = {
@@ -555,8 +644,17 @@ export async function runPlatformProducts(job, overrides = {}) {
   if (cp.index >= cp.work.length)
     return finish(cp.failures ? 'partial' : 'completed');
   if (v.discoveryDay) {
-    const current = await Promise.all((v.keywordRecords || []).map((k) => io.readKeyword(k.id)));
-    if (!current.some((k) => k?.reviewStatus === 'selected' && k.market === v.market && v.seeds.includes(k.term))) {
+    const current = await Promise.all(
+      (v.keywordRecords || []).map((k) => io.readKeyword(k.id)),
+    );
+    if (
+      !current.some(
+        (k) =>
+          k?.reviewStatus === 'selected' &&
+          k.market === v.market &&
+          v.seeds.includes(k.term),
+      )
+    ) {
       cp.logs.push('入选关键词已移除或变更，停止本次每日商品发现');
       return finish('cancelled');
     }
@@ -568,10 +666,16 @@ export async function runPlatformProducts(job, overrides = {}) {
     const host = url ? new URL(url).hostname : '';
     if (host && cp.publicBlockedHosts?.[host]) {
       cp.failures++;
-      await setCompletion(w, 'failed', '该官网本批已返回限流或访问受限，后续商品未发起请求；可稍后重新补全');
+      await setCompletion(
+        w,
+        'failed',
+        '该官网本批已返回限流或访问受限，后续商品未发起请求；可稍后重新补全',
+      );
       cp.index++;
       cp.nextRunAt = io.now() + 1500;
-      return cp.index >= cp.work.length ? finish('partial') : io.saveCheckpoint(job, cp, 'running');
+      return cp.index >= cp.work.length
+        ? finish('partial')
+        : io.saveCheckpoint(job, cp, 'running');
     }
     if (host && (cp.publicDomainNextAt?.[host] || 0) > io.now()) {
       cp.nextRunAt = cp.publicDomainNextAt[host];
@@ -598,7 +702,7 @@ export async function runPlatformProducts(job, overrides = {}) {
           );
     const units =
       w.provider === 'semrush' ? limit * (w.op === 'domains' ? 20 : 30) : 0;
-    const isDiscovery = ['search', 'shopping', 'domains'].includes(w.op);
+    const isDiscovery = ['domains', 'search', 'shopping'].includes(w.op);
     const exhausted = cp.requests >= v.maxRequests;
     if (cp.blockedProviders?.[w.provider]) {
       cp.failures++;
@@ -610,9 +714,7 @@ export async function runPlatformProducts(job, overrides = {}) {
       cp.logs.push(
         `${w.provider}：此前鉴权或结构检查失败，本步骤未发起请求，其他来源继续`,
       );
-    } else if (
-      !cp.inFlight && exhausted
-    ) {
+    } else if (!cp.inFlight && exhausted) {
       cp.failures++;
       await setCompletion(w, 'failed', '达到手动设置的请求预算，本步骤未执行');
       cp.logs.push(
@@ -625,7 +727,7 @@ export async function runPlatformProducts(job, overrides = {}) {
       if (w.productId && !product) throw new Error('商品已删除，跳过详情请求');
       const remainingForTerm =
         v.perKeyword - (cp.termProductIds[termKey] || []).length;
-      const needsDiscovery = ['search', 'shopping', 'domains'].includes(w.op);
+      const needsDiscovery = ['domains', 'search', 'shopping'].includes(w.op);
       if (
         needsDiscovery &&
         (cp.productIds.length >= v.maxProducts || remainingForTerm <= 0)
@@ -633,16 +735,27 @@ export async function runPlatformProducts(job, overrides = {}) {
         cp.logs.push(`${w.term}：商品数量已达上限，跳过后续发现请求`);
       } else {
         if (!cp.inFlight) {
-          const allowance = w.provider === 'public_product' ? Math.min(2, v.maxRequests - cp.requests) : 1;
+          const allowance =
+            w.provider === 'public_product'
+              ? Math.min(2, v.maxRequests - cp.requests)
+              : 1;
           cp.requests += allowance;
           if (w.provider === 'public_product') {
             const url = publicProductUrl(product);
-            if (url) (cp.publicDomainNextAt ||= {})[new URL(url).hostname] = io.now() + 30_000;
+            if (url)
+              (cp.publicDomainNextAt ||= {})[new URL(url).hostname] =
+                io.now() + 30_000;
           }
           if (isDiscovery) cp.discoveryRequests++;
           await setCompletion(w, 'running', '正在向平台请求数据');
           cp.semrushReserved += units;
-          cp.inFlight = { index: cp.index, units, ...(w.provider === 'public_product' ? { requestAllowance: allowance } : {}) };
+          cp.inFlight = {
+            index: cp.index,
+            units,
+            ...(w.provider === 'public_product'
+              ? { requestAllowance: allowance }
+              : {}),
+          };
           await io.saveCheckpoint(job, cp, 'running');
         }
         const request = {
@@ -651,24 +764,39 @@ export async function runPlatformProducts(job, overrides = {}) {
           market: product?.market || v.market,
           refreshEmpty: v.mode === 'enrich',
           discoveryDay: v.discoveryDay,
-          ...(w.provider === 'public_product' ? { publicRequestLimit: cp.inFlight.requestAllowance || 1 } : {}),
+          ...(w.provider === 'public_product'
+            ? { publicRequestLimit: cp.inFlight.requestAllowance || 1 }
+            : {}),
           limit: needsDiscovery ? limit : undefined,
           product,
         };
         const result = await io.collect(job, `platform:${cp.index}`, request);
         if (w.provider === 'public_product') {
           const reserved = cp.inFlight.requestAllowance || 1;
-          if (!Number.isInteger(result.providerCalls) || result.providerCalls < 0 || result.providerCalls > reserved)
+          if (
+            !Number.isInteger(result.providerCalls) ||
+            result.providerCalls < 0 ||
+            result.providerCalls > reserved
+          )
             throw new Error('公开商品返回请求计数异常，未释放预留预算');
           cp.requests -= reserved - result.providerCalls;
           const errors = result.patch?.publicDataEvidence?.errors || [];
           if (errors.length) cp.failures++;
-          if (errors.some((e) => e.reason === 'rate_limited' || [401, 403].includes(e.status))) {
+          if (
+            errors.some(
+              (e) =>
+                e.reason === 'rate_limited' || [401, 403].includes(e.status),
+            )
+          ) {
             const url = publicProductUrl(product);
-            if (url) (cp.publicBlockedHosts ||= {})[new URL(url).hostname] = true;
+            if (url)
+              (cp.publicBlockedHosts ||= {})[new URL(url).hostname] = true;
           }
         }
-        if (w.provider === 'tiktok_shop' && Number.isFinite(result.providerCalls))
+        if (
+          w.provider === 'tiktok_shop' &&
+          Number.isFinite(result.providerCalls)
+        )
           cp.creditsCharged = (cp.creditsCharged || 0) + result.providerCalls;
         if (Number.isFinite(result.apiUnits) && result.apiUnits >= 0)
           cp.semrushUnits += result.apiUnits;
@@ -793,10 +921,12 @@ export async function runPlatformProducts(job, overrides = {}) {
           await io.upsertProduct(patch);
           await setCompletion(
             w,
-            result.empty && result.patch?.publicDataEvidence?.errors?.length ? 'failed'
-              : result.empty || (result.series && result.series.points.length === 0)
-              ? 'empty'
-              : 'completed',
+            result.empty && result.patch?.publicDataEvidence?.errors?.length
+              ? 'failed'
+              : result.empty ||
+                  (result.series && result.series.points.length === 0)
+                ? 'empty'
+                : 'completed',
             result.message || '已保存来源数据；未返回的字段保持未知',
             result.series?.points.length,
           );

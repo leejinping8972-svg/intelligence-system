@@ -1,11 +1,14 @@
-import type { DiscoveryObservation } from './discovery';
 import type { CoreEvidence } from './core-list-metrics';
-import type { ResourceProductEvidence, ResourceTaskProgress } from './product-resources';
+import type { DiscoveryObservation } from './discovery';
 import type { KeywordAssessment, KeywordMetrics } from './keyword-scoring';
 import type {
   ProductCompletion,
   ProductDecisionData,
 } from './product-decisions';
+import type {
+  ResourceProductEvidence,
+  ResourceTaskProgress,
+} from './product-resources';
 
 import { computed, reactive, watch } from 'vue';
 
@@ -178,11 +181,27 @@ export interface Product {
   discovery?: DiscoveryObservation;
   lastCollectedAt?: string;
   publicDataEvidence?: {
+    price?: {
+      status: string;
+      reason?: string;
+      evidenceUrl?: string;
+      sourceField?: string;
+    };
     checkedAt: string;
     evidenceUrl: string;
     requests: number;
-    listing: { status: 'observed' | 'preserved' | 'missing'; reason?: string; evidenceUrl: string; sourceField?: string };
-    sold: { status: 'observed' | 'preserved' | 'missing'; reason?: string; evidenceUrl: string; sourceField?: string };
+    listing: {
+      status: 'missing' | 'observed' | 'preserved';
+      reason?: string;
+      evidenceUrl: string;
+      sourceField?: string;
+    };
+    sold: {
+      status: 'missing' | 'observed' | 'preserved';
+      reason?: string;
+      evidenceUrl: string;
+      sourceField?: string;
+    };
     errors?: Array<{ url: string; reason: string; status?: number }>;
   };
   sourceMetrics?: {
@@ -237,6 +256,16 @@ export interface Product {
   category: string;
   form: string;
   size: string;
+  catalogEvidenceUrl?: string;
+  priceEvidence?: {
+    raw: string;
+    kind: string;
+    sourceField: string;
+    provider: string;
+    collectedAt?: string;
+    evidenceUrl?: string;
+    currency: string;
+  };
   price: number;
   currency: string;
   ingredient: string;
@@ -368,6 +397,39 @@ export interface Review {
   reason: string;
 }
 export interface Task {
+  overview?: {
+    status: string;
+    total: number;
+    processed: number;
+    succeeded: null | number;
+    failed: number;
+    waiting: number;
+    remaining: number;
+    percent: null | number;
+    outcome: string;
+    reason: string;
+    startedAt: string;
+    finishedAt: string;
+    elapsedSeconds: null | number;
+  };
+  collections?: Array<{
+    id: string;
+    title: string;
+    market?: string;
+    domain?: string;
+    status: string;
+    done: number;
+    total: number;
+    message?: string;
+    executions: Array<{
+      at?: string;
+      step?: string;
+      status?: string;
+      message?: string;
+      httpStatus?: number;
+    }>;
+  }>;
+
   researchProgress?: {
     resource?: ResourceTaskProgress;
     unlimitedRequests?: boolean;
@@ -464,20 +526,20 @@ export interface Task {
   cloudJobId?: string;
   readOnly?: boolean;
   title: string;
-  market: Market | 'ALL';
+  market: 'ALL' | Market;
   mode?: 'demo' | 'live';
   stage?: 'keywords' | 'products' | 'sites';
   status:
     | 'awaiting_review'
-    | 'bulk_running'
-    | 'bulk_paused'
     | 'bulk_blocked'
-    | 'unavailable'
+    | 'bulk_paused'
+    | 'bulk_running'
     | 'cancelled'
     | 'completed'
     | 'partial'
     | 'queued'
-    | 'running';
+    | 'running'
+    | 'unavailable';
   created: string;
   steps: string[];
   progress?: {
@@ -673,9 +735,12 @@ const storageKey = 'hci-demo-state-v1';
 function restore(): DemoState {
   try {
     if (import.meta.env.VITE_HCI_SERVER === 'true') {
-      const saved = JSON.parse(localStorage.getItem('hci-server-preferences-v1') || 'null');
+      const saved = JSON.parse(
+        localStorage.getItem('hci-server-preferences-v1') || 'null',
+      );
       const defaults = initial();
-      if (saved && ['ALL', 'MX', 'US', 'VN'].includes(saved.market)) defaults.market = saved.market;
+      if (saved && ['ALL', 'MX', 'US', 'VN'].includes(saved.market))
+        defaults.market = saved.market;
       return defaults;
     }
     const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
@@ -916,7 +981,10 @@ watch(
   () => {
     try {
       if (import.meta.env.VITE_HCI_SERVER === 'true')
-        localStorage.setItem('hci-server-preferences-v1', JSON.stringify({ market: state.market }));
+        localStorage.setItem(
+          'hci-server-preferences-v1',
+          JSON.stringify({ market: state.market }),
+        );
       else localStorage.setItem(storageKey, JSON.stringify(state));
       storageError.value = '';
     } catch {

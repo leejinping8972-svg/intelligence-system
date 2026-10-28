@@ -10,7 +10,8 @@ export const taskStatuses: Record<string, { label: string; color: string }> = {
   waiting: { label: '等待重试', color: 'orange' },
   awaiting_review: { label: '待人工筛选', color: 'cyan' },
   completed: { label: '已完成', color: 'green' },
-  partial: { label: '部分完成', color: 'orange' },
+  failed: { label: '执行失败', color: 'red' },
+  partial: { label: '已停止 · 未采集完', color: 'orange' },
   cancelled: { label: '已取消', color: 'default' },
   bulk_running: { label: '批处理待确认', color: 'orange' },
   bulk_paused: { label: '批处理已暂停', color: 'orange' },
@@ -54,7 +55,39 @@ export function groupTasks(
       (a, b) => (Date.parse(b.created) || 0) - (Date.parse(a.created) || 0),
     );
 }
-export function taskSummary(task: Task) {
+export function taskSummary(task: Task): {
+  percent: null | number;
+  label: string;
+  result: string;
+  color?: string;
+} {
+  const o = task.overview;
+  if (o)
+    return {
+      percent: o.percent,
+      label: '总进度 ' + o.processed + '/' + o.total + ' · ' + o.outcome,
+      result: [
+        o.reason,
+        (o.succeeded === null ? '' : '采集成功 ' + o.succeeded + ' · ') +
+          '失败/受限 ' +
+          o.failed +
+          ' · 待完成 ' +
+          o.remaining,
+        task.researchProgress
+          ? '商品 ' +
+            task.researchProgress.products +
+            ' · 证据 ' +
+            task.researchProgress.evidence
+          : '',
+      ]
+        .filter(Boolean)
+        .join('；'),
+      color: ['cancelled', 'failed', 'partial'].includes(o.status)
+        ? '#c48532'
+        : o.status === 'running'
+          ? '#1677ff'
+          : '#408979',
+    };
   const p = task.progress;
   const phases: Record<string, string> = {
     waiting: '限流冷却 / 延迟重试',
@@ -80,8 +113,8 @@ export function taskSummary(task: Task) {
           ? '部分对象等待重试'
           : `已处理 ${c.done}/${c.total} 个对象`,
       result: task.researchProgress
-        ? `商品 ${task.researchProgress.products} · 证据 ${task.researchProgress.evidence} · 请求 ${c.requests}/${c.requestLimit}`
-        : `广告 ${task.collectionProgress?.ads ?? 0} · 站点 ${task.collectionProgress?.sites ?? 0} · 请求 ${c.requests}/${c.requestLimit}`,
+        ? `商品 ${task.researchProgress.products} · 证据 ${task.researchProgress.evidence} · 请求 ${c.requests}/${c.requestLimit ?? '未设置'}`
+        : `广告 ${task.collectionProgress?.ads ?? 0} · 站点 ${task.collectionProgress?.sites ?? 0} · 请求 ${c.requests}/${c.requestLimit ?? '未设置'}`,
     };
   return {
     percent: null,

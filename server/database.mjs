@@ -57,19 +57,23 @@ function wrap(connection, isPool = false) {
 export const rawMysql = config ? mysqlPool(config) : null;
 export const pool = rawMysql
   ? wrap(rawMysql, true)
-  : new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 6 });
+  : new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 12 });
 const advisoryLocks = new Map([
-  ['identity', 89_761_038],
-  ['workspace-reads', 89_761_036],
-  ['core-fx', 89_761_037],
   ['competitor-runner', 89_761_033],
+  ['core-fx', 89_761_037],
   ['daily-discovery', 89_761_034],
-  ['market-research', 89_761_035],
-  ['keyword-submit', 89_761_032],
   ['enrichment-submit', 89_761_018],
+  ['hotwords-runner', 89_761_041],
+  ['identity', 89_761_038],
+  ['keyword-submit', 89_761_032],
+  ['keyword-trends-config', 89_761_040],
+  ['keyword-trends-runner', 89_761_042],
+  ['market-research', 89_761_035],
+  ['monitor-config', 89_761_039],
   ['public-content-runner', 89_761_031],
   ['runner', 89_761_016],
   ['trend-runner', 89_761_019],
+  ['workspace-reads', 89_761_036],
 ]);
 function lockKey(name) {
   if (engine === 'mysql') return `intelligence:${name}`;

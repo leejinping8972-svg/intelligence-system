@@ -28,7 +28,7 @@ test('catalog fills many exact products in one request and missing identities us
     now: Date.parse(at), maxRequests: 2, fetchPage: async (url) => {
       calls.push(url);
       if (calls.length === 2) return { html: JSON.stringify({ code: 0, data: { id: 3, month_sale: '3000+', onsale_at: '2026-10-10 09:47:07' } }) };
-      const rows = (calls.length === 1 ? [1,2] : [999,3]).map((id) => ({ product_id: id, product_name: 'QA item', month_sale: id * 1000, product_addtime: '2026-10-10 09:47:07' }));
+      const rows = (calls.length === 1 ? [1,2] : [999,3]).map((id) => ({ product_id: id, delivery_region_id: 9, product_name: 'QA item', month_sale: id * 1000, product_addtime: '2026-10-10 09:47:07' }));
       return { html: JSON.stringify({ code: 0, data: { page: 1, pagesize: 60, total: rows.length, data: rows } }) };
     },
   });

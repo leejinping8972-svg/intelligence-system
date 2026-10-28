@@ -22,15 +22,16 @@ import {
   retryCloudTrends,
   syncCloudWorkspace,
 } from './cloud-workspace';
+import { useCompetitorWorkspace } from './competitor-workspace';
+import FocusedMonitors from './components/FocusedMonitors.vue';
 import PageHeader from './components/PageHeader.vue';
 import ResearchTaskList from './components/ResearchTaskList.vue';
-import FocusedMonitors from './components/FocusedMonitors.vue';
-import { useCompetitorWorkspace } from './competitor-workspace';
-import { focusedMonitorRows } from './focused-monitors';
+import TaskCollections from './components/TaskCollections.vue';
 import TaskProgress from './components/TaskProgress.vue';
 import { audit, marketName, state } from './data';
-import { groupTasks, taskStatus, taskStatuses } from './task-list';
+import { focusedMonitorRows } from './focused-monitors';
 import { resourceTaskCanResume } from './product-resources';
+import { groupTasks, taskStatus, taskStatuses, taskSummary } from './task-list';
 const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
@@ -70,16 +71,40 @@ watch(
 const retrying = ref('');
 const resuming = ref('');
 async function resumeResource(task: Task) {
-  if (!task.cloudJobId || !resourceTaskCanResume(task) || resuming.value) return;
+  if (!task.cloudJobId || !resourceTaskCanResume(task) || resuming.value)
+    return;
   resuming.value = task.cloudJobId;
   try {
-    await cloudRequest<{ jobId: string; tasks: Task[] }>('server_product_resource_resume', { jobId: task.cloudJobId });
+    await cloudRequest<{ jobId: string; tasks: Task[] }>(
+      'server_product_resource_resume',
+      { jobId: task.cloudJobId },
+    );
     await syncCloudWorkspace();
-    if (selected.value?.cloudJobId === task.cloudJobId) await showDetails(selected.value);
+    if (selected.value?.cloudJobId === task.cloudJobId)
+      await showDetails(selected.value);
     message.success('已恢复同一任务，仅继续尚未执行步骤');
   } catch (cause) {
     message.error(cause instanceof Error ? cause.message : '恢复任务失败');
-  } finally { resuming.value = ''; }
+  } finally {
+    resuming.value = '';
+  }
+}
+async function reResearch(task: Task) {
+  if (!task.cloudJobId) return;
+  try {
+    const draft = await cloudRequest<{ path: string }>('server_task_research', {
+      jobId: task.cloudJobId,
+    });
+    selected.value = undefined;
+    await router.push({
+      path: draft.path,
+      query: { reResearch: task.cloudJobId },
+    });
+  } catch (error) {
+    message.error(
+      error instanceof Error ? error.message : '原研究参数读取失败',
+    );
+  }
 }
 async function retryTrends(task: Task) {
   if (!task.cloudJobId || retrying.value) return;
@@ -101,9 +126,24 @@ watch(
   { immediate: true },
 );
 const monitors = computed(() =>
-  focusedMonitorRows(state.products, state.monitors, watchWorkspace.targets, watchWorkspace.runs, state.market),
+  focusedMonitorRows(
+    state.products,
+    state.monitors,
+    watchWorkspace.targets,
+    watchWorkspace.runs,
+    state.market,
+  ),
 );
 const tasks = computed(() => groupTasks(state.tasks, state.market));
+watch(
+  () => [route.query.job, tasks.value] as const,
+  ([id, rows]) => {
+    if (typeof id !== 'string' || selected.value?.cloudJobId === id) return;
+    const task = rows.find((row) => row.cloudJobId === id);
+    if (task) void showDetails(task);
+  },
+  { immediate: true },
+);
 function isLiveTask(task: Task) {
   return (
     task.mode === 'live' ||
@@ -179,7 +219,9 @@ const auditRows = computed(() =>
     </div>
     <section class="hci-panel">
       <Tabs v-model:active-key="tab">
-        <Tabs.TabPane key="monitors" :tab="`重点监控（${monitors.length}）`"><FocusedMonitors /></Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
+        <Tabs.TabPane key="monitors" :tab="`重点监控（${monitors.length}）`">
+          <FocusedMonitors /> </Tabs.TabPane
+        ><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
           <ResearchTaskList
             :tasks="tasks"
             :retrying="retrying"
@@ -187,7 +229,7 @@ const auditRows = computed(() =>
             @cancel="cancel"
             @run="run"
             @trends="retryTrends"
-            @research="router.push('/research?new=1')"
+            @research="reResearch"
             @retry="
               (task) => {
                 task.status = 'queued';
@@ -196,8 +238,8 @@ const auditRows = computed(() =>
                 audit('重试演示任务', task.title, task.market);
               }
             "
-          />
-</Tabs.TabPane><Tabs.TabPane key="audit" :tab="`操作记录（${auditRows.length}）`">
+          /> </Tabs.TabPane
+        ><Tabs.TabPane key="audit" :tab="`操作记录（${auditRows.length}）`">
           <Empty
             v-if="!auditRows.length"
             description="收藏、审核或修改监控后，会在这里留下记录"
@@ -224,6 +266,7 @@ const auditRows = computed(() =>
         selected = undefined;
         detailsSequence++;
         detailsLoading = false;
+        router.replace({ query: { ...route.query, job: undefined } });
       "
     >
       <template v-if="selected">
@@ -239,16 +282,52 @@ const auditRows = computed(() =>
         <Spin v-if="detailsLoading" tip="正在读取任务详情" />
         <p class="hci-subtle">
           覆盖市场：{{
-            selected.markets.map((market) => market === 'ALL' ? '市场未记录' : marketName(market)).join(' / ')
+            selected.markets
+              .map((market) =>
+                market === 'ALL' ? '市场未记录' : marketName(market),
+              )
+              .join(' / ')
           }}；进度为整项任务合计。
         </p>
         <h2 style="font-size: 22px">{{ selected.title }}</h2>
         <p class="hci-subtle" style="margin: 12px 0">
-          {{ selected.created }} · {{ taskStatuses[taskStatus(selected)]?.label }}
+          {{ selected.created }} ·
+          {{ taskStatuses[taskStatus(selected)]?.label }}
         </p>
-        <TaskProgress :task="selected" detail />
-        <Button v-if="selected.cloudJobId && resourceTaskCanResume(selected)" :loading="resuming === selected.cloudJobId" @click="resumeResource(selected)">继续未执行资源步骤</Button>
-        <p v-if="selected.researchProgress?.resource && selected.status === 'cancelled'" class="hci-subtle">恢复沿用原任务、预算与请求记录；已执行请求不重放。预算截断及未知扣费结果不能通过恢复增加额度。</p>
+        <Alert
+          v-if="selected.overview?.reason"
+          type="warning"
+          show-icon
+          :message="selected.overview.reason"
+        />
+        <p class="hci-evidence">
+          {{ taskSummary(selected).label }}<br />{{
+            taskSummary(selected).result
+          }}
+        </p>
+        <TaskCollections :task="selected" />
+        <details>
+          <summary style="margin-top: 20px; cursor: pointer">
+            查看本轮汇总与用量
+          </summary>
+          <TaskProgress :task="selected" />
+        </details>
+        <Button
+          v-if="selected.cloudJobId && resourceTaskCanResume(selected)"
+          :loading="resuming === selected.cloudJobId"
+          @click="resumeResource(selected)"
+        >
+          继续未执行资源步骤
+        </Button>
+        <p
+          v-if="
+            selected.researchProgress?.resource &&
+            selected.status === 'cancelled'
+          "
+          class="hci-subtle"
+        >
+          恢复沿用原任务、预算与请求记录；已执行请求不重放。预算截断及未知扣费结果不能通过恢复增加额度。
+        </p>
         <Button
           v-if="
             selected.cloudJobId &&
@@ -260,18 +339,26 @@ const auditRows = computed(() =>
         >
           仅重试未完成趋势
         </Button>
-        <h3 style="margin: 24px 0 12px">执行记录</h3>
-        <div
-          v-for="(step, i) in selected.steps"
-          :key="i"
-          class="hci-market-row"
-        >
-          <span class="hci-market-code">{{ i + 1 }}</span><span style="flex: 1">{{ step }}</span>
-        </div>
+        <details>
+          <summary style="margin: 24px 0 12px; cursor: pointer">
+            任务级执行记录
+          </summary>
+          <div
+            v-for="(step, i) in selected.steps"
+            :key="i"
+            class="hci-market-row"
+          >
+            <span class="hci-market-code">{{ i + 1 }}</span
+            ><span style="flex: 1">{{ step }}</span>
+          </div>
+        </details>
         <div v-if="selected.readOnly" class="hci-evidence">
           当前展示已保存的任务摘要，原任务和检查点保留。
         </div>
-        <div v-else-if="selected.researchProgress?.resource" class="hci-evidence">
+        <div
+          v-else-if="selected.researchProgress?.resource"
+          class="hci-evidence"
+        >
           本任务按已配置的资源路径执行。请求、累计预留与已确认用量分别记录；缺少回执的费用需人工核实。
         </div>
         <div v-else-if="isLiveTask(selected)" class="hci-evidence">

@@ -299,6 +299,8 @@ export async function runMarketReport(job, overrides = {}) {
         ...job.checkpoint,
         finishedAt: report.finishedAt,
         evidenceIds: report.evidenceIds,
+        index: 1,
+        ...(report.modelError ? { stopReason: report.modelError } : {}),
       },
       report.status,
     );

@@ -22,6 +22,8 @@ import {
   siteHostAllowed,
 } from './product-jobs.mjs';
 
+import { westmonthCatalogScope } from './westmonth-market.mjs';
+
 const done = (w) =>
   ['completed', 'empty', 'partial', 'blocked', 'failed'].includes(w.status);
 const at = (now) => new Date(now).toISOString();
@@ -64,7 +66,7 @@ export function canonicalCatalogUrl(value, base) {
     for (const key of [...u.searchParams.keys()])
       if (
         !['page','paged','limit','id','pid','product_id','productid','sku','variant','handle'].includes(key.toLowerCase()) &&
-        !(new URL(base).hostname.replace(/^www\./, '') === 'westmonth.com' && key === 'ranking_type' && u.searchParams.get(key) === 'new') &&
+        !(new URL(base).hostname.replace(/^www\./, '') === 'westmonth.com' && ((key === 'ranking_type' && u.searchParams.get(key) === 'new') || (key === 'regionSelect' && /^(?:3|9|21)$/.test(u.searchParams.get(key))))) &&
         !(/sitemap.*\.xml/i.test(u.pathname) && ['from', 'to'].includes(key))
       )
         u.searchParams.delete(key);
@@ -75,7 +77,7 @@ export function canonicalCatalogUrl(value, base) {
   }
 }
 export function fallbackProductUrls(site) {
-  if (isWestmonth(site)) return [westmonthEntry()];
+  if (isWestmonth(site)) return [westmonthEntry(false, site.market)];
   const base = siteBase(site);
   return [
     ...new Set(
@@ -123,6 +125,7 @@ export function initialProductWork(site) {
   const base = siteBase(site);
   return {
     status: 'pending',
+    ...(isWestmonth(site) ? { catalogScopeKey: westmonthCatalogScope(site) } : {}),
     requests: 0,
     productIds: [],
     detailTargets: [], detailCompleted: [], detailProductIds: [],
@@ -157,8 +160,23 @@ export function initializeProducts(job, now = Date.now()) {
     ...structuredClone(job.checkpoint),
   };
   if (cp.productQueueVersion === 2) {
-    for (const [i, w] of cp.siteWork.entries())
-      cleanProductQueue(w, job.input.records[i]);
+    for (const [i, w] of cp.siteWork.entries()) {
+      const site = job.input.records[i];
+      if (isWestmonth(site) && !done(w) && w.catalogScopeKey !== westmonthCatalogScope(site)) {
+        w.status = 'partial';
+        w.stopReason = 'catalog_scope_changed';
+        w.message = '西之月采集已改为所选发货区域；旧未筛选任务停止，已有结果保留，请新建任务';
+        w.urls = [];
+        w.nextRunAt = 0;
+        if (cp.inFlight?.index === i) {
+          cp.requestLog ||= [];
+          cp.requestLog.push({ ...cp.inFlight, status: 'unknown', message: '旧范围在途请求未重放' });
+          cp.inFlight = null;
+        }
+        cp.logs.push(w.message);
+      }
+      cleanProductQueue(w, site);
+    }
     cp.productPolicyVersion = PRODUCT_POLICY_VERSION;
     return cp;
   }
@@ -177,6 +195,15 @@ export function initializeProducts(job, now = Date.now()) {
         urls: [],
       });
     else if (i === cp.index && cp.urls) {
+      if (isWestmonth(s)) {
+        w.status = 'partial';
+        w.stopReason = 'catalog_scope_changed';
+        w.message = '旧未筛选西之月任务已停止，已有结果保留，请新建所选发货区域任务';
+        w.urls = [];
+        w.requests = cp.requests || 0;
+        w.productIds = cp.productIds || [];
+        return w;
+      }
       w.urls = cp.urls
         .map((u) => canonicalCatalogUrl(u, siteBase(s)))
         .filter(Boolean);

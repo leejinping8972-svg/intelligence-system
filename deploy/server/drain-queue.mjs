@@ -1,13 +1,14 @@
 // Run in a separate compose one-off container, mounted /release and /app.
 // Hold both runner session locks across the API restart; never kill collectors.
-import { writeFile, access } from 'node:fs/promises';
+import { access, writeFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { pool, lock, unlock } from '/app/database.mjs';
+
+import { lock, pool, unlock } from '/app/database.mjs';
 const prefix = process.argv[2];
 if (!/^\/release\/[a-z0-9-]+$/.test(prefix || ''))
   throw new Error('Invalid gate prefix');
-const deadline = Date.now() + 15 * 60 * 1000,
-  held = [];
+const deadline = Date.now() + 15 * 60 * 1000;
+const held = [];
 const connection = await pool.connect();
 connection.on('error', () => process.exit(1));
 try {
@@ -15,6 +16,10 @@ try {
     'runner',
     'trend-runner',
     'competitor-runner',
+    'hotwords-runner',
+    'keyword-trends-runner',
+    'monitor-config',
+    'keyword-trends-config',
     'public-content-runner',
   ]) {
     while (!(await lock(connection, name))) {

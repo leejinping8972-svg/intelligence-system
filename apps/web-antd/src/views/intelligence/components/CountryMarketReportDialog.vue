@@ -45,6 +45,7 @@ async function submit() {
     busy.value = false;
   }
 }
+import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
   <Button type="primary" @click="open = true">生成国家市场报告</Button>
@@ -99,6 +100,10 @@ async function submit() {
         >
       </Form.Item>
     </Form>
+    <CollectionEstimate
+      v-if="open"
+      :input="{ kind: 'market_analysis', ...form }"
+    />
   </Modal>
 </template>
 <style scoped>

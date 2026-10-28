@@ -1,13 +1,11 @@
 /* eslint-disable unicorn/no-await-expression-member -- Document SQL follows existing server query conventions. */
 /* eslint-disable unicorn/prefer-ternary -- Each scheduler branch supplies a separate set of IO callbacks. */
 import { randomUUID } from 'node:crypto';
-import { appendCoreEvidence, archiveCoreEvidence } from './core-evidence.mjs';
 import { setTimeout as pause } from 'node:timers/promises';
 
 import { saveAdvertiserBatch } from './advertiser-monitor-batch.mjs';
 import { requireAdmin } from './auth.mjs';
 import { saveSiteBatch } from './competitor-batch.mjs';
-import { publicRecoveryPlan } from './monitor-public-recovery.mjs';
 import {
   dayKey,
   digest,
@@ -25,11 +23,17 @@ import {
   scanAdvertiser,
   scanSite,
 } from './competitor-monitor-providers.mjs';
+import { appendCoreEvidence, archiveCoreEvidence } from './core-evidence.mjs';
 import { maintenance } from './database-admin.mjs';
 import { lock, pool, putDocument, unlock } from './database.mjs';
 import { cleanKeyword, naturalKey } from './domain.mjs';
-import { saveKeyword } from './store.mjs';
 import { tickKeywordTrends } from './keyword-trends-store.mjs';
+import { publicRecoveryPlan } from './monitor-public-recovery.mjs';
+import { withQueueConfig } from './queue-config-lock.mjs';
+import { parallelItems } from './source-scheduler.mjs';
+import { saveKeyword } from './store.mjs';
+
+import { westmonthChannelKey } from './westmonth-market.mjs';
 
 const PREFIX = 'competitor:';
 export function createMonitorStore(connection = pool) {
@@ -52,16 +56,41 @@ export function createMonitorStore(connection = pool) {
   return { read, write, list };
 }
 
-export async function withCompetitorIdle(callback) {
+async function withMonitorLane(name, callback) {
   const c = await pool.connect();
   let held = false;
+  const lost = () => process.exit(1);
+  c.on?.('error', lost);
   try {
-    held = await lock(c, 'competitor-runner');
-    if (!held) throw new Error('竞品监控或热词榜正在执行，请稍后操作');
+    held = await lock(c, name);
+    if (!held) return;
     return await callback(c);
   } finally {
     try {
-      if (held) await unlock(c, 'competitor-runner');
+      if (held) await unlock(c, name);
+    } finally {
+      c.removeListener?.('error', lost);
+      c.release();
+    }
+  }
+}
+export async function withCompetitorIdle(callback) {
+  const c = await pool.connect();
+  const held = [];
+  try {
+    for (const name of [
+      'competitor-runner',
+      'hotwords-runner',
+      'keyword-trends-runner',
+    ]) {
+      if (!(await lock(c, name)))
+        throw new Error('后台采集仍在执行，请稍后操作');
+      held.push(name);
+    }
+    return await callback(c);
+  } finally {
+    try {
+      for (const name of held.reverse()) await unlock(c, name);
     } finally {
       c.release();
     }
@@ -103,7 +132,8 @@ export async function competitorAction(input, user) {
     };
   }
   requireAdmin(user);
-  return withCompetitorIdle(async (c) => {
+  if (maintenance) throw new Error('系统维护中，请稍后保存或提交');
+  return withQueueConfig('monitor-config', async (c) => {
     const db = createMonitorStore(c);
     if (input.action === 'server_competitor_batch_save')
       return saveSiteBatch(input, db, c);
@@ -142,6 +172,7 @@ export async function competitorAction(input, user) {
       if (!old && (await db.list(`${PREFIX}target:`)).length >= 100)
         throw new Error('最多监控100个对象，请先移除不再需要的监控');
       const value = {
+        ...old,
         ...schedule,
         id,
         kind: input.kind,
@@ -160,7 +191,13 @@ export async function competitorAction(input, user) {
     }
     if (input.action === 'server_competitor_hot_save') {
       const config = validateHotwords(input);
-      await db.write(`${PREFIX}hot-config:${config.market}`, config);
+      const name = `${PREFIX}hot-config:${config.market}`;
+      const previous = await db.read(name);
+      await db.write(name, {
+        ...previous,
+        ...config,
+        updatedAt: new Date().toISOString(),
+      });
       return { saved: true };
     }
     const hot = input.kind === 'hotwords';
@@ -197,8 +234,18 @@ export async function competitorAction(input, user) {
       return { saved: true };
     }
     if (input.action === 'server_competitor_remove' && !hot) {
+      if ((await db.read(`${PREFIX}run:${id}`))?.status === 'running')
+        throw new Error('此对象仍在采集，请先暂停并等当前请求结束后移除');
+      const removedSite = config.siteId
+        ? await db.read(`business:sites:${config.siteId}`)
+        : null;
+      const removedProductChannel = westmonthChannelKey(
+        'products',
+        removedSite,
+      );
       for (const key of [
         name,
+        `${PREFIX}baseline:${id}:${removedProductChannel}`,
         `${PREFIX}baseline:${id}:products`,
         `${PREFIX}baseline:${id}:ads`,
         `${PREFIX}crawl:${id}:products`,
@@ -211,8 +258,10 @@ export async function competitorAction(input, user) {
       await db.write(name, {
         ...config,
         enabled: false,
+        pausedAt: new Date().toISOString(),
         requested: false,
         publicRetryRequested: false,
+        updatedAt: new Date().toISOString(),
       });
       return { saved: true };
     }
@@ -240,8 +289,20 @@ export async function persistObservation(c, target, kind, item, event, at) {
         [businessName],
       )
     ).rows[0]?.value;
-    const observed = appendCoreEvidence(kind, old, mergeObserved(old, item, at), item);
-    await archiveCoreEvidence(kind, item.id, observed, (name, snapshot, only) => putDocument('workspace_documents', name, snapshot, only, c), old);
+    const observed = appendCoreEvidence(
+      kind,
+      old,
+      mergeObserved(old, item, at),
+      item,
+    );
+    await archiveCoreEvidence(
+      kind,
+      item.id,
+      observed,
+      (name, snapshot, only) =>
+        putDocument('workspace_documents', name, snapshot, only, c),
+      old,
+    );
     await db.write(businessName, observed);
     if (event) {
       event.keywordIds = [];
@@ -300,7 +361,12 @@ export async function persistObservation(c, target, kind, item, event, at) {
       }
       await db.write(`${PREFIX}event:${at}:${event.id}`, event);
     }
-    await db.write(`${PREFIX}seen:${target.id}:${kind}:${digest(item.id)}`, {
+    const site =
+      kind === 'products' && target.siteId
+        ? await db.read(`business:sites:${target.siteId}`)
+        : null;
+    const channel = westmonthChannelKey(kind, site);
+    await db.write(`${PREFIX}seen:${target.id}:${channel}:${digest(item.id)}`, {
       at,
       itemId: item.id,
     });
@@ -311,19 +377,24 @@ export async function persistObservation(c, target, kind, item, event, at) {
   }
 }
 
-export async function competitorTick(c, providers = {}) {
+export async function competitorTick(c, providers = {}, selectedEntry) {
   if (maintenance) return;
   const now = Date.now();
   const at = new Date(now).toISOString();
   const day = dayKey(now);
   const db = createMonitorStore(c);
-  const targets = [
-    ...(await db.list(`${PREFIX}target:`)),
-    ...(await db.list(`${PREFIX}hot-config:`)),
-  ];
-  // One target per tick lets pause/configuration requests obtain the same lock.
+  const targets = selectedEntry
+    ? [selectedEntry]
+    : [
+        ...(await db.list(`${PREFIX}target:`)),
+        ...(await db.list(`${PREFIX}hot-config:`)),
+      ];
+  // Each target owns its execution connection; configuration uses a short separate lock.
   for (const entry of targets) {
-    const config = entry.value;
+    // Re-read and claim under the short configuration lock. Network work never
+    // holds it, so saves cannot overwrite a queue claim or lose a new request.
+    const config = await db.read(entry.name);
+    if (!config) continue;
     const hot = entry.name.includes('hot-config:');
     const id = hot ? `hot-${config.market}` : config.id;
     const runName = `${PREFIX}run:${id}`;
@@ -348,12 +419,30 @@ export async function competitorTick(c, providers = {}) {
       (last?.day === day || (!config.requested && !due(config, last, now)))
     )
       continue;
-    await db.write(entry.name, {
-      ...config,
-      requested: publicOnly ? config.requested : false,
-      publicRetryRequested: false,
-    });
+    const claimed = await withQueueConfig(
+      'monitor-config',
+      async () => {
+        const latest = await db.read(entry.name);
+        if (!latest || JSON.stringify(latest) !== JSON.stringify(config))
+          return false;
+        await db.write(entry.name, {
+          ...latest,
+          requested: publicOnly ? latest.requested : false,
+          publicRetryRequested: false,
+        });
+        return true;
+      },
+      c,
+    );
+    if (!claimed) continue;
     const request = async (step, call) => {
+      const latest = await db.read(entry.name);
+      if (
+        !latest ||
+        latest.pausedAt !== config.pausedAt ||
+        (config.enabled && !latest.enabled)
+      )
+        throw new Error('用户已暂停，当前请求结束后停止后续采集');
       const journalStep = publicOnly
         ? `public-recovery-${(last.publicRecoveryAttempts || 0) + 1}:${step}`
         : step;
@@ -436,16 +525,21 @@ export async function competitorTick(c, providers = {}) {
           }
         },
       });
-    else
+    else {
+      const monitoredSite = config.siteId
+        ? await db.read(`business:sites:${config.siteId}`)
+        : null;
+      const channelKey = (kind) => westmonthChannelKey(kind, monitoredSite);
       await executeMonitor(config, {
         ...io,
         publicOnly,
         previousRun: publicOnly ? last : null,
-        baseline: (kind) => db.read(`${PREFIX}baseline:${id}:${kind}`),
+        baseline: (kind) =>
+          db.read(`${PREFIX}baseline:${id}:${channelKey(kind)}`),
         setBaseline: (kind) =>
-          db.write(`${PREFIX}baseline:${id}:${kind}`, { at }),
+          db.write(`${PREFIX}baseline:${id}:${channelKey(kind)}`, { at }),
         seen: (kind, itemId) =>
-          db.read(`${PREFIX}seen:${id}:${kind}:${digest(itemId)}`),
+          db.read(`${PREFIX}seen:${id}:${channelKey(kind)}:${digest(itemId)}`),
         persist: (kind, item, event) =>
           persistObservation(c, config, kind, item, event, at),
         saveProgress: (kind, value) =>
@@ -467,6 +561,8 @@ export async function competitorTick(c, providers = {}) {
             );
           const site = await db.read(`business:sites:${config.siteId}`);
           if (!site) throw new Error('监控站点已删除');
+          if (site.market !== config.market)
+            throw new Error('监控市场与站点市场不一致，已停止采集');
           const hostName = `${PREFIX}host:${digest(site.domain.toLowerCase().replace(/^www\./, ''))}`;
           const gate = await db.read(hostName);
           const siteProgress = {
@@ -485,25 +581,46 @@ export async function competitorTick(c, providers = {}) {
           return result;
         },
       });
+    }
     return;
   }
 }
 
 export async function runCompetitorQueue(signal) {
-  while (!signal.aborted) {
-    try {
-      await withCompetitorIdle(async (c) => {
-        await competitorTick(c);
-        await tickKeywordTrends(c);
+  const lane = async (name, tick) => {
+    while (!signal.aborted) {
+      try {
+        if (!maintenance) await withMonitorLane(name, tick);
+      } catch (error) {
+        console.error('监控通道：', error.message);
+      }
+      try {
+        await pause(15_000, undefined, { signal });
+      } catch {
+        break;
+      }
+    }
+  };
+  // Separate loops keep trends/hotwords advancing while a slow site is waiting.
+  // Deployment and database maintenance acquire all three execution guards.
+  await Promise.all([
+    lane('competitor-runner', async (c) => {
+      const entries = await createMonitorStore(c).list(PREFIX + 'target:');
+      await parallelItems(entries, 2, async (entry) => {
+        const worker = await pool.connect();
+        try {
+          await competitorTick(worker, {}, entry);
+        } finally {
+          worker.release();
+        }
       });
-    } catch (error) {
-      if (!/正在执行/.test(error.message))
-        console.error('竞品监控：', error.message);
-    }
-    try {
-      await pause(15_000, undefined, { signal });
-    } catch {
-      break;
-    }
-  }
+    }),
+    lane('hotwords-runner', async (c) => {
+      for (const entry of await createMonitorStore(c).list(
+        PREFIX + 'hot-config:',
+      ))
+        await competitorTick(c, {}, entry);
+    }),
+    lane('keyword-trends-runner', (c) => tickKeywordTrends(c)),
+  ]);
 }

@@ -66,36 +66,84 @@ export function setWorkspaceReadMode(mode: 'legacy' | 'paged' | 'tasks') {
 function changedFields(previous: string | undefined, value: unknown) {
   if (!previous || !value || typeof value !== 'object') return value;
   const old = JSON.parse(previous);
-  return Object.fromEntries(Object.entries(value).filter(([key, next]) =>
-    !['listSummary', 'decisionTags', 'trendSummary', 'coreSummary', 'score', 'assessment', 'productCount'].includes(key) && JSON.stringify(old[key]) !== JSON.stringify(next),
-  ));
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, next]) =>
+        ![
+          'assessment',
+          'coreSummary',
+          'decisionTags',
+          'listSummary',
+          'productCount',
+          'score',
+          'trendSummary',
+        ].includes(key) && JSON.stringify(old[key]) !== JSON.stringify(next),
+    ),
+  );
 }
-export function applyWorkspaceRecords(collection: 'ads' | 'keywords' | 'products' | 'sites', records: unknown[]) {
+export function applyWorkspaceRecords(
+  collection: 'ads' | 'keywords' | 'products' | 'sites',
+  records: unknown[],
+) {
   applying.value = true;
   try {
     for (const incoming of records) {
       const record = incoming as Keyword;
-      const previous = (state[collection] as unknown as Keyword[]).find((row) => row.id === record.id);
-      const localPatch = collection === 'keywords' ? pending.get(record.id) : businessPending.get(`${collection}:${record.id}`);
-      const merged = { ...record, ...(localPatch && typeof localPatch === 'object' ? localPatch : {}) };
+      const previous = (state[collection] as unknown as Keyword[]).find(
+        (row) => row.id === record.id,
+      );
+      const localPatch =
+        collection === 'keywords'
+          ? pending.get(record.id)
+          : businessPending.get(`${collection}:${record.id}`);
+      const merged = {
+        ...record,
+        ...(localPatch && typeof localPatch === 'object' ? localPatch : {}),
+      };
       if (previous?.listSummary === false && record.listSummary) {
         // A compact page refresh must not truncate an already opened detail.
         const full = previous as unknown as Record<string, unknown>;
         const next = merged as unknown as Record<string, unknown>;
-        for (const key of ['series', 'trendPoints', 'ingredientInsights', 'benefits', 'benefitEvidence', 'decisionData', 'sourceContent', 'coreEvidence', 'copy', 'imageUrls', 'videoUrls', 'videoPosterUrls'])
+        for (const key of [
+          'series',
+          'trendPoints',
+          'ingredientInsights',
+          'benefits',
+          'benefitEvidence',
+          'decisionData',
+          'sourceContent',
+          'coreEvidence',
+          'copy',
+          'imageUrls',
+          'videoUrls',
+          'videoPosterUrls',
+        ])
           if (full[key] !== undefined) next[key] = full[key];
         merged.listSummary = false;
       }
       if (previous) Object.assign(previous, merged);
       else (state[collection] as unknown[]).push(merged);
-      if (collection === 'keywords') known.set(record.id, JSON.stringify(editable(record)));
-      else businessKnown.set(`${collection}:${record.id}`, JSON.stringify(previous || merged));
+      if (collection === 'keywords')
+        known.set(record.id, JSON.stringify(editable(record)));
+      else
+        businessKnown.set(
+          `${collection}:${record.id}`,
+          JSON.stringify(previous || merged),
+        );
     }
-  } finally { applying.value = false; }
+  } finally {
+    applying.value = false;
+  }
 }
-export async function loadWorkspaceDetail(collection: 'ads' | 'keywords' | 'products' | 'sites', id: string) {
+export async function loadWorkspaceDetail(
+  collection: 'ads' | 'keywords' | 'products' | 'sites',
+  id: string,
+) {
   if (!serverMode || !id) return;
-  const result = await cloudRequest<{ record: unknown }>('server_workspace_detail', { collection, id });
+  const result = await cloudRequest<{ record: unknown }>(
+    'server_workspace_detail',
+    { collection, id },
+  );
   applyWorkspaceRecords(collection, [result.record]);
 }
 let revisions: Record<string, string> = {};
@@ -158,7 +206,8 @@ interface ResearchSubmission {
 }
 let clearing = false;
 let initialized = '';
-let pendingSubmission: undefined | { signature: string; requestId: string };
+const pendingSubmissions = new Map<string, string>();
+let activeSubmissions = 0;
 watch(
   () =>
     applying.value
@@ -173,8 +222,13 @@ watch(
     for (const { key, value } of entries)
       if (businessKnown.get(key) !== value) {
         const next = JSON.parse(value);
-        const patch = serverMode && readMode.value !== 'legacy'
-          ? { ...(businessPending.get(key) as object || {}), ...changedFields(businessKnown.get(key), next) as object } : next;
+        const patch =
+          serverMode && readMode.value !== 'legacy'
+            ? {
+                ...((businessPending.get(key) as object) || {}),
+                ...(changedFields(businessKnown.get(key), next) as object),
+              }
+            : next;
         if (patch && Object.keys(patch).length) businessPending.set(key, patch);
         else businessKnown.set(key, value);
       }
@@ -208,7 +262,11 @@ export async function cloudRequest<T>(
     return adminRequest<T>(
       action,
       input,
-      action === 'server_workspace_delta' ? 90_000 : action === 'server_product_resource_categories' ? 120_000 : 30_000,
+      action === 'server_workspace_delta'
+        ? 90_000
+        : action === 'server_product_resource_categories'
+          ? 120_000
+          : 30_000,
     );
   const { researchApiUrl, researchAccessKey } = state.settings;
   if (!researchApiUrl || !researchAccessKey)
@@ -467,22 +525,31 @@ async function runPagedSync() {
   try {
     const scope = session.user?.id || '';
     if (pagedScope !== scope) {
-      known.clear(); pending.clear(); businessKnown.clear(); businessPending.clear();
+      known.clear();
+      pending.clear();
+      businessKnown.clear();
+      businessPending.clear();
       pagedScope = scope;
     }
     if (pending.size) {
-      const updates = [...pending].slice(0, 100).map(([id, patch]) => ({ id, patch }));
+      const updates = [...pending]
+        .slice(0, 100)
+        .map(([id, patch]) => ({ id, patch }));
       await cloudRequest('server_patch_keywords', { updates });
       for (const { id, patch } of updates) {
-        if (JSON.stringify(pending.get(id)) === JSON.stringify(patch)) pending.delete(id);
+        if (JSON.stringify(pending.get(id)) === JSON.stringify(patch))
+          pending.delete(id);
         known.set(id, JSON.stringify(patch));
       }
     }
     if (businessPending.size) {
-      const entries = [...businessPending].slice(0, 1000).map(([key, value]) => ({ key, value }));
+      const entries = [...businessPending]
+        .slice(0, 1000)
+        .map(([key, value]) => ({ key, value }));
       await cloudRequest('server_workspace_sync', { entries, patch: true });
       for (const { key, value } of entries) {
-        if (JSON.stringify(businessPending.get(key)) === JSON.stringify(value)) businessPending.delete(key);
+        if (JSON.stringify(businessPending.get(key)) === JSON.stringify(value))
+          businessPending.delete(key);
         if (value === null) businessKnown.delete(key);
         else {
           const current = businessEntries().get(key);
@@ -492,9 +559,18 @@ async function runPagedSync() {
     }
     const result = await cloudRequest<{
       entries: Array<{ key: string; value: object }>;
-      revisions: Record<string, string>; active: number; generatedAt: string; indexing: boolean;
+      revisions: Record<string, string>;
+      active: number;
+      generatedAt: string;
+      indexing: boolean;
     }>('server_workspace_bootstrap');
-    const taskSnapshot = readMode.value === 'tasks' ? await cloudRequest<{ tasks?: Task[]; revisions: Record<string, string> }>('server_workspace_delta', { channels: ['tasks'], revisions }) : undefined;
+    const taskSnapshot =
+      readMode.value === 'tasks'
+        ? await cloudRequest<{
+            tasks?: Task[];
+            revisions: Record<string, string>;
+          }>('server_workspace_delta', { channels: ['tasks'], revisions })
+        : undefined;
     applying.value = true;
     try {
       for (const { key, value } of result.entries) {
@@ -504,17 +580,26 @@ async function runPagedSync() {
           businessKnown.set(key, JSON.stringify(businessEntries().get(key)));
         }
       }
-      for (const [key, value] of [['branding:main', state.branding], ['preferences:main', state.settings]] as const)
-        if (!businessKnown.has(key) && !businessPending.has(key)) businessKnown.set(key, JSON.stringify(value));
+      for (const [key, value] of [
+        ['branding:main', state.branding],
+        ['preferences:main', state.settings],
+      ] as const)
+        if (!businessKnown.has(key) && !businessPending.has(key))
+          businessKnown.set(key, JSON.stringify(value));
       if (taskSnapshot) {
         const tasks = taskSnapshot;
         if (tasks.tasks) {
-          state.tasks = [...state.tasks.filter((t) => !t.cloudJobId), ...tasks.tasks];
+          state.tasks = [
+            ...state.tasks.filter((t) => !t.cloudJobId),
+            ...tasks.tasks,
+          ];
           cloudWorkspace.taskRevision = tasks.revisions.tasks || '';
         }
         revisions = tasks.revisions;
       }
-    } finally { applying.value = false; }
+    } finally {
+      applying.value = false;
+    }
     cloudWorkspace.publishedRevision = result.revisions.published || '';
     cloudWorkspace.indexing = result.indexing;
     cloudWorkspace.active = result.active;
@@ -522,9 +607,12 @@ async function runPagedSync() {
     cloudWorkspace.error = '';
     cloudWorkspace.lastSynced = result.generatedAt;
   } catch (error) {
-    cloudWorkspace.error = error instanceof Error ? error.message : '云端保存或状态读取失败';
+    cloudWorkspace.error =
+      error instanceof Error ? error.message : '云端保存或状态读取失败';
     throw error;
-  } finally { cloudWorkspace.syncing = false; }
+  } finally {
+    cloudWorkspace.syncing = false;
+  }
 }
 export function submitCloudResearch(
   input: Omit<KeywordResearchInput, 'signal'>,
@@ -533,8 +621,6 @@ export function submitCloudResearch(
   const key = JSON.stringify({ input, existingRecords });
   const pending = submissionFlights.get(key);
   if (pending) return pending;
-  if (cloudWorkspace.submitting)
-    return Promise.reject(new Error('正在提交另一项任务，请稍后再试'));
   const result = doSubmitCloudResearch(input, existingRecords);
   submissionFlights.set(key, result);
   void result.finally(() => submissionFlights.delete(key)).catch(() => {});
@@ -561,13 +647,14 @@ async function doSubmitCloudResearch(
     ...(existingRecords ? { existingRecords } : {}),
   };
   const signature = JSON.stringify(payload);
-  if (pendingSubmission?.signature !== signature)
-    pendingSubmission = { signature, requestId: crypto.randomUUID() };
+  const requestId = pendingSubmissions.get(signature) || crypto.randomUUID();
+  pendingSubmissions.set(signature, requestId);
+  activeSubmissions++;
   cloudWorkspace.submitting = true;
   try {
     const result = await cloudRequest<ResearchSubmission>('server_submit', {
       input: payload,
-      requestId: pendingSubmission.requestId,
+      requestId,
     });
     if (
       existingRecords &&
@@ -577,7 +664,7 @@ async function doSubmitCloudResearch(
       throw new Error(
         `后台接收数量${result.acceptedKeywords}与勾选数量${payload.expectedKeywordCount}不一致。请勿重复提交，任务编号：${result.jobId}`,
       );
-    pendingSubmission = undefined;
+    pendingSubmissions.delete(signature);
     for (const task of result.tasks)
       if (!state.tasks.some((item) => item.id === task.id))
         state.tasks.unshift(task);
@@ -594,7 +681,7 @@ async function doSubmitCloudResearch(
     void syncCloudWorkspace().catch(() => {});
     return result;
   } finally {
-    cloudWorkspace.submitting = false;
+    cloudWorkspace.submitting = --activeSubmissions > 0;
   }
 }
 export async function cancelCloudJob(jobId: string) {

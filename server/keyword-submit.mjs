@@ -15,18 +15,20 @@ export function researchSignature(input) {
     depth: input.depth,
     limit: input.limit,
     sorftimeRequestLimit: input.sorftimeRequestLimit,
-    socialTrends: input.socialTrends ? {
-      sources: sorted(input.socialTrends.sources),
-      maxRequests: input.socialTrends.maxRequests,
-      maxPages: input.socialTrends.maxPages,
-    } : null,
+    socialTrends: input.socialTrends
+      ? {
+          sources: sorted(input.socialTrends.sources),
+          maxRequests: input.socialTrends.maxRequests,
+          maxPages: input.socialTrends.maxPages,
+        }
+      : null,
     existingRecords: input.existingRecords
       ? sorted(input.existingRecords.map((r) => `${r.market}|${r.id}`))
       : null,
   });
 }
 
-// One submission lock protects both semantic deduplication and the queue limit.
+// Request IDs make transport retries idempotent; deliberate submissions queue independently.
 // Existing completed runs remain history; they are never deleted or cancelled here.
 export async function submitKeywordJob(
   value,
@@ -50,20 +52,6 @@ export async function submitKeywordJob(
     const active = await connection.query(
       "SELECT id,input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
     );
-    const signature = researchSignature(value);
-    const match = active.rows.find(
-      (job) => !job.input.kind && researchSignature(job.input) === signature,
-    );
-    if (match) {
-      const matched = await connection.query(
-        'SELECT * FROM research_jobs WHERE id=$1',
-        [match.id],
-      );
-      return {
-        job: matched.rows[0],
-        reused: true,
-      };
-    }
     if (active.rows.length >= 20)
       throw new Error('后台已有20个待完成任务，请稍后提交');
     const id = randomUUID();

@@ -30,7 +30,7 @@ export async function planWestmonthMetricsBackfill(products, options) {
     requests++;
     return fetchPage(...args);
   }
-  let next = eligible.some(missingSales) ? westmonthEntry(true) : '';
+  let next = eligible.some(missingSales) ? westmonthEntry(true, site.market) : '';
   let stopped = false;
   while (next && requests < maxRequests) {
     try {

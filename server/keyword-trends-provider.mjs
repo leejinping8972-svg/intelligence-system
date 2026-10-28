@@ -1,3 +1,4 @@
+import { scheduleSource } from './source-scheduler.mjs';
 const HOST = 'https://api.scrapecreators.com';
 const count = (v) =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
@@ -10,12 +11,12 @@ function published(value) {
 }
 function publicUrl(value, source) {
   try {
-    const u = new URL(value),
-      host = {
-        tiktok: 'tiktok.com',
-        instagram: 'instagram.com',
-        facebook: 'facebook.com',
-      }[source];
+    const host = {
+      tiktok: 'tiktok.com',
+      instagram: 'instagram.com',
+      facebook: 'facebook.com',
+    }[source];
+    const u = new URL(value);
     return u.protocol === 'https:' &&
       !u.username &&
       !u.password &&
@@ -70,7 +71,7 @@ export function parseSocialResult(work, payload) {
   let discardedCount = Math.max(0, rows.length - 250);
   for (const raw of rows.slice(0, 250)) {
     const r = raw.aweme_info || raw;
-    let id, url, date, author, stats;
+    let author, date, id, stats, url;
     if (source === 'tiktok') {
       id = String(r.aweme_id || '');
       url = /^\d{10,30}$/.test(id)
@@ -121,9 +122,9 @@ export function parseSocialResult(work, payload) {
   }
   const more = payload.has_more ?? payload.hasMore;
   const cursor = payload.cursor ?? null;
-  let hasMore = false,
-    exhausted = false,
-    paginationIssue = '';
+  let exhausted = false;
+  let hasMore = false;
+  let paginationIssue = '';
   if (
     more === false ||
     more === 0 ||
@@ -158,25 +159,31 @@ export function parseSocialResult(work, payload) {
   };
 }
 export async function fetchSocialTrend(work, key, fetcher = fetch) {
-  const request = socialRequest(work),
-    url = new URL(`${HOST}${request.path}`);
+  const request = socialRequest(work);
+  const url = new URL(`${HOST}${request.path}`);
   for (const [k, v] of Object.entries(request.params))
     url.searchParams.set(k, String(v));
-  const response = await fetcher(url, {
-    headers: { 'x-api-key': key },
-    redirect: 'error',
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!response.ok) {
-    await response.body?.cancel();
-    const e = new Error(
-      `社媒趋势接口HTTP ${response.status}；本日停止自动调用，请核对权限、限流和额度`,
-    );
-    e.status = response.status;
-    throw e;
-  }
-  const data = await response.json();
-  if (data.success === false)
-    throw new Error('社媒趋势接口未成功返回，扣费待确认');
-  return parseSocialResult(work, data);
+  return scheduleSource(
+    'scrapecreators',
+    async () => {
+      const response = await fetcher(url, {
+        headers: { 'x-api-key': key },
+        redirect: 'error',
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        const e = new Error(
+          `社媒趋势接口HTTP ${response.status}；本日停止自动调用，请核对权限、限流和额度`,
+        );
+        e.status = response.status;
+        throw e;
+      }
+      const data = await response.json();
+      if (data.success === false)
+        throw new Error('社媒趋势接口未成功返回，扣费待确认');
+      return parseSocialResult(work, data);
+    },
+    { intervalMs: fetcher === fetch ? 1000 : 0 },
+  );
 }

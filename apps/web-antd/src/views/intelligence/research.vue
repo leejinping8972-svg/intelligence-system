@@ -21,32 +21,34 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
-import { cloudWorkspace, loadWorkspaceDetail, syncCloudWorkspace } from './cloud-workspace';
-import { serverMode } from './session';
-import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
-import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
+import {
+  cloudWorkspace,
+  loadWorkspaceDetail,
+  syncCloudWorkspace,
+} from './cloud-workspace';
 import { researchSourceTags } from './competitor-monitor';
+import CollectionEstimate from './components/CollectionEstimate.vue';
 import CompactTags from './components/CompactTags.vue';
-import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
-import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
-import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
-import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
-import PageHeader from './components/PageHeader.vue';
 import CoreListControls from './components/CoreListControls.vue';
 import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
+import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
+import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
+import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
+import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
+import PageHeader from './components/PageHeader.vue';
+import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
+import { serverMode } from './session';
 import { useCoreList } from './use-core-list';
+import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
 const core = useCoreList('keywords');
 const { preset: corePreset, period: corePeriod } = core;
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
-import ResearchTrendOptions from './components/ResearchTrendOptions.vue';
-import { defaultResearchTrends } from './keyword-research';
-import SocialTrendCell from './components/SocialTrendCell.vue';
-import { keywordChineseName } from './keyword-names';
-import { emptyScoreFilter, matchesScore } from './resource-list';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
+import ResearchTrendOptions from './components/ResearchTrendOptions.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
+import SocialTrendCell from './components/SocialTrendCell.vue';
 import {
   audit,
   categories,
@@ -57,6 +59,8 @@ import {
   state,
 } from './data';
 import { keywordJob, startKeywordJob, stopKeywordJob } from './keyword-jobs';
+import { keywordChineseName } from './keyword-names';
+import { defaultResearchTrends } from './keyword-research';
 import {
   assessKeyword,
   KEYWORD_MODEL_VERSION,
@@ -67,6 +71,7 @@ import {
   requireCompleteSelection,
   resolveSelection,
 } from './keyword-selection';
+import { emptyScoreFilter, matchesScore } from './resource-list';
 import { keywordSourceStatus } from './site-discovery';
 
 const route = useRoute();
@@ -78,6 +83,7 @@ const supplementOpen = ref(false);
 const supplementTrends = ref(defaultResearchTrends());
 const researchError = ref('');
 const checkingSource = ref(false);
+const researchSubmitting = ref(false);
 const search = ref('');
 const category = ref('ALL');
 const rating = ref('ALL');
@@ -97,7 +103,12 @@ const detailId = ref('');
 const detailLoading = ref(false);
 const detailError = ref('');
 let detailSequence = 0;
-function closeDetail() { detailSequence += 1; detailId.value = ''; detailLoading.value = false; detailError.value = ''; }
+function closeDetail() {
+  detailSequence += 1;
+  detailId.value = '';
+  detailLoading.value = false;
+  detailError.value = '';
+}
 watch(
   () => state.market,
   () => {
@@ -107,11 +118,23 @@ watch(
 );
 const pageSize = ref(10);
 const currentPage = ref(1);
-const remote = useWorkspaceList<Keyword>('keywords', computed(() => ({
-  market: state.market, search: search.value, category: category.value,
-  rating: rating.value, ratingStatus: ratingStatus.value, score: scoreFilter.value,
-  tags: tagFilter.value, timeRange: timeRange.value, review: reviewFilter.value, favorite: favoritesOnly.value,
-})), currentPage, pageSize);
+const remote = useWorkspaceList<Keyword>(
+  'keywords',
+  computed(() => ({
+    market: state.market,
+    search: search.value,
+    category: category.value,
+    rating: rating.value,
+    ratingStatus: ratingStatus.value,
+    score: scoreFilter.value,
+    tags: tagFilter.value,
+    timeRange: timeRange.value,
+    review: reviewFilter.value,
+    favorite: favoritesOnly.value,
+  })),
+  currentPage,
+  pageSize,
+);
 const overview = useOverviewSnapshot();
 const gradeColors: Record<string, string> = {
   A: 'green',
@@ -174,7 +197,10 @@ const allRows = computed(() =>
   }),
 );
 const tagOptions = computed(() =>
-  (serverMode ? remote.facets.value.tag || [] : [...new Set(allRows.value.flatMap((record) => record.assessment.tags))])
+  (serverMode
+    ? remote.facets.value.tag || []
+    : [...new Set(allRows.value.flatMap((record) => record.assessment.tags))]
+  )
     .toSorted()
     .map((value) => ({ label: value, value })),
 );
@@ -208,15 +234,28 @@ const localRows = computed(() =>
     );
   }),
 );
-const rows = computed(() => serverMode ? remote.rows.value.map((record) => ({ ...record, assessment: assessKeyword(record) })) : localRows.value);
+const rows = computed(() =>
+  serverMode
+    ? remote.rows.value.map((record) => ({
+        ...record,
+        assessment: assessKeyword(record),
+      }))
+    : localRows.value,
+);
 const selection = computed(() =>
   resolveSelection(selectedIds.value, selectionSnapshots.value, state.keywords),
 );
 const selected = computed(() => selection.value.records);
 async function selectFiltered() {
   let records: Keyword[];
-  try { records = serverMode ? await remote.selectAll() : rows.value.filter((r) => r.dataNature !== 'demo'); }
-  catch (error) { message.error((error as Error).message); return; }
+  try {
+    records = serverMode
+      ? await remote.selectAll()
+      : rows.value.filter((r) => r.dataNature !== 'demo');
+  } catch (error) {
+    message.error((error as Error).message);
+    return;
+  }
   selectedIds.value = records.map((r) => r.id);
   selectionSnapshots.value = rememberSelection(selectedIds.value, records);
 }
@@ -226,15 +265,26 @@ const detail = computed(() =>
 const assessment = computed(() =>
   detail.value ? assessKeyword(detail.value) : undefined,
 );
-const summary = computed(() => serverMode ? overview.snapshot.value?.keywords || { total: 0, priority: 0, pending: 0, selected: 0 } : ({
-  total: allRows.value.length,
-  priority: allRows.value.filter((record) =>
-    ['A', 'B'].includes(record.assessment.grade || ''),
-  ).length,
-  pending: allRows.value.filter((record) => !record.assessment.grade).length,
-  selected: allRows.value.filter((record) => record.reviewStatus === 'selected')
-    .length,
-}));
+const summary = computed(() =>
+  serverMode
+    ? overview.snapshot.value?.keywords || {
+        total: 0,
+        priority: 0,
+        pending: 0,
+        selected: 0,
+      }
+    : {
+        total: allRows.value.length,
+        priority: allRows.value.filter((record) =>
+          ['A', 'B'].includes(record.assessment.grade || ''),
+        ).length,
+        pending: allRows.value.filter((record) => !record.assessment.grade)
+          .length,
+        selected: allRows.value.filter(
+          (record) => record.reviewStatus === 'selected',
+        ).length,
+      },
+);
 watch(
   [
     search,
@@ -299,8 +349,10 @@ const columns = [
     key: 'score',
     defaultSortOrder: 'descend' as const,
     width: 130,
-    sorter: serverMode ? true : (a: Keyword, b: Keyword) =>
-      (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
+    sorter: serverMode
+      ? true
+      : (a: Keyword, b: Keyword) =>
+          (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
   },
   { title: '分析标签', key: 'tags', width: 240 },
   { title: '谷歌趋势', key: 'trend', width: 200 },
@@ -312,9 +364,11 @@ const columns = [
     title: '抓取时间',
     key: 'collectedAt',
     width: 170,
-    sorter: serverMode ? true : (a: Keyword, b: Keyword) =>
-      (Date.parse(a.collectedAt || '') || 0) -
-      (Date.parse(b.collectedAt || '') || 0),
+    sorter: serverMode
+      ? true
+      : (a: Keyword, b: Keyword) =>
+          (Date.parse(a.collectedAt || '') || 0) -
+          (Date.parse(b.collectedAt || '') || 0),
   },
   { title: '人工筛选', key: 'review', width: 120 },
   { title: '操作', key: 'actions', width: 145, fixed: 'right' as const },
@@ -363,8 +417,11 @@ function toggleFavorite(record: Record<string, unknown>) {
   if (current) current.favorite = !current.favorite;
 }
 async function createResearch() {
-  if (checkingSource.value || keywordJob.running) return;
-  if (form.socialTrends.sources.length && !form.socialTrends.budgetAcknowledged) {
+  if (checkingSource.value || researchSubmitting.value) return;
+  if (
+    form.socialTrends.sources.length &&
+    !form.socialTrends.budgetAcknowledged
+  ) {
     researchError.value = '请确认社媒趋势的来源额度预算';
     return;
   }
@@ -444,8 +501,11 @@ async function createResearch() {
     ),
     depth: form.depth,
     limit: form.limit,
-    ...(form.socialTrends.sources.length ? { socialTrends: { ...form.socialTrends } } : {}),
+    ...(form.socialTrends.sources.length
+      ? { socialTrends: { ...form.socialTrends } }
+      : {}),
   };
+  researchSubmitting.value = true;
   try {
     await startKeywordJob(config);
     open.value = false;
@@ -456,11 +516,16 @@ async function createResearch() {
   } catch (error) {
     researchError.value =
       error instanceof Error ? error.message : '任务未提交成功，请重试';
+  } finally {
+    researchSubmitting.value = false;
   }
 }
 async function supplementSelected() {
   if (supplementSubmitting.value) return;
-  if (supplementTrends.value.sources.length && !supplementTrends.value.budgetAcknowledged) {
+  if (
+    supplementTrends.value.sources.length &&
+    !supplementTrends.value.budgetAcknowledged
+  ) {
     message.warning('请确认社媒趋势的来源额度预算');
     return;
   }
@@ -494,7 +559,9 @@ async function supplementSelected() {
         depth: 1,
         limit: submittedIds.length,
         expectedKeywordCount: submittedIds.length,
-        ...(supplementTrends.value.sources.length ? { socialTrends: { ...supplementTrends.value } } : {}),
+        ...(supplementTrends.value.sources.length
+          ? { socialTrends: { ...supplementTrends.value } }
+          : {}),
       },
       records,
     );
@@ -513,8 +580,16 @@ async function supplementSelected() {
 }
 async function exportKeywords() {
   let records = rows.value;
-  if (serverMode) try { records = (await remote.exportRows()).map((record) => ({ ...record, assessment: assessKeyword(record) })); }
-  catch (cause) { message.error((cause as Error).message); return; }
+  if (serverMode)
+    try {
+      records = (await remote.exportRows()).map((record) => ({
+        ...record,
+        assessment: assessKeyword(record),
+      }));
+    } catch (cause) {
+      message.error((cause as Error).message);
+      return;
+    }
   exportCsv(
     '关键词研究与评级.csv',
     records.map((record) => ({
@@ -638,7 +713,7 @@ function saveMetrics() {
       <Button :disabled="!rows.length" @click="exportKeywords">导出结果</Button>
       <Button
         type="primary"
-        :disabled="keywordJob.running"
+        :disabled="researchSubmitting || checkingSource"
         @click="open = true"
       >
         ＋ 新建关键词研究
@@ -772,10 +847,15 @@ function saveMetrics() {
           v-model="scoreFilter"
           label="关键词"
         /><KeywordNamesDialog :ids="selectedIds" />
-        <KeywordTrendsControl :ids="selectedIds" :visible-ids="serverMode ? rows.map((r) => r.id) : undefined" />
+        <KeywordTrendsControl
+          :ids="selectedIds"
+          :visible-ids="serverMode ? rows.map((r) => r.id) : undefined"
+        />
       </div>
       <div class="hci-toolbar">
-        <span class="hci-subtle">已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span>
+        <span class="hci-subtle"
+          >已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span
+        >
         <Button
           :disabled="!rows.length || supplementSubmitting"
           @click="selectFiltered"
@@ -797,11 +877,14 @@ function saveMetrics() {
                 !selectedIds.length ||
                 selectedIds.length > 100 ||
                 selection.missing.length > 0 ||
-                keywordJob.running ||
+                researchSubmitting ||
                 supplementSubmitting
               "
               :loading="supplementSubmitting"
-              @click="supplementOpen = true; supplementTrends = defaultResearchTrends()"
+              @click="
+                supplementOpen = true;
+                supplementTrends = defaultResearchTrends();
+              "
             >
               一键补齐数据并重评
             </Button>
@@ -828,7 +911,9 @@ function saveMetrics() {
         >
           标为排除
         </Button>
-        <span class="hci-toolbar-end hci-subtle">{{ serverMode ? remote.total.value : rows.length }} 条筛选结果</span>
+        <span class="hci-toolbar-end hci-subtle"
+          >{{ serverMode ? remote.total.value : rows.length }} 条筛选结果</span
+        >
       </div>
       <Alert
         v-if="selection.missing.length"
@@ -837,8 +922,16 @@ function saveMetrics() {
         :message="`选中的${selection.missing.length}个词已无法匹配，请刷新并重新选择；不会仅提交其余部分。`"
         style="margin-bottom: 16px"
       />
-      <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
-      <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="keywords" />
+      <WorkspaceReadStatus
+        :error="remote.error.value"
+        :loading="remote.loading.value"
+        @retry="remote.reload(true)"
+      />
+      <CoreListControls
+        v-model:preset="corePreset"
+        v-model:period="corePeriod"
+        kind="keywords"
+      />
       <Table
         @change="remote.tableChange"
         :data-source="rows"
@@ -849,13 +942,29 @@ function saveMetrics() {
         row-key="id"
         :pagination="pagination"
         :loading="
-          serverMode ? remote.loading.value : cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
+          serverMode
+            ? remote.loading.value
+            : cloudWorkspace.syncing &&
+              !cloudWorkspace.ready &&
+              rows.length === 0
         "
         :scroll="{ x: 'max-content' }"
       >
         <template #bodyCell="{ column, record }">
-          <KeywordRelatedQueries v-if="column.key === 'core:relatedTop' || column.key === 'core:relatedRising'" :keyword="record as Keyword" :kind="column.key === 'core:relatedTop' ? 'relatedTop' : 'relatedRising'" />
-          <EvidenceMetric v-else-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Keyword, column.key)" />
+          <KeywordRelatedQueries
+            v-if="
+              column.key === 'core:relatedTop' ||
+              column.key === 'core:relatedRising'
+            "
+            :keyword="record as Keyword"
+            :kind="
+              column.key === 'core:relatedTop' ? 'relatedTop' : 'relatedRising'
+            "
+          />
+          <EvidenceMetric
+            v-else-if="String(column.key).startsWith('core:')"
+            :metric="core.metric(record as Keyword, column.key)"
+          />
           <template v-else-if="column.key === 'term'">
             <button class="hci-link keyword-term" @click="openDetail(record)">
               {{ record.term }}
@@ -918,8 +1027,15 @@ function saveMetrics() {
             </Tooltip>
             <KeywordTrendComparison :keyword="record as Keyword" />
           </template>
-          <template v-else-if="['tiktok', 'instagram', 'facebook'].includes(String(column.key))">
-            <SocialTrendCell :keyword="record as Keyword" :source="String(column.key)" />
+          <template
+            v-else-if="
+              ['tiktok', 'instagram', 'facebook'].includes(String(column.key))
+            "
+          >
+            <SocialTrendCell
+              :keyword="record as Keyword"
+              :source="String(column.key)"
+            />
           </template>
           <template v-else-if="column.key === 'source'">
             <div class="keyword-tags">
@@ -929,7 +1045,8 @@ function saveMetrics() {
             </div>
           </template>
           <template v-else-if="column.key === 'collectedAt'">
-            <span>{{ formatTime(record.collectedAt) }}</span><Tooltip :title="formatTime(record.trendCollectedAt)">
+            <span>{{ formatTime(record.collectedAt) }}</span
+            ><Tooltip :title="formatTime(record.trendCollectedAt)">
               <p class="hci-subtle">
                 趋势日期 {{ record.trendCollectedAt?.slice(0, 10) || '未记录' }}
               </p>
@@ -954,7 +1071,8 @@ function saveMetrics() {
               :market="record.market"
               :keyword-ids="[record.id]"
             />
-            <Button type="link" @click="openDetail(record)">评分详情</Button><Button type="link" @click="toggleFavorite(record)">
+            <Button type="link" @click="openDetail(record)">评分详情</Button
+            ><Button type="link" @click="toggleFavorite(record)">
               {{ record.favorite ? '已收藏' : '收藏' }}
             </Button>
           </template>
@@ -963,11 +1081,17 @@ function saveMetrics() {
     </section>
     <div class="hci-field-notes">
       <div>
-        <b>分阶段决策</b><span>本页扩词、补齐平台指标与趋势后评分。标为入选后，在「已入选关键词」中发起独立站采集。</span>
+        <b>分阶段决策</b
+        ><span
+          >本页扩词、补齐平台指标与趋势后评分。标为入选后，在「已入选关键词」中发起独立站采集。</span
+        >
       </div>
       <div>
-        <b>评级与证据</b><span>A ≥80，B 65～79，C 50～64，D
-          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span>
+        <b>评级与证据</b
+        ><span
+          >A ≥80，B 65～79，C 50～64，D
+          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span
+        >
       </div>
     </div>
 
@@ -977,7 +1101,7 @@ function saveMetrics() {
       :width="720"
       ok-text="开始找词与评级"
       cancel-text="取消"
-      :confirm-loading="keywordJob.running || checkingSource"
+      :confirm-loading="researchSubmitting || checkingSource"
       @ok="createResearch"
     >
       <Alert
@@ -1067,6 +1191,13 @@ function saveMetrics() {
             />
           </Form.Item>
         </div>
+        <CollectionEstimate
+          v-if="open"
+          :input="{
+            ...form,
+            seeds: form.seeds.split(/[\n,，]/).filter(Boolean),
+          }"
+        />
         <ResearchTrendOptions v-model="form.socialTrends" />
       </Form>
       <Alert
@@ -1082,10 +1213,28 @@ function saveMetrics() {
       </p>
     </Modal>
 
-    <Modal v-model:open="supplementOpen" title="补齐关键词数据" ok-text="提交采集" :confirm-loading="supplementSubmitting" :mask-closable="!supplementSubmitting" @ok="supplementSelected">
+    <Modal
+      v-model:open="supplementOpen"
+      title="补齐关键词数据"
+      ok-text="提交采集"
+      :confirm-loading="supplementSubmitting"
+      :mask-closable="!supplementSubmitting"
+      @ok="supplementSelected"
+    >
       <Form layout="vertical">
-        <Form.Item label="关键词">已勾选 {{ selectedIds.length }} 个；补齐 Semrush 指标与所选趋势</Form.Item>
+        <Form.Item label="关键词">
+          已勾选 {{ selectedIds.length }} 个；补齐 Semrush 指标与所选趋势
+        </Form.Item>
         <ResearchTrendOptions v-model="supplementTrends" />
+        <CollectionEstimate
+          v-if="supplementOpen"
+          :input="{
+            kind: 'keyword_research',
+            existingRecords: selectedIds,
+            sources: [],
+            socialTrends: supplementTrends,
+          }"
+        />
       </Form>
     </Modal>
 
@@ -1104,7 +1253,8 @@ function saveMetrics() {
         :key="dimension.key"
         class="hci-market-row"
       >
-        <b>{{ dimension.label }}</b><span>{{ dimension.weight }}%</span>
+        <b>{{ dimension.label }}</b
+        ><span>{{ dimension.weight }}%</span>
       </div>
       <div class="hci-evidence">
         A ≥80，B 65～79，C 50～64，D
@@ -1134,12 +1284,26 @@ function saveMetrics() {
       width="min(940px, 100vw)"
       @close="closeDetail"
     >
-      <div v-if="detailLoading" role="status" aria-live="polite" aria-busy="true" style="padding: 32px 0">
+      <div
+        v-if="detailLoading"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        style="padding: 32px 0"
+      >
         <h2 class="keyword-detail-title">{{ detail?.term }}</h2>
         <Spin tip="正在加载关键词详情…"><div style="height: 120px"></div></Spin>
       </div>
-      <Alert v-else-if="detailError" type="error" message="关键词详情加载失败" :description="detailError" show-icon>
-        <template #action><Button @click="openDetail({ id: detailId })">重试</Button></template>
+      <Alert
+        v-else-if="detailError"
+        type="error"
+        message="关键词详情加载失败"
+        :description="detailError"
+        show-icon
+      >
+        <template #action>
+          <Button @click="openDetail({ id: detailId })">重试</Button>
+        </template>
       </Alert>
       <template v-else-if="detail && assessment">
         <CoreMetricsPanel kind="keywords" :record="detail" />
@@ -1160,7 +1324,8 @@ function saveMetrics() {
             {{ assessment.grade || '待评级'
             }}{{ assessment.status === 'provisional' ? ' · 暂评' : '' }}
           </Tag>
-          <b>{{ assessment.score ?? '—' }} / 100</b><span>数据覆盖 {{ assessment.coverage }}%</span>
+          <b>{{ assessment.score ?? '—' }} / 100</b
+          ><span>数据覆盖 {{ assessment.coverage }}%</span>
         </div>
         <Alert
           :message="assessment.recommendation"
@@ -1184,12 +1349,17 @@ function saveMetrics() {
             class="keyword-dimension hci-dimension-card"
           >
             <div>
-              <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b><strong>{{ dimension.score ?? '待补充'
-                }}{{ dimension.score === null ? '' : ' / 100' }}</strong>
+              <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b
+              ><strong
+                >{{ dimension.score ?? '待补充'
+                }}{{ dimension.score === null ? '' : ' / 100' }}</strong
+              >
             </div>
             <p class="hci-subtle">{{ dimension.evidence }}</p>
-            <span class="hci-subtle">已覆盖权重 {{ dimension.coveredWeight }} /
-              {{ dimension.weight }}</span>
+            <span class="hci-subtle"
+              >已覆盖权重 {{ dimension.coveredWeight }} /
+              {{ dimension.weight }}</span
+            >
           </div>
         </div>
         <p class="hci-subtle">
@@ -1277,7 +1447,10 @@ function saveMetrics() {
           </Form.Item>
         </Form>
         <div class="hci-toolbar">
-          <Button type="primary" @click="saveMetrics">保存依据并重评</Button><Button @click="markRecords([detail], 'selected')">标为入选</Button><Button @click="markRecords([detail], 'excluded')">标为排除</Button><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
+          <Button type="primary" @click="saveMetrics">保存依据并重评</Button
+          ><Button @click="markRecords([detail], 'selected')">标为入选</Button
+          ><Button @click="markRecords([detail], 'excluded')">标为排除</Button
+          ><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
         </div>
       </template>
     </Drawer>
