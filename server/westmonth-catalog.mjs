@@ -1,10 +1,24 @@
 import { westmonthPrice } from './westmonth-price.mjs';
+import {
+  westmonthRegion,
+  westmonthRegionMatches,
+} from './westmonth-market.mjs';
 export const isWestmonth = (site) =>
   String(site.domain)
     .toLowerCase()
     .replace(/^www\./, '') === 'westmonth.com';
-export const westmonthEntry = (newOnly = false) =>
-  `https://www.westmonth.com/products/${newOnly ? 'ranking?ranking_type=new&' : 'all?'}page=1`;
+export function westmonthEntry(newOnly = false, market = 'VN') {
+  const region = westmonthRegion(market);
+  const url = new URL(
+    'https://www.westmonth.com/products/' + (newOnly ? 'ranking' : 'all'),
+  );
+  url.search = new URLSearchParams({
+    ...(newOnly ? { ranking_type: 'new' } : {}),
+    page: '1',
+    regionSelect: String(region.id),
+  }).toString();
+  return url.href;
+}
 
 export function isWestmonthCatalog(url, site) {
   if (!isWestmonth(site)) return false;
@@ -15,10 +29,14 @@ export function isWestmonthCatalog(url, site) {
   );
 }
 
-// The public site makes this GET without cookies or an access token.
+// Public fields work anonymously; the saved login session supplies member prices.
 export async function fetchWestmonthCatalog(url, site, fetchPage) {
   if (!isWestmonthCatalog(url, site)) throw new Error('不是西之月公开商品目录');
   const parsed = new URL(url);
+  const region = westmonthRegion(site.market);
+  const requestedRegion = parsed.searchParams.get('regionSelect');
+  if (requestedRegion && requestedRegion !== String(region.id))
+    throw new Error('西之月目录发货区域与任务市场不一致，已停止采集');
   const page = Number(parsed.searchParams.get('page') || 1);
   if (!Number.isSafeInteger(page) || page < 1 || page > 1000)
     throw new Error('公开目录页码无效');
@@ -32,6 +50,9 @@ export async function fetchWestmonthCatalog(url, site, fetchPage) {
     source: newOnly ? 'rankings' : 'all_products',
     onlyShow: '1',
     locale: 'zh_cn',
+    delivery_region_id: String(region.id),
+    sort_field: '3',
+    sort_mode: '2',
     ...(newOnly ? { ranking_type: 'new' } : {}),
   }).toString();
   const response = await fetchPage(api.toString(), 0, ['application/json'], {
@@ -52,6 +73,8 @@ export async function fetchWestmonthCatalog(url, site, fetchPage) {
     throw new Error('西之月公开目录返回异常，未建立完整基线');
   if (data.total > 0 && !data.data.length && (page - 1) * 60 < data.total)
     throw new Error('西之月公开目录分页缺失，未建立完整基线');
+  if (data.data.some((row) => !westmonthRegionMatches(row, site.market)))
+    throw new Error('西之月返回商品发货区域不匹配，未写入或建立基线');
   const products = data.data.map((row) => {
     const id = String(row.product_id || '');
     if (
@@ -80,7 +103,12 @@ export async function fetchWestmonthCatalog(url, site, fetchPage) {
       ...price,
       extractionMethod: '西之月公开商品目录',
       catalogEvidenceUrl: api.toString(),
-      catalogScope: newOnly ? '官网公开新品榜' : '官网公开全部商品目录',
+      catalogScope:
+        region.name +
+        '发货区域 · ' +
+        (newOnly ? '官网新品榜' : '官网全部在售商品 · 上新时间倒序'),
+      catalogDeliveryRegionId: region.id,
+      catalogSkuId: row.product_sku_id,
       catalogListedAtRaw:
         typeof row.product_addtime === 'string' ? row.product_addtime : '',
       catalogProductMetrics: {
@@ -88,6 +116,7 @@ export async function fetchWestmonthCatalog(url, site, fetchPage) {
         month_sale: row.month_sale,
         member_price: row.member_price,
         price_currency: row.price_currency,
+        delivery_region_id: row.delivery_region_id,
       },
       collectionFields: [
         'title',
@@ -98,7 +127,7 @@ export async function fetchWestmonthCatalog(url, site, fetchPage) {
   });
   let next = '';
   if (page * 60 < data.total) {
-    const nextUrl = new URL(newOnly ? westmonthEntry(true) : westmonthEntry());
+    const nextUrl = new URL(westmonthEntry(newOnly, site.market));
     nextUrl.searchParams.set('page', String(page + 1));
     next = nextUrl.toString();
   }

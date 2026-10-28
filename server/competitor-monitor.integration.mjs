@@ -694,6 +694,9 @@ await verifyKeywordTrends(c);
 await (
   await import('./task-queue-clarity.integration.mjs')
 ).verifyQueueClarity(c);
+await (
+  await import('./westmonth-market.integration.mjs')
+).verifyWestmonthMarket(c);
 c.release();
 await memory?.close();
 await pool.end();

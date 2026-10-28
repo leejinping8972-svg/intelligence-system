@@ -14,7 +14,13 @@ import {
   shopifyCatalogProducts,
 } from './product-queue.mjs';
 import { fetchPublicPage } from './safe-web.mjs';
-import { fetchWestmonthCatalog, isWestmonth, isWestmonthCatalog, westmonthEntry } from './westmonth-catalog.mjs';
+import {
+  fetchWestmonthCatalog,
+  isWestmonth,
+  isWestmonthCatalog,
+  westmonthEntry,
+} from './westmonth-catalog.mjs';
+import { westmonthCatalogScope } from './westmonth-market.mjs';
 import { safeSemrushError } from './semrush-mcp.mjs';
 import {
   client,
@@ -45,11 +51,18 @@ export async function scanSite(
     options.fetchBrowser ||
     ((url, source) => fetchFallbackPage(url, source, 'browser'));
   const base = siteBase(site);
+  const catalogScopeKey = isWestmonth(site)
+    ? westmonthCatalogScope(site)
+    : undefined;
+  if (catalogScopeKey && progress?.catalogScopeKey !== catalogScopeKey)
+    progress = { nextRunAt: progress?.nextRunAt || 0 };
   const queue = progress?.queue || [
     ...(site.platform === 'Shopify'
       ? [`${base}/products.json?limit=50&page=1`]
       : []),
-    ...(isWestmonth(site) ? [westmonthEntry(true)] : fallbackProductUrls(site)),
+    ...(isWestmonth(site)
+      ? [westmonthEntry(false, site.market)]
+      : fallbackProductUrls(site)),
   ];
   const attempted = new Set();
   const errors = [];
@@ -68,7 +81,14 @@ export async function scanSite(
       complete: false,
       requests: 0,
       errors: ['官网仍在冷却，尚未发起新请求'],
-      progress: { ...progress, queue, visited: [...visited], nextRunAt, day },
+      progress: {
+        ...progress,
+        catalogScopeKey,
+        queue,
+        visited: [...visited],
+        nextRunAt,
+        day,
+      },
       retryAt: nextRunAt,
     };
   nextRunAt = 0;
@@ -102,11 +122,11 @@ export async function scanSite(
             : isWestmonthCatalog(url, site)
               ? fetchWestmonthCatalog(url, site, fetchPage)
               : fetchPage(url, 0, [
-                'text/html',
-                'application/xml',
-                'text/xml',
-                'application/json',
-              ]),
+                  'text/html',
+                  'application/xml',
+                  'text/xml',
+                  'application/json',
+                ]),
       );
       if (!canonicalCatalogUrl(page.url, base))
         throw new Error('页面跳转至其他站点，未作为本站商品证据');
@@ -230,6 +250,7 @@ export async function scanSite(
       ...(truncated ? ['站点目录超过本轮覆盖上限，不能确认完整基线'] : []),
     ],
     progress: {
+      catalogScopeKey,
       queue: queue.filter((u) => !visited.has(u)),
       visited: [...visited],
       truncated,

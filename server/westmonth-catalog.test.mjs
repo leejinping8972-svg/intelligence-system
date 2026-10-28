@@ -19,6 +19,7 @@ const site = {
 };
 const row = (id) => ({
   product_id: id,
+  delivery_region_id: 9,
   product_name: `Test item ${id}`,
   product_image: 'https://oss.westmonth.com/example.png',
   product_addtime: '2026-10-01 12:00:00',
@@ -55,7 +56,7 @@ test('uses the public new-item feed with fixed host, bounded paging and no crede
   assert.equal(new URL(page.catalogLinks[0]).searchParams.get('page'), '2');
   assert.equal(
     canonicalCatalogUrl(page.catalogLinks[0], 'https://www.westmonth.com'),
-    'https://www.westmonth.com/products/ranking?page=2&ranking_type=new',
+    'https://www.westmonth.com/products/ranking?page=2&ranking_type=new&regionSelect=9',
   );
   assert.deepEqual(fallbackProductUrls(site), [westmonthEntry()]);
 });
@@ -80,7 +81,11 @@ test('catalog listing and the official sales display are persisted without inven
     'Westmonth catalog JSON.product_addtime',
   );
   assert.equal(item.catalogListedAtRaw, '2026-10-01 12:00:00');
-  assert.equal(item.catalogScope, '官网公开全部商品目录');
+  assert.equal(
+    item.catalogScope,
+    '越南发货区域 · 官网全部在售商品 · 上新时间倒序',
+  );
+  assert.equal(item.catalogDeliveryRegionId, 9);
   assert.ok(item.catalogEvidenceUrl.startsWith('https://api-x.westmonth.com/'));
 });
 test('authentication, schema changes and missing pages fail instead of establishing an empty baseline', async () => {
@@ -103,7 +108,7 @@ test('authentication, schema changes and missing pages fail instead of establish
     ),
   );
 });
-test('monitor resumes new-feed pages across request budgets before completing a baseline', async () => {
+test('monitor resumes region-filtered full-catalog pages across request budgets before completing a baseline', async () => {
   const calls = [];
   const fetcher = async (url) => {
     calls.push(url);
@@ -132,7 +137,9 @@ test('monitor resumes new-feed pages across request budgets before completing a 
   assert.equal(calls.length, 2);
   assert.ok(
     calls.every(
-      (url) => new URL(url).searchParams.get('ranking_type') === 'new',
+      (url) =>
+        new URL(url).searchParams.get('source') === 'all_products' &&
+        new URL(url).searchParams.get('delivery_region_id') === '9',
     ),
   );
 });

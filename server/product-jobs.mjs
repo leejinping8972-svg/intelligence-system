@@ -123,6 +123,8 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
       ? {
           catalogEvidenceUrl: p.catalogEvidenceUrl,
           catalogScope: p.catalogScope,
+          catalogDeliveryRegionId: p.catalogDeliveryRegionId,
+          catalogSkuId: p.catalogSkuId,
           catalogListedAtRaw: p.catalogListedAtRaw,
         }
       : {}),

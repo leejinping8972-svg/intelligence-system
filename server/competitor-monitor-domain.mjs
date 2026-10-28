@@ -110,11 +110,21 @@ export function mergeObserved(old, item, at) {
   // Keep human decisions, associations and enriched fields from other collectors.
   const merged = { ...item, ...old, lastCollectedAt: at };
   if (
-    item.siteId === 'VN-westmonth.com' &&
+    /^(?:VN|US|MX)-westmonth\.com$/.test(item.siteId || '') &&
     (item.sourceMetrics?.soldPlatform === '西之月' ||
       item.decisionData?.listing?.platform === '西之月' ||
       item.priceEvidence?.provider === '西之月官网')
   ) {
+    if (item.catalogDeliveryRegionId) {
+      for (const field of [
+        'catalogEvidenceUrl',
+        'catalogScope',
+        'catalogDeliveryRegionId',
+        'catalogSkuId',
+        'catalogListedAtRaw',
+      ])
+        if (item[field] !== undefined) merged[field] = item[field];
+    }
     if (item.priceEvidence?.kind === 'discount' && item.price > 0) {
       merged.price = item.price;
       merged.currency = item.currency;

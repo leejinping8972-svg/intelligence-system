@@ -33,6 +33,8 @@ import { withQueueConfig } from './queue-config-lock.mjs';
 import { parallelItems } from './source-scheduler.mjs';
 import { saveKeyword } from './store.mjs';
 
+import { westmonthChannelKey } from './westmonth-market.mjs';
+
 const PREFIX = 'competitor:';
 export function createMonitorStore(connection = pool) {
   const read = async (name) =>
@@ -234,8 +236,16 @@ export async function competitorAction(input, user) {
     if (input.action === 'server_competitor_remove' && !hot) {
       if ((await db.read(`${PREFIX}run:${id}`))?.status === 'running')
         throw new Error('此对象仍在采集，请先暂停并等当前请求结束后移除');
+      const removedSite = config.siteId
+        ? await db.read(`business:sites:${config.siteId}`)
+        : null;
+      const removedProductChannel = westmonthChannelKey(
+        'products',
+        removedSite,
+      );
       for (const key of [
         name,
+        `${PREFIX}baseline:${id}:${removedProductChannel}`,
         `${PREFIX}baseline:${id}:products`,
         `${PREFIX}baseline:${id}:ads`,
         `${PREFIX}crawl:${id}:products`,
@@ -351,7 +361,12 @@ export async function persistObservation(c, target, kind, item, event, at) {
       }
       await db.write(`${PREFIX}event:${at}:${event.id}`, event);
     }
-    await db.write(`${PREFIX}seen:${target.id}:${kind}:${digest(item.id)}`, {
+    const site =
+      kind === 'products' && target.siteId
+        ? await db.read(`business:sites:${target.siteId}`)
+        : null;
+    const channel = westmonthChannelKey(kind, site);
+    await db.write(`${PREFIX}seen:${target.id}:${channel}:${digest(item.id)}`, {
       at,
       itemId: item.id,
     });
@@ -510,16 +525,21 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
           }
         },
       });
-    else
+    else {
+      const monitoredSite = config.siteId
+        ? await db.read(`business:sites:${config.siteId}`)
+        : null;
+      const channelKey = (kind) => westmonthChannelKey(kind, monitoredSite);
       await executeMonitor(config, {
         ...io,
         publicOnly,
         previousRun: publicOnly ? last : null,
-        baseline: (kind) => db.read(`${PREFIX}baseline:${id}:${kind}`),
+        baseline: (kind) =>
+          db.read(`${PREFIX}baseline:${id}:${channelKey(kind)}`),
         setBaseline: (kind) =>
-          db.write(`${PREFIX}baseline:${id}:${kind}`, { at }),
+          db.write(`${PREFIX}baseline:${id}:${channelKey(kind)}`, { at }),
         seen: (kind, itemId) =>
-          db.read(`${PREFIX}seen:${id}:${kind}:${digest(itemId)}`),
+          db.read(`${PREFIX}seen:${id}:${channelKey(kind)}:${digest(itemId)}`),
         persist: (kind, item, event) =>
           persistObservation(c, config, kind, item, event, at),
         saveProgress: (kind, value) =>
@@ -541,6 +561,8 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
             );
           const site = await db.read(`business:sites:${config.siteId}`);
           if (!site) throw new Error('监控站点已删除');
+          if (site.market !== config.market)
+            throw new Error('监控市场与站点市场不一致，已停止采集');
           const hostName = `${PREFIX}host:${digest(site.domain.toLowerCase().replace(/^www\./, ''))}`;
           const gate = await db.read(hostName);
           const siteProgress = {
@@ -559,6 +581,7 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
           return result;
         },
       });
+    }
     return;
   }
 }

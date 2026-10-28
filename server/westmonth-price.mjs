@@ -1,3 +1,8 @@
+import {
+  westmonthRegion,
+  westmonthRegionMatches,
+} from './westmonth-market.mjs';
+
 // member_price is the official 折后价. Never substitute guide/base price or
 // infer currency from a market; anonymous placeholders must remain missing.
 export function westmonthPrice(row, { at, evidenceUrl } = {}) {
@@ -57,6 +62,9 @@ export async function fetchWestmonthSavedPrice(product, fetchPage, at) {
       source,
       onlyShow: '1',
       locale: 'zh_cn',
+      delivery_region_id: String(westmonthRegion(product.market).id),
+      sort_field: '3',
+      sort_mode: '2',
       ...(source === 'rankings' ? { ranking_type: 'new' } : {}),
     }).toString();
   } catch {
@@ -86,7 +94,13 @@ export async function fetchWestmonthSavedPrice(product, fetchPage, at) {
   const body = JSON.parse(response.html);
   if (body.code !== 0 || !Array.isArray(body.data?.data))
     throw new Error('西之月价格目录未返回可验证数据');
-  const matches = body.data.data.filter((row) => String(row.product_id) === id);
+  const matches = body.data.data.filter(
+    (row) =>
+      String(row.product_id) === id &&
+      westmonthRegionMatches(row, product.market) &&
+      (!product.catalogSkuId ||
+        String(row.product_sku_id) === String(product.catalogSkuId)),
+  );
   return matches.length === 1
     ? westmonthPrice(matches[0], { at, evidenceUrl: api.href })
     : {};

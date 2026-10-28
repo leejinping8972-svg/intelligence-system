@@ -1,5 +1,6 @@
 import { validDiscoveryDate } from './discovery-newness.mjs';
 import { westmonthPrice } from './westmonth-price.mjs';
+import { westmonthRegionMatches } from './westmonth-market.mjs';
 
 export function westmonthProductId(value) {
   try {
@@ -34,7 +35,11 @@ export function westmonthMetricPatch(
   row,
   { market, at, evidenceUrl, kind = 'catalog' },
 ) {
-  const patch = westmonthPrice(row, { at, evidenceUrl });
+  // Detail payloads may describe multiple regions. Only a matching region can supply its price.
+  const patch =
+    kind === 'detail' && !westmonthRegionMatches(row, market)
+      ? {}
+      : westmonthPrice(row, { at, evidenceUrl });
   const context = {
     provider:
       kind === 'detail' ? '西之月官网公开商品详情' : '西之月官网公开商品目录',

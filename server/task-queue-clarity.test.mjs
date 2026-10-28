@@ -252,8 +252,18 @@ test('price completion uses only exact product IDs from the original bounded cat
               code: 0,
               data: {
                 data: [
-                  { product_id: 124, member_price: 1, price_currency: 'CNY' },
-                  { product_id: 123, member_price: 22, price_currency: 'CNY' },
+                  {
+                    product_id: 124,
+                    delivery_region_id: 9,
+                    member_price: 1,
+                    price_currency: 'CNY',
+                  },
+                  {
+                    product_id: 123,
+                    delivery_region_id: 9,
+                    member_price: 22,
+                    price_currency: 'CNY',
+                  },
                 ],
               },
             },
@@ -272,7 +282,14 @@ test('price completion uses only exact product IDs from the original bounded cat
       html: JSON.stringify({
         code: 0,
         data: {
-          data: [{ product_id: 124, member_price: 1, price_currency: 'CNY' }],
+          data: [
+            {
+              product_id: 124,
+              delivery_region_id: 9,
+              member_price: 1,
+              price_currency: 'CNY',
+            },
+          ],
         },
       }),
     })),

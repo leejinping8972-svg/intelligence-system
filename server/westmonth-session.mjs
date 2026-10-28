@@ -77,7 +77,7 @@ export async function westmonthSessionAction(input, user, overrides = {}) {
     probe: async (token) => {
       const { fetchPublicPage } = await import('./safe-web.mjs');
       const url =
-        'https://api-x.westmonth.com/product-center/shop/products/load-list?page=1&pagesize=60&source=rankings&onlyShow=1&locale=zh_cn&ranking_type=new';
+        'https://api-x.westmonth.com/product-center/shop/products/load-list?page=1&pagesize=60&source=rankings&onlyShow=1&locale=zh_cn&ranking_type=new&delivery_region_id=9';
       const result = await fetchPublicPage(url, 0, ['application/json'], {
         allowedDomain: 'westmonth.com',
         manualRedirect: true,
