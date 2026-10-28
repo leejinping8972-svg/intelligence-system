@@ -20,8 +20,12 @@ function initializeComponentAdapters() {
 
 export function setupComponentAdapters(router: Router, serverMode: boolean) {
   if (!serverMode) return initializeComponentAdapters();
-  // Only the native server login can render without the framework form adapters.
+  // Intelligence pages use native Ant Design forms; framework pages still need adapters.
   router.beforeResolve((to) => {
-    if (to.name !== 'Login') return initializeComponentAdapters();
+    if (
+      to.name !== 'Login' &&
+      !(typeof to.name === 'string' && to.name.startsWith('Hci'))
+    )
+      return initializeComponentAdapters();
   });
 }

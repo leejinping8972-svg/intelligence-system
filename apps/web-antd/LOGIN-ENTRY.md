@@ -30,3 +30,48 @@ The 2026-10-26 local Chrome run measured visible, editable inputs at 130 ms
 decoded size was 123,638 bytes. Authentication, workspace entry and valid-session
 reload passed in both viewports, with one initial status request, no script
 errors and no document overflow. These are local results, not production timings.
+
+## Workspace Entry After Authentication
+
+The 2026-10-28 change shortens the path from a successful login to the workspace:
+
+- Native `Hci*` pages skip the framework form adapters. Other framework routes
+  still initialize both adapters before navigation, share concurrent setup and
+  permit retries after initialization failures. Non-server builds retain their
+  original eager adapter setup.
+- Overview charts load asynchronously outside the route's suspense boundary.
+  Their loading area keeps its height; a failed download shows a local error
+  after one retry. The navigation and overview counts do not wait for charts.
+  Other pages that require charts still load their own chart dependencies.
+- Files for the selected language load concurrently. Core and application
+  messages also load together; the language is published only after both finish.
+  Message names and merge order are preserved, and failures still reject setup.
+- Locale, stores, tooltip and motion dependencies initialize concurrently.
+  Routing and mounting still wait for these dependencies. Preferences finish
+  before the bootstrap module evaluates route defaults, as before.
+
+Functional checks: 37 login/session/startup/locale tests, complete web type check,
+independent server/history build, targeted startup/locale/test ESLint and diff
+checks passed. Local Edge checks covered desktop and mobile login, existing
+session reload, direct research/settings routes, editable native forms, delayed
+and failed chart downloads, and chart recovery with nonblank canvas pixels.
+No page errors or horizontal overflow were observed. Fixtures use synthetic
+accounts and workspace data, and reject non-local network requests.
+
+The controlled comparison used gzip HTTP/1.1, 150 ms latency, 1.25 MB/s download,
+2x CPU slowdown and an overview response delayed by 5 seconds. It measured login
+click to the overview heading, before completion of the page transition:
+
+| Viewport | Previous build | Updated build |
+| --- | ---: | ---: |
+| 1440 px | 8,299 ms | 6,248 ms |
+| 390 px | 7,674 ms | 6,298 ms |
+| JavaScript decoded before heading | 3,110,542 bytes | 2,124,495 bytes |
+
+The baseline build corresponds to `91855d9539d2fd20856322d428600c13917de806`.
+Raw measurements and screenshots are retained in the feature tree's ignored
+`.artifacts/entry-performance/`. The local build aliases `@vben/locales` to this
+tree's source because linked dependencies otherwise resolve to the integration
+tree. These results isolate startup changes; HTTP/1.1 emphasizes small-file
+latency, and they do not establish production account or whole-page load times.
+No authentication, server queries, provider calls, schema or business data change.

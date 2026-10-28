@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, defineAsyncComponent, h, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { Alert, Button, Select, Tag } from 'ant-design-vue';
@@ -7,7 +7,6 @@ import { serverMode } from './session';
 import { useOverviewSnapshot } from './workspace-queries';
 
 import { trendOption } from './charts';
-import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
 import {
   filteredKeywords,
@@ -18,6 +17,15 @@ import {
   pendingReviews,
   state,
 } from './data';
+const Chart = defineAsyncComponent({
+  loader: () => import('./components/Chart.vue'),
+  delay: 0,
+  suspensible: false,
+  loadingComponent: () => h('div', { class: 'hci-chart', 'aria-busy': true }),
+  errorComponent: () =>
+    h('div', { class: 'hci-empty', role: 'status' }, '图表暂时无法加载，请刷新重试'),
+  onError: (_error, retry, fail, attempts) => (attempts < 2 ? retry() : fail()),
+});
 const router = useRouter();
 const overview = useOverviewSnapshot();
 const overviewKeywords = computed(() => serverMode ? overview.snapshot.value?.topKeywords || [] : filteredKeywords.value);

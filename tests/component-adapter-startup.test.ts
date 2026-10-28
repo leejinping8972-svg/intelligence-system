@@ -68,6 +68,18 @@ describe('component adapter startup scheduling', () => {
     expect(mocks.formImport).not.toHaveBeenCalled();
   });
 
+  it('does not block native intelligence pages on unused framework form adapters', async () => {
+    mocks.componentImport.mockReturnValue(new Promise(() => {}));
+    mocks.formImport.mockReturnValue(new Promise(() => {}));
+    const { resolve } = await setup();
+    for (const name of ['HciOverview', 'HciResearch', 'HciSettings', 'HciProducts']) {
+      expect(resolve!({ name })).toBeUndefined();
+    }
+    expect(mocks.componentImport).not.toHaveBeenCalled();
+    expect(mocks.formImport).not.toHaveBeenCalled();
+    await resolve!({ name: 'Login' });
+  });
+
   it('starts both imports together and finishes adapter setup before the workspace can render', async () => {
     let imported!: () => void;
     let initialized!: () => void;
