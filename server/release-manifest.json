@@ -1,50 +1,40 @@
 {
-  "title": "统一身份单点登录，无需逐账号绑定个人key",
-  "sourceSha": "e5632e6fd759c80f9b6adcd009348bd010d2fa19",
+  "title": "新品雷达证据与误判修复",
+  "sourceSha": "e3c221e1835587d7fe6a80cd00057bf979530bc4",
   "includedCommits": [
-    "6ba27af213ffaac95247838706559574f3484100"
+    "f9611f7682d5c7b65515e8002e0880c148922f33"
   ],
   "files": [
-    "apps/web-antd/src/layouts/basic.vue",
-    "apps/web-antd/src/views/intelligence/administration.vue",
-    "apps/web-antd/src/views/intelligence/components/UnifiedIdentitySettings.vue",
-    "apps/web-antd/src/views/intelligence/session.ts",
-    "deploy/server/Caddyfile",
-    "deploy/server/compose.yaml",
-    "server/PLATFORM-LINK.md",
-    "server/UNIFIED-SSO-VALIDATION.md",
-    "server/UNIFIED-SSO.md",
-    "server/auth-performance.test.mjs",
-    "server/auth.mjs",
-    "server/database-admin.mjs",
-    "server/database.mjs",
-    "server/identity-browser.test.mjs",
-    "server/identity-config.mjs",
-    "server/identity-keygen.mjs",
-    "server/identity-store.mjs",
-    "server/identity-test-fixture.mjs",
-    "server/identity.mjs",
-    "server/identity.test.mjs",
-    "server/index.mjs",
-    "server/package-lock.json",
-    "server/package.json",
-    "server/store.mjs"
+    "apps/web-antd/src/views/intelligence/radar-engine.ts",
+    "apps/web-antd/src/views/intelligence/radar.vue",
+    "apps/web-antd/src/views/intelligence/statistics-engine.ts",
+    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+    "server/RADAR-EVIDENCE.md",
+    "server/collector.js",
+    "server/model.js",
+    "server/model.ts",
+    "server/radar-evidence.test.mjs",
+    "server/workspace-statistics.mjs",
+    "server/workspace-statistics.test.mjs",
+    "workers/site-discovery/src/index.js",
+    "workers/site-discovery/src/product-signal-rules.d.ts",
+    "workers/site-discovery/src/product-signal-rules.js"
   ],
   "changes": [
-    "我方作为统一OIDC身份服务，复用现有账号；对方按issuer+sub自动开户或由管理员批量迁移历史账号。",
-    "标准授权码、强制PKCE S256、RS256、公钥发现、内省及撤销；用户无需个人key。",
-    "顶部AI入口发起当前统一身份确认，支持同浏览器互通并防止旧会话串号；默认低权限，管理员需显式名单授权。",
-    "新增加密身份凭据表；统一模式启用后关闭旧个人key和旧管理员SSO，保留原表以便回退。"
+    "过滤免责声明、用量警告、非成分标签和不含成分声明，统一采集及存量汇总规则并去重。",
+    "区分近期发现与有来源支持的90天内上架；评分仅使用直接关联趋势或真实广告，无依据显示空值。",
+    "界面使用证据完整度和线索评分，监管召回不计成分；观察窗口与快照日期对齐。",
+    "雷达口径升级至2，正常后台检查原子替换旧口径，失败保留快照；旧口径候选和评分在刷新前隐藏。"
   ],
   "validation": [
-    "功能开发65项后端、20项前端测试、完整Web及根类型检查、专项lint和独立构建通过。",
-    "本机真实Edge两个不同HTTPS站点完成合成客户端双向登录、会话复用、切换账号及移动端验收；不代表真实对方平台验收。",
-    "发布阶段重复测试、类型/lint、回归、隔离MySQL/UI、验证构建及CI等待按策略跳过。",
-    "新增identity_artifacts为空的追加表，无既有数据迁移；保留完整schema及受影响认证/配置表的定向恢复副本、全部队列/检查点哈希和应用/配置回退，不将定向备份记为全库备份。",
-    "对方仍需新OIDC客户端和历史账号迁移；发布后仅检查我方发现/公钥/授权入口及健康版本，不宣称双边联调通过。"
+    "功能开发42项Node测试（含PGlite SQL、升级与失败恢复）和19项Vitest通过；完整web类型检查、专项ESLint/diff/commitlint及独立server/history构建通过。",
+    "桌面1440x1000及手机390x844合成验收通过，页面错误0、手机无全局溢出；未运行真实收费采集或MySQL功能专项。",
+    "发布阶段重复测试、类型/lint、回归、隔离库/UI、验证构建及CI等待按用户策略跳过。",
+    "本批无schema、迁移、依赖或启动业务写入变更，跳过完整数据库备份；保留17锁、业务/认证/配置/任务/journal及public/data核验与应用回退。",
+    "上线核对SHA、入口、健康、任务恢复及后台保存的雷达口径2；不触发来源采集或重放任务。"
   ],
-  "id": "20261028015711-75e29bcd",
-  "builtAt": "2026-10-28T01:57:11.618Z",
-  "sourceDigest": "75e29bcd56fcd11ac91ec43b9471daa01f91c4d3f88fa985de2756e254c89fba",
+  "id": "20261028024723-9286a5a2",
+  "builtAt": "2026-10-28T02:47:23.103Z",
+  "sourceDigest": "9286a5a2a0875b69558e2b0c2e98d113c409ca88db6e22f90fb6d8c94896ed8f",
   "operator": "Codex"
 }
