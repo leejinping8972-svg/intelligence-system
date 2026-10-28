@@ -3,6 +3,7 @@ import { readSorftimeToken, saveSorftimeToken } from './provider-config.js';
 import { SERVER_ACTIONS, serverRelay } from './server-relay.js';
 import { sorftimeStatus, sorftimeSuggestions } from './sorftime.js';
 import { publicProductFields } from './product-public-fields.js';
+import { benefitSignal, ingredientSection, ingredientSignal, signalKey } from './product-signal-rules.js';
 
 const MARKET_OPTIONS = {
   US: {
@@ -283,7 +284,7 @@ function benefitExcerpts(description) {
   return cleanText(description)
     .split(/(?<=[.!?。！？])\s+/)
     .map((item) => cleanText(item))
-    .filter((item) => item.length >= 12)
+    .filter((item) => benefitSignal(item))
     .map((item) => item.slice(0, 120))
     .slice(0, 4);
 }
@@ -322,10 +323,11 @@ function ingredientRole(name) {
 }
 
 function ingredientRecords(ingredients, pageUrl) {
-  return cleanText(ingredients)
+  const seen = new Set();
+  return ingredientSection(ingredients)
     .split(/[,;；•·|]/)
     .map((item) => cleanText(item))
-    .filter((item) => item.length >= 2 && item.length <= 120)
+    .filter((item) => ingredientSignal(item))
     .slice(0, 12)
     .map((item) => {
       const amount =
@@ -333,13 +335,19 @@ function ingredientRecords(ingredients, pageUrl) {
         '官网未标注单项剂量';
       const name = cleanText(
         item.replace(amount, '').replaceAll(/[()（）]/g, ' '),
-      );
+      ).replace(/[.。]+$/, '').trim();
       return {
         name: name || item,
         amount,
         role: ingredientRole(name || item),
         evidence: pageUrl,
       };
+    })
+    .filter((item) => {
+      const key = signalKey(item.name);
+      if (!ingredientSignal(item.name) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 }
 

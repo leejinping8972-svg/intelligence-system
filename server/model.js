@@ -1375,7 +1375,62 @@ function coreMetrics(kind, record, days = 30, context = {}) {
   ];
 }
 
+// workers/site-discovery/src/product-signal-rules.js
+function signalText(value) {
+  return String(value || "").normalize("NFKC").replaceAll(/\s+/g, " ").trim();
+}
+function signalKey(value) {
+  return signalText(value).toLowerCase().replaceAll(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+var BOILERPLATE = /not (?:been )?evaluated|food and drug administration|not intended to diagnose|diagnose.{0,30}treat.{0,30}cure|consult (?:your |a )?(?:physician|doctor|healthcare)|keep out of reach|if you are (?:pregnant|nursing)|all rights reserved|privacy policy|shipping|add to cart|subscribe|suggested (?:use|usage)|directions for use|daily value|servings? (?:size|per)|warning|disclaimer|advertencia|no (?:ha sido|está) evaluad|no est[aá] destinado|consulte.{0,25}(?:m[eé]dico|profesional)|không phải là thuốc|không có tác dụng thay thế thuốc|tham khảo ý kiến|免责声明|未经.{0,12}(?:评估|评价)|不用于.{0,12}(?:诊断|治疗)|请咨询|注意事项|用法用量|每日参考值/i;
+function benefitSignal(value) {
+  const text = signalText(value);
+  const minimum = /[\p{Script=Han}]/u.test(text) ? 2 : 4;
+  if (text.length < minimum || text.length > 240 || BOILERPLATE.test(text)) return "";
+  if (/^(?:ingredients?|supplement facts?|nutrition facts?|benefits?|description|product details?|learn more|shop now|成分|营养成分表|商品详情)[\s:：.!*]*$/i.test(
+    text
+  ))
+    return "";
+  return text;
+}
+function ingredientSection(value) {
+  return signalText(value).split(
+    /\b(?:free (?:of|from)|does not contain|contains no|allergen(?:s| information)?|warnings?|suggested (?:use|usage))\s*[:：]?|不含[:：]?|无添加[:：]?/i
+  )[0].trim();
+}
+function ingredientSignal(value, context = "") {
+  const text = signalText(value);
+  const key = signalKey(text);
+  if (text.length < 2 || text.length > 120 || BOILERPLATE.test(text)) return "";
+  if (/\b(?:non[ -]?gmo|gmo[ -]?free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen)[ -]?free|free (?:from|of)|no added|without|does not contain|contains no|certified|vegan|vegetarian|kosher|halal)\b|非转基因|不含|无麸质|无乳糖|无添加|纯素/i.test(
+    text
+  ))
+    return "";
+  if (/\b(?:non gmo|gmo free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen) free)\b/.test(
+    key
+  ))
+    return "";
+  if (/^(?:ingredients?|other ingredients?|supplement facts?|nutrition facts?|未知|待识别|官网未公开|平台未返回|n\/?a|none)$/i.test(
+    text
+  ))
+    return "";
+  if (/\b(?:supports?|promotes?|helps?|take|capsules? daily|tablets? daily)\b/i.test(
+    text
+  ))
+    return "";
+  const source = signalText(context);
+  const positive = ingredientSection(source);
+  if (positive !== source && !signalKey(positive).includes(key)) return "";
+  const sourceParts = source.split(/[,;:.。；\n]/).map((part) => ` ${signalKey(part)} `);
+  if (sourceParts.some(
+    (part) => part.includes(` ${key} free `) || part.includes(` without ${key} `) || part.includes(` no ${key} `)
+  ))
+    return "";
+  return text;
+}
+
 // apps/web-antd/src/views/intelligence/radar-engine.ts
+var RADAR_RULES_VERSION = 2;
 var today = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 function clamp2(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -1385,16 +1440,36 @@ function daysSince(value) {
   return time === void 0 || Date.parse(value || "") > Date.now() ? Infinity : Math.floor((Date.now() - time) / 864e5);
 }
 function withinWindow(value, windowDays) {
-  return daysSince(value) <= windowDays;
+  return daysSince(value) < windowDays;
 }
-function keywordGrowth(keywords, category, market) {
-  const values = keywords.filter(
-    (item) => item.market === market && item.category === category && item.growth !== null
-  ).map((item) => item.growth);
+function keywordGrowth(keywords) {
+  const values = keywords.filter((item) => item.growth !== null && Number.isFinite(item.growth)).map((item) => item.growth);
   if (values.length === 0) return null;
   return Math.round(
     values.reduce((sum, value) => sum + value, 0) / values.length * 10
   ) / 10;
+}
+function linkedKeywords(state, products) {
+  const ids = new Set(products.map((product) => product.id));
+  return state.keywords.filter((keyword) => keyword.market === products[0]?.market && keyword.productIds?.some((id) => ids.has(id)));
+}
+function linkedAds(state, products, windowDays, includeDemo) {
+  const ids = new Set(products.map((product) => product.id));
+  return state.ads.filter((ad) => ad.market === products[0]?.market && ids.has(ad.productId) && (includeDemo || ad.dataNature !== "demo") && withinWindow(ad.firstSeenAt, windowDays) && discoveryDecision(ad, "ad").isNew !== false);
+}
+function opportunityScore(growth, ads, brands, reviewed) {
+  if (growth === null && ads === 0) return null;
+  return clamp2(20 + Math.max(-20, Math.min(30, (growth ?? 0) / 2)) + Math.min(20, ads * 8) + Math.min(10, Math.max(0, brands - 1) * 2) + (reviewed ? 10 : 0));
+}
+function brandCount(products) {
+  return new Set(products.map((product) => signalKey(product.brand)).filter((brand) => brand && !/^(?:unknown|n a|品牌待核|品牌待确认|待确认|未知)$/.test(brand))).size;
+}
+function sourceUrl(product) {
+  try {
+    return ["http:", "https:"].includes(new URL(product.evidenceUrl || "").protocol);
+  } catch {
+    return false;
+  }
 }
 function productEvidence(product, ads, keywords) {
   const relatedAds = ads.filter((ad) => ad.productId === product.id);
@@ -1425,7 +1500,7 @@ function productEvidence(product, ads, keywords) {
   for (const keyword of relatedKeywords.slice(0, 2)) {
     evidence.push({
       id: `keyword-${keyword.id}`,
-      kind: keyword.series.length > 0 ? "trend" : "keyword",
+      kind: keyword.growth !== null ? "trend" : "keyword",
       source: keyword.source,
       detail: keyword.growth === null ? `${keyword.term}\uFF1A\u7F3A\u5C11\u53EF\u6BD4\u8F83\u8D8B\u52BF` : `${keyword.term}\uFF1A30\u5929\u53D8\u5316 ${keyword.growth > 0 ? "+" : ""}${keyword.growth}%`,
       observedAt: keyword.updatedAt || observedAt
@@ -1436,26 +1511,20 @@ function productEvidence(product, ads, keywords) {
 function productFindings(state, windowDays, includeDemo) {
   return state.products.filter((product) => includeDemo || product.dataNature !== "demo").filter((product) => withinWindow(product.firstSeenAt, windowDays)).filter((product) => discoveryDecision(product, "product").isNew !== false).map((product) => {
     const decision = discoveryDecision(product, "product");
-    const evidence = productEvidence(product, state.ads, state.keywords);
-    const growth = keywordGrowth(
-      state.keywords,
-      product.category,
-      product.market
-    );
-    const relatedAds = state.ads.filter(
-      (ad) => ad.productId === product.id
-    ).length;
-    const factualEvidence = product.evidenceUrl ? 35 : 20;
-    const confidence = clamp2(
-      factualEvidence + 25 + Math.max(5, 20 - daysSince(product.firstSeenAt)) + Math.min(20, Math.max(0, evidence.length - 1) * 8)
-    );
+    const keywords = linkedKeywords(state, [product]);
+    const ads = linkedAds(state, [product], windowDays, includeDemo);
+    const evidence = productEvidence(product, ads, keywords);
+    const growth = keywordGrowth(keywords);
+    const relatedAds = ads.length;
+    const confidence = Math.min(decision.isNew === true ? 95 : 69, clamp2(
+      (sourceUrl(product) ? 35 : 10) + (decision.isNew === true ? 25 : 0) + Math.max(0, 10 - daysSince(product.firstSeenAt)) + (relatedAds ? 10 : 0) + (growth !== null ? 10 : 0)
+    ));
     const gaps = [
       decision.isNew === true ? "" : "\u7F3A\u5C11\u6709\u6765\u6E90\u7684\u6709\u6548\u4E0A\u67B6\u65E5\u671F\uFF0C\u53EA\u80FD\u8BA4\u5B9A\u4E3A\u8FD1\u671F\u65B0\u53D1\u73B0",
+      growth === null && !relatedAds ? "\u7F3A\u5C11\u76F4\u63A5\u5173\u8054\u7684\u6709\u6548\u8D8B\u52BF\u6216\u8FD1\u671F\u5E7F\u544A\uFF0C\u4E0D\u8BA1\u7B97\u7EBF\u7D22\u8BC4\u5206" : "",
       "\u5C1A\u672A\u63A5\u5165MOQ\u3001\u6210\u672C\u3001\u4EA4\u671F\u548C\u76EE\u6807\u5E02\u573A\u5408\u89C4\u7ED3\u8BBA"
     ].filter(Boolean);
-    const businessScore = clamp2(
-      24 + Math.max(0, Math.min(25, (growth || 0) / 2)) + Math.min(20, relatedAds * 12) + (product.reviewed ? 14 : 7)
-    );
+    const businessScore = opportunityScore(growth, relatedAds, 1, product.reviewed);
     return {
       id: `radar-product-${product.id}`,
       type: "product",
@@ -1474,7 +1543,7 @@ function productFindings(state, windowDays, includeDemo) {
         decision.reason,
         `\u6700\u8FD1 ${daysSince(product.firstSeenAt)} \u5929\u9996\u6B21\u8FDB\u5165\u7CFB\u7EDF\uFF1B\u6700\u8FD1\u53D1\u73B0 ${product.discovery?.lastSeenAt?.slice(0, 10) || "\u672A\u77E5"}`,
         relatedAds ? `\u5173\u8054 ${relatedAds} \u6761\u8FD1\u671F\u5E7F\u544A\u4FE1\u53F7` : "\u6682\u672A\u53D1\u73B0\u5173\u8054\u5E7F\u544A\u4FE1\u53F7",
-        growth === null ? "\u7F3A\u5C11\u540C\u54C1\u7C7B\u53EF\u6BD4\u8F83\u8D8B\u52BF" : `\u540C\u54C1\u7C7B\u5173\u952E\u8BCD30\u5929\u5E73\u5747\u53D8\u5316 ${growth > 0 ? "+" : ""}${growth}%`
+        growth === null ? "\u7F3A\u5C11\u76F4\u63A5\u5173\u8054\u7684\u53EF\u6BD4\u8F83\u8D8B\u52BF" : `\u76F4\u63A5\u5173\u8054\u5173\u952E\u8BCD30\u5929\u5E73\u5747\u53D8\u5316 ${growth > 0 ? "+" : ""}${growth}%`
       ],
       gaps
     };
@@ -1485,26 +1554,23 @@ function conceptFindings(state, windowDays, includeDemo) {
   for (const product of state.products) {
     if (!includeDemo && product.dataNature === "demo") continue;
     if (!withinWindow(product.firstSeenAt, windowDays)) continue;
+    if (!sourceUrl(product)) continue;
     for (const benefit of product.benefits) {
-      const key = `${product.market}:${benefit}`;
-      groups.set(key, [...groups.get(key) || [], product]);
+      const text = benefitSignal(benefit);
+      if (!text) continue;
+      const key = `${product.market}:${signalKey(text)}`;
+      const existing = groups.get(key) || [];
+      if (!existing.some((item) => item.id === product.id)) groups.set(key, [...existing, product]);
     }
   }
   return [...groups.entries()].map(([key, products]) => {
-    const concept = key.split(":").slice(1).join(":");
+    const conceptKey = key.split(":").slice(1).join(":");
     const product = products[0];
-    const brandCount = new Set(products.map((item) => item.brand)).size;
-    const ads = state.ads.filter(
-      (ad) => products.some((item) => item.id === ad.productId)
-    );
-    const keywords = state.keywords.filter(
-      (keyword) => keyword.market === product.market && keyword.category === product.category
-    );
-    const growth = keywordGrowth(
-      state.keywords,
-      product.category,
-      product.market
-    );
+    const concept = product.benefits.find((value) => signalKey(value) === conceptKey);
+    const brands = brandCount(products);
+    const ads = linkedAds(state, products, windowDays, includeDemo);
+    const keywords = linkedKeywords(state, products).filter((keyword) => keyword.growth !== null);
+    const growth = keywordGrowth(keywords);
     const evidence = [
       ...products.slice(0, 3).map((item) => ({
         id: `concept-product-${item.id}-${concept}`,
@@ -1531,33 +1597,34 @@ function conceptFindings(state, windowDays, includeDemo) {
       }))
     ];
     const sourceKinds = new Set(evidence.map((item) => item.kind)).size;
-    const confidence = clamp2(
-      20 + brandCount * 12 + sourceKinds * 12 + Math.max(0, (growth || 0) / 4)
+    const confidence = Math.min(
+      brands >= 2 && sourceKinds >= 2 ? 85 : 69,
+      clamp2(20 + Math.min(20, brands * 4) + sourceKinds * 12)
     );
     return {
-      id: `radar-concept-${product.market}-${concept}`,
+      id: `radar-concept-${product.market}-${conceptKey}`,
       type: "concept",
       title: concept,
-      subtitle: `${product.category} \xB7 ${brandCount} \u4E2A\u54C1\u724C\u91C7\u7528`,
+      subtitle: `${product.category} \xB7 ${brands} \u4E2A\u54C1\u724C\u91C7\u7528`,
       category: product.category,
       market: product.market,
       firstSeenAt: products.map((item) => item.firstSeenAt || today()).sort().reverse()[0],
       status: products.every((item) => item.dataNature === "demo") ? "demo" : "pending",
       confidenceScore: confidence,
-      businessScore: clamp2(
-        20 + brandCount * 12 + ads.length * 8 + Math.max(0, (growth || 0) / 2)
-      ),
+      businessScore: opportunityScore(growth, ads.length, brands, products.some((item) => item.reviewed)),
       trendGrowth: growth,
-      adoptionCount: brandCount,
+      adoptionCount: brands,
       evidence,
       rationale: [
-        `${products.length} \u4E2A\u5546\u54C1\u3001${brandCount} \u4E2A\u54C1\u724C\u91C7\u7528\u8BE5\u8868\u8FBE`,
-        `${ads.length} \u6761\u5173\u8054\u5E7F\u544A\uFF0C${sourceKinds} \u7C7B\u72EC\u7ACB\u8BC1\u636E`,
-        growth === null ? "\u6682\u7F3A\u8D8B\u52BF\u9A8C\u8BC1" : `\u540C\u54C1\u7C7B\u5173\u952E\u8BCD30\u5929\u5E73\u5747\u53D8\u5316 ${growth > 0 ? "+" : ""}${growth}%`
+        `${products.length} \u4E2A\u5546\u54C1\u3001${brands} \u4E2A\u54C1\u724C\u91C7\u7528\u8BE5\u8868\u8FBE`,
+        `${ads.length} \u6761\u8FD1\u671F\u5173\u8054\u5E7F\u544A\uFF0C${sourceKinds} \u7C7B\u8BC1\u636E`,
+        growth === null ? "\u6682\u7F3A\u8D8B\u52BF\u9A8C\u8BC1" : `\u76F4\u63A5\u5173\u8054\u5173\u952E\u8BCD30\u5929\u5E73\u5747\u53D8\u5316 ${growth > 0 ? "+" : ""}${growth}%`
       ],
       gaps: [
-        brandCount < 2 ? "\u5C1A\u672A\u8FBE\u5230\u201C\u81F3\u5C112\u4E2A\u54C1\u724C\u91C7\u7528\u201D\u7684\u786E\u8BA4\u95E8\u69DB" : "",
-        sourceKinds < 2 ? "\u5C1A\u672A\u8FBE\u5230\u4E24\u7C7B\u72EC\u7ACB\u6765\u6E90\u4EA4\u53C9\u9A8C\u8BC1\u95E8\u69DB" : ""
+        "\u4EC5\u4E3A\u89C2\u5BDF\u7A97\u53E3\u5185\u7684\u5356\u70B9\u8868\u8FBE\uFF0C\u672A\u8BC1\u660E\u5C5E\u4E8E\u65B0\u6982\u5FF5",
+        brands < 2 ? "\u5C1A\u672A\u8FBE\u5230\u201C\u81F3\u5C112\u4E2A\u54C1\u724C\u91C7\u7528\u201D\u7684\u786E\u8BA4\u95E8\u69DB" : "",
+        sourceKinds < 2 ? "\u5C1A\u7F3A\u76F4\u63A5\u5173\u8054\u7684\u8FD1\u671F\u5E7F\u544A\u6216\u6709\u6548\u8D8B\u52BF\u8BC1\u636E" : "",
+        growth === null && !ads.length ? "\u7F3A\u5C11\u76F4\u63A5\u5173\u8054\u7684\u6709\u6548\u8D8B\u52BF\u6216\u8FD1\u671F\u5E7F\u544A\uFF0C\u4E0D\u8BA1\u7B97\u7EBF\u7D22\u8BC4\u5206" : ""
       ].filter(Boolean)
     };
   });
@@ -1567,26 +1634,28 @@ function ingredientFindings(state, windowDays, includeDemo) {
   for (const product of state.products) {
     if (!includeDemo && product.dataNature === "demo") continue;
     if (!withinWindow(product.firstSeenAt, windowDays)) continue;
+    if (!sourceUrl(product)) continue;
     for (const insight of product.ingredientInsights) {
-      const key = `${product.market}:${insight.name.toLowerCase()}`;
-      groups.set(key, [...groups.get(key) || [], product]);
+      const text = ingredientSignal(insight.name, product.ingredient);
+      if (!text) continue;
+      const key = `${product.market}:${signalKey(text)}`;
+      const existing = groups.get(key) || [];
+      if (!existing.some((item) => item.id === product.id)) groups.set(key, [...existing, product]);
     }
   }
   return [...groups.entries()].map(([key, products]) => {
     const ingredientKey = key.split(":").slice(1).join(":");
     const product = products[0];
     const insight = product.ingredientInsights.find(
-      (item) => item.name.toLowerCase() === ingredientKey
+      (item) => signalKey(item.name) === ingredientKey
     );
-    const brandCount = new Set(products.map((item) => item.brand)).size;
-    const growth = keywordGrowth(
-      state.keywords,
-      product.category,
-      product.market
-    );
+    const brands = brandCount(products);
+    const keywords = linkedKeywords(state, products);
+    const growth = keywordGrowth(keywords);
+    const ads = linkedAds(state, products, windowDays, includeDemo);
     const evidence = products.slice(0, 3).map((item) => {
       const itemInsight = item.ingredientInsights.find(
-        (entry) => entry.name.toLowerCase() === ingredientKey
+        (entry) => signalKey(entry.name) === ingredientKey
       );
       return {
         id: `ingredient-${item.id}-${ingredientKey}`,
@@ -1597,8 +1666,9 @@ function ingredientFindings(state, windowDays, includeDemo) {
         url: item.evidenceUrl
       };
     });
-    const confidence = clamp2(
-      45 + Math.min(25, brandCount * 10) + (product.reviewed ? 20 : 5)
+    const confidence = Math.min(
+      products.some((item) => item.reviewed) ? 85 : 69,
+      clamp2(40 + Math.min(15, brands * 3) + (product.reviewed ? 20 : 0))
     );
     return {
       id: `radar-ingredient-${product.market}-${ingredientKey}`,
@@ -1610,19 +1680,19 @@ function ingredientFindings(state, windowDays, includeDemo) {
       firstSeenAt: products.map((item) => item.firstSeenAt || today()).sort().reverse()[0],
       status: products.every((item) => item.dataNature === "demo") ? "demo" : "pending",
       confidenceScore: confidence,
-      businessScore: clamp2(
-        25 + brandCount * 12 + Math.max(0, (growth || 0) / 2)
-      ),
+      businessScore: opportunityScore(growth, ads.length, brands, products.some((item) => item.reviewed)),
       trendGrowth: growth,
-      adoptionCount: brandCount,
+      adoptionCount: brands,
       evidence,
       rationale: [
-        `${products.length} \u4E2A\u5546\u54C1\u6807\u7B7E\u51FA\u73B0\uFF0C\u6D89\u53CA ${brandCount} \u4E2A\u54C1\u724C`,
+        `${products.length} \u4E2A\u5546\u54C1\u6807\u7B7E\u51FA\u73B0\uFF0C\u6D89\u53CA ${brands} \u4E2A\u54C1\u724C`,
         `\u8BB0\u5F55\u5242\u91CF\u53E3\u5F84\uFF1A${insight.amount}`,
-        growth === null ? "\u6682\u7F3A\u76F8\u5173\u9700\u6C42\u8D8B\u52BF" : `\u5173\u8054\u54C1\u7C7B\u5173\u952E\u8BCD30\u5929\u5E73\u5747\u53D8\u5316 ${growth > 0 ? "+" : ""}${growth}%`
+        growth === null ? "\u6682\u7F3A\u76F8\u5173\u9700\u6C42\u8D8B\u52BF" : `\u76F4\u63A5\u5173\u8054\u5173\u952E\u8BCD30\u5929\u5E73\u5747\u53D8\u5316 ${growth > 0 ? "+" : ""}${growth}%`
       ],
       gaps: [
-        brandCount < 2 ? "\u76EE\u524D\u53EA\u6709\u5355\u4E00\u54C1\u724C\u8BC1\u636E\uFF0C\u4ECD\u5C5E\u4E8E\u6210\u5206\u5019\u9009" : "",
+        "\u6807\u7B7E\u51FA\u73B0\u4E0D\u8BC1\u660E\u539F\u6599\u9996\u6B21\u4E0A\u5E02\u6216\u5C5E\u4E8E\u65B0\u6210\u5206",
+        brands < 2 ? "\u76EE\u524D\u53EA\u6709\u5355\u4E00\u54C1\u724C\u8BC1\u636E\uFF0C\u4ECD\u5C5E\u4E8E\u6210\u5206\u5019\u9009" : "",
+        growth === null && !ads.length ? "\u7F3A\u5C11\u76F4\u63A5\u5173\u8054\u7684\u6709\u6548\u8D8B\u52BF\u6216\u8FD1\u671F\u5E7F\u544A\uFF0C\u4E0D\u8BA1\u7B97\u7EBF\u7D22\u8BC4\u5206" : "",
         "\u7F3A\u5C11\u4F9B\u5E94\u5546\u3001MOQ\u3001\u6210\u672C\u3001\u4EA4\u671F\u53CA\u76EE\u6807\u5E02\u573A\u5408\u89C4\u8D44\u6599"
       ].filter(Boolean)
     };
@@ -1684,9 +1754,9 @@ function buildCollectedRadarFindings(collector, windowDays) {
     } }
   }, "product") })).filter(({ decision }) => decision.isNew !== false).map(({ item, decision }) => {
     const observed = item.firstSeenAt.slice(0, 10);
-    const confidence = clamp2(
-      35 + 25 + Math.max(5, 20 - daysSince(observed)) + (decision.isNew === true ? 20 : 8)
-    );
+    const confidence = Math.min(decision.isNew === true ? 95 : 69, clamp2(
+      35 + Math.max(0, 10 - daysSince(observed)) + (decision.isNew === true ? 25 : 0)
+    ));
     return {
       id: `collector-${item.id}`,
       type: "product",
@@ -1719,7 +1789,7 @@ function buildCollectedRadarFindings(collector, windowDays) {
       ],
       gaps: [
         decision.isNew === true ? "" : "\u7F3A\u5C11\u5B98\u7F51\u786E\u8BA4\u53D1\u5E03\u65F6\u95F4\uFF0C\u6682\u6309\u8FD1\u671F\u65B0\u53D1\u73B0\u5904\u7406",
-        "\u5C1A\u672A\u5173\u8054\u5E7F\u544A\u3001\u5173\u952E\u8BCD\u3001\u8D8B\u52BF\u548C\u4F9B\u5E94\u94FE\u6570\u636E\uFF0C\u56E0\u6B64\u4E0D\u8BA1\u7B97\u5546\u4E1A\u673A\u4F1A\u5206"
+        "\u5C1A\u672A\u5173\u8054\u6709\u6548\u8D8B\u52BF\u6216\u8FD1\u671F\u5E7F\u544A\uFF0C\u56E0\u6B64\u4E0D\u8BA1\u7B97\u7EBF\u7D22\u8BC4\u5206"
       ].filter(Boolean)
     };
   });
@@ -1755,9 +1825,7 @@ function buildFreeSourceRadarFindings(data, windowDays) {
       market: "US",
       firstSeenAt: signal.observedAt,
       status: "pending",
-      confidenceScore: clamp2(
-        62 + Math.max(0, 14 - daysSince(signal.observedAt))
-      ),
+      confidenceScore: Math.min(69, clamp2(45 + Math.max(0, 10 - daysSince(signal.observedAt)))),
       businessScore: null,
       trendGrowth: null,
       adoptionCount: 1,
@@ -1768,7 +1836,7 @@ function buildFreeSourceRadarFindings(data, windowDays) {
       ],
       gaps: [
         "DSLD\u6536\u5F55\u65E5\u671F\u4E0D\u7B49\u4E8E\u9996\u6B21\u4E0A\u5E02\u65E5\u671F",
-        "\u5C1A\u672A\u5173\u8054\u5B98\u7F51\u9996\u53D1\u3001\u8D8B\u52BF\u3001\u5E7F\u544A\u548C\u4F9B\u5E94\u94FE\u6570\u636E\uFF0C\u56E0\u6B64\u4E0D\u8BA1\u7B97\u5546\u4E1A\u673A\u4F1A\u5206"
+        "\u5C1A\u672A\u5173\u8054\u6709\u6548\u8D8B\u52BF\u6216\u8FD1\u671F\u5E7F\u544A\uFF0C\u56E0\u6B64\u4E0D\u8BA1\u7B97\u7EBF\u7D22\u8BC4\u5206"
       ]
     });
   }
@@ -1801,38 +1869,6 @@ function buildFreeSourceRadarFindings(data, windowDays) {
         "\u5185\u5BB9\u6570\u91CF\u7528\u4E8E\u5224\u65AD\u4F20\u64AD\u6D3B\u8DC3\u5EA6\uFF0C\u4E0D\u4EE3\u8868\u641C\u7D22\u9700\u6C42\u6216\u9500\u552E\u589E\u957F"
       ],
       gaps: ["\u5C1A\u672A\u4E0E\u5B98\u7F51\u5546\u54C1\u3001\u5173\u952E\u8BCD\u8D8B\u52BF\u548C\u5E7F\u544A\u6570\u636E\u4EA4\u53C9\u9A8C\u8BC1"]
-    });
-  }
-  const regulatoryGroups = /* @__PURE__ */ new Map();
-  for (const signal of data.signals) {
-    if (signal.kind !== "regulatory" || signal.market !== "US") continue;
-    if (!withinWindow(signal.observedAt, windowDays)) continue;
-    regulatoryGroups.set(signal.query, [
-      ...regulatoryGroups.get(signal.query) || [],
-      signal
-    ]);
-  }
-  for (const [query, signals] of regulatoryGroups) {
-    const first = signals[0];
-    findings.push({
-      id: `public-regulatory-US-${query}`,
-      type: "ingredient",
-      title: `${query} \xB7 \u76D1\u7BA1\u4FE1\u53F7`,
-      subtitle: `${signals.length} \u6761openFDA\u8FD1\u671F\u53EC\u56DE\u8BB0\u5F55`,
-      category: first.category,
-      market: "US",
-      firstSeenAt: signals.map((item) => item.observedAt).toSorted().at(-1),
-      status: "pending",
-      confidenceScore: 72,
-      businessScore: null,
-      trendGrowth: null,
-      adoptionCount: signals.length,
-      evidence: signals.slice(0, 5).map(freeSignalEvidence),
-      rationale: [
-        `\u89C2\u5BDF\u7A97\u53E3\u5185\u5339\u914D ${signals.length} \u6761FDA\u53EC\u56DE\u8BB0\u5F55`,
-        "\u8BE5\u4FE1\u53F7\u7528\u4E8E\u98CE\u9669\u590D\u6838\uFF0C\u4E0D\u7528\u4E8E\u5224\u65AD\u5E02\u573A\u673A\u4F1A\u5927\u5C0F"
-      ],
-      gaps: ["\u9700\u8981\u6838\u5BF9\u5177\u4F53\u4EA7\u54C1\u3001\u6279\u6B21\u3001\u53EC\u56DE\u539F\u56E0\u4EE5\u53CA\u4E0E\u62DF\u5F00\u53D1\u914D\u65B9\u7684\u5173\u8054"]
     });
   }
   return findings;
@@ -1942,14 +1978,14 @@ function buildRadarReport(findings, windowDays, marketLabel, appName = "\u60C5\u
     `\u5E02\u573A\uFF1A${marketLabel}`,
     `\u751F\u6210\u65F6\u95F4\uFF1A${(/* @__PURE__ */ new Date()).toLocaleString("zh-CN")}`,
     "",
-    `\u53D1\u73B0\u6982\u51B5\uFF1A${products.length}\u4E2A\u65B0\u54C1/\u65B0\u53D1\u73B0\u5546\u54C1\u5019\u9009\uFF0C${ads.length}\u6761\u65B0\u5E7F\u544A\u7EBF\u7D22\uFF0C${concepts.length}\u4E2A\u6982\u5FF5\u5019\u9009\uFF0C${ingredients2.length}\u4E2A\u6210\u5206\u5019\u9009\u3002`,
-    strongest ? `\u5F53\u524D\u7EFC\u5408\u4F18\u5148\u9879\uFF1A${strongest.title}\uFF08\u65B0\u9C9C\u5EA6\u53EF\u4FE1\u5EA6${strongest.confidenceScore}\uFF0C\u5546\u4E1A\u673A\u4F1A\u5206${strongest.businessScore}\uFF09\u3002` : "\u5F53\u524D\u6CA1\u6709\u8FBE\u5230\u89C2\u5BDF\u7A97\u53E3\u548C\u5E02\u573A\u6761\u4EF6\u7684\u5019\u9009\u3002",
+    `\u53D1\u73B0\u6982\u51B5\uFF1A${products.length}\u4E2A\u5546\u54C1\u53D1\u73B0\uFF08${products.filter((item) => item.status === "confirmed").length}\u4E2A\u6765\u6E90\u786E\u8BA490\u5929\u5185\u4E0A\u67B6\uFF09\uFF0C${ads.length}\u6761\u65B0\u5E7F\u544A\u7EBF\u7D22\uFF0C${concepts.length}\u4E2A\u5356\u70B9/\u8BDD\u9898\u7EBF\u7D22\uFF0C${ingredients2.length}\u4E2A\u6210\u5206\u7EBF\u7D22\u3002`,
+    strongest ? `\u5F53\u524D\u7EBF\u7D22\u8BC4\u5206\u8F83\u9AD8\u9879\uFF1A${strongest.title}\uFF08\u8BC1\u636E\u5B8C\u6574\u5EA6${strongest.confidenceScore}\uFF0C\u7EBF\u7D22\u8BC4\u5206${strongest.businessScore}\uFF09\u3002` : findings.length ? "\u5F53\u524D\u5019\u9009\u7F3A\u5C11\u76F4\u63A5\u5173\u8054\u7684\u6709\u6548\u8D8B\u52BF\u6216\u8FD1\u671F\u5E7F\u544A\uFF0C\u7EBF\u7D22\u8BC4\u5206\u4E3A\u6570\u636E\u4E0D\u8DB3\u3002" : "\u5F53\u524D\u6CA1\u6709\u8FBE\u5230\u89C2\u5BDF\u7A97\u53E3\u548C\u5E02\u573A\u6761\u4EF6\u7684\u5019\u9009\u3002",
     "",
-    "\u5224\u65AD\u53E3\u5F84\uFF1A\u5546\u54C1\u4E8B\u5B9E\u3001\u5E7F\u544A\u4F20\u64AD\u3001\u5173\u952E\u8BCD\u4E0E\u8D8B\u52BF\u5206\u522B\u8BB0\u5F55\uFF1B\u5E7F\u544A\u4E0D\u5355\u72EC\u8BC1\u660E\u65B0\u54C1\uFF1B\u7F3A\u5931\u6570\u636E\u6807\u4E3A\u4E0D\u8DB3\uFF0C\u4E0D\u6309\u96F6\u5206\u5904\u7406\u3002",
+    "\u5224\u65AD\u53E3\u5F84\uFF1A\u9996\u6B21\u53D1\u73B0\u4E0D\u7B49\u4E8E\u9996\u6B21\u4E0A\u5E02\uFF1B\u5356\u70B9\u548C\u6210\u5206\u51FA\u73B0\u4E0D\u8BC1\u660E\u65B0\u9896\u6027\uFF1B\u5E7F\u544A\u4E0D\u5355\u72EC\u8BC1\u660E\u65B0\u54C1\u3002\u7EBF\u7D22\u8BC4\u5206\u4EC5\u53C2\u8003\u76F4\u63A5\u5173\u8054\u7684\u8D8B\u52BF\u3001\u8FD1\u671F\u5E7F\u544A\u4E0E\u54C1\u724C\u91C7\u7528\uFF0C\u4E0D\u5305\u542B\u6210\u672C\u3001\u5229\u6DA6\u3001\u4F9B\u5E94\u94FE\u6216\u5408\u89C4\u7ED3\u8BBA\u3002",
     "",
     ...findings.slice(0, 10).flatMap((item, index) => [
       `${index + 1}. [${item.type === "ad" ? "\u5E7F\u544A" : item.type === "product" ? "\u5546\u54C1" : item.type === "concept" ? "\u6982\u5FF5" : "\u6210\u5206"}] ${item.title}`,
-      `   ${item.subtitle}\uFF5C\u53EF\u4FE1\u5EA6 ${item.confidenceScore}\uFF5C\u673A\u4F1A\u5206 ${item.businessScore ?? "\u6570\u636E\u4E0D\u8DB3"}`,
+      `   ${item.subtitle}\uFF5C\u8BC1\u636E\u5B8C\u6574\u5EA6 ${item.confidenceScore}\uFF5C\u7EBF\u7D22\u8BC4\u5206 ${item.businessScore ?? "\u6570\u636E\u4E0D\u8DB3"}`,
       `   \u4F9D\u636E\uFF1A${item.rationale.join("\uFF1B")}`,
       item.gaps.length > 0 ? `   \u6570\u636E\u7F3A\u53E3\uFF1A${item.gaps.join("\uFF1B")}` : "   \u6570\u636E\u7F3A\u53E3\uFF1A\u65E0\u5173\u952E\u7F3A\u53E3"
     ]),
@@ -1980,7 +2016,8 @@ function formulaOf(product) {
 }
 function formulaStatistics(products) {
   const groups = /* @__PURE__ */ new Map();
-  let observed = 0, verified = 0;
+  let observed = 0;
+  let verified = 0;
   for (const product of products) {
     const formula = formulaOf(product);
     if (!formula.fingerprint || formula.status === "unknown") continue;
@@ -2000,9 +2037,12 @@ function formulaStatistics(products) {
 function radarStatistics(findings) {
   const counts = { ad: 0, product: 0, concept: 0, ingredient: 0, verified: 0 };
   const activity = {};
-  let sum = 0, scored = 0;
+  let confirmedProducts = 0;
+  let scored = 0;
+  let sum = 0;
   for (const item of findings) {
     counts[item.type]++;
+    if (item.type === "product" && item.status === "confirmed") confirmedProducts++;
     if (item.confidenceScore >= 70) counts.verified++;
     if (item.businessScore !== null) {
       sum += item.businessScore;
@@ -2012,7 +2052,7 @@ function radarStatistics(findings) {
     activity[day3] ||= {};
     activity[day3][item.type] = (activity[day3][item.type] || 0) + 1;
   }
-  return { counts, averageScore: scored ? Math.round(sum / scored) : null, activity };
+  return { counts, confirmedProducts, scored, averageScore: scored ? Math.round(sum / scored) : null, activity };
 }
 
 // apps/web-antd/src/views/intelligence/product-decisions.ts
@@ -2402,6 +2442,7 @@ function classifyKeyword(...values) {
   return rules.find(([pattern]) => pattern.test(text))?.[1] || "\u5F85\u5206\u7C7B";
 }
 export {
+  RADAR_RULES_VERSION,
   assessKeyword,
   buildCollectedRadarFindings,
   buildFreeSourceRadarFindings,

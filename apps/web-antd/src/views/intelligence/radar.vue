@@ -22,20 +22,22 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
-import Chart from './components/Chart.vue';
-import PageHeader from './components/PageHeader.vue';
-import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
-import { download, marketName, state } from './data';
 import { cloudRequest } from './cloud-workspace';
-import { serverMode } from './session';
-import { useStatistics } from './statistics-queries';
+import Chart from './components/Chart.vue';
+import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
+import PageHeader from './components/PageHeader.vue';
+import { download, marketName, state } from './data';
 import {
   buildCollectedRadarFindings,
   buildFreeSourceRadarFindings,
   buildRadarFindings,
   buildRadarReport,
   buildSourceCoverage,
+  RADAR_RULES_VERSION,
 } from './radar-engine';
+import { serverMode } from './session';
+import { radarStatistics } from './statistics-engine';
+import { useStatistics } from './statistics-queries';
 
 const router = useRouter();
 const windowDays = ref(7);
@@ -47,13 +49,14 @@ const reportOpen = ref(false);
 const sourceOpen = ref(false);
 const collectorData = ref<null | PublicCollectorData>(null);
 const freeSourceData = ref<FreeSourceData | null>(null);
-const page = ref(1), pageSize = ref(20);
+const page = ref(1); const pageSize = ref(20);
 watch(() => [state.market, windowDays.value, findingType.value], () => { page.value = 1; selected.value = undefined; reportOpen.value = false; });
 const remote = useStatistics<RadarFinding>(computed(() => ({ kind: 'radar', market: state.market, days: windowDays.value, type: findingType.value, page: page.value, pageSize: pageSize.value })));
-const awaitingSnapshot = computed(() => serverMode && !remote.snapshot.value);
+const rulesUpdating = computed(() => serverMode && !!remote.snapshot.value && (remote.snapshot.value.rulesStale || remote.snapshot.value.radarRulesVersion !== RADAR_RULES_VERSION));
+const awaitingSnapshot = computed(() => serverMode && (!remote.snapshot.value || rulesUpdating.value));
 watch(remote.pagination, value => { page.value = value.page; });
 
-const allFindings = computed(() => serverMode ? remote.rows.value : [
+const allFindings = computed(() => serverMode ? awaitingSnapshot.value ? [] : remote.rows.value : [
   ...buildCollectedRadarFindings(collectorData.value, windowDays.value),
   ...buildFreeSourceRadarFindings(freeSourceData.value, windowDays.value),
   ...buildRadarFindings(state, windowDays.value, includeDemo.value),
@@ -69,10 +72,14 @@ const sourceCoverage = computed(() =>
   serverMode ? (remote.snapshot.value?.coverage as RadarSourceCoverage[] || []) : buildSourceCoverage(state, collectorData.value, freeSourceData.value),
 );
 const serverReport = ref('');
+watch(rulesUpdating, (value) => {
+  if (value) { selected.value = undefined; reportOpen.value = false; serverReport.value = ''; }
+});
 const report = computed(() =>
   serverMode ? serverReport.value : buildRadarReport(findings.value, windowDays.value, marketName(state.market), state.branding.appName),
 );
-const counts = computed(() => serverMode ? remote.snapshot.value?.summary?.counts || { ad: 0, product: 0, concept: 0, ingredient: 0, verified: 0 } : ({
+const summary = computed(() => serverMode ? awaitingSnapshot.value ? undefined : remote.snapshot.value?.summary : radarStatistics(findings.value));
+const counts = computed(() => serverMode ? summary.value?.counts || { ad: 0, product: 0, concept: 0, ingredient: 0, verified: 0 } : ({
   ad: findings.value.filter((item) => item.type === 'ad').length,
   product: findings.value.filter((item) => item.type === 'product').length,
   concept: findings.value.filter((item) => item.type === 'concept').length,
@@ -81,7 +88,7 @@ const counts = computed(() => serverMode ? remote.snapshot.value?.summary?.count
   verified: findings.value.filter((item) => item.confidenceScore >= 70).length,
 }));
 const averageScore = computed(() => {
-  if (serverMode) return remote.snapshot.value?.summary?.averageScore ?? null;
+  if (serverMode) return summary.value?.averageScore ?? null;
   const values = findings.value
     .map((item) => item.businessScore)
     .filter((value): value is number => value !== null);
@@ -98,15 +105,15 @@ const columns = [
   { title: '类型', key: 'type', width: 90 },
   { title: '市场', key: 'market', width: 90 },
   { title: '首次发现', dataIndex: 'firstSeenAt', width: 110 },
-  { title: '新鲜度可信度', key: 'confidence', width: 150 },
-  { title: '商业机会', key: 'business', width: 130 },
+  { title: '证据完整度', key: 'confidence', width: 150 },
+  { title: '线索评分', key: 'business', width: 130 },
   { title: '采用/关联', key: 'adoption', width: 100 },
   { title: '状态', key: 'status', width: 120 },
   { title: '操作', key: 'action', width: 80, fixed: 'right' as const },
 ];
 
 const statusLabel: Record<string, string> = {
-  confirmed: '来源确认近期新增',
+  confirmed: '来源日期已核验',
   demo: '演示样本',
   'newly-discovered': '近期新发现',
   pending: '待交叉验证',
@@ -118,10 +125,10 @@ const statusColor: Record<string, string> = {
   pending: 'orange',
 };
 const typeLabel: Record<string, string> = {
-  ad: '新广告',
-  product: '新品',
-  concept: '新概念',
-  ingredient: '新成分',
+  ad: '广告线索',
+  product: '商品发现',
+  concept: '卖点/话题',
+  ingredient: '成分线索',
 };
 
 onMounted(async () => {
@@ -137,24 +144,20 @@ onMounted(async () => {
 });
 
 const activityOption = computed(() => {
-  const labels = Array.from({ length: windowDays.value }, (_, index) => {
-    const date = new Date();
-    date.setDate(date.getDate() - windowDays.value + index + 1);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  });
+  const anchor = new Date(serverMode && remote.snapshot.value ? remote.snapshot.value.generatedAt : Date.now());
+  const dates = Array.from({ length: windowDays.value }, (_, index) => new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate() - windowDays.value + index + 1)));
+  const labels = dates.map((date) => `${date.getUTCMonth() + 1}/${date.getUTCDate()}`);
   const series = (type: string) =>
-    labels.map((_, index) => {
-      const date = new Date();
-      date.setDate(date.getDate() - windowDays.value + index + 1);
+    dates.map((date) => {
       const key = date.toISOString().slice(0, 10);
-      return serverMode ? remote.snapshot.value?.summary?.activity[key]?.[type] || 0 : findings.value.filter(
-        (item) => item.type === type && item.firstSeenAt === key,
+      return serverMode ? summary.value?.activity[key]?.[type] || 0 : findings.value.filter(
+        (item) => item.type === type && item.firstSeenAt.slice(0, 10) === key,
       ).length;
     });
   return {
     color: ['#198771', '#647cc4', '#dc9c43', '#9c6ac4'],
     tooltip: { trigger: 'axis' },
-    legend: { data: ['新品', '新概念', '新成分', '新广告'], bottom: 0 },
+    legend: { data: ['商品发现', '卖点/话题', '成分线索', '广告线索'], bottom: 0 },
     grid: { left: 32, right: 14, top: 20, bottom: 42 },
     xAxis: {
       type: 'category',
@@ -167,11 +170,11 @@ const activityOption = computed(() => {
       splitLine: { lineStyle: { color: '#e9eef1', type: 'dashed' } },
     },
     series: [
-      { name: '新广告', type: 'bar', stack: 'total', data: series('ad') },
-      { name: '新品', type: 'bar', stack: 'total', data: series('product') },
-      { name: '新概念', type: 'bar', stack: 'total', data: series('concept') },
+      { name: '广告线索', type: 'bar', stack: 'total', data: series('ad') },
+      { name: '商品发现', type: 'bar', stack: 'total', data: series('product') },
+      { name: '卖点/话题', type: 'bar', stack: 'total', data: series('concept') },
       {
-        name: '新成分',
+        name: '成分线索',
         type: 'bar',
         stack: 'total',
         data: series('ingredient'),
@@ -191,10 +194,10 @@ const typeOption = computed(() => ({
       center: ['50%', '45%'],
       label: { formatter: '{b}\n{c}' },
       data: [
-        { name: '新品', value: counts.value.product },
-        { name: '新广告', value: counts.value.ad },
-        { name: '新概念', value: counts.value.concept },
-        { name: '新成分', value: counts.value.ingredient },
+        { name: '商品发现', value: counts.value.product },
+        { name: '广告线索', value: counts.value.ad },
+        { name: '卖点/话题', value: counts.value.concept },
+        { name: '成分线索', value: counts.value.ingredient },
       ],
     },
   ],
@@ -242,16 +245,16 @@ function openRelated(item: RadarFinding) {
   <main class="hci-page">
     <PageHeader
       title="新品雷达"
-      description="从商品事实、广告传播、关键词和趋势中识别变化，再用供应链条件判断是否值得行动。"
+      description="商品记录、卖点表达、成分标签与相关需求证据。"
     >
       <Button @click="sourceOpen = true">数据来源</Button>
       <DailyDiscoveryPlan />
       <Button @click="router.push('/signals')">公共情报源</Button>
       <Button @click="router.push('/imports')">导入真实数据</Button>
-      <Button type="primary" @click="showReport">生成分析报告</Button>
+      <Button type="primary" :disabled="awaitingSnapshot" @click="showReport">生成分析报告</Button>
     </PageHeader>
     <Alert v-if="remote.error.value" type="error" :message="remote.error.value" show-icon />
-    <p v-if="serverMode" class="hci-subtle" role="status">{{ remote.snapshot.value ? `数据更新于 ${new Date(remote.snapshot.value.generatedAt).toLocaleString('zh-CN')}` : remote.loading.value ? '正在加载雷达汇总…' : '雷达汇总更新中…' }}<span v-if="remote.snapshot.value?.publicDataStale"> · 公共情报源暂不可用，保留上次结果</span></p>
+    <p v-if="serverMode" class="hci-subtle" role="status">{{ rulesUpdating ? '判定口径更新中…' : remote.snapshot.value ? `数据更新于 ${new Date(remote.snapshot.value.generatedAt).toLocaleString('zh-CN')}` : remote.loading.value ? '正在加载雷达汇总…' : '雷达汇总更新中…' }}<span v-if="remote.snapshot.value?.publicDataStale"> · 公共情报源暂不可用，保留上次结果</span></p>
 
     <Alert
       v-if="demoCount"
@@ -303,31 +306,31 @@ function openRelated(item: RadarFinding) {
       </button>
       <button class="hci-stat" @click="findingType = 'product'">
         <div class="hci-stat-label">
-          <span>新品候选</span><Tag>商品事实</Tag>
+          <span>商品发现</span><Tag>来源记录</Tag>
         </div>
         <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : counts.product }}</div>
-        <div class="hci-stat-foot">区分确认上市与近期新发现</div>
+        <div class="hci-stat-foot">来源确认90天内上架：{{ awaitingSnapshot ? '...' : summary?.confirmedProducts ?? '待更新' }} 项</div>
       </button>
       <button class="hci-stat" @click="findingType = 'concept'">
         <div class="hci-stat-label">
-          <span>新概念候选</span><Tag>多源聚类</Tag>
+          <span>卖点/话题线索</span><Tag>待验证</Tag>
         </div>
         <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : counts.concept }}</div>
-        <div class="hci-stat-foot">卖点、人群、场景与成分组合</div>
+        <div class="hci-stat-foot">商品表达与内容话题</div>
       </button>
       <button class="hci-stat" @click="findingType = 'ingredient'">
         <div class="hci-stat-label">
-          <span>新成分候选</span><Tag>标签证据</Tag>
+          <span>成分线索</span><Tag>标签证据</Tag>
         </div>
         <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : counts.ingredient }}</div>
-        <div class="hci-stat-foot">广告提及不会直接确认成分</div>
+        <div class="hci-stat-foot">标签出现不代表新原料</div>
       </button>
       <button class="hci-stat" @click="findingType = 'all'">
         <div class="hci-stat-label">
-          <span>平均机会分</span><Tag color="green">决策辅助</Tag>
+          <span>平均线索分</span><Tag>待验证</Tag>
         </div>
-        <div class="hci-stat-value">{{ averageScore ?? '—' }}</div>
-        <div class="hci-stat-foot">可信度≥70：{{ awaitingSnapshot ? '...' : counts.verified }} 项</div>
+        <div class="hci-stat-value">{{ awaitingSnapshot ? '...' : averageScore ?? '—' }}</div>
+        <div class="hci-stat-foot">可评分：{{ awaitingSnapshot ? '...' : summary?.scored ?? '待更新' }} 项</div>
       </button>
     </section>
 
@@ -358,7 +361,7 @@ function openRelated(item: RadarFinding) {
       <div class="hci-panel-head">
         <div>
           <h2>候选清单</h2>
-          <p>新鲜度可信度与商业机会分分开计算，缺失数据不会按零分处理。</p>
+          <p>缺少直接关联的有效趋势或近期广告时，线索评分为数据不足。</p>
         </div>
         <span class="hci-subtle">{{ awaitingSnapshot ? '...' : serverMode ? remote.total.value : findings.length }} 项结果</span>
       </div>
@@ -367,7 +370,7 @@ function openRelated(item: RadarFinding) {
           :columns="columns"
           :data-source="findings"
           :loading="remote.loading.value || awaitingSnapshot"
-          :pagination="serverMode ? { current: page, pageSize, total: remote.total.value, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], onChange: (p: number, size: number) => { page = p; pageSize = size; } } : { pageSize: 8, hideOnSinglePage: true }"
+          :pagination="serverMode ? { current: page, pageSize, total: awaitingSnapshot ? 0 : remote.total.value, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], onChange: (p: number, size: number) => { page = p; pageSize = size; } } : { pageSize: 8, hideOnSinglePage: true }"
           :scroll="{ x: 1150 }"
           row-key="id"
           size="middle"
@@ -404,7 +407,7 @@ function openRelated(item: RadarFinding) {
                 :title="
                   record.businessScore === null
                     ? '缺少关键业务数据，暂不评分'
-                    : '需求、传播、采用、经济性与供应链综合分'
+                    : '直接关联的趋势、近期广告及品牌采用线索；不含成本、利润或供应链验证'
                 "
               >
                 <b class="hci-metric-number">{{
@@ -488,8 +491,8 @@ function openRelated(item: RadarFinding) {
             <p>{{ selected.subtitle }}</p>
           </div>
           <div class="hci-radar-dual-score">
-            <span><b>{{ selected.confidenceScore }}</b>新鲜度可信度</span>
-            <span><b>{{ selected.businessScore ?? '—' }}</b>商业机会</span>
+            <span><b>{{ selected.confidenceScore }}</b>证据完整度</span>
+            <span><b>{{ selected.businessScore ?? '—' }}</b>线索评分</span>
           </div>
         </div>
 
