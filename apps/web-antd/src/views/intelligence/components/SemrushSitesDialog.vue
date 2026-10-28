@@ -1,25 +1,27 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+
 import {
   Alert,
   Button,
   Form,
   Input,
   InputNumber,
+  message,
   Modal,
   Select,
-  message,
 } from 'ant-design-vue';
+
 import { cloudRequest } from '../cloud-workspace';
 import { markets, state } from '../data';
 import { serverMode } from '../session';
 
 const props = defineProps<{ terms?: string[] }>();
 const router = useRouter();
-const open = ref(false),
-  busy = ref(false),
-  error = ref('');
+const busy = ref(false);
+const error = ref('');
+const open = ref(false);
 const form = reactive({
   terms: '',
   market: 'US',
@@ -36,8 +38,8 @@ const count = computed(
         .filter(Boolean),
     ).size,
 );
-let requestId = '',
-  signature = '';
+let requestId = '';
+let signature = '';
 function show() {
   form.terms = (props.terms || []).join('\n');
   form.market = state.market === 'ALL' ? 'US' : state.market;
@@ -72,6 +74,7 @@ async function submit() {
     busy.value = false;
   }
 }
+import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
   <Button :disabled="!serverMode" @click="show">Semrush 独立站采集</Button>
@@ -87,39 +90,44 @@ async function submit() {
     @ok="submit"
   >
     <Form layout="vertical">
-      <Form.Item label="关键词"
-        ><Input.TextArea
+      <Form.Item label="关键词">
+        <Input.TextArea
           v-model:value="form.terms"
           :rows="5"
           placeholder="每行一个关键词"
-      /></Form.Item>
-      <Form.Item label="目标市场"
-        ><Select
+        />
+      </Form.Item>
+      <Form.Item label="目标市场">
+        <Select
           v-model:value="form.market"
           :options="markets.map((m) => ({ value: m.code, label: m.name }))"
-      /></Form.Item>
+        />
+      </Form.Item>
       <div class="semrush-site-limits">
-        <Form.Item label="每页广告主条数"
-          ><InputNumber
+        <Form.Item label="每页广告主条数">
+          <InputNumber
             v-model:value="form.perPage"
             :min="1"
             :max="100"
             :precision="0"
-        /></Form.Item>
-        <Form.Item label="每词最多页数"
-          ><InputNumber
+          />
+        </Form.Item>
+        <Form.Item label="每词最多页数">
+          <InputNumber
             v-model:value="form.maxPages"
             :min="1"
             :max="10"
             :precision="0"
-        /></Form.Item>
-        <Form.Item label="去重站点上限"
-          ><InputNumber
+          />
+        </Form.Item>
+        <Form.Item label="去重站点上限">
+          <InputNumber
             v-model:value="form.maxSites"
             :min="1"
             :max="1000"
             :precision="0"
-        /></Form.Item>
+          />
+        </Form.Item>
       </div>
       <p class="hci-subtle">
         {{ count }} 个关键词 · 按当前页数预估最多
@@ -139,6 +147,14 @@ async function submit() {
         style="margin-top: 12px"
       />
     </Form>
+    <CollectionEstimate
+      v-if="open"
+      :input="{
+        kind: 'semrush_sites',
+        ...form,
+        maxRequests: count * form.maxPages,
+      }"
+    />
   </Modal>
 </template>
 <style scoped>
@@ -147,6 +163,7 @@ async function submit() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
 }
+
 .semrush-site-limits :deep(.ant-input-number) {
   width: 100%;
 }

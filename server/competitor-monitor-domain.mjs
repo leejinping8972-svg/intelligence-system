@@ -35,7 +35,7 @@ export function validateHotwords(input) {
     ),
   ];
   if (
-    !['US', 'MX', 'VN'].includes(input.market) ||
+    !['MX', 'US', 'VN'].includes(input.market) ||
     seeds.length === 0 ||
     seeds.length > 10 ||
     seeds.some((s) => s.length > 100)
@@ -109,11 +109,30 @@ export function mergeObserved(old, item, at) {
     };
   // Keep human decisions, associations and enriched fields from other collectors.
   const merged = { ...item, ...old, lastCollectedAt: at };
-  if (item.siteId === 'VN-westmonth.com' &&
-      (item.sourceMetrics?.soldPlatform === '西之月' || item.decisionData?.listing?.platform === '西之月')) {
-    if (item.sourceMetrics) merged.sourceMetrics = { ...old.sourceMetrics, ...item.sourceMetrics };
+  if (
+    item.siteId === 'VN-westmonth.com' &&
+    (item.sourceMetrics?.soldPlatform === '西之月' ||
+      item.decisionData?.listing?.platform === '西之月' ||
+      item.priceEvidence?.provider === '西之月官网')
+  ) {
+    if (item.priceEvidence?.kind === 'discount' && item.price > 0) {
+      merged.price = item.price;
+      merged.currency = item.currency;
+      merged.priceEvidence = item.priceEvidence;
+      merged.collectionFields = [
+        ...new Set([
+          ...(old.collectionFields || []),
+          ...(item.collectionFields || []),
+        ]),
+      ];
+    }
+    if (item.sourceMetrics)
+      merged.sourceMetrics = { ...old.sourceMetrics, ...item.sourceMetrics };
     if (item.decisionData?.listing)
-      merged.decisionData = { ...old.decisionData, listing: item.decisionData.listing };
+      merged.decisionData = {
+        ...old.decisionData,
+        listing: item.decisionData.listing,
+      };
   }
   return merged;
 }

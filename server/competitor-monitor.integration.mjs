@@ -562,8 +562,8 @@ await competitorAction(
   { action: 'server_competitor_retry_site', id: recoveryTarget.id },
   admin,
 );
-let publicCalls = 0,
-  paidCalls = 0;
+let paidCalls = 0;
+let publicCalls = 0;
 await competitorTick(c, {
   scanSite: async (_site, request, limit) => {
     assert.equal(limit, 8);
@@ -685,9 +685,15 @@ assert.equal(paidCalls, 0);
 console.log(
   'Public recovery integration passed: same-day automatic/manual recovery, cumulative budget, shared host cooldown, admin scope, one-shot paused targets, zero advertisement/Semrush calls.',
 );
-await (await import('./consumer-reports.integration.mjs')).consumerReportsIntegration();
-const { verifyKeywordTrends } = await import('./keyword-trends.integration.mjs');
+await (
+  await import('./consumer-reports.integration.mjs')
+).consumerReportsIntegration();
+const { verifyKeywordTrends } =
+  await import('./keyword-trends.integration.mjs');
 await verifyKeywordTrends(c);
+await (
+  await import('./task-queue-clarity.integration.mjs')
+).verifyQueueClarity(c);
 c.release();
 await memory?.close();
 await pool.end();

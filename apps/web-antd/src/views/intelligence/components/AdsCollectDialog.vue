@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+
 import {
   Alert,
   Button,
@@ -11,18 +12,20 @@ import {
   Select,
   Tooltip,
 } from 'ant-design-vue';
+
 import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
 import { state } from '../data';
+import CollectionEstimate from './CollectionEstimate.vue';
 const props = defineProps<{
   keywordIds: string[];
   disabled?: boolean;
   disabledReason?: string;
   compact?: boolean;
 }>();
-const router = useRouter(),
-  open = ref(false),
-  busy = ref(false),
-  error = ref('');
+const busy = ref(false);
+const error = ref('');
+const open = ref(false);
+const router = useRouter();
 const form = reactive({
   maxPages: 3,
   maxAds: 100,
@@ -122,33 +125,39 @@ async function submit() {
       同一批关键词先通过 Brave Search 搜索官网，再通过 ScrapeCreators
       获取广告与落地页。两路分别执行官网电商核验，按市场与域名合并，保留搜索链接和广告证据。一条渠道失败时另一条继续；双来源不等于商品、销量已验证。
     </p>
-    <Form layout="vertical" @change="requestId = ''"
-      ><div class="hci-form-grid">
-        <Form.Item label="每词广告查询页数"
-          ><InputNumber v-model:value="form.maxPages" :min="1" :max="10"
-        /></Form.Item>
-        <Form.Item label="每词广告数量上限"
-          ><InputNumber v-model:value="form.maxAds" :min="1" :max="100"
-        /></Form.Item>
-        <Form.Item label="每路每词站点上限"
-          ><InputNumber v-model:value="form.maxSites" :min="1" :max="20"
-        /></Form.Item>
-        <Form.Item label="Brave 每词搜索页数"
-          ><InputNumber v-model:value="form.siteSearchPages" :min="1" :max="3"
-        /></Form.Item>
-        <Form.Item label="本任务广告请求上限"
-          ><InputNumber v-model:value="form.maxRequests" :min="1" :max="1000"
-        /></Form.Item>
+    <Form layout="vertical" @change="requestId = ''">
+      <div class="hci-form-grid">
+        <Form.Item label="每词广告查询页数">
+          <InputNumber v-model:value="form.maxPages" :min="1" :max="10" />
+        </Form.Item>
+        <Form.Item label="每词广告数量上限">
+          <InputNumber v-model:value="form.maxAds" :min="1" :max="100" />
+        </Form.Item>
+        <Form.Item label="每路每词站点上限">
+          <InputNumber v-model:value="form.maxSites" :min="1" :max="20" />
+        </Form.Item>
+        <Form.Item label="Brave 每词搜索页数">
+          <InputNumber v-model:value="form.siteSearchPages" :min="1" :max="3" />
+        </Form.Item>
+        <Form.Item label="本任务广告请求上限">
+          <InputNumber v-model:value="form.maxRequests" :min="1" :max="1000" />
+        </Form.Item>
       </div>
-      <Form.Item label="广告状态"
-        ><Select
+      <Form.Item label="广告状态">
+        <Select
           v-model:value="form.adStatus"
           :options="[
             { label: '正在投放', value: 'ACTIVE' },
             { label: '全部', value: 'ALL' },
             { label: '已停止', value: 'INACTIVE' },
-          ]" /></Form.Item
-    ></Form>
+          ]"
+        />
+      </Form.Item>
+    </Form>
+    <CollectionEstimate
+      v-if="open"
+      :input="{ kind: 'ads', keywordIds, ...form }"
+    />
     <Alert
       type="info"
       show-icon

@@ -41,3 +41,7 @@
 - `competitor-monitor.integration.mjs`：隔离内存PostgreSQL验证基线、同日去重、权限、关键词ID/人工状态/关联保留、标签在普通upsert后保留、写入回滚、进程中断保护及热词自动入研究。真实MySQL由CI的内部QA网络运行，本机未运行Docker/MySQL验收。
 - 前端web-antd类型检查、服务器/history模式构建；合成数据浏览器验收100行榜单、配置保存、立即更新、站点/广告主提交、429部分结果与事件、375px侧栏适配，无页面脚本错误。
 - 截图位于功能工作树`.artifacts/semrush-hotwords-{desktop,mobile}.png`和`competitor-monitor-desktop.png`。所有QA服务与浏览器在验收后关闭。
+
+## 2026-10-28 调度与登录会话更新
+
+后续队列、配置短锁、四个新增部署保护锁和西之月登录会话规则见 [TASK-QUEUE-CLARITY.md](./TASK-QUEUE-CLARITY.md)。此前单通道与单锁描述为历史基线，部署必须按新锁清单执行。

@@ -1,4 +1,5 @@
 import { readMcpResult } from './mcp-response.mjs';
+import { scheduleSource } from './source-scheduler.mjs';
 
 export const SEMRUSH_MCP_URL = 'https://mcp.semrush.com/v2/mcp';
 const REQUIRED = ['keyword_research', 'get_report_schema', 'execute_report'];
@@ -19,51 +20,63 @@ export function safeSemrushError(error, key) {
 }
 export async function connectSemrush(key, fetcher = fetch) {
   key = validateSemrushKey(key);
-  let session = '',
-    protocol = '',
-    sequence = 0;
-  const rpc = async (method, params = {}, notify = false) => {
-    const id = ++sequence;
-    const response = await fetcher(SEMRUSH_MCP_URL, {
-      method: 'POST',
-      redirect: 'manual',
-      signal: AbortSignal.timeout(20_000),
-      headers: {
-        authorization: `Apikey ${key}`,
-        'content-type': 'application/json',
-        accept: 'application/json, text/event-stream',
-        ...(session ? { 'mcp-session-id': session } : {}),
-        ...(protocol ? { 'mcp-protocol-version': protocol } : {}),
+  let protocol = '';
+  let sequence = 0;
+  let session = '';
+  const rpc = async (method, params = {}, notify = false) =>
+    scheduleSource(
+      'semrush',
+      async () => {
+        const id = ++sequence;
+        const response = await fetcher(SEMRUSH_MCP_URL, {
+          method: 'POST',
+          redirect: 'manual',
+          signal: AbortSignal.timeout(20_000),
+          headers: {
+            authorization: `Apikey ${key}`,
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...(session ? { 'mcp-session-id': session } : {}),
+            ...(protocol ? { 'mcp-protocol-version': protocol } : {}),
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            ...(notify ? {} : { id }),
+            method,
+            params,
+          }),
+        });
+        if (response.status >= 300 && response.status < 400) {
+          await response.body?.cancel();
+          throw new Error('Semrush MCP 返回重定向，已停止转发以保护 API Key');
+        }
+        if (!response.ok) {
+          await response.body?.cancel();
+          const reasons = {
+            401: 'API Key 无效或已过期，请核对提供方给出的有效期',
+            403: '当前 Key 或订阅没有此 MCP 访问权限',
+            429: '服务限流或额度限制，请稍后检测并核对账户额度',
+          };
+          throw Object.assign(
+            new Error(
+              `Semrush MCP HTTP ${response.status}：${reasons[response.status] || '官方服务暂未接受请求'}`,
+            ),
+            {
+              status: response.status,
+              retryAfterSeconds:
+                Number(response.headers.get('retry-after')) || 0,
+            },
+          );
+        }
+        session = response.headers.get('mcp-session-id') || session;
+        if (notify) {
+          await response.body?.cancel();
+          return;
+        }
+        return await readMcpResult(response, id);
       },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        ...(notify ? {} : { id }),
-        method,
-        params,
-      }),
-    });
-    if (response.status >= 300 && response.status < 400) {
-      await response.body?.cancel();
-      throw new Error('Semrush MCP 返回重定向，已停止转发以保护 API Key');
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      const reasons = {
-        401: 'API Key 无效或已过期，请核对提供方给出的有效期',
-        403: '当前 Key 或订阅没有此 MCP 访问权限',
-        429: '服务限流或额度限制，请稍后检测并核对账户额度',
-      };
-      throw new Error(
-        `Semrush MCP HTTP ${response.status}：${reasons[response.status] || '官方服务暂未接受请求'}`,
-      );
-    }
-    session = response.headers.get('mcp-session-id') || session;
-    if (notify) {
-      await response.body?.cancel();
-      return;
-    }
-    return readMcpResult(response, id);
-  };
+      { intervalMs: fetcher === fetch ? 1000 : 0 },
+    );
   try {
     const initialized = await rpc('initialize', {
       protocolVersion: '2025-03-26',

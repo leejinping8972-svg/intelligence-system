@@ -1,3 +1,4 @@
+import { scheduledFetch } from './source-scheduler.js';
 const MCP_URL = 'https://mcp.sorftime.com/';
 const SOURCE = 'Sorftime · Amazon';
 const TOOLS = {
@@ -61,8 +62,13 @@ export async function readMcpResult(response, id) {
   }
 }
 
-export async function connect(token, fetcher = fetch, productTools = false) {
+export async function connect(
+  token,
+  fetcher = scheduledFetch,
+  productTools = false,
+) {
   if (!token) throw new Error('请先在数据源与设置保存 Sorftime MCP Token');
+  if (fetcher === fetch) fetcher = scheduledFetch;
   const url = new URL(MCP_URL);
   url.searchParams.set('key', token);
   let session;
@@ -165,7 +171,11 @@ export async function connect(token, fetcher = fetch, productTools = false) {
   }
 }
 
-export async function sorftimeStatus(env, verify = false, fetcher = fetch) {
+export async function sorftimeStatus(
+  env,
+  verify = false,
+  fetcher = scheduledFetch,
+) {
   const token = env.SORFTIME_MCP_TOKEN;
   if (!token)
     return {
@@ -273,7 +283,7 @@ export async function sorftimeSuggestions(
   limit,
   budget,
   env,
-  fetcher = fetch,
+  fetcher = scheduledFetch,
 ) {
   if (!MARKETS.has(market))
     return {
@@ -330,7 +340,11 @@ export async function sorftimeSuggestions(
     if (depth === 2) {
       for (const item of [...items.values()]) {
         if (items.size >= limit || budget.remaining <= 0) break;
-        if (item.term.toLocaleLowerCase() === keyword.normalize('NFKC').toLocaleLowerCase()) continue;
+        if (
+          item.term.toLocaleLowerCase() ===
+          keyword.normalize('NFKC').toLocaleLowerCase()
+        )
+          continue;
         await query(item.term);
       }
     }

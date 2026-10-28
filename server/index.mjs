@@ -2,29 +2,28 @@ import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import process from 'node:process';
-import { coreListAction } from './core-list-service.mjs';
 
+import { serveAdMedia } from './ad-media.mjs';
 import { adminSsoConfig } from './admin-sso-config.mjs';
 import { createSsoStore } from './admin-sso-store.mjs';
 import { createAdminSso } from './admin-sso.mjs';
-import { platformLinkConfig } from './platform-link-config.mjs';
-import { createPlatformLinkStore } from './platform-link-store.mjs';
-import { createPlatformLink } from './platform-link.mjs';
-import { identityConfig } from './identity-config.mjs';
-import { createIdentityStore } from './identity-store.mjs';
-import { createIdentity } from './identity.mjs';
-import { serveAdMedia } from './ad-media.mjs';
 import { adsConfig } from './ads-provider.mjs';
-import { adminSsoSignIn, authAction, platformLinkAudit, platformLinkSignIn, requireAdmin, sessionUser } from './auth.mjs';
+import { aiPromptAction } from './ai-prompt-config.mjs';
+import {
+  adminSsoSignIn,
+  authAction,
+  platformLinkAudit,
+  platformLinkSignIn,
+  requireAdmin,
+  sessionUser,
+} from './auth.mjs';
 import {
   competitorAction,
   runCompetitorQueue,
   withCompetitorIdle,
 } from './competitor-monitor-store.mjs';
+import { coreListAction } from './core-list-service.mjs';
 import { dailyDiscoveryAction } from './daily-discovery.mjs';
-import { marketResearchAction } from './market-research.mjs';
-import { submitMarketReport } from './market-report-jobs.mjs';
-import { personaResearchAction } from './persona-research-store.mjs';
 import { databaseAction, maintenance } from './database-admin.mjs';
 import {
   currentDatabase,
@@ -36,6 +35,9 @@ import {
 import { protectDiscoveryEdit } from './discovery-newness.mjs';
 import { cleanKeyword, editableKeywordPatch, validateJob } from './domain.mjs';
 import { cancelEnrichment, submitEnrichment } from './enrichment-jobs.mjs';
+import { identityConfig } from './identity-config.mjs';
+import { createIdentityStore } from './identity-store.mjs';
+import { createIdentity } from './identity.mjs';
 import {
   insightDetails,
   insightSnapshot,
@@ -44,23 +46,31 @@ import {
 } from './insight-jobs.mjs';
 import { retryRecords } from './job-progress.mjs';
 import { keywordNamesAction } from './keyword-names.mjs';
-import { keywordTrendsAction } from './keyword-trends-store.mjs';
 import { submitKeywordJob } from './keyword-submit.mjs';
+import { keywordTrendsAction } from './keyword-trends-store.mjs';
 import { localCollect, migrateCredentials } from './local-provider.mjs';
+import { addManualSite } from './manual-site.mjs';
 import { submitMarketJob } from './market-jobs.mjs';
-import { submitSemrushSites } from './semrush-sites-store.mjs';
+import { submitMarketReport } from './market-report-jobs.mjs';
+import { marketResearchAction } from './market-research.mjs';
 import { analysisConfig } from './model-provider.mjs';
 import { assessKeyword } from './model.js';
+import { personaResearchAction } from './persona-research-store.mjs';
+import { platformLinkConfig } from './platform-link-config.mjs';
+import { createPlatformLinkStore } from './platform-link-store.mjs';
+import { createPlatformLink } from './platform-link.mjs';
 import { protectPlatformClientEdit } from './platform-product-data.mjs';
-import { productResourceAction, resumeResourceJob } from './product-resource-service.mjs';
 import {
   cancelPlatformCompletion,
-  submitPlatformProductEnrichment,
   previewPlatformProductEnrichment,
+  submitPlatformProductEnrichment,
   submitPlatformProducts,
 } from './platform-products-jobs.mjs';
 import { submitProducts } from './product-jobs.mjs';
-import { addManualSite } from './manual-site.mjs';
+import {
+  productResourceAction,
+  resumeResourceJob,
+} from './product-resource-service.mjs';
 import { publicBranding } from './public-branding.mjs';
 import {
   publicContentAction,
@@ -68,36 +78,57 @@ import {
   withPublicContentIdle,
 } from './public-content-store.mjs';
 import { registerRelease, releaseHistory } from './release-history.mjs';
-import { aiPromptAction } from './ai-prompt-config.mjs';
 import { reportPromptAction } from './report-prompts.mjs';
 import { jobTasks, runQueue } from './runner.mjs';
 import { semrushAction } from './semrush-config.mjs';
+import { submitSemrushSites } from './semrush-sites-store.mjs';
 import { siteFetchConfig } from './site-fetch-config.mjs';
 import { scoreSite } from './site-scoring.mjs';
+import { sourceUsageAction } from './source-usage.mjs';
 import { migrate, pool, saveKeyword } from './store.mjs';
-import { workspaceSnapshot } from './workspace-snapshot.mjs';
+import { decorateSocialTasks } from './task-social-progress.mjs';
+import { westmonthSessionAction } from './westmonth-session.mjs';
 import { createWorkspaceReads } from './workspace-reads.mjs';
+import { workspaceSnapshot } from './workspace-snapshot.mjs';
 import { isWorkspaceSyncKey } from './workspace-sync-keys.mjs';
 import { youtubeAction } from './youtube-config.mjs';
-import { sourceUsageAction } from './source-usage.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const secret = Buffer.from(process.env.SERVER_BRIDGE_KEY || '');
 if (secret.length < 32) throw new Error('SERVER_BRIDGE_KEY must be configured');
 await migrate();
 await registerRelease();
-const workspaceReads = createWorkspaceReads({ pool, sql, lock, unlock, putDocument, isWorkspaceSyncKey });
+const workspaceReads = createWorkspaceReads({
+  pool,
+  sql,
+  lock,
+  unlock,
+  putDocument,
+  isWorkspaceSyncKey,
+});
 let readTimer;
 async function refreshWorkspaceReads() {
-  const more = !maintenance && await workspaceReads.refresh();
-  if (!controller.signal.aborted) readTimer = setTimeout(refreshWorkspaceReads, more ? 10 : 2000);
+  const more = !maintenance && (await workspaceReads.refresh());
+  if (!controller.signal.aborted)
+    readTimer = setTimeout(refreshWorkspaceReads, more ? 10 : 2000);
 }
 const unifiedIdentityConfig = identityConfig();
 const identity = await createIdentity({
   config: unifiedIdentityConfig,
-  store: unifiedIdentityConfig ? createIdentityStore(pool, { ...unifiedIdentityConfig, sql }) : null,
-  sessionUser, authAction, lock, unlock, pool,
+  store: unifiedIdentityConfig
+    ? createIdentityStore(pool, { ...unifiedIdentityConfig, sql })
+    : null,
+  sessionUser,
+  authAction,
+  lock,
+  unlock,
+  pool,
   onError: (error) => {
-    if (!error.status || error.status >= 500) console.warn('Identity request failed', error.name, error.code || 'internal');
+    if (!error.status || error.status >= 500)
+      console.warn(
+        'Identity request failed',
+        error.name,
+        error.code || 'internal',
+      );
   },
 });
 const platformLink = createPlatformLink({
@@ -119,13 +150,16 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
-  if (input.action?.startsWith('server_source_')) return sourceUsageAction(input, user);
+  if (input.action?.startsWith('server_source_'))
+    return sourceUsageAction(input, user);
   if (input.action === 'server_product_resource_resume') {
     const job = await resumeResourceJob(input);
     return { jobId: job.id, tasks: jobTasks(job) };
   }
-  if (input.action?.startsWith('server_product_resource_')) return productResourceAction(input, user);
-  if (input.action?.startsWith('server_persona_')) return personaResearchAction(input, user);
+  if (input.action?.startsWith('server_product_resource_'))
+    return productResourceAction(input, user);
+  if (input.action?.startsWith('server_persona_'))
+    return personaResearchAction(input, user);
   if (input.action?.startsWith('server_keyword_trends_'))
     return keywordTrendsAction(input, user);
   if (input.action?.startsWith('server_competitor_'))
@@ -135,20 +169,35 @@ async function api(input, user) {
   if (input.action?.startsWith('server_market_collection_'))
     return marketResearchAction(input, user);
   switch (input.action) {
-    case 'server_manual_site_add': return addManualSite(input);
-    case 'server_workspace_bootstrap': return workspaceReads.bootstrap();
-    case 'server_workspace_overview': return workspaceReads.overview(input);
-    case 'server_workspace_statistics': return workspaceReads.statistics(input);
-    case 'server_workspace_list': return workspaceReads.list(input);
-    case 'server_workspace_facets': return workspaceReads.facets(input);
-    case 'server_workspace_selection': return workspaceReads.selection(input);
-    case 'server_workspace_detail': return workspaceReads.details(input);
-    case 'server_workspace_export': return workspaceReads.exportRecords(input);
+    case 'server_manual_site_add':
+      return addManualSite(input);
+    case 'server_workspace_bootstrap':
+      return workspaceReads.bootstrap();
+    case 'server_workspace_overview':
+      return workspaceReads.overview(input);
+    case 'server_workspace_statistics':
+      return workspaceReads.statistics(input);
+    case 'server_workspace_list':
+      return workspaceReads.list(input);
+    case 'server_workspace_facets':
+      return workspaceReads.facets(input);
+    case 'server_workspace_selection':
+      return workspaceReads.selection(input);
+    case 'server_workspace_detail':
+      return workspaceReads.details(input);
+    case 'server_workspace_export':
+      return workspaceReads.exportRecords(input);
     case 'server_ai_prompts':
-    case 'server_ai_prompt_save': { return aiPromptAction(input, user); }
+    case 'server_ai_prompt_save': {
+      return aiPromptAction(input, user);
+    }
     case 'server_keyword_names': {
       return keywordNamesAction(input, user);
     }
+    case 'server_westmonth_session_status':
+    case 'server_westmonth_session_save':
+    case 'server_westmonth_session_check':
+      return westmonthSessionAction(input, user);
     case 'server_site_fetch_status':
     case 'server_site_fetch_config': {
       return siteFetchConfig(input, user);
@@ -243,10 +292,47 @@ async function api(input, user) {
         pool,
         sql,
         jobTasks,
+        decorateTasks: (tasks, jobs) => decorateSocialTasks(tasks, jobs, pool),
         scoreSite,
         isWorkspaceSyncKey,
         readVersions: async () => (await workspaceReads.status()).revisions,
       });
+    }
+    case 'server_task_research': {
+      if (!uuid.test(input.jobId)) throw new Error('任务编号无效');
+      const { rows } = await pool.query(
+        'SELECT * FROM research_jobs WHERE id=$1',
+        [input.jobId],
+      );
+      if (!rows[0]) throw new Error('原任务不存在');
+      const { researchDraft } = await import('./task-research.mjs');
+      const draft = researchDraft(rows[0]);
+      if (draft.kind === 'persona_research') {
+        const study = (
+          await pool.query(
+            'SELECT value FROM workspace_documents WHERE name=$1',
+            ['persona:study:' + input.jobId],
+          )
+        ).rows[0]?.value;
+        if (!study?.plan)
+          throw new Error('上次人群研究计划不存在，无法带入原参数');
+        draft.input = { plan: study.plan };
+        draft.previous.evidence = study.evidence?.length || 0;
+      }
+      return draft;
+    }
+    case 'server_task_estimate': {
+      const { estimateTask } = await import('./task-estimate.mjs');
+      const history = await pool.query(
+        'SELECT input,checkpoint,status FROM research_jobs ORDER BY created_at DESC LIMIT 100',
+      );
+      return estimateTask(
+        input.input || {},
+        history.rows.filter((j) =>
+          ['awaiting_review', 'completed'].includes(j.status),
+        ),
+        history.rows,
+      );
     }
     case 'server_task_detail': {
       if (!uuid.test(input.jobId)) throw new Error('任务编号无效');
@@ -255,7 +341,24 @@ async function api(input, user) {
         [input.jobId],
       );
       if (!rows[0]) throw new Error('任务不存在或已移除');
-      return { tasks: jobTasks(rows[0]) };
+      const { taskCollections } = await import('./task-overview.mjs');
+      const requests = await pool.query(
+        sql(
+          "SELECT step,status,error,response->'requestUsage' AS timing FROM research_requests WHERE job_id=$1 ORDER BY step LIMIT 1000",
+          "SELECT step,status,error,JSON_EXTRACT(response,'$.requestUsage') AS timing FROM research_requests WHERE job_id=$1 ORDER BY step LIMIT 1000",
+        ),
+        [input.jobId],
+      );
+      return {
+        tasks: await decorateSocialTasks(
+          jobTasks(rows[0]).map((task) => ({
+            ...task,
+            collections: taskCollections(rows[0], task, requests.rows),
+          })),
+          rows,
+          pool,
+        ),
+      };
     }
     case 'server_workspace_sync': {
       if (!Array.isArray(input.entries) || input.entries.length > 1000)
@@ -284,7 +387,7 @@ async function api(input, user) {
                 [`business:${entry.key}`],
               );
           } else {
-              if (input.patch || /^(products|ads|sites):/.test(entry.key)) {
+            if (input.patch || /^(products|ads|sites):/.test(entry.key)) {
               const old = (
                 await connection.query(
                   'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
@@ -294,8 +397,10 @@ async function api(input, user) {
               if (input.patch && old) entry.value = { ...old, ...entry.value };
               if (entry.key.startsWith('products:') && !input.importOnly)
                 entry.value = protectPlatformClientEdit(old, entry.value);
-              if (!entry.key.startsWith('sites:')) entry.value = protectDiscoveryEdit(old, entry.value);
-              if (old?.coreEvidence) entry.value.coreEvidence = old.coreEvidence;
+              if (!entry.key.startsWith('sites:'))
+                entry.value = protectDiscoveryEdit(old, entry.value);
+              if (old?.coreEvidence)
+                entry.value.coreEvidence = old.coreEvidence;
             }
             await putDocument(
               'workspace_documents',
@@ -319,16 +424,33 @@ async function api(input, user) {
     case 'server_core_rates_refresh':
       return coreListAction(input);
     case 'server_status': {
-      const { rows } = await pool.query("SELECT input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false");
+      const { rows } = await pool.query(
+        "SELECT input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
+      );
       const activeCounts = {};
-      for (const row of rows) { const kind = row.input?.kind || 'unknown'; activeCounts[kind] = (activeCounts[kind] || 0) + 1; }
-      const activeByKind = Object.fromEntries(Object.entries(activeCounts).toSorted(([a], [b]) => a.localeCompare(b)));
+      for (const row of rows) {
+        const kind = row.input?.kind || 'unknown';
+        activeCounts[kind] = (activeCounts[kind] || 0) + 1;
+      }
+      const activeByKind = Object.fromEntries(
+        Object.entries(activeCounts).toSorted(([a], [b]) => a.localeCompare(b)),
+      );
       return {
         ready: true,
         stage: 'keywords',
         activeJobs: rows.length,
         activeByKind,
-        capacity: { activeTaskLimit: 20, independentSiteBatchDefault: 20, independentSiteBatchHard: 100, directRunnerConcurrency: 1, browserRunnerConcurrency: 1, paidRunnerConcurrency: 1, siteCandidateConcurrency: 4, siteCandidatePerDomainConcurrency: 1, platformRunnerConcurrency: 1 },
+        capacity: {
+          activeTaskLimit: 20,
+          independentSiteBatchDefault: 20,
+          independentSiteBatchHard: 100,
+          directRunnerConcurrency: 1,
+          browserRunnerConcurrency: 1,
+          paidRunnerConcurrency: 1,
+          siteCandidateConcurrency: 4,
+          siteCandidatePerDomainConcurrency: 1,
+          platformRunnerConcurrency: 1,
+        },
         storage: currentDatabase().engine,
         execution: 'server',
         message: '关键词任务在腾讯云后台执行，关闭浏览器后继续运行',
@@ -386,8 +508,12 @@ async function api(input, user) {
       const value = validateJob(requested);
       if (value.socialTrends) {
         requireAdmin(user);
-        const configured = await pool.query('SELECT name FROM provider_configs WHERE name=$1', ['provider:scrapecreators:v1']);
-        if (!configured.rows.length) throw new Error('请先在数据源与设置配置 ScrapeCreators');
+        const configured = await pool.query(
+          'SELECT name FROM provider_configs WHERE name=$1',
+          ['provider:scrapecreators:v1'],
+        );
+        if (!configured.rows.length)
+          throw new Error('请先在数据源与设置配置 ScrapeCreators');
       }
       if (value.existingRecords) {
         const current = await pool.query(
@@ -556,19 +682,29 @@ const server = createServer(async (request, response) => {
     response.writeHead(400).end('{"error":"请求地址无效"}');
     return;
   }
-  if (requestUrl.pathname === '/api/identity' || requestUrl.pathname.startsWith('/api/identity/')) {
+  if (
+    requestUrl.pathname === '/api/identity' ||
+    requestUrl.pathname.startsWith('/api/identity/')
+  ) {
     if (maintenance) {
       response.writeHead(503).end('{"error":"正在维护，请稍后重试"}');
       return;
     }
     activeRequests++;
-    try { await identity.handle(request, response, requestUrl); }
-    finally { activeRequests--; }
+    try {
+      await identity.handle(request, response, requestUrl);
+    } finally {
+      activeRequests--;
+    }
     return;
   }
   if (requestUrl.pathname.startsWith('/api/platform-link/v1/')) {
     if (maintenance) {
-      response.writeHead(503).end('{"ok":false,"code":"LOGIN_DISABLED","message":"正在维护，请稍后重新发起"}');
+      response
+        .writeHead(503)
+        .end(
+          '{"ok":false,"code":"LOGIN_DISABLED","message":"正在维护，请稍后重新发起"}',
+        );
       return;
     }
     activeRequests++;
@@ -671,30 +807,33 @@ const server = createServer(async (request, response) => {
       ? { id: null, role: 'admin' }
       : ['auth_login', 'auth_setup'].includes(input.action)
         ? null
-      : await sessionUser(
-          request,
-          ![
-            'auth_status',
-            'server_snapshot',
-            'server_status',
-            'server_task_detail',
-            'server_workspace_delta',
-            'server_workspace_snapshot',
-            'server_workspace_bootstrap',
-            'server_workspace_overview',
-            'server_workspace_statistics',
-            'server_workspace_list',
-            'server_workspace_facets',
-            'server_workspace_detail',
-            'server_workspace_export',
-            'server_core_rates',
-            'server_product_resource_capabilities',
-            'server_product_resource_observations',
-          ].includes(input.action),
-        );
+        : await sessionUser(
+            request,
+            ![
+              'auth_status',
+              'server_core_rates',
+              'server_product_resource_capabilities',
+              'server_product_resource_observations',
+              'server_snapshot',
+              'server_status',
+              'server_task_detail',
+              'server_task_estimate',
+              'server_task_research',
+              'server_workspace_bootstrap',
+              'server_workspace_delta',
+              'server_workspace_detail',
+              'server_workspace_export',
+              'server_workspace_facets',
+              'server_workspace_list',
+              'server_workspace_overview',
+              'server_workspace_snapshot',
+              'server_workspace_statistics',
+            ].includes(input.action),
+          );
     if (input.action?.startsWith('auth_')) {
       if (input.action === 'auth_identity_directory') {
-        if (!identity.enabled) throw Object.assign(new Error('统一登录尚未启用'), { status: 503 });
+        if (!identity.enabled)
+          throw Object.assign(new Error('统一登录尚未启用'), { status: 503 });
         response.end(JSON.stringify(await identity.directory(user)));
         return;
       }

@@ -1,9 +1,15 @@
 import trendSnapshots from '../data/trends-snapshots.json' with { type: 'json' };
+import { publicProductFields } from './product-public-fields.js';
+import {
+  benefitSignal,
+  ingredientSection,
+  ingredientSignal,
+  signalKey,
+} from './product-signal-rules.js';
 import { readSorftimeToken, saveSorftimeToken } from './provider-config.js';
 import { SERVER_ACTIONS, serverRelay } from './server-relay.js';
 import { sorftimeStatus, sorftimeSuggestions } from './sorftime.js';
-import { publicProductFields } from './product-public-fields.js';
-import { benefitSignal, ingredientSection, ingredientSignal, signalKey } from './product-signal-rules.js';
+import { scheduledFetch } from './source-scheduler.js';
 
 const MARKET_OPTIONS = {
   US: {
@@ -335,7 +341,9 @@ function ingredientRecords(ingredients, pageUrl) {
         '官网未标注单项剂量';
       const name = cleanText(
         item.replace(amount, '').replaceAll(/[()（）]/g, ' '),
-      ).replace(/[.。]+$/, '').trim();
+      )
+        .replace(/[.。]+$/, '')
+        .trim();
       return {
         name: name || item,
         amount,
@@ -520,7 +528,7 @@ async function fetchShopifyProduct(pageUrl) {
   const match = page.pathname.match(/\/products\/([^/?#]+)/i);
   if (!match) return null;
   const endpoint = new URL(`/products/${match[1]}.js`, page.origin);
-  const response = await fetch(endpoint, {
+  const response = await scheduledFetch(endpoint, {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(8000),
   });
@@ -552,7 +560,7 @@ async function fetchShopifyCatalog(pageUrl, limit) {
   const page = new URL(pageUrl);
   const endpoint = new URL('/products.json', page.origin);
   endpoint.searchParams.set('limit', String(Math.min(50, limit)));
-  const response = await fetch(endpoint, {
+  const response = await scheduledFetch(endpoint, {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(10_000),
   });
@@ -710,7 +718,7 @@ export function productPageUrl(html, pageUrl) {
 }
 
 async function fetchHtml(url) {
-  const response = await fetch(url, {
+  const response = await scheduledFetch(url, {
     headers: {
       accept: 'text/html,application/xhtml+xml',
       'user-agent':
@@ -913,7 +921,7 @@ export function amazonSuggestUrl(keyword, market) {
 }
 
 async function fetchGoogleSuggestions(keyword, market) {
-  const response = await fetch(googleSuggestUrl(keyword, market), {
+  const response = await scheduledFetch(googleSuggestUrl(keyword, market), {
     headers: {
       accept: 'application/json',
       'user-agent':
@@ -931,7 +939,7 @@ async function fetchGoogleSuggestions(keyword, market) {
 async function fetchAmazonSuggestions(keyword, market) {
   const url = amazonSuggestUrl(keyword, market);
   if (!url) return null;
-  const response = await fetch(url, {
+  const response = await scheduledFetch(url, {
     headers: {
       accept: 'application/json',
       'user-agent':
@@ -1117,7 +1125,7 @@ async function braveSearch(keyword, market, env, count, offset = 0) {
   const request = braveSearchRequest(keyword, market, count, offset);
   let response;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    response = await fetch(request.url, {
+    response = await scheduledFetch(request.url, {
       headers: {
         accept: 'application/json',
         'x-subscription-token': env.BRAVE_SEARCH_API_KEY,
@@ -1155,9 +1163,18 @@ async function braveSearch(keyword, market, env, count, offset = 0) {
     .filter((url) => isCandidateUrl(url));
 }
 async function mapWithConcurrency(values, limit, mapper) {
-  const results = Array.from({ length: values.length }); let cursor = 0;
-  async function worker() { while (cursor < values.length) { const index = cursor++; results[index] = await mapper(values[index], index); } }
-  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, () => worker())); return results;
+  const results = Array.from({ length: values.length });
+  let cursor = 0;
+  async function worker() {
+    while (cursor < values.length) {
+      const index = cursor++;
+      results[index] = await mapper(values[index], index);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  );
+  return results;
 }
 
 export function parseGoogleTrendsPayload(text) {
@@ -1259,7 +1276,7 @@ function googleTrendsHeaders(market, cookie = '', attempt = 0) {
 }
 
 async function googleTrendsSession(market) {
-  const response = await fetch(
+  const response = await scheduledFetch(
     `https://trends.google.com/trends/explore?geo=${market}`,
     {
       headers: {
@@ -1277,7 +1294,7 @@ async function googleTrendsSession(market) {
 async function fetchGoogleTrendsEndpoint(url, market, cookie) {
   let lastStatus = 0;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const response = await fetch(url, {
+    const response = await scheduledFetch(url, {
       headers: googleTrendsHeaders(market, cookie, attempt),
       redirect: 'follow',
       signal: AbortSignal.timeout(15_000),
@@ -1713,8 +1730,14 @@ async function runResearch(input, env) {
     1,
     Math.min(20, Number(input.productsPerSite) || 10),
   );
-  const searchPages = Math.max(1, Math.min(3, Number(input.siteSearchPages) || 1));
-  const candidateConcurrency = Math.max(1, Math.min(4, Number(input.candidateConcurrency) || 4));
+  const searchPages = Math.max(
+    1,
+    Math.min(3, Number(input.siteSearchPages) || 1),
+  );
+  const candidateConcurrency = Math.max(
+    1,
+    Math.min(4, Number(input.candidateConcurrency) || 4),
+  );
   const candidateLimit = Math.min(60, Math.max(10, maxSites * 2));
   if (keywords.length === 0 || keywords.length > 3)
     throw new Error('每次请输入1至3个关键词');
@@ -1774,7 +1797,10 @@ async function runResearch(input, env) {
       }
       if (sources.includes('site_discovery')) {
         const urls = [];
-        for (let searchPage = 0; searchPage < searchPages; searchPage += 1) urls.push(...(await braveSearch(keyword, market, env, 20, searchPage * 20)));
+        for (let searchPage = 0; searchPage < searchPages; searchPage += 1)
+          urls.push(
+            ...(await braveSearch(keyword, market, env, 20, searchPage * 20)),
+          );
         const unique = [];
         const domains = new Set();
         for (const url of urls) {
@@ -1784,7 +1810,11 @@ async function runResearch(input, env) {
           unique.push(url);
           if (unique.length >= candidateLimit) break;
         }
-        const candidates = await mapWithConcurrency(unique, candidateConcurrency, (url) => validateCandidate(url, keyword, market, productsPerSite));
+        const candidates = await mapWithConcurrency(
+          unique,
+          candidateConcurrency,
+          (url) => validateCandidate(url, keyword, market, productsPerSite),
+        );
         const validated = candidates
           .filter(Boolean)
           .toSorted((a, b) => b.confidence - a.confidence)

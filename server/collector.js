@@ -1,4 +1,61 @@
-// workers/site-discovery/data/trends-snapshots.json
+// ../workers/site-discovery/src/source-scheduler.js
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var key = Symbol.for('intelligence.source-lanes.v1');
+var lanes = (globalThis[key] ||= /* @__PURE__ */ new Map());
+function sourceLane(source, intervalMs = 1e3) {
+  if (!lanes.has(source))
+    lanes.set(source, { tail: Promise.resolve(), nextAt: 0, intervalMs });
+  return lanes.get(source);
+}
+async function scheduleSource(source, callback, options = {}) {
+  const lane = sourceLane(source, options.intervalMs);
+  const previous = lane.tail;
+  let release;
+  lane.tail = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    const wait = Math.max(0, lane.nextAt - Date.now());
+    if (wait) await sleep(wait);
+    const result = await callback();
+    if (result?.status === 429)
+      lane.nextAt =
+        Date.now() +
+        Math.max(
+          6e4,
+          (Number(result.headers?.get?.('retry-after')) || 0) * 1e3,
+        );
+    return result;
+  } catch (error) {
+    if (error.status === 429)
+      lane.nextAt =
+        Date.now() + Math.max(6e4, (error.retryAfterSeconds || 0) * 1e3);
+    throw error;
+  } finally {
+    lane.nextAt = Math.max(
+      lane.nextAt,
+      Date.now() + (options.intervalMs ?? lane.intervalMs),
+    );
+    release();
+  }
+}
+function scheduledFetch(url, options) {
+  const host = new URL(
+    typeof url === 'string' || url instanceof URL ? url : url.url,
+  ).hostname
+    .toLowerCase()
+    .replace(/^www\./, '');
+  const source =
+    host === 'mcp.sorftime.com'
+      ? 'sorftime'
+      : host === 'api.search.brave.com'
+        ? 'brave'
+        : 'site:' + host;
+  return scheduleSource(source, () => fetch(url, options));
+}
+
+// ../workers/site-discovery/data/trends-snapshots.json
 var trends_snapshots_default = [
   {
     keyword: "women's health gummies",
@@ -279,7 +336,7 @@ var trends_snapshots_default = [
   },
 ];
 
-// workers/site-discovery/src/provider-config.js
+// ../workers/site-discovery/src/provider-config.js
 var STORAGE_KEY = 'provider:sorftime:mcp:v1';
 var encode = (value) => btoa(String.fromCodePoint(...value));
 var decode = (value) =>
@@ -304,7 +361,7 @@ async function saveSorftimeToken(input, env) {
     throw new Error(
       '\u8BF7\u586B\u5199 MCP ACCESS TOKEN \u672C\u8EAB\uFF0C\u4E0D\u8981\u7C98\u8D34\u5B8C\u6574\u7F51\u5740\uFF1B\u7559\u7A7A\u4E0D\u4F1A\u6E05\u9664\u539F\u5BC6\u94A5',
     );
-  const key = await encryptionKey(env);
+  const key2 = await encryptionKey(env);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt(
     {
@@ -312,7 +369,7 @@ async function saveSorftimeToken(input, env) {
       iv,
       additionalData: new TextEncoder().encode(STORAGE_KEY),
     },
-    key,
+    key2,
     new TextEncoder().encode(token),
   );
   const updatedAt = /* @__PURE__ */ new Date().toISOString();
@@ -336,14 +393,14 @@ async function readSorftimeToken(env) {
     const saved = await env.PROVIDER_CONFIG.get(STORAGE_KEY, 'json');
     if (saved) {
       try {
-        const key = await encryptionKey(env);
+        const key2 = await encryptionKey(env);
         const value = await crypto.subtle.decrypt(
           {
             name: 'AES-GCM',
             iv: decode(saved.iv),
             additionalData: new TextEncoder().encode(STORAGE_KEY),
           },
-          key,
+          key2,
           decode(saved.ciphertext),
         );
         return new TextDecoder().decode(value);
@@ -357,7 +414,7 @@ async function readSorftimeToken(env) {
   return env.SORFTIME_MCP_TOKEN || '';
 }
 
-// workers/site-discovery/src/server-relay.js
+// ../workers/site-discovery/src/server-relay.js
 var SERVER_ACTIONS = /* @__PURE__ */ new Set([
   'server_cancel',
   'server_clear_keywords',
@@ -400,7 +457,7 @@ async function serverRelay(input, env, fetcher = fetch) {
   return payload;
 }
 
-// workers/site-discovery/src/sorftime.js
+// ../workers/site-discovery/src/sorftime.js
 var MCP_URL = 'https://mcp.sorftime.com/';
 var SOURCE = 'Sorftime \xB7 Amazon';
 var TOOLS = {
@@ -471,11 +528,12 @@ async function readMcpResult(response, id) {
     await reader.cancel();
   }
 }
-async function connect(token, fetcher = fetch, productTools = false) {
+async function connect(token, fetcher = scheduledFetch, productTools = false) {
   if (!token)
     throw new Error(
       '\u8BF7\u5148\u5728\u6570\u636E\u6E90\u4E0E\u8BBE\u7F6E\u4FDD\u5B58 Sorftime MCP Token',
     );
+  if (fetcher === fetch) fetcher = scheduledFetch;
   const url = new URL(MCP_URL);
   url.searchParams.set('key', token);
   let session;
@@ -578,7 +636,7 @@ async function connect(token, fetcher = fetch, productTools = false) {
     );
   }
 }
-async function sorftimeStatus(env, verify = false, fetcher = fetch) {
+async function sorftimeStatus(env, verify = false, fetcher = scheduledFetch) {
   const token = env.SORFTIME_MCP_TOKEN;
   if (!token)
     return {
@@ -659,7 +717,7 @@ function parseSorftimeKeywords(result, limit) {
       value.searchKeyword ??
       value.SearchKeyword;
     if (typeof term === 'string') add(term);
-    for (const key of [
+    for (const key2 of [
       'Data',
       'data',
       'List',
@@ -672,7 +730,7 @@ function parseSorftimeKeywords(result, limit) {
       'results',
       'rows',
     ]) {
-      if (value[key] !== void 0) visit(value[key], true, depth + 1);
+      if (value[key2] !== void 0) visit(value[key2], true, depth + 1);
     }
   };
   if (result.structuredContent) visit(result.structuredContent);
@@ -687,7 +745,7 @@ async function sorftimeSuggestions(
   limit,
   budget,
   env,
-  fetcher = fetch,
+  fetcher = scheduledFetch,
 ) {
   if (!MARKETS.has(market))
     return {
@@ -737,9 +795,9 @@ async function sorftimeSuggestions(
         },
       });
       for (const item of parseSorftimeKeywords(response, limit + 1)) {
-        const key = item.term.toLocaleLowerCase();
-        if (key === keyword.normalize('NFKC').toLocaleLowerCase()) continue;
-        items.set(key, item);
+        const key2 = item.term.toLocaleLowerCase();
+        if (key2 === keyword.normalize('NFKC').toLocaleLowerCase()) continue;
+        items.set(key2, item);
         if (items.size >= limit) break;
       }
     };
@@ -780,7 +838,7 @@ async function sorftimeSuggestions(
   }
 }
 
-// workers/site-discovery/src/product-public-fields.js
+// ../workers/site-discovery/src/product-public-fields.js
 var cumulative = (node) =>
   [
     'period',
@@ -791,9 +849,9 @@ var cumulative = (node) =>
     'sold_count_period',
     'time_window',
   ].every(
-    (key) =>
-      node?.[key] === void 0 ||
-      /^(?:all[_ -]?time|total|cumulative|lifetime)$/i.test(String(node[key])),
+    (key2) =>
+      node?.[key2] === void 0 ||
+      /^(?:all[_ -]?time|total|cumulative|lifetime)$/i.test(String(node[key2])),
   );
 var units = (value) => {
   let raw = value;
@@ -813,8 +871,8 @@ var units = (value) => {
 };
 function publicProductFields(product, prefix = 'Product JSON-LD') {
   const fields = {};
-  for (const key of ['published_at', 'datePublished', 'releaseDate']) {
-    const raw = product[key];
+  for (const key2 of ['published_at', 'datePublished', 'releaseDate']) {
+    const raw = product[key2];
     if (
       typeof raw !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(raw) ||
@@ -829,29 +887,29 @@ function publicProductFields(product, prefix = 'Product JSON-LD') {
       continue;
     fields.publishedAt = raw;
     fields.publishedSourceField =
-      product.publishedSourceField || prefix + '.' + key;
+      product.publishedSourceField || prefix + '.' + key2;
     break;
   }
   if (cumulative(product))
-    for (const key of ['numberOfItemsSold', 'soldCount', 'sold_count']) {
-      if (!cumulative(product[key])) continue;
-      const value = units(product[key]);
+    for (const key2 of ['numberOfItemsSold', 'soldCount', 'sold_count']) {
+      if (!cumulative(product[key2])) continue;
+      const value = units(product[key2]);
       if (value === void 0) continue;
       fields.soldCount = value;
       fields.soldRaw =
         typeof product.soldRaw === 'string'
           ? product.soldRaw
-          : typeof product[key] === 'string'
-            ? product[key].trim()
+          : typeof product[key2] === 'string'
+            ? product[key2].trim()
             : String(value);
       fields.soldPrecision = 'exact';
-      fields.soldSourceField = product.soldSourceField || prefix + '.' + key;
+      fields.soldSourceField = product.soldSourceField || prefix + '.' + key2;
       break;
     }
   return fields;
 }
 
-// workers/site-discovery/src/product-signal-rules.js
+// ../workers/site-discovery/src/product-signal-rules.js
 function signalText(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -888,7 +946,7 @@ function ingredientSection(value) {
 }
 function ingredientSignal(value, context = '') {
   const text = signalText(value);
-  const key = signalKey(text);
+  const key2 = signalKey(text);
   if (text.length < 2 || text.length > 120 || BOILERPLATE.test(text)) return '';
   if (
     /\b(?:non[ -]?gmo|gmo[ -]?free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen)[ -]?free|free (?:from|of)|no added|without|does not contain|contains no|certified|vegan|vegetarian|kosher|halal)\b|非转基因|不含|无麸质|无乳糖|无添加|纯素/i.test(
@@ -898,7 +956,7 @@ function ingredientSignal(value, context = '') {
     return '';
   if (
     /\b(?:non gmo|gmo free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen) free)\b/.test(
-      key,
+      key2,
     )
   )
     return '';
@@ -916,23 +974,23 @@ function ingredientSignal(value, context = '') {
     return '';
   const source = signalText(context);
   const positive = ingredientSection(source);
-  if (positive !== source && !signalKey(positive).includes(key)) return '';
+  if (positive !== source && !signalKey(positive).includes(key2)) return '';
   const sourceParts = source
     .split(/[,;:.。；\n]/)
     .map((part) => ` ${signalKey(part)} `);
   if (
     sourceParts.some(
       (part) =>
-        part.includes(` ${key} free `) ||
-        part.includes(` without ${key} `) ||
-        part.includes(` no ${key} `),
+        part.includes(` ${key2} free `) ||
+        part.includes(` without ${key2} `) ||
+        part.includes(` no ${key2} `),
     )
   )
     return '';
   return text;
 }
 
-// workers/site-discovery/src/index.js
+// ../workers/site-discovery/src/index.js
 var MARKET_OPTIONS = {
   US: {
     country: 'us',
@@ -1271,9 +1329,9 @@ function ingredientRecords(ingredients, pageUrl) {
       };
     })
     .filter((item) => {
-      const key = signalKey(item.name);
-      if (!ingredientSignal(item.name) || seen.has(key)) return false;
-      seen.add(key);
+      const key2 = signalKey(item.name);
+      if (!ingredientSignal(item.name) || seen.has(key2)) return false;
+      seen.add(key2);
       return true;
     });
 }
@@ -1448,7 +1506,7 @@ async function fetchShopifyProduct(pageUrl) {
   const match = page.pathname.match(/\/products\/([^/?#]+)/i);
   if (!match) return null;
   const endpoint = new URL(`/products/${match[1]}.js`, page.origin);
-  const response = await fetch(endpoint, {
+  const response = await scheduledFetch(endpoint, {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(8e3),
   });
@@ -1479,7 +1537,7 @@ async function fetchShopifyCatalog(pageUrl, limit) {
   const page = new URL(pageUrl);
   const endpoint = new URL('/products.json', page.origin);
   endpoint.searchParams.set('limit', String(Math.min(50, limit)));
-  const response = await fetch(endpoint, {
+  const response = await scheduledFetch(endpoint, {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(1e4),
   });
@@ -1632,7 +1690,7 @@ function productPageUrls(html, pageUrl, limit = 1) {
   return found;
 }
 async function fetchHtml(url) {
-  const response = await fetch(url, {
+  const response = await scheduledFetch(url, {
     headers: {
       accept: 'text/html,application/xhtml+xml',
       'user-agent':
@@ -1742,10 +1800,10 @@ async function validateCandidate(candidate, keyword, market, productsPerSite) {
     const seenProducts = /* @__PURE__ */ new Set();
     normalizedProducts = normalizedProducts
       .filter((product) => {
-        const key =
+        const key2 =
           `${product.url}|${product.sku}|${product.title}`.toLowerCase();
-        if (seenProducts.has(key)) return false;
-        seenProducts.add(key);
+        if (seenProducts.has(key2)) return false;
+        seenProducts.add(key2);
         return true;
       })
       .slice(0, productsPerSite);
@@ -1828,7 +1886,7 @@ function amazonSuggestUrl(keyword, market) {
   return `https://${options.host}/api/2017/suggestions?${params}`;
 }
 async function fetchGoogleSuggestions(keyword, market) {
-  const response = await fetch(googleSuggestUrl(keyword, market), {
+  const response = await scheduledFetch(googleSuggestUrl(keyword, market), {
     headers: {
       accept: 'application/json',
       'user-agent':
@@ -1848,7 +1906,7 @@ async function fetchGoogleSuggestions(keyword, market) {
 async function fetchAmazonSuggestions(keyword, market) {
   const url = amazonSuggestUrl(keyword, market);
   if (!url) return null;
-  const response = await fetch(url, {
+  const response = await scheduledFetch(url, {
     headers: {
       accept: 'application/json',
       'user-agent':
@@ -1897,9 +1955,9 @@ async function suggestionSource(
   const add = (values) => {
     for (const value of values || []) {
       const normalized = cleanText(value);
-      const key = normalized.toLocaleLowerCase();
-      if (!normalized || seen.has(key)) continue;
-      seen.add(key);
+      const key2 = normalized.toLocaleLowerCase();
+      if (!normalized || seen.has(key2)) continue;
+      seen.add(key2);
       items.push({ source: label, term: normalized });
       if (items.length >= limit) break;
     }
@@ -2000,8 +2058,8 @@ function mergeSuggestionItems(sourceResults, limit) {
     for (const result of sourceResults) {
       const item = result.items[index];
       if (!item) continue;
-      const key = item.term.toLocaleLowerCase();
-      const existing = byTerm.get(key);
+      const key2 = item.term.toLocaleLowerCase();
+      const existing = byTerm.get(key2);
       if (existing) {
         const sources = new Set(existing.source.split(' / '));
         sources.add(item.source);
@@ -2009,7 +2067,7 @@ function mergeSuggestionItems(sourceResults, limit) {
         continue;
       }
       const record = { ...item, category: inferCategory(item.term) };
-      byTerm.set(key, record);
+      byTerm.set(key2, record);
       items.push(record);
       if (items.length >= limit) break;
     }
@@ -2036,7 +2094,7 @@ async function braveSearch(keyword, market, env, count, offset = 0) {
   const request = braveSearchRequest(keyword, market, count, offset);
   let response;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    response = await fetch(request.url, {
+    response = await scheduledFetch(request.url, {
       headers: {
         accept: 'application/json',
         'x-subscription-token': env.BRAVE_SEARCH_API_KEY,
@@ -2177,7 +2235,7 @@ function googleTrendsHeaders(market, cookie = '', attempt = 0) {
   return headers;
 }
 async function googleTrendsSession(market) {
-  const response = await fetch(
+  const response = await scheduledFetch(
     `https://trends.google.com/trends/explore?geo=${market}`,
     {
       headers: {
@@ -2194,7 +2252,7 @@ async function googleTrendsSession(market) {
 async function fetchGoogleTrendsEndpoint(url, market, cookie) {
   let lastStatus = 0;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const response = await fetch(url, {
+    const response = await scheduledFetch(url, {
       headers: googleTrendsHeaders(market, cookie, attempt),
       redirect: 'follow',
       signal: AbortSignal.timeout(15e3),
@@ -2795,7 +2853,7 @@ var src_default = {
     try {
       const input = await request.json();
       if (internal && input.action === 'server_migrate_credentials') {
-        const key = await crypto.subtle.importKey(
+        const key2 = await crypto.subtle.importKey(
           'raw',
           await crypto.subtle.digest(
             'SHA-256',
@@ -2819,7 +2877,7 @@ var src_default = {
               'intelligence-server-migration-v1',
             ),
           },
-          key,
+          key2,
           new TextEncoder().encode(JSON.stringify(credentials)),
         );
         return json(

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+
 import { projectJobTasks } from './task-projection.mjs';
 
 const digest = (rows) =>
@@ -14,31 +15,36 @@ export async function workspaceSnapshot(
     scoreSite,
     isWorkspaceSyncKey,
     readVersions,
+    decorateTasks,
     sql = (postgres) => postgres,
   },
 ) {
-  const [businessMeta, keywordMeta, taskMeta] = readVersions ? [] : await Promise.all([
-    pool.query(
-      "SELECT name,revision FROM workspace_documents WHERE name LIKE 'business:%' ORDER BY name",
-    ),
-    pool.query(
-      sql(
-        'SELECT natural_key,updated_at,md5(data::text) AS content_hash FROM research_keywords ORDER BY natural_key',
-        'SELECT natural_key,updated_at,MD5(CAST(data AS CHAR CHARACTER SET utf8mb4)) AS content_hash FROM research_keywords ORDER BY natural_key',
-      ),
-    ),
-    pool.query(
-      sql(
-        'SELECT id,updated_at,status,cancelled,md5(checkpoint::text) AS content_hash FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
-        'SELECT id,updated_at,status,cancelled,MD5(CAST(checkpoint AS CHAR CHARACTER SET utf8mb4)) AS content_hash FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
-      ),
-    ),
-  ]);
-  const revisions = readVersions ? await readVersions() : {
-    business: digest(businessMeta.rows),
-    keywords: digest(keywordMeta.rows),
-    tasks: digest(taskMeta.rows),
-  };
+  const [businessMeta, keywordMeta, taskMeta] = readVersions
+    ? []
+    : await Promise.all([
+        pool.query(
+          "SELECT name,revision FROM workspace_documents WHERE name LIKE 'business:%' ORDER BY name",
+        ),
+        pool.query(
+          sql(
+            'SELECT natural_key,updated_at,md5(data::text) AS content_hash FROM research_keywords ORDER BY natural_key',
+            'SELECT natural_key,updated_at,MD5(CAST(data AS CHAR CHARACTER SET utf8mb4)) AS content_hash FROM research_keywords ORDER BY natural_key',
+          ),
+        ),
+        pool.query(
+          sql(
+            'SELECT id,updated_at,status,cancelled,md5(checkpoint::text) AS content_hash FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
+            'SELECT id,updated_at,status,cancelled,MD5(CAST(checkpoint AS CHAR CHARACTER SET utf8mb4)) AS content_hash FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
+          ),
+        ),
+      ]);
+  const revisions = readVersions
+    ? await readVersions()
+    : {
+        business: digest(businessMeta.rows),
+        keywords: digest(keywordMeta.rows),
+        tasks: digest(taskMeta.rows),
+      };
   const previous = input.revisions || {};
   const channels = new Set(input.channels || ['business', 'keywords', 'tasks']);
   const result = { revisions, generatedAt: new Date().toISOString() };
@@ -74,16 +80,20 @@ export async function workspaceSnapshot(
           const { rows } = await pool.query(
             'SELECT * FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
           );
-          result.tasks = rows.flatMap((job) =>
-            projectJobTasks(job, jobTasks).map((task) => compactTask(task)),
+          const projected = rows.flatMap((job) =>
+            projectJobTasks(job, jobTasks),
           );
+          result.tasks = (
+            decorateTasks ? await decorateTasks(projected, rows) : projected
+          ).map(compactTask);
         })(),
   ]);
   return result;
 }
 
 export function compactTask(task) {
-  const result = { ...task, steps: task.steps.slice(-1) };
+  const { collections: _collections, ...summary } = task;
+  const result = { ...summary, steps: task.steps.slice(-1) };
   if (task.progress) result.progress = { ...task.progress, rows: [] };
   if (task.researchProgress)
     result.researchProgress = {

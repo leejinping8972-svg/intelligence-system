@@ -38,9 +38,9 @@ const props = withDefaults(
 const emit = defineEmits<{ submitted: [] }>();
 const preparing = ref(false);
 const busy = ref(false);
-  const error = ref('');
-  const modelReady = ref(false);
-  const open = ref(false);
+const error = ref('');
+const modelReady = ref(false);
+const open = ref(false);
 const form = reactive({
   query: '',
   market: 'US' as Market,
@@ -62,7 +62,7 @@ interface Item {
   error?: string;
 }
 const attempted = ref(false);
-  const batch = ref<Item[]>([]);
+const batch = ref<Item[]>([]);
 const multiple = computed(() => batch.value.length > 1);
 const total = computed(() => Math.max(1, batch.value.length));
 async function begin() {
@@ -158,6 +158,7 @@ async function submit() {
     busy.value = false;
   }
 }
+import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
   <Button
@@ -165,9 +166,9 @@ async function submit() {
     :size="compact ? 'small' : 'middle'"
     :disabled="disabled || !serverMode"
     @click="begin"
-    >
-{{ label }}
-</Button>
+  >
+    {{ label }}
+  </Button>
   <Modal
     v-model:open="open"
     title="生成消费者洞察报告"
@@ -184,12 +185,13 @@ async function submit() {
     <p>
       按词生成 {{ total }} 份报告 · 每份最多
       {{ form.maxRequests }} 次采集请求<span v-if="form.analyze">
-        + 1 次 AI 分析</span>
+        + 1 次 AI 分析</span
+      >
     </p>
     <Form layout="vertical" :disabled="busy || preparing || attempted">
       <div class="hci-form-grid">
         <Form.Item label="研究市场">
-<Select
+          <Select
             v-model:value="form.market"
             :disabled="!!batch.length"
             :options="
@@ -198,10 +200,10 @@ async function submit() {
                 label: marketName(value as Market),
               }))
             "
-        />
-</Form.Item>
+          />
+        </Form.Item>
         <Form.Item label="公开讨论来源">
-<Select
+          <Select
             v-model:value="form.sourceKind"
             :disabled="multiple"
             :options="[
@@ -214,11 +216,13 @@ async function submit() {
                 label: 'Facebook · 公开原帖 / Reels 评论',
               },
             ]"
-        />
-</Form.Item>
+          />
+        </Form.Item>
       </div>
-      <Form.Item :label="multiple ? '所选关键词（每词一份报告）' : '研究关键词'">
-<Input
+      <Form.Item
+        :label="multiple ? '所选关键词（每词一份报告）' : '研究关键词'"
+      >
+        <Input
           v-if="!multiple"
           v-model:value="form.query"
           :maxlength="300"
@@ -226,46 +230,46 @@ async function submit() {
         /><span v-else>{{
           batch.map((k) => `${k.term} (${k.market})`).join('、')
         }}</span>
-</Form.Item>
+      </Form.Item>
       <Form.Item
         v-if="form.sourceKind !== 'reddit_search'"
         label="公开帖子或视频链接 · 每行一条，最多20条"
-        >
-<Input.TextArea
+      >
+        <Input.TextArea
           v-model:value="form.urls"
           :rows="3"
           placeholder="使用所选平台原帖链接；广告需公开原帖，文章可用其公开讨论 / 分享帖链接"
-      />
-</Form.Item>
+        />
+      </Form.Item>
       <Form.Item v-if="form.sourceKind === 'reddit_search'">
-<Checkbox v-model:checked="form.autoComments">
-同时取样讨论帖内评论
-</Checkbox>
-</Form.Item>
+        <Checkbox v-model:checked="form.autoComments">
+          同时取样讨论帖内评论
+        </Checkbox>
+      </Form.Item>
       <div class="hci-form-grid">
         <Form.Item
           v-if="form.sourceKind === 'reddit_search' && form.autoComments"
           label="评论取样帖子数"
-          >
-<InputNumber
+        >
+          <InputNumber
             v-model:value="form.maxDiscussionPosts"
             :min="1"
             :max="5"
-        />
-</Form.Item>
+          />
+        </Form.Item>
         <Form.Item label="每来源最多页数">
-<InputNumber v-model:value="form.maxPages" :min="1" :max="10" />
-</Form.Item>
+          <InputNumber v-model:value="form.maxPages" :min="1" :max="10" />
+        </Form.Item>
         <Form.Item label="每词采集请求上限">
-<InputNumber v-model:value="form.maxRequests" :min="1" :max="100" />
-</Form.Item>
+          <InputNumber v-model:value="form.maxRequests" :min="1" :max="100" />
+        </Form.Item>
         <Form.Item label="每词文本样本上限">
-<InputNumber v-model:value="form.limit" :min="1" :max="1000" />
-</Form.Item>
+          <InputNumber v-model:value="form.limit" :min="1" :max="1000" />
+        </Form.Item>
       </div>
       <Checkbox v-model:checked="form.analyze" :disabled="!modelReady">
-AI 归纳话题与跨境保健品建议（模型费用另计）
-</Checkbox>
+        AI 归纳话题与跨境保健品建议（模型费用另计）
+      </Checkbox>
     </Form>
     <p class="hci-subtle">
       热度为采样讨论中的占比。视频、广告或文章正文不替代用户评论；文章评论需提供受支持平台的公开讨论链接。混合市场会按各词市场分别提交。
@@ -285,15 +289,21 @@ AI 归纳话题与跨境保健品建议（模型费用另计）
         { title: '关键词', dataIndex: 'term' },
         { title: '提交结果', key: 'result' },
       ]"
-      >
-<template #bodyCell="{ column, record }">
-<template v-if="column.key === 'result'">
-{{
-          record.jobId ? '已提交' : record.error || '等待提交'
-        }}
-</template>
-</template>
-</Table>
+    >
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'result'">
+          {{ record.jobId ? '已提交' : record.error || '等待提交' }}
+        </template>
+      </template>
+    </Table>
     <Alert v-if="error" type="error" :message="error" show-icon />
+    <CollectionEstimate
+      v-if="open"
+      :input="{
+        kind: 'consumer_research',
+        ...form,
+        maxRequests: form.maxRequests * total,
+      }"
+    />
   </Modal>
 </template>

@@ -1,6 +1,16 @@
 <script setup lang="ts">
+import type {
+  ResourceCapabilities,
+  ResourceCategory,
+  ResourceDiscoveryInput,
+  ResourceMode,
+  ResourceRanking,
+  ResourceWindowDays,
+} from '../product-resources';
+
 import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+
 import {
   Alert,
   Button,
@@ -10,36 +20,30 @@ import {
   Form,
   Input,
   InputNumber,
+  message,
   Modal,
-  Select,
   Segmented,
+  Select,
   Spin,
   Tabs,
   Tooltip,
-  message,
 } from 'ant-design-vue';
+
 import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
-import { categories as researchCategories, markets, state } from '../data';
-import type {
-  ResourceCapabilities,
-  ResourceCategory,
-  ResourceDiscoveryInput,
-  ResourceMode,
-  ResourceRanking,
-  ResourceWindowDays,
-} from '../product-resources';
+import { markets, categories as researchCategories, state } from '../data';
 import {
-  resourceModeLabels,
   resourceCostUnitLabels,
-  resourceSalesFieldDescription,
+  resourceModeLabels,
   resourceRankingLabels,
   resourceRankingsForMode,
   resourceRouteAvailable,
+  resourceSalesFieldDescription,
   resourceSupports,
   splitResourceLines,
   validateResourceInput,
 } from '../product-resources';
 import { serverMode } from '../session';
+import CollectionEstimate from './CollectionEstimate.vue';
 const props = defineProps<{
   terms?: string[];
   market?: string;
@@ -47,9 +51,9 @@ const props = defineProps<{
   disabledReason?: string;
   label?: string;
 }>();
-const open = ref(false),
-  busy = ref(false),
-  errorMessage = ref('');
+const busy = ref(false);
+const errorMessage = ref('');
+const open = ref(false);
 const router = useRouter();
 const activeTab = ref('resources');
 const capabilities = ref<ResourceCapabilities>();
@@ -223,8 +227,8 @@ async function loadCapabilities() {
     capabilitiesLoading.value = false;
   }
 }
-let categoryRequestId = '',
-  categorySignature = '';
+let categoryRequestId = '';
+let categorySignature = '';
 async function queryCategories(parentId?: string) {
   if (!resourceRoute.value?.modes.includes('category')) return;
   categoryError.value = '';
@@ -235,7 +239,8 @@ async function queryCategories(parentId?: string) {
     query: categoryQuery.value.trim(),
     parentId,
     parentReceiptId: parentId
-      ? categoryRows.value.find((category) => category.id === parentId)?.receiptId
+      ? categoryRows.value.find((category) => category.id === parentId)
+          ?.receiptId
       : undefined,
     budget: { requests: 5, sorftimeCalls: 1 },
   };
@@ -315,8 +320,8 @@ const expected = computed(
       (form.providers.includes('semrush') ? 1 + form.maxDomains : 0) +
       (form.providers.includes('tiktok_shop') ? 1 : 0)),
 );
-let requestId = '',
-  signature = '';
+let requestId = '';
+let signature = '';
 function show() {
   form.terms = (props.terms || []).join('\n');
   form.market = props.market || (state.market === 'ALL' ? 'US' : state.market);
@@ -462,11 +467,9 @@ async function submitResource() {
             :message="capabilitiesError"
             show-icon
           >
-            <template #action
-              ><Button size="small" @click="loadCapabilities"
-                >重新读取</Button
-              ></template
-            >
+            <template #action>
+              <Button size="small" @click="loadCapabilities"> 重新读取 </Button>
+            </template>
           </Alert>
           <Form
             :model="resourceForm"
@@ -558,8 +561,9 @@ async function submitResource() {
                     <Button
                       :loading="categoryLoading"
                       @click="queryCategories()"
-                      >查询类目</Button
                     >
+                      查询类目
+                    </Button>
                   </div>
                   <p class="hci-subtle">
                     由
@@ -597,8 +601,9 @@ async function submitResource() {
                     style="margin-top: 8px"
                     :loading="categoryLoading"
                     @click="queryCategories(resourceForm.categoryId)"
-                    >查询所选类目的下级</Button
                   >
+                    查询所选类目的下级
+                  </Button>
                 </Form.Item>
               </template>
               <Form.Item
@@ -663,11 +668,11 @@ async function submitResource() {
                 </Form.Item>
               </div>
               <Alert type="info" show-icon class="resource-discovery-notice">
-                <template #message
-                  >近{{
+                <template #message>
+                  近{{
                     resourceForm.salesWindowDays
-                  }}天是销量统计窗口，非上架时间筛选。</template
-                >
+                  }}天是销量统计窗口，非上架时间筛选。
+                </template>
                 <template #description>
                   {{
                     resourceForm.ranking === 'sample'
@@ -687,13 +692,15 @@ async function submitResource() {
                   <Checkbox
                     v-model:checked="resourceForm.includeDetails"
                     :disabled="!resourceSupports(resourceRoute, 'detail')"
-                    >商品详情</Checkbox
                   >
+                    商品详情
+                  </Checkbox>
                   <Checkbox
                     v-model:checked="resourceForm.includeHistory"
                     :disabled="!resourceSupports(resourceRoute, 'history')"
-                    >来源历史</Checkbox
                   >
+                    来源历史
+                  </Checkbox>
                 </div>
                 <p
                   v-if="
@@ -721,79 +728,90 @@ async function submitResource() {
                     <Form.Item
                       label="来源调用次数上限"
                       :name="['budget', 'providerCalls']"
-                      ><InputNumber
+                    >
+                      <InputNumber
                         v-model:value="resourceForm.budget.providerCalls"
                         :min="0"
                         :max="200"
                         :precision="0"
-                    /></Form.Item>
+                      />
+                    </Form.Item>
                     <Form.Item
                       label="Sorftime 调用上限"
                       :name="['budget', 'sorftimeCalls']"
-                      ><InputNumber
+                    >
+                      <InputNumber
                         v-model:value="resourceForm.budget.sorftimeCalls"
                         :min="0"
                         :max="100"
                         :precision="0"
-                    /></Form.Item>
+                      />
+                    </Form.Item>
                     <Form.Item
                       label="ScrapeCreators credits 上限"
                       :name="['budget', 'scrapeCredits']"
-                      ><InputNumber
+                    >
+                      <InputNumber
                         v-model:value="resourceForm.budget.scrapeCredits"
                         :min="0"
                         :max="100"
                         :precision="0"
-                    /></Form.Item>
+                      />
+                    </Form.Item>
                     <Form.Item
                       label="Brave 请求上限"
                       :name="['budget', 'braveRequests']"
-                      ><InputNumber
+                    >
+                      <InputNumber
                         v-model:value="resourceForm.budget.braveRequests"
                         :min="0"
                         :max="50"
                         :precision="0"
-                    /></Form.Item>
+                      />
+                    </Form.Item>
                     <Form.Item
                       label="受控浏览器页面上限"
                       :name="['budget', 'browserPages']"
-                      ><InputNumber
+                    >
+                      <InputNumber
                         v-model:value="resourceForm.budget.browserPages"
                         :min="0"
                         :max="0"
                         disabled
                       />
-                      <p class="hci-subtle">
-                        此路径未启用受控浏览器
-                      </p></Form.Item
-                    >
+                      <p class="hci-subtle">此路径未启用受控浏览器</p>
+                    </Form.Item>
                     <Form.Item
                       label="模型 token 上限"
                       :name="['budget', 'modelTokens']"
-                      ><InputNumber
+                    >
+                      <InputNumber
                         v-model:value="resourceForm.budget.modelTokens"
                         :min="0"
                         :max="0"
                         disabled
                       />
-                      <p class="hci-subtle">此路径不调用模型</p></Form.Item
-                    >
-                    <Form.Item label="翻页上限" :name="['budget', 'maxPages']"
-                      ><InputNumber
+                      <p class="hci-subtle">此路径不调用模型</p>
+                    </Form.Item>
+                    <Form.Item label="翻页上限" :name="['budget', 'maxPages']">
+                      <InputNumber
                         v-model:value="resourceForm.budget.maxPages"
                         :min="1"
                         :max="resourceRoute.limits.maxPages || 20"
                         :precision="0"
-                    /></Form.Item>
+                      />
+                    </Form.Item>
                     <Form.Item
                       label="详情商品数上限"
                       :name="['budget', 'maxDetailProducts']"
-                      ><InputNumber
+                    >
+                      <InputNumber
                         v-model:value="resourceForm.budget.maxDetailProducts"
                         :min="0"
                         :max="100"
                         :precision="0"
-                    /></Form.Item>
+                      />
+                    </Form.Item>
                   </div>
                   <p class="hci-subtle">
                     不同单位分别受限，0表示关闭。达到任一上限即保留已采集结果并记录停止原因。未知扣费结果不会自动重放。
@@ -926,19 +944,21 @@ async function submitResource() {
           message="商品直接取自平台，不先抓整站。Sorftime 搜 Amazon，Semrush 查 Google Shopping，ScrapeCreators 搜 TikTok Shop；每条数据分别保留来源与采集时间。"
         />
         <Form layout="vertical" :disabled="busy" style="margin-top: 16px">
-          <Form.Item label="关键词（每行一个，最多100个）"
-            ><Input.TextArea
+          <Form.Item label="关键词（每行一个，最多100个）">
+            <Input.TextArea
               v-model:value="form.terms"
               :rows="4"
               placeholder="creatine gummies"
-          /></Form.Item>
-          <Form.Item label="目标市场"
-            ><Select
+            />
+          </Form.Item>
+          <Form.Item label="目标市场">
+            <Select
               v-model:value="form.market"
               :options="markets.map((m) => ({ label: m.name, value: m.code }))"
-          /></Form.Item>
-          <Form.Item label="数据来源"
-            ><Checkbox.Group
+            />
+          </Form.Item>
+          <Form.Item label="数据来源">
+            <Checkbox.Group
               v-model:value="form.providers"
               :options="[
                 {
@@ -949,48 +969,56 @@ async function submitResource() {
                 { label: 'Semrush · Google Shopping', value: 'semrush' },
                 { label: 'ScrapeCreators · TikTok Shop', value: 'tiktok_shop' },
               ]"
-          /></Form.Item>
+            />
+          </Form.Item>
           <div class="platform-form-grid">
-            <Form.Item label="每词每来源商品上限"
-              ><InputNumber v-model:value="form.perKeyword" :min="1" :max="100"
-            /></Form.Item>
-            <Form.Item label="整批商品总数上限"
-              ><InputNumber
+            <Form.Item label="每词每来源商品上限">
+              <InputNumber
+                v-model:value="form.perKeyword"
+                :min="1"
+                :max="100"
+              />
+            </Form.Item>
+            <Form.Item label="整批商品总数上限">
+              <InputNumber
                 v-model:value="form.maxProducts"
                 :min="1"
                 :max="1000"
-            /></Form.Item>
-            <Form.Item label="发现与补全共用请求上限"
-              ><InputNumber
+              />
+            </Form.Item>
+            <Form.Item label="发现与补全共用请求上限">
+              <InputNumber
                 v-model:value="form.maxRequests"
                 :min="1"
                 :max="100000"
-            /></Form.Item>
-            <Form.Item label="商品详情补全数量上限"
-              ><InputNumber
+              />
+            </Form.Item>
+            <Form.Item label="商品详情补全数量上限">
+              <InputNumber
                 v-model:value="form.maxDetailProducts"
                 :min="0"
                 :max="1000"
               />
             </Form.Item>
-            <Form.Item label="Semrush 每词商家数上限"
-              ><InputNumber
+            <Form.Item label="Semrush 每词商家数上限">
+              <InputNumber
                 v-model:value="form.maxDomains"
                 :min="1"
                 :max="5"
                 :disabled="!form.providers.includes('semrush')"
-            /></Form.Item>
+              />
+            </Form.Item>
           </div>
-          <Form.Item label="补全范围"
-            ><Checkbox v-model:checked="form.completeAll"
-              >补全全部已发现商品（会显著增加请求）</Checkbox
-            >
-            ><Checkbox v-model:checked="form.enrich"
-              >商品详情与图片/属性</Checkbox
-            ><Checkbox v-model:checked="form.trend"
-              >ASIN月销量、大类排名与评论数历史</Checkbox
-            ></Form.Item
-          >
+          <Form.Item label="补全范围">
+            <Checkbox v-model:checked="form.completeAll">
+              补全全部已发现商品（会显著增加请求）
+            </Checkbox>
+            ><Checkbox v-model:checked="form.enrich">
+              商品详情与图片/属性 </Checkbox
+            ><Checkbox v-model:checked="form.trend">
+              ASIN月销量、大类排名与评论数历史
+            </Checkbox>
+          </Form.Item>
         </Form>
         <p class="hci-subtle">
           {{ parsedTerms.length }} 个词；基础发现参考约
@@ -1007,6 +1035,14 @@ async function submitResource() {
         </p>
       </Tabs.TabPane>
     </Tabs>
+    <CollectionEstimate
+      v-if="open"
+      :input="
+        activeTab === 'resources'
+          ? { kind: 'platform_products', ...resourceInput }
+          : { kind: 'platform_products', ...form }
+      "
+    />
     <Alert v-if="errorMessage" :message="errorMessage" type="error" show-icon />
   </Modal>
 </template>
@@ -1016,34 +1052,43 @@ async function submitResource() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
 }
+
 .resource-discovery-form {
   margin-top: 8px;
 }
+
 .resource-discovery-form :deep(.ant-input-number) {
   width: 100%;
 }
+
 .resource-discovery-notice {
   margin-bottom: 16px;
 }
+
 .resource-category-query {
   display: flex;
   gap: 8px;
 }
+
 .resource-category-query :deep(.ant-input) {
   min-width: 0;
 }
+
 .resource-category-query :deep(.ant-btn) {
   flex-shrink: 0;
 }
+
 .resource-completion-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
 }
+
 .resource-budget-collapse,
 .resource-capability-collapse {
   margin-bottom: 16px;
 }
+
 .resource-route-facts {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
@@ -1051,50 +1096,62 @@ async function submitResource() {
   margin: 16px 0;
   font-size: 12px;
 }
+
 .resource-route-facts dt {
   color: var(--hci-muted, #666);
 }
+
 .resource-route-facts dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
 .resource-capability-table-wrap {
   overflow-x: auto;
 }
+
 .resource-capability-table {
   width: 100%;
   min-width: 550px;
-  border-collapse: collapse;
   font-size: 12px;
+  border-collapse: collapse;
 }
+
 .resource-capability-table th,
 .resource-capability-table td {
   padding: 10px 8px;
-  text-align: left;
   vertical-align: top;
+  text-align: left;
   border-bottom: 1px solid #e8e8e8;
 }
+
 .resource-capability-table p {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
+
 .resource-platform-gap {
   padding: 12px 0;
   border-bottom: 1px solid #e8e8e8;
 }
+
 .resource-platform-gap p {
   margin: 4px 0 0;
 }
+
 @media (width < 600px) {
   .platform-form-grid {
     grid-template-columns: 1fr;
   }
+
   .resource-category-query {
     flex-wrap: wrap;
   }
+
   .resource-category-query :deep(.ant-btn) {
     width: 100%;
   }
+
   .resource-route-facts {
     grid-template-columns: 72px minmax(0, 1fr);
   }

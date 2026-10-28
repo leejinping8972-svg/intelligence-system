@@ -90,18 +90,18 @@ test('normalization matches order, whitespace and case, but preserves market and
     researchSignature({ ...input, markets: ['US'] }),
   );
 });
-test('concurrent equivalent submissions create one job and release both connections', async () => {
+test('concurrent deliberate submissions queue independently and release both connections', async () => {
   const f = fixture();
   const result = await Promise.all([
     submitKeywordJob(input, 'r1', f.deps),
     submitKeywordJob(input, 'r2', f.deps),
   ]);
-  assert.equal(result[0].job.id, result[1].job.id);
+  assert.notEqual(result[0].job.id, result[1].job.id);
   assert.deepEqual(
     result.map((r) => r.reused).toSorted((a, b) => Number(a) - Number(b)),
-    [false, true],
+    [false, false],
   );
-  assert.equal(f.insertions, 1);
+  assert.equal(f.insertions, 2);
   assert.equal(f.released, 2);
   assert.equal(f.locked, false);
 });
@@ -115,7 +115,7 @@ test('idempotent replay works after completion; a new request can deliberately r
   assert.notEqual(rerun.job.id, first.job.id);
   assert.equal(f.jobs.length, 2);
 });
-test('active duplicates are reused even at the queue cap, different inputs are refused', async () => {
+test('transport retries are reused at the queue cap; new submissions receive an explicit capacity error', async () => {
   const f = fixture();
   await submitKeywordJob(input, 'r1', f.deps);
   for (let i = 1; i < 20; i++)
@@ -125,7 +125,7 @@ test('active duplicates are reused even at the queue cap, different inputs are r
       input: { kind: 'products' },
       cancelled: false,
     });
-  const duplicate = await submitKeywordJob(input, 'r2', f.deps);
+  const duplicate = await submitKeywordJob(input, 'r1', f.deps);
   assert.equal(duplicate.reused, true);
   await assert.rejects(
     submitKeywordJob({ ...input, limit: 50 }, 'r3', f.deps),

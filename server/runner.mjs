@@ -2,54 +2,72 @@ import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { lock, unlock, sql } from './database.mjs';
-import { naturalKey, normalizeTerm } from './domain.mjs';
-import { assessKeyword, classifyKeyword } from './model.js';
-import { jobProgress, runnableJob } from './job-progress.mjs';
-import { collect, pool, saveCheckpoint, saveKeyword, usage } from './store.mjs';
-
-import { runEnrichment, patchCollection } from './enrichment-jobs.mjs';
-import { runMarketJob } from './market-jobs.mjs';
-import { runSemrushSitesJob } from './semrush-sites-store.mjs';
-import { runInsightJob } from './insight-jobs.mjs';
-import { runProductsJob } from './product-jobs.mjs';
-import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
-import { productProgress } from './product-queue.mjs';
-import { runPlatformProducts } from './platform-products-jobs.mjs';
-import { completionProgress } from './platform-product-completion.mjs';
 import { tickDailyDiscovery } from './daily-discovery.mjs';
-import { tickMarketResearch } from './market-research.mjs';
-import { runMarketReport } from './market-report-jobs.mjs';
-import { runPersonaResearch } from './persona-research-store.mjs';
-import { resourceResumeAllowed } from './product-resource-domain.mjs';
-import { projectJobTasks } from './task-projection.mjs';
+import { lock, sql, unlock } from './database.mjs';
+import { naturalKey, normalizeTerm } from './domain.mjs';
+import { patchCollection, runEnrichment } from './enrichment-jobs.mjs';
+import { runInsightJob } from './insight-jobs.mjs';
+import { jobProgress, runnableJob } from './job-progress.mjs';
 import { submitResearchTrends } from './keyword-trends-store.mjs';
+import { runMarketJob } from './market-jobs.mjs';
+import { runMarketReport } from './market-report-jobs.mjs';
+import { tickMarketResearch } from './market-research.mjs';
+import { assessKeyword, classifyKeyword } from './model.js';
+import { runPersonaResearch } from './persona-research-store.mjs';
+import { completionProgress } from './platform-product-completion.mjs';
+import { runPlatformProducts } from './platform-products-jobs.mjs';
+import { runProductsJob } from './product-jobs.mjs';
+import { productProgress } from './product-queue.mjs';
+import { resourceResumeAllowed } from './product-resource-domain.mjs';
+import { runSemrushSitesJob } from './semrush-sites-store.mjs';
+import { collect, pool, saveCheckpoint, saveKeyword, usage } from './store.mjs';
+import { taskOverview } from './task-overview.mjs';
+import { projectJobTasks } from './task-projection.mjs';
+import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
-  return projectJobTasks(job, projectKnownJob);
+  return projectJobTasks(job, projectKnownJob).map((task) =>
+    task.readOnly ? task : { ...task, overview: taskOverview(job, task) },
+  );
 }
 function projectKnownJob(job) {
-  if (job.input.kind === 'semrush_sites') return job.input.markets.map((market) => ({
-    id: `${job.id}:${market}`, cloudJobId: job.id, market, mode: 'live', stage: 'sites',
-    title: `云端 · Semrush付费流量独立站发现 · ${label[market]}`,
-    status: job.cancelled ? 'cancelled' : job.status,
-    created: job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
-    steps: [`关键词${Math.min(job.checkpoint.index || 0, job.input.seeds.length)}/${job.input.seeds.length}；站点${job.checkpoint.sites || 0}家；已确认${job.checkpoint.semrushUnits || 0} API units；预留${job.checkpoint.semrushReserved || 0}（不限积分）`, ...(job.checkpoint.logs || [])],
-    collectionProgress: { kind: 'semrush_sites', done: job.checkpoint.index || 0, total: job.input.seeds.length,
-      current: job.checkpoint.currentTerm || '', sites: job.checkpoint.sites || 0, ads: 0,
-      requests: job.checkpoint.requests || 0, semrushUnits: job.checkpoint.semrushUnits || 0,
-      requestLimit: job.input.seeds.length * job.input.maxPages,
-      unknownCharges: job.checkpoint.unknownCharges || 0 },
-  }));
+  if (job.input.kind === 'semrush_sites')
+    return job.input.markets.map((market) => ({
+      id: `${job.id}:${market}`,
+      cloudJobId: job.id,
+      market,
+      mode: 'live',
+      stage: 'sites',
+      title: `云端 · Semrush付费流量独立站发现 · ${label[market]}`,
+      status: job.cancelled ? 'cancelled' : job.status,
+      created:
+        job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
+      steps: [
+        `关键词${Math.min(job.checkpoint.index || 0, job.input.seeds.length)}/${job.input.seeds.length}；站点${job.checkpoint.sites || 0}家；已确认${job.checkpoint.semrushUnits || 0} API units；预留${job.checkpoint.semrushReserved || 0}（不限积分）`,
+        ...(job.checkpoint.logs || []),
+      ],
+      collectionProgress: {
+        kind: 'semrush_sites',
+        done: job.checkpoint.index || 0,
+        total: job.input.seeds.length,
+        current: job.checkpoint.currentTerm || '',
+        sites: job.checkpoint.sites || 0,
+        ads: 0,
+        requests: job.checkpoint.requests || 0,
+        semrushUnits: job.checkpoint.semrushUnits || 0,
+        requestLimit: job.input.seeds.length * job.input.maxPages,
+        unknownCharges: job.checkpoint.unknownCharges || 0,
+      },
+    }));
   if (
     [
-      'consumer_research',
       'ad_analysis',
+      'consumer_research',
       'evidence_analysis',
       'market_analysis',
       'persona_research',
-      'products',
       'platform_products',
+      'products',
     ].includes(job.input.kind)
   ) {
     const names = {
@@ -59,17 +77,22 @@ function projectKnownJob(job) {
       market_analysis: '国家市场商品与消费者分析',
       persona_research: '人群画像需求研究',
       products: '站点商品采集',
-      platform_products:
-        job.input.resourceCategories ? '平台真实类目查询' : job.input.resourceDiscovery ? '商品资源路径采集' : job.input.discoveryDay ? '每日关键词商品发现' : job.input.mode === 'enrich'
-          ? '已有商品全量补全'
-          : '平台商品发现与趋势补全',
+      platform_products: job.input.resourceCategories
+        ? '平台真实类目查询'
+        : job.input.resourceDiscovery
+          ? '商品资源路径采集'
+          : job.input.discoveryDay
+            ? '每日关键词商品发现'
+            : job.input.mode === 'enrich'
+              ? '已有商品全量补全'
+              : '平台商品发现与趋势补全',
     };
     return job.input.markets.map((market) => ({
       id: `${job.id}:${market}`,
       cloudJobId: job.id,
       market,
       mode: 'live',
-      stage: ['products', 'platform_products'].includes(job.input.kind)
+      stage: ['platform_products', 'products'].includes(job.input.kind)
         ? 'products'
         : 'sites',
       title: `云端 · ${names[job.input.kind]} · ${label[market]}`,
@@ -80,8 +103,8 @@ function projectKnownJob(job) {
         job.input.kind === 'market_analysis'
           ? `正在冻结${job.input.period === 'week' ? '周' : job.input.period === 'quarter' ? '季度' : '月度'}市场数据并生成报告`
           : job.input.kind === 'platform_products' && job.input.completeAll
-          ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；发现与补全共用数据请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`
-          : `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
+            ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；发现与补全共用数据请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`
+            : `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
         ...(job.checkpoint.logs || []),
       ],
       researchProgress: {
@@ -89,7 +112,9 @@ function projectKnownJob(job) {
         done: job.checkpoint.index || 0,
         total:
           job.input.kind === 'platform_products' && job.input.mode === 'enrich'
-            ? (job.checkpoint.work?.length ?? job.input.initialWork?.length ?? 0)
+            ? (job.checkpoint.work?.length ??
+              job.input.initialWork?.length ??
+              0)
             : job.checkpoint.work?.length ||
               job.input.records?.length ||
               job.input.urls?.length ||
@@ -101,7 +126,7 @@ function projectKnownJob(job) {
         credits: job.checkpoint.creditsCharged,
         unknownCharges: job.checkpoint.unknownCharges || 0,
         stopReason: job.checkpoint.stopReason || '',
-        reportId: ['products', 'platform_products'].includes(job.input.kind)
+        reportId: ['platform_products', 'products'].includes(job.input.kind)
           ? ''
           : job.id,
         ...(job.input.kind === 'platform_products'
@@ -114,13 +139,21 @@ function projectKnownJob(job) {
               semrushReserved: job.checkpoint.semrushReserved || 0,
               semrushUnitLimit: 0,
               current: job.checkpoint.currentTerm || '',
-              ...(job.input.resourceDiscovery ? {
-                resource: { ...job.checkpoint.resourceProgress, budget: job.input.resourcePlan.budget, resumable: resourceResumeAllowed(job) },
-                credits: job.checkpoint.confirmedUsage?.scrapeCredits,
-                semrushUnits: job.checkpoint.confirmedUsage?.semrushUnits,
-                semrushReserved: job.checkpoint.reserved?.semrushUnits,
-                stopReason: (job.checkpoint.stopReasons || []).map((s) => s.message).join('；'),
-              } : {}),
+              ...(job.input.resourceDiscovery
+                ? {
+                    resource: {
+                      ...job.checkpoint.resourceProgress,
+                      budget: job.input.resourcePlan.budget,
+                      resumable: resourceResumeAllowed(job),
+                    },
+                    credits: job.checkpoint.confirmedUsage?.scrapeCredits,
+                    semrushUnits: job.checkpoint.confirmedUsage?.semrushUnits,
+                    semrushReserved: job.checkpoint.reserved?.semrushUnits,
+                    stopReason: (job.checkpoint.stopReasons || [])
+                      .map((s) => s.message)
+                      .join('；'),
+                  }
+                : {}),
             }
           : {}),
         transcriptSummary: job.checkpoint.transcriptSummary,
@@ -164,7 +197,7 @@ function projectKnownJob(job) {
       },
     }));
 
-  if (['sites', 'metrics'].includes(job.input.kind))
+  if (['metrics', 'sites'].includes(job.input.kind))
     return job.input.markets.map((market) => ({
       id: `${job.id}:${market}`,
       cloudJobId: job.id,
@@ -404,7 +437,11 @@ export async function runJob(job, overrides = {}) {
     cp.discoveryComplete = true;
     if (input.socialTrends && !cp.socialTrendDispatch) {
       await io.checkCancelled(job.id);
-      const dispatched = await io.submitResearchTrends(job, cp.keywords, io.now());
+      const dispatched = await io.submitResearchTrends(
+        job,
+        cp.keywords,
+        io.now(),
+      );
       if (!dispatched) {
         cp.nextRunAt = io.now() + 5000;
         cp.waitReason = 'social_queue';
@@ -413,7 +450,9 @@ export async function runJob(job, overrides = {}) {
       }
       cp.socialTrendDispatch = dispatched;
       cp.waitReason = '';
-      cp.logs.push(`TK/INS/FB 所选来源已提交独立趋势队列：${dispatched.accepted}项（复用${dispatched.reused}项）；完成后写回列表，尚不代表已采集`);
+      cp.logs.push(
+        `TK/INS/FB 所选来源已提交独立趋势队列：${dispatched.accepted}项（复用${dispatched.reused}项）；完成后写回列表，尚不代表已采集`,
+      );
       await io.saveCheckpoint(job, cp);
     }
     if (input.sources.includes('semrush')) {
@@ -485,7 +524,10 @@ export async function runJob(job, overrides = {}) {
       `Sorftime已确认${consumed.confirmed}次；结果未知并预留${consumed.reserved}次，未自动重复付费请求`,
     );
     cp.upstreamFailures = cp.failures;
-    await io.saveCheckpoint(job, initializeTrendQueue(cp, io.now(), input.trendComparisonVersion));
+    await io.saveCheckpoint(
+      job,
+      initializeTrendQueue(cp, io.now(), input.trendComparisonVersion),
+    );
   } catch (error) {
     let cancelled = false;
     try {
@@ -501,9 +543,9 @@ export async function runJob(job, overrides = {}) {
 async function runLane(signal, trends = false) {
   const lockName = trends ? 'trend-runner' : 'runner';
   while (!signal.aborted) {
-    let connection,
-      acquired = false,
-      lostConnection;
+    let acquired = false;
+    let connection;
+    let lostConnection;
     try {
       connection = await pool.connect();
       acquired = await lock(connection, lockName);
@@ -515,10 +557,16 @@ async function runLane(signal, trends = false) {
         connection.on('error', lostConnection);
         if (!trends) {
           await tickDailyDiscovery().catch((error) => {
-            console.error('Daily discovery unavailable:', error.code || error.name);
+            console.error(
+              'Daily discovery unavailable:',
+              error.code || error.name,
+            );
           });
           await tickMarketResearch().catch((error) => {
-            console.error('Market research orchestration unavailable:', error.code || error.name);
+            console.error(
+              'Market research orchestration unavailable:',
+              error.code || error.name,
+            );
           });
         }
         const { rows } = await pool.query(
@@ -536,7 +584,7 @@ async function runLane(signal, trends = false) {
           );
           if (trends) await runTrendJob(next);
           else if (
-            ['consumer_research', 'ad_analysis', 'evidence_analysis'].includes(
+            ['ad_analysis', 'consumer_research', 'evidence_analysis'].includes(
               next.input.kind,
             )
           )
@@ -545,13 +593,14 @@ async function runLane(signal, trends = false) {
             await runPersonaResearch(next);
           else if (next.input.kind === 'market_analysis')
             await runMarketReport(next);
-          else if (next.input.kind === 'semrush_sites') await runSemrushSitesJob(next);
+          else if (next.input.kind === 'semrush_sites')
+            await runSemrushSitesJob(next);
           else if (next.input.kind === 'products') await runProductsJob(next);
           else if (next.input.kind === 'platform_products')
             await runPlatformProducts(next);
           else if (['ads', 'site_metrics'].includes(next.input.kind))
             await runMarketJob(next);
-          else if (['sites', 'metrics'].includes(next.input.kind))
+          else if (['metrics', 'sites'].includes(next.input.kind))
             await runEnrichment(next);
           else await runJob(next);
         }

@@ -1,32 +1,36 @@
-import { publicEvidenceReason, publicEvidenceStatus } from '../../../../../server/product-public-evidence.mjs';
 import type { Ad, Keyword, Product, Site } from './data';
-import { rollingTrendComparison } from './trend-comparison';
-import { discoveryDecision } from './discovery';
 
-export type CoreKind = 'products' | 'sites' | 'ads' | 'keywords';
+import {
+  publicEvidenceReason,
+  publicEvidenceStatus,
+} from '../../../../../server/product-public-evidence.mjs';
+import { discoveryDecision } from './discovery';
+import { rollingTrendComparison } from './trend-comparison';
+
+export type CoreKind = 'ads' | 'keywords' | 'products' | 'sites';
 export type CorePeriod = 30 | 90 | 365;
 export type MetricStatus =
-  | 'available'
-  | 'unsupported'
-  | 'not_indexed'
-  | 'not_disclosed'
   | 'accumulating'
-  | 'failed'
+  | 'available'
   | 'budget_limited'
+  | 'failed'
+  | 'not_disclosed'
+  | 'not_indexed'
+  | 'unsupported'
   | 'unverified';
 export type MetricNature =
-  | 'platform_display'
+  | 'ai_summary'
   | 'authorized'
-  | 'third_party_estimate'
+  | 'brand_claim'
+  | 'platform_display'
   | 'snapshot_delta'
   | 'system_observation'
-  | 'brand_claim'
-  | 'ai_summary'
+  | 'third_party_estimate'
   | 'unknown';
 export interface EvidenceMetric {
   key: string;
   label: string;
-  value: number | string | null;
+  value: null | number | string;
   status: MetricStatus;
   reason: string;
   source: string;
@@ -226,8 +230,8 @@ function productSales(p: Product, days: CorePeriod): EvidenceMetric[] {
           v.end >= v.start,
       )
       .toSorted((a, b) => a.start.localeCompare(b.start));
-    let cursor = bounds.start,
-      total = 0;
+    let cursor = bounds.start;
+    let total = 0;
     for (const point of points) {
       const next = isoDay(Date.parse(`${point.end}T00:00:00Z`) + DAY);
       if (point.start !== cursor || next > bounds.end) continue;
@@ -301,7 +305,7 @@ function productSales(p: Product, days: CorePeriod): EvidenceMetric[] {
   if (sales.value === null && completion)
     sales = {
       ...sales,
-      status: ['done', 'completed', 'collected'].includes(completion.status)
+      status: ['collected', 'completed', 'done'].includes(completion.status)
         ? 'accumulating'
         : missingStatus(completion.status, completion.message),
       reason: `${completion.message}；${sales.reason}`,
@@ -332,8 +336,8 @@ export function productMetrics(
   days: CorePeriod,
   context: CoreContext = {},
 ): EvidenceMetric[] {
-  const meta = productMeta(p),
-    sm = p.sourceMetrics;
+  const meta = productMeta(p);
+  const sm = p.sourceMetrics;
   const fieldTime = (key: string) =>
     p.coreEvidence?.fieldUpdatedAt?.[key] || meta.collectedAt;
   const fx = context.fx || p.coreEvidence?.fx;
@@ -358,9 +362,35 @@ export function productMetrics(
   const publicCompletion = p.dataCompletion?.public_detail;
   const missingPublicMetric = (field: 'listing' | 'sold') => {
     const evidence = publicEvidence?.[field];
-    if (publicCompletion && ['queued', 'running', 'failed', 'unknown', 'cancelled', 'unsupported'].includes(publicCompletion.status) && (!publicEvidence || Date.parse(publicCompletion.at || '') >= Date.parse(publicEvidence.checkedAt)))
-      return { status: missingStatus(publicCompletion.status, publicCompletion.message), reason: publicCompletion.message, collectedAt: publicCompletion.at || '' };
-    return evidence ? { status: publicEvidenceStatus(evidence.reason), reason: publicEvidenceReason(evidence.reason), collectedAt: publicEvidence!.checkedAt } : {};
+    if (
+      publicCompletion &&
+      [
+        'cancelled',
+        'failed',
+        'queued',
+        'running',
+        'unknown',
+        'unsupported',
+      ].includes(publicCompletion.status) &&
+      (!publicEvidence ||
+        Date.parse(publicCompletion.at || '') >=
+          Date.parse(publicEvidence.checkedAt))
+    )
+      return {
+        status: missingStatus(
+          publicCompletion.status,
+          publicCompletion.message,
+        ),
+        reason: publicCompletion.message,
+        collectedAt: publicCompletion.at || '',
+      };
+    return evidence
+      ? {
+          status: publicEvidenceStatus(evidence.reason),
+          reason: publicEvidenceReason(evidence.reason),
+          collectedAt: publicEvidence!.checkedAt,
+        }
+      : {};
   };
   const result = [
     ...productSales(p, days),
@@ -372,13 +402,21 @@ export function productMetrics(
       collectedAt: p.decisionData?.listing?.collectedAt || '',
       evidenceUrl: listing.evidenceUrl,
       period: '来源上架日期',
-      reason: listing.reason + (p.decisionData?.listing?.sourceField ? ' 来源字段：' + p.decisionData.listing.sourceField : ''),
+      reason:
+        listing.reason +
+        (p.decisionData?.listing?.sourceField
+          ? ' 来源字段：' + p.decisionData.listing.sourceField
+          : ''),
       ...(!listing.evidenceDate ? missingPublicMetric('listing') : {}),
     }),
     metric(
       p,
       'cumulativeSold',
-      sm?.soldPeriod === 'unspecified' ? '官网展示销量' : sm?.soldProvider ? '官网累计展示已售' : '平台累计展示已售',
+      sm?.soldPeriod === 'unspecified'
+        ? '官网展示销量'
+        : sm?.soldProvider
+          ? '官网累计展示已售'
+          : '平台累计展示已售',
       raw || (validNumber(sold) ? sold : null),
       '件',
       {
@@ -387,11 +425,17 @@ export function productMetrics(
         platform: sm?.soldPlatform || meta.platform,
         evidenceUrl: sm?.soldEvidenceUrl || meta.evidenceUrl,
         collectedAt: sm?.soldCollectedAt || meta.collectedAt,
-        period: sm?.soldPeriod === 'unspecified' ? '官网展示；统计周期未明确；当前快照' : '累计起算日未知；当前快照',
+        period:
+          sm?.soldPeriod === 'unspecified'
+            ? '官网展示；统计周期未明确；当前快照'
+            : '累计起算日未知；当前快照',
         precision: sm?.soldPrecision || '未知',
         reason:
           raw || validNumber(sold)
-            ? (sm?.soldPeriod === 'unspecified' ? '保留官网展示原文及加号，不推算精确销量或周期销量' : '累计展示不等于周期销量或净成交') + (sm?.soldSourceField ? '；来源字段：' + sm.soldSourceField : '')
+            ? (sm?.soldPeriod === 'unspecified'
+                ? '保留官网展示原文及加号，不推算精确销量或周期销量'
+                : '累计展示不等于周期销量或净成交') +
+              (sm?.soldSourceField ? '；来源字段：' + sm.soldSourceField : '')
             : '来源未返回明确的累计售出件数',
         ...(!raw && !validNumber(sold) ? missingPublicMetric('sold') : {}),
       },
@@ -421,11 +465,33 @@ export function productMetrics(
       reason: usdReason,
       precision: fx ? `1 USD = ${rate} ${p.currency}` : undefined,
     }),
-    metric(p, 'priceOriginal', '原币价格', price, p.currency, {
-      ...meta,
-      collectedAt: fieldTime('price'),
-      period: '当前报价；税费/运费是否包含未知',
-    }),
+    metric(
+      p,
+      'priceOriginal',
+      p.priceEvidence?.kind === 'discount' ? '原币价格（折后价）' : '原币价格',
+      price,
+      p.currency,
+      {
+        ...meta,
+        collectedAt: fieldTime('price'),
+        period: '当前报价；税费/运费是否包含未知',
+        ...(price === null && p.catalogEvidenceUrl?.includes('westmonth.com')
+          ? {
+              reason:
+                '西之月接口未返回折后价，请在数据源与设置检查登录会话后补全商品',
+              status: 'not_disclosed' as const,
+            }
+          : {}),
+        ...(p.priceEvidence?.kind === 'discount'
+          ? {
+              source: p.priceEvidence.provider,
+              collectedAt: p.priceEvidence.collectedAt,
+              evidenceUrl: p.priceEvidence.evidenceUrl,
+              reason: '采用官网折后价；指导价不作为当前价格',
+            }
+          : {}),
+      },
+    ),
     metric(
       p,
       'spec',
@@ -512,8 +578,8 @@ export function productMetrics(
       s.soldPrecision === 'exact' &&
       validNumber(s.sold),
   );
-  const a = snapshots[0],
-    b = snapshots.at(-1);
+  const a = snapshots[0];
+  const b = snapshots.at(-1);
   if (a && b && a.at !== b.at) {
     const reset = snapshots.some(
       (s, i) => s.sold < (snapshots[i - 1]?.sold ?? s.sold),
@@ -624,8 +690,8 @@ export function siteMetrics(
       h.source === m?.source &&
       validNumber(h.organicTraffic),
   );
-  const a = comparable.at(-2),
-    b = comparable.at(-1);
+  const a = comparable.at(-2);
+  const b = comparable.at(-1);
   result.push(
     metric(
       s,
@@ -650,9 +716,9 @@ export function siteMetrics(
   const ads = (context.complete === false ? undefined : context.ads)?.filter(
     (a) => a.market === s.market && a.siteIds?.includes(s.id),
   );
-  const products = (context.complete === false ? undefined : context.products)?.filter(
-    (p) => p.market === s.market && p.siteId === s.id,
-  );
+  const products = (
+    context.complete === false ? undefined : context.products
+  )?.filter((p) => p.market === s.market && p.siteId === s.id);
   const observed = {
     ...meta,
     source: '系统关联记录',
@@ -669,24 +735,24 @@ export function siteMetrics(
       status: adCount !== undefined ? 'available' : 'unverified',
       reason: '观察数量不代表盈利或全量投放',
     }),
-    metric(
-      s,
-      'linkedProducts',
-      '商品覆盖',
-      productCount ?? null,
-      '件已保存',
-      {
-        ...observed,
-        status: productCount !== undefined ? 'available' : 'unverified',
-        reason: '已保存商品覆盖，不是全站商品总数',
-      },
-    ),
+    metric(s, 'linkedProducts', '商品覆盖', productCount ?? null, '件已保存', {
+      ...observed,
+      status: productCount !== undefined ? 'available' : 'unverified',
+      reason: '已保存商品覆盖，不是全站商品总数',
+    }),
   );
   const uses = [];
-  if (related?.hasIngredients ?? products?.some((p) => meaningful(p.ingredient)))
+  if (
+    related?.hasIngredients ??
+    products?.some((p) => meaningful(p.ingredient))
+  )
     uses.push('配方参考：有关联商品成分原文');
-  if (related?.hasPrices ?? products?.some((p) => p.price > 0)) uses.push('价格参考：有公开商品报价');
-  if (related?.hasCreatives ?? ads?.some((a) => a.imageUrls?.length || a.videoUrls?.length))
+  if (related?.hasPrices ?? products?.some((p) => p.price > 0))
+    uses.push('价格参考：有公开商品报价');
+  if (
+    related?.hasCreatives ??
+    ads?.some((a) => a.imageUrls?.length || a.videoUrls?.length)
+  )
     uses.push('素材参考：有可回查关联广告');
   if (s.evidenceUrl || s.domain) uses.push('落地页参考：有公开站点链接');
   uses.push('销售参考待证实：无授权经营数据');
@@ -913,8 +979,8 @@ export function keywordMetrics(
       status: trend.change === null ? 'accumulating' : 'available',
     }),
   ];
-  const top = k.trendRelatedTop,
-    rising = k.trendRelatedRising;
+  const rising = k.trendRelatedRising;
+  const top = k.trendRelatedTop;
   for (const [key, label, list] of [
     ['relatedTop', '热门相关查询', top],
     ['relatedRising', '上升相关查询', rising],
@@ -939,12 +1005,14 @@ export function keywordMetrics(
         },
       ),
     );
-  const expanded = k.coreSummary?.related?.expansions ?? (context.complete === false ? undefined : context.keywords)?.filter(
-    (v) =>
-      v.market === k.market &&
-      normalizedTerm(v.seedTerm || '') === normalizedTerm(k.term) &&
-      normalizedTerm(v.term) !== normalizedTerm(k.term),
-  );
+  const expanded =
+    k.coreSummary?.related?.expansions ??
+    (context.complete === false ? undefined : context.keywords)?.filter(
+      (v) =>
+        v.market === k.market &&
+        normalizedTerm(v.seedTerm || '') === normalizedTerm(k.term) &&
+        normalizedTerm(v.term) !== normalizedTerm(k.term),
+    );
   const groups: Array<[string, string, string[] | undefined]> = [
     [
       'autocomplete',
@@ -1030,7 +1098,7 @@ export function keywordMetrics(
 }
 export function coreMetrics(
   kind: CoreKind,
-  record: Product | Site | Ad | Keyword,
+  record: Ad | Keyword | Product | Site,
   days: CorePeriod = 30,
   context: CoreContext = {},
 ) {
@@ -1096,7 +1164,7 @@ export function metricText(m: EvidenceMetric) {
 }
 export function coreExport(
   kind: CoreKind,
-  record: Product | Site | Ad | Keyword,
+  record: Ad | Keyword | Product | Site,
   context: CoreContext = {},
 ) {
   const result: Record<string, number | string> = {
@@ -1109,9 +1177,9 @@ export function coreExport(
   for (const days of periods)
     for (const m of coreMetrics(kind, record, days, context)) {
       const prefix = [
-        'sales',
         'dailySales',
         'relativeHeat',
+        'sales',
         'trendChange',
       ].includes(m.key)
         ? `${days}天_${m.key}`
