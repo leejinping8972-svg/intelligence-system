@@ -15,7 +15,7 @@ if (
 const hash = createHash('sha256');
 for (const name of [...description.files].sort()) {
   if (
-    !/^(?:apps|server|deploy|tests|workers)\//.test(name) ||
+    !/^(?:apps|packages|server|deploy|tests|workers)\//.test(name) ||
     name.includes('..') ||
     /\.(?:env|pem|key)$|node_modules|release-manifest\.json/i.test(name)
   )
