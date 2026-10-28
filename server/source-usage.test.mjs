@@ -385,7 +385,7 @@ test('SQL reader projects billing metadata, excludes secrets and deduplicates or
   const db = new PGlite();
   try {
     await db.exec(
-      'CREATE TABLE research_jobs(id text primary key,input jsonb); CREATE TABLE research_requests(job_id text,step text,status text,paid_allowance int,response jsonb); CREATE TABLE workspace_documents(name text,value jsonb);',
+      'CREATE TABLE research_jobs(id text primary key,input jsonb); CREATE TABLE research_requests(job_id text,step text,status text,paid_allowance int,response jsonb); CREATE TABLE workspace_documents(name text primary key,value jsonb,revision bigint not null default 1);',
     );
     await db.query('INSERT INTO research_jobs VALUES($1,$2)', [
       'j',
@@ -404,7 +404,7 @@ test('SQL reader projects billing metadata, excludes secrets and deduplicates or
         requestUsage: { startedAt: now.toISOString() },
       },
     ]);
-    await db.query('INSERT INTO workspace_documents VALUES($1,$2)', [
+    await db.query('INSERT INTO workspace_documents(name,value) VALUES($1,$2)', [
       'competitor:request:2026-10-26:monitor:digest',
       {
         at: now.toISOString(),
