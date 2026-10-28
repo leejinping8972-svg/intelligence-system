@@ -78,11 +78,13 @@ function loadLocalesMapFromDir(
   // Convert raw locale data into async import functions
   for (const [locale, files] of Object.entries(localesRaw)) {
     localesMap[locale] = async () => {
-      const messages: Record<string, any> = {};
-      for (const [fileName, importFn] of Object.entries(files)) {
-        messages[fileName] = ((await importFn()) as any)?.default;
-      }
-      return { default: messages };
+      const entries = await Promise.all(
+        Object.entries(files).map(async ([fileName, importFn]) => [
+          fileName,
+          ((await importFn()) as any)?.default,
+        ]),
+      );
+      return { default: Object.fromEntries(entries) };
     };
   }
 
@@ -126,13 +128,15 @@ async function loadLocaleMessages(lang: SupportedLanguagesType) {
   }
   setSimpleLocale(lang);
 
-  const message = await localesMap[lang]?.();
+  const [message, mergeMessage] = await Promise.all([
+    localesMap[lang]?.(),
+    loadMessages(lang),
+  ]);
 
   if (message?.default) {
     i18n.global.setLocaleMessage(lang, message.default);
   }
 
-  const mergeMessage = await loadMessages(lang);
   i18n.global.mergeLocaleMessage(lang, mergeMessage);
 
   return setI18nLanguage(lang);

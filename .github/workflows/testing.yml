@@ -77,7 +77,7 @@ jobs:
         run: pnpm --filter @vben/web-antd run typecheck
       - name: Login and application startup regressions (synthetic accounts)
         run: |
-          pnpm exec vitest run tests/public-branding.test.ts tests/application-startup.test.ts tests/login-entry.test.ts tests/component-adapter-startup.test.ts tests/session-startup.test.ts tests/admin-login.test.ts
+          pnpm exec vitest run tests/public-branding.test.ts tests/application-startup.test.ts tests/login-entry.test.ts tests/component-adapter-startup.test.ts tests/locale-loading.test.ts tests/session-startup.test.ts tests/admin-login.test.ts
           node --test server/auth-performance.test.mjs
       - name: Administrator SSO protocol and navigation (synthetic accounts, no external requests)
         run: |

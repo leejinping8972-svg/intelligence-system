@@ -39,24 +39,24 @@ async function bootstrap(namespace: string) {
     spinning: 'spinning',
   });
 
-  // 国际化 i18n 配置
-  await setupI18n(app);
-
-  // 配置 pinia-tore
-  await initStores(app, { namespace });
+  // Prepare independent dependencies together, before routing or mounting views.
+  const [, , { initTippy }, { MotionPlugin }] = await Promise.all([
+    setupI18n(app),
+    initStores(app, { namespace }),
+    import('@vben/common-ui/es/tippy'),
+    import('@vben/plugins/motion'),
+  ]);
 
   // 安装权限指令
   registerAccessDirective(app);
 
   // 初始化 tippy
-  const { initTippy } = await import('@vben/common-ui/es/tippy');
   initTippy(app);
 
   // 配置路由及路由守卫
   app.use(router);
 
   // 配置Motion插件
-  const { MotionPlugin } = await import('@vben/plugins/motion');
   app.use(MotionPlugin);
 
   watch(
