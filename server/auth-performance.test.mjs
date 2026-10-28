@@ -9,6 +9,7 @@ import {
 } from 'node:timers/promises';
 
 import { PGlite } from '@electric-sql/pglite';
+import { identitySchema } from './identity-store.mjs';
 
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 const request = {
@@ -55,6 +56,7 @@ test('authentication keeps security checks while removing serial login work', as
     );
   `);
   const queries = [];
+  for (const statement of identitySchema) await db.query(statement);
   const pending = new Set();
   let active = 0;
   let maxActive = 0;

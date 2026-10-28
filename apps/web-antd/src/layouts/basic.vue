@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { BasicLayout } from '@vben/layouts';
@@ -17,7 +17,15 @@ import { logout, serverMode, session } from '#/views/intelligence/session';
 
 const router = useRouter();
 const platformLinkBusy = ref(false);
+const platformLinkHref = computed(() => {
+  if (serverMode && session.identityEnabled)
+    return 'https://ai.chatviva.com/admin/?sso=1';
+  if (serverMode && session.platformLinkEnabled)
+    return router.resolve('/administration?platformLink=1').href;
+  return 'https://ai.chatviva.com/admin/';
+});
 async function openPlatformLink(event: MouseEvent) {
+  if (session.identityEnabled) return;
   if (!serverMode || !session.platformLinkEnabled) return;
   event.preventDefault();
   if (platformLinkBusy.value) return;
@@ -67,11 +75,7 @@ watchEffect(() => {
           class="hci-platform-link"
           title="全球电商AI经营平台"
           aria-label="全球电商AI经营平台"
-          :href="
-            serverMode && session.platformLinkEnabled
-              ? router.resolve('/administration?platformLink=1').href
-              : 'https://ai.chatviva.com/admin/'
-          "
+          :href="platformLinkHref"
           :aria-busy="platformLinkBusy"
           :aria-disabled="platformLinkBusy"
           @click="openPlatformLink"

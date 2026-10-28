@@ -274,6 +274,7 @@ export async function authAction(input, request, response, user) {
   if (!user) throw Object.assign(new Error('请先登录'), { status: 401 });
   if (input.action === 'auth_touch') return { active: true };
   if (input.action === 'auth_logout') {
+    await pool.query('DELETE FROM identity_artifacts WHERE account_id=$1', [user.id]);
     await pool.query('DELETE FROM admin_sessions WHERE token_hash=$1', [
       user.token_hash,
     ]);
@@ -317,6 +318,7 @@ export async function authAction(input, request, response, user) {
         [user.id, username, hash, Date.now()],
       );
       await db.query('DELETE FROM admin_sessions WHERE user_id=$1', [user.id]);
+      await db.query('DELETE FROM identity_artifacts WHERE account_id=$1', [user.id]);
       await db.query('DELETE FROM admin_login_attempts WHERE attempt_key=$1', [
         attemptKey,
       ]);
@@ -388,6 +390,7 @@ export async function authAction(input, request, response, user) {
         enabled,
       ]);
       await db.query('DELETE FROM admin_sessions WHERE user_id=$1', [input.id]);
+      await db.query('DELETE FROM identity_artifacts WHERE account_id=$1', [input.id]);
     });
     await audit(user, '修改账号权限或状态', input.id);
     return { saved: true };
@@ -405,6 +408,7 @@ export async function authAction(input, request, response, user) {
       [input.id, hash, Date.now()],
     );
     await pool.query('DELETE FROM admin_sessions WHERE user_id=$1', [input.id]);
+    await pool.query('DELETE FROM identity_artifacts WHERE account_id=$1', [input.id]);
     await audit(user, '重设账号密码', input.id);
     return { saved: true };
   }
