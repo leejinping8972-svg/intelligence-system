@@ -1,8 +1,12 @@
-import { trendComparisons } from './trend-comparison';
 import type { Ad, DemoState, Keyword, Market, Product } from './data';
 import type { FreeSourceData, PublicSignal } from './public-sources';
-import { discoveryDecision } from './discovery';
+
 import { validDiscoveryDate } from '../../../../../server/discovery-newness.mjs';
+import { benefitSignal, ingredientSignal, signalKey } from '../../../../../workers/site-discovery/src/product-signal-rules.js';
+import { discoveryDecision } from './discovery';
+import { trendComparisons } from './trend-comparison';
+
+export const RADAR_RULES_VERSION = 2;
 
 export type RadarFindingType = 'ad' | 'concept' | 'ingredient' | 'product';
 export type RadarFindingStatus =
@@ -102,17 +106,12 @@ function daysSince(value?: string) {
 }
 
 function withinWindow(value: string | undefined, windowDays: number) {
-  return daysSince(value) <= windowDays;
+  return daysSince(value) < windowDays;
 }
 
-function keywordGrowth(keywords: Keyword[], category: string, market: Market) {
+function keywordGrowth(keywords: Keyword[]) {
   const values = keywords
-    .filter(
-      (item) =>
-        item.market === market &&
-        item.category === category &&
-        item.growth !== null,
-    )
+    .filter((item) => item.growth !== null && Number.isFinite(item.growth))
     .map((item) => item.growth as number);
   if (values.length === 0) return null;
   return (
@@ -120,6 +119,30 @@ function keywordGrowth(keywords: Keyword[], category: string, market: Market) {
       (values.reduce((sum, value) => sum + value, 0) / values.length) * 10,
     ) / 10
   );
+}
+
+function linkedKeywords(state: DemoState, products: Product[]) {
+  const ids = new Set(products.map((product) => product.id));
+  return state.keywords.filter((keyword) => keyword.market === products[0]?.market && keyword.productIds?.some((id) => ids.has(id)));
+}
+
+function linkedAds(state: DemoState, products: Product[], windowDays: number, includeDemo: boolean) {
+  const ids = new Set(products.map((product) => product.id));
+  return state.ads.filter((ad) => ad.market === products[0]?.market && ids.has(ad.productId) && (includeDemo || ad.dataNature !== 'demo') && withinWindow(ad.firstSeenAt, windowDays) && discoveryDecision(ad, 'ad').isNew !== false);
+}
+
+function opportunityScore(growth: null | number, ads: number, brands: number, reviewed: boolean) {
+  if (growth === null && ads === 0) return null;
+  return clamp(20 + Math.max(-20, Math.min(30, (growth ?? 0) / 2)) + Math.min(20, ads * 8) + Math.min(10, Math.max(0, brands - 1) * 2) + (reviewed ? 10 : 0));
+}
+
+function brandCount(products: Product[]) {
+  return new Set(products.map((product) => signalKey(product.brand)).filter((brand) => brand && !/^(?:unknown|n a|品牌待核|品牌待确认|待确认|未知)$/.test(brand))).size;
+}
+
+function sourceUrl(product: Product) {
+  try { return ['http:', 'https:'].includes(new URL(product.evidenceUrl || '').protocol); }
+  catch { return false; }
 }
 
 function productEvidence(product: Product, ads: Ad[], keywords: Keyword[]) {
@@ -152,7 +175,7 @@ function productEvidence(product: Product, ads: Ad[], keywords: Keyword[]) {
   for (const keyword of relatedKeywords.slice(0, 2)) {
     evidence.push({
       id: `keyword-${keyword.id}`,
-      kind: keyword.series.length > 0 ? 'trend' : 'keyword',
+      kind: keyword.growth !== null ? 'trend' : 'keyword',
       source: keyword.source,
       detail:
         keyword.growth === null
@@ -175,32 +198,23 @@ function productFindings(
     .filter((product) => discoveryDecision(product, 'product').isNew !== false)
     .map<RadarFinding>((product) => {
       const decision = discoveryDecision(product, 'product');
-      const evidence = productEvidence(product, state.ads, state.keywords);
-      const growth = keywordGrowth(
-        state.keywords,
-        product.category,
-        product.market,
-      );
-      const relatedAds = state.ads.filter(
-        (ad) => ad.productId === product.id,
-      ).length;
-      const factualEvidence = product.evidenceUrl ? 35 : 20;
-      const confidence = clamp(
-        factualEvidence +
-          25 +
-          Math.max(5, 20 - daysSince(product.firstSeenAt)) +
-          Math.min(20, Math.max(0, evidence.length - 1) * 8),
-      );
+      const keywords = linkedKeywords(state, [product]);
+      const ads = linkedAds(state, [product], windowDays, includeDemo);
+      const evidence = productEvidence(product, ads, keywords);
+      const growth = keywordGrowth(keywords);
+      const relatedAds = ads.length;
+      const confidence = Math.min(decision.isNew === true ? 95 : 69, clamp(
+        (sourceUrl(product) ? 35 : 10) +
+          (decision.isNew === true ? 25 : 0) +
+          Math.max(0, 10 - daysSince(product.firstSeenAt)) +
+          (relatedAds ? 10 : 0) + (growth !== null ? 10 : 0),
+      ));
       const gaps = [
         decision.isNew === true ? '' : '缺少有来源的有效上架日期，只能认定为近期新发现',
+        growth === null && !relatedAds ? '缺少直接关联的有效趋势或近期广告，不计算线索评分' : '',
         '尚未接入MOQ、成本、交期和目标市场合规结论',
       ].filter(Boolean);
-      const businessScore = clamp(
-        24 +
-          Math.max(0, Math.min(25, (growth || 0) / 2)) +
-          Math.min(20, relatedAds * 12) +
-          (product.reviewed ? 14 : 7),
-      );
+      const businessScore = opportunityScore(growth, relatedAds, 1, product.reviewed);
       return {
         id: `radar-product-${product.id}`,
         type: 'product',
@@ -227,8 +241,8 @@ function productFindings(
             ? `关联 ${relatedAds} 条近期广告信号`
             : '暂未发现关联广告信号',
           growth === null
-            ? '缺少同品类可比较趋势'
-            : `同品类关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
+            ? '缺少直接关联的可比较趋势'
+            : `直接关联关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
         ],
         gaps,
       };
@@ -244,28 +258,23 @@ function conceptFindings(
   for (const product of state.products) {
     if (!includeDemo && product.dataNature === 'demo') continue;
     if (!withinWindow(product.firstSeenAt, windowDays)) continue;
+    if (!sourceUrl(product)) continue;
     for (const benefit of product.benefits) {
-      const key = `${product.market}:${benefit}`;
-      groups.set(key, [...(groups.get(key) || []), product]);
+      const text = benefitSignal(benefit);
+      if (!text) continue;
+      const key = `${product.market}:${signalKey(text)}`;
+      const existing = groups.get(key) || [];
+      if (!existing.some((item) => item.id === product.id)) groups.set(key, [...existing, product]);
     }
   }
   return [...groups.entries()].map<RadarFinding>(([key, products]) => {
-    const concept = key.split(':').slice(1).join(':');
+    const conceptKey = key.split(':').slice(1).join(':');
     const product = products[0]!;
-    const brandCount = new Set(products.map((item) => item.brand)).size;
-    const ads = state.ads.filter((ad) =>
-      products.some((item) => item.id === ad.productId),
-    );
-    const keywords = state.keywords.filter(
-      (keyword) =>
-        keyword.market === product.market &&
-        keyword.category === product.category,
-    );
-    const growth = keywordGrowth(
-      state.keywords,
-      product.category,
-      product.market,
-    );
+    const concept = product.benefits.find((value) => signalKey(value) === conceptKey)!;
+    const brands = brandCount(products);
+    const ads = linkedAds(state, products, windowDays, includeDemo);
+    const keywords = linkedKeywords(state, products).filter((keyword) => keyword.growth !== null);
+    const growth = keywordGrowth(keywords);
     const evidence: RadarEvidence[] = [
       ...products.slice(0, 3).map((item) => ({
         id: `concept-product-${item.id}-${concept}`,
@@ -292,14 +301,13 @@ function conceptFindings(
       })),
     ];
     const sourceKinds = new Set(evidence.map((item) => item.kind)).size;
-    const confidence = clamp(
-      20 + brandCount * 12 + sourceKinds * 12 + Math.max(0, (growth || 0) / 4),
-    );
+    const confidence = Math.min(brands >= 2 && sourceKinds >= 2 ? 85 : 69,
+      clamp(20 + Math.min(20, brands * 4) + sourceKinds * 12));
     return {
-      id: `radar-concept-${product.market}-${concept}`,
+      id: `radar-concept-${product.market}-${conceptKey}`,
       type: 'concept',
       title: concept,
-      subtitle: `${product.category} · ${brandCount} 个品牌采用`,
+      subtitle: `${product.category} · ${brands} 个品牌采用`,
       category: product.category,
       market: product.market,
       firstSeenAt: products
@@ -310,22 +318,22 @@ function conceptFindings(
         ? 'demo'
         : 'pending',
       confidenceScore: confidence,
-      businessScore: clamp(
-        20 + brandCount * 12 + ads.length * 8 + Math.max(0, (growth || 0) / 2),
-      ),
+      businessScore: opportunityScore(growth, ads.length, brands, products.some((item) => item.reviewed)),
       trendGrowth: growth,
-      adoptionCount: brandCount,
+      adoptionCount: brands,
       evidence,
       rationale: [
-        `${products.length} 个商品、${brandCount} 个品牌采用该表达`,
-        `${ads.length} 条关联广告，${sourceKinds} 类独立证据`,
+        `${products.length} 个商品、${brands} 个品牌采用该表达`,
+        `${ads.length} 条近期关联广告，${sourceKinds} 类证据`,
         growth === null
           ? '暂缺趋势验证'
-          : `同品类关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
+          : `直接关联关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
       ],
       gaps: [
-        brandCount < 2 ? '尚未达到“至少2个品牌采用”的确认门槛' : '',
-        sourceKinds < 2 ? '尚未达到两类独立来源交叉验证门槛' : '',
+        '仅为观察窗口内的卖点表达，未证明属于新概念',
+        brands < 2 ? '尚未达到“至少2个品牌采用”的确认门槛' : '',
+        sourceKinds < 2 ? '尚缺直接关联的近期广告或有效趋势证据' : '',
+        growth === null && !ads.length ? '缺少直接关联的有效趋势或近期广告，不计算线索评分' : '',
       ].filter(Boolean),
     };
   });
@@ -340,26 +348,28 @@ function ingredientFindings(
   for (const product of state.products) {
     if (!includeDemo && product.dataNature === 'demo') continue;
     if (!withinWindow(product.firstSeenAt, windowDays)) continue;
+    if (!sourceUrl(product)) continue;
     for (const insight of product.ingredientInsights) {
-      const key = `${product.market}:${insight.name.toLowerCase()}`;
-      groups.set(key, [...(groups.get(key) || []), product]);
+      const text = ingredientSignal(insight.name, product.ingredient);
+      if (!text) continue;
+      const key = `${product.market}:${signalKey(text)}`;
+      const existing = groups.get(key) || [];
+      if (!existing.some((item) => item.id === product.id)) groups.set(key, [...existing, product]);
     }
   }
   return [...groups.entries()].map<RadarFinding>(([key, products]) => {
     const ingredientKey = key.split(':').slice(1).join(':');
     const product = products[0]!;
     const insight = product.ingredientInsights.find(
-      (item) => item.name.toLowerCase() === ingredientKey,
+      (item) => signalKey(item.name) === ingredientKey,
     )!;
-    const brandCount = new Set(products.map((item) => item.brand)).size;
-    const growth = keywordGrowth(
-      state.keywords,
-      product.category,
-      product.market,
-    );
+    const brands = brandCount(products);
+    const keywords = linkedKeywords(state, products);
+    const growth = keywordGrowth(keywords);
+    const ads = linkedAds(state, products, windowDays, includeDemo);
     const evidence: RadarEvidence[] = products.slice(0, 3).map((item) => {
       const itemInsight = item.ingredientInsights.find(
-        (entry) => entry.name.toLowerCase() === ingredientKey,
+        (entry) => signalKey(entry.name) === ingredientKey,
       )!;
       return {
         id: `ingredient-${item.id}-${ingredientKey}`,
@@ -370,9 +380,8 @@ function ingredientFindings(
         url: item.evidenceUrl,
       };
     });
-    const confidence = clamp(
-      45 + Math.min(25, brandCount * 10) + (product.reviewed ? 20 : 5),
-    );
+    const confidence = Math.min(products.some((item) => item.reviewed) ? 85 : 69,
+      clamp(40 + Math.min(15, brands * 3) + (product.reviewed ? 20 : 0)));
     return {
       id: `radar-ingredient-${product.market}-${ingredientKey}`,
       type: 'ingredient',
@@ -388,21 +397,21 @@ function ingredientFindings(
         ? 'demo'
         : 'pending',
       confidenceScore: confidence,
-      businessScore: clamp(
-        25 + brandCount * 12 + Math.max(0, (growth || 0) / 2),
-      ),
+      businessScore: opportunityScore(growth, ads.length, brands, products.some((item) => item.reviewed)),
       trendGrowth: growth,
-      adoptionCount: brandCount,
+      adoptionCount: brands,
       evidence,
       rationale: [
-        `${products.length} 个商品标签出现，涉及 ${brandCount} 个品牌`,
+        `${products.length} 个商品标签出现，涉及 ${brands} 个品牌`,
         `记录剂量口径：${insight.amount}`,
         growth === null
           ? '暂缺相关需求趋势'
-          : `关联品类关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
+          : `直接关联关键词30天平均变化 ${growth > 0 ? '+' : ''}${growth}%`,
       ],
       gaps: [
-        brandCount < 2 ? '目前只有单一品牌证据，仍属于成分候选' : '',
+        '标签出现不证明原料首次上市或属于新成分',
+        brands < 2 ? '目前只有单一品牌证据，仍属于成分候选' : '',
+        growth === null && !ads.length ? '缺少直接关联的有效趋势或近期广告，不计算线索评分' : '',
         '缺少供应商、MOQ、成本、交期及目标市场合规资料',
       ].filter(Boolean),
     };
@@ -461,9 +470,9 @@ export function buildCollectedRadarFindings(
     .filter(({ decision }) => decision.isNew !== false)
     .map(({ item, decision }) => {
       const observed = item.firstSeenAt.slice(0, 10);
-      const confidence = clamp(
-        35 + 25 + Math.max(5, 20 - daysSince(observed)) + (decision.isNew === true ? 20 : 8),
-      );
+      const confidence = Math.min(decision.isNew === true ? 95 : 69, clamp(
+        35 + Math.max(0, 10 - daysSince(observed)) + (decision.isNew === true ? 25 : 0),
+      ));
       return {
         id: `collector-${item.id}`,
         type: 'product' as const,
@@ -504,7 +513,7 @@ export function buildCollectedRadarFindings(
         ],
         gaps: [
           decision.isNew === true ? '' : '缺少官网确认发布时间，暂按近期新发现处理',
-          '尚未关联广告、关键词、趋势和供应链数据，因此不计算商业机会分',
+          '尚未关联有效趋势或近期广告，因此不计算线索评分',
         ].filter(Boolean),
       };
     });
@@ -548,9 +557,7 @@ export function buildFreeSourceRadarFindings(
       market: 'US',
       firstSeenAt: signal.observedAt,
       status: 'pending',
-      confidenceScore: clamp(
-        62 + Math.max(0, 14 - daysSince(signal.observedAt)),
-      ),
+      confidenceScore: Math.min(69, clamp(45 + Math.max(0, 10 - daysSince(signal.observedAt)))),
       businessScore: null,
       trendGrowth: null,
       adoptionCount: 1,
@@ -561,7 +568,7 @@ export function buildFreeSourceRadarFindings(
       ],
       gaps: [
         'DSLD收录日期不等于首次上市日期',
-        '尚未关联官网首发、趋势、广告和供应链数据，因此不计算商业机会分',
+        '尚未关联有效趋势或近期广告，因此不计算线索评分',
       ],
     });
   }
@@ -601,41 +608,6 @@ export function buildFreeSourceRadarFindings(
     });
   }
 
-  const regulatoryGroups = new Map<string, PublicSignal[]>();
-  for (const signal of data.signals) {
-    if (signal.kind !== 'regulatory' || signal.market !== 'US') continue;
-    if (!withinWindow(signal.observedAt, windowDays)) continue;
-    regulatoryGroups.set(signal.query, [
-      ...(regulatoryGroups.get(signal.query) || []),
-      signal,
-    ]);
-  }
-  for (const [query, signals] of regulatoryGroups) {
-    const first = signals[0]!;
-    findings.push({
-      id: `public-regulatory-US-${query}`,
-      type: 'ingredient',
-      title: `${query} · 监管信号`,
-      subtitle: `${signals.length} 条openFDA近期召回记录`,
-      category: first.category,
-      market: 'US',
-      firstSeenAt: signals
-        .map((item) => item.observedAt)
-        .toSorted()
-        .at(-1)!,
-      status: 'pending',
-      confidenceScore: 72,
-      businessScore: null,
-      trendGrowth: null,
-      adoptionCount: signals.length,
-      evidence: signals.slice(0, 5).map(freeSignalEvidence),
-      rationale: [
-        `观察窗口内匹配 ${signals.length} 条FDA召回记录`,
-        '该信号用于风险复核，不用于判断市场机会大小',
-      ],
-      gaps: ['需要核对具体产品、批次、召回原因以及与拟开发配方的关联'],
-    });
-  }
   return findings;
 }
 
@@ -770,18 +742,18 @@ export function buildRadarReport(
     `市场：${marketLabel}`,
     `生成时间：${new Date().toLocaleString('zh-CN')}`,
     '',
-    `发现概况：${products.length}个新品/新发现商品候选，${ads.length}条新广告线索，${concepts.length}个概念候选，${ingredients.length}个成分候选。`,
+    `发现概况：${products.length}个商品发现（${products.filter((item) => item.status === 'confirmed').length}个来源确认90天内上架），${ads.length}条新广告线索，${concepts.length}个卖点/话题线索，${ingredients.length}个成分线索。`,
     strongest
-      ? `当前综合优先项：${strongest.title}（新鲜度可信度${strongest.confidenceScore}，商业机会分${strongest.businessScore}）。`
-      : '当前没有达到观察窗口和市场条件的候选。',
+      ? `当前线索评分较高项：${strongest.title}（证据完整度${strongest.confidenceScore}，线索评分${strongest.businessScore}）。`
+      : findings.length ? '当前候选缺少直接关联的有效趋势或近期广告，线索评分为数据不足。' : '当前没有达到观察窗口和市场条件的候选。',
     '',
-    '判断口径：商品事实、广告传播、关键词与趋势分别记录；广告不单独证明新品；缺失数据标为不足，不按零分处理。',
+    '判断口径：首次发现不等于首次上市；卖点和成分出现不证明新颖性；广告不单独证明新品。线索评分仅参考直接关联的趋势、近期广告与品牌采用，不包含成本、利润、供应链或合规结论。',
     '',
     ...findings
       .slice(0, 10)
       .flatMap((item, index) => [
         `${index + 1}. [${item.type === 'ad' ? '广告' : item.type === 'product' ? '商品' : item.type === 'concept' ? '概念' : '成分'}] ${item.title}`,
-        `   ${item.subtitle}｜可信度 ${item.confidenceScore}｜机会分 ${item.businessScore ?? '数据不足'}`,
+        `   ${item.subtitle}｜证据完整度 ${item.confidenceScore}｜线索评分 ${item.businessScore ?? '数据不足'}`,
         `   依据：${item.rationale.join('；')}`,
         item.gaps.length > 0
           ? `   数据缺口：${item.gaps.join('；')}`

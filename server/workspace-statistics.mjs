@@ -2,7 +2,7 @@ import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { isDeepStrictEqual } from 'node:util';
 import {
   buildRadarFindings, buildCollectedRadarFindings, buildFreeSourceRadarFindings,
-  buildSourceCoverage, buildRadarReport, opportunityRows, formulaStatistics, radarStatistics,
+  buildSourceCoverage, buildRadarReport, opportunityRows, formulaStatistics, radarStatistics, RADAR_RULES_VERSION,
 } from './model.js';
 
 const VERSION = 4;
@@ -64,7 +64,7 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     const now = Date.now();
     const previous = (await connection.query("SELECT value FROM workspace_documents WHERE name='read:statistics-version'")).rows[0]?.value;
     const schedule = statisticsRefreshSchedule(previous, now);
-    if (!schedule.due) {
+    if (!schedule.due && previous?.radarRulesVersion === RADAR_RULES_VERSION) {
       nextCheck = schedule.nextAt;
       return;
     }
@@ -130,13 +130,13 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
         const summaries = Object.fromEntries(types.map(type => [type, radarStatistics(rows.filter(row => type === 'all' || row.type === type))]));
         const scopedCollector = publicData.collector ? { ...publicData.collector, observations: publicData.collector.observations.filter(row => market === 'ALL' || row.market === market) } : null;
         const scopedFree = publicData.free ? { ...publicData.free, signals: publicData.free.signals.filter(row => market === 'ALL' || row.market === market || row.market === 'GLOBAL') } : null;
-        await save('radar', market, String(days), rows, { radarRows: true, summaries, coverage: buildSourceCoverage(scoped, scopedCollector, scopedFree), publicDataStale: !!(publicData.collectorStale || publicData.freeStale) });
+        await save('radar', market, String(days), rows, { radarRows: true, radarRulesVersion: RADAR_RULES_VERSION, summaries, coverage: buildSourceCoverage(scoped, scopedCollector, scopedFree), publicDataStale: !!(publicData.collectorStale || publicData.freeStale) });
       }
       for (const tab of tabs) await save('opportunities', market, tab, opportunityRows(scoped, tab), {});
       const formula = formulaStatistics(scoped.products);
       await save('formulas', market, 'all', formula.rows, { coverage: formula.coverage });
     }
-    await putDocument('workspace_documents', 'read:statistics-version', { version: VERSION, revision: String(revision), at: now }, false, connection);
+    await putDocument('workspace_documents', 'read:statistics-version', { version: VERSION, radarRulesVersion: RADAR_RULES_VERSION, revision: String(revision), at: now }, false, connection);
     await connection.query("DELETE FROM workspace_documents WHERE name LIKE 'read:radar-payload:%'");
   }
   function due() {
@@ -154,6 +154,7 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     const subtype = kind === 'radar' && types.includes(input.type) ? input.type : 'all';
     const snapshot = (await connection.query('SELECT value FROM workspace_documents WHERE name=$1', [keyOf(kind, market, variant)])).rows[0]?.value;
     if (!snapshot) return { rows: [], total: 0, page: 1, pageSize: 20, snapshot: null, indexing: true };
+    const rulesStale = kind === 'radar' && snapshot.radarRulesVersion !== RADAR_RULES_VERSION;
     async function resolveRows(values) {
       if (snapshot.radarRows) {
         if (!values.length) return [];
@@ -197,6 +198,7 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
       }
     }
     if (kind === 'radar' && input.report === true) {
+      if (rulesStale) throw new Error('雷达判定口径正在更新，请稍后重试');
       const rows = await resolveRows((await connection.query(`SELECT payload FROM workspace_statistic_rows WHERE ${where} ORDER BY position`, params)).rows.map(r => r.payload));
       return { report: `${buildRadarReport(rows, Number(variant), marketLabel(market), input.appName ? String(input.appName).slice(0, 120) : undefined)}\n\n数据快照时间：${snapshot.generatedAt}`, snapshot };
     }
@@ -205,7 +207,7 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     const page = Math.max(1, Math.min(Math.ceil(total / pageSize) || 1, Math.floor(Number(input.page) || 1)));
     const rows = await resolveRows((await connection.query(`SELECT payload FROM workspace_statistic_rows WHERE ${where} ORDER BY position LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, pageSize, (page - 1) * pageSize])).rows.map(r => r.payload));
     const { summaries, radarPayloadKey, ...metadata } = snapshot;
-    return { rows, total, page, pageSize, snapshot: { ...metadata, summary: summaries?.[subtype] } };
+    return { rows, total, page, pageSize, snapshot: { ...metadata, rulesStale, summary: summaries?.[subtype] } };
   }
   async function read(input) {
     const connection = await pool.connect();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formulaStatistics, opportunityRows, radarStatistics } from './model.js';
+import { formulaStatistics, opportunityRows, radarStatistics, RADAR_RULES_VERSION } from './model.js';
 import { createWorkspaceReads } from './workspace-reads.mjs';
 import { createPublicObservationReader, createWorkspaceStatistics, encodeStatistic, decodeStatistic, statisticsRefreshSchedule } from './workspace-statistics.mjs';
 
@@ -162,6 +162,20 @@ test('cold radar pagination is bounded; daily refresh survives restart and failu
     await rebuild('1');
     await rebuild('changed-revision');
     await create().rebuild(connection, 'restart-revision');
+    assert.ok(reads.every(row => !row.statement.includes('FROM workspace_read_rows')));
+    const saved = (await connection.query("SELECT value FROM workspace_documents WHERE name='read:statistics:radar:ALL:7'")).rows[0].value;
+    await putDocument('', 'read:statistics-version', { at: now, version: 4, radarRulesVersion: 1 }, false, connection);
+    await putDocument('', 'read:statistics:radar:ALL:7', { ...saved, radarRulesVersion: 1 }, false, connection);
+    assert.equal((await create().read({ kind: 'radar' })).snapshot.rulesStale, true);
+    await assert.rejects(create().read({ kind: 'radar', report: true }), /判定口径正在更新/);
+    reads.length = 0;
+    await rebuild('rules-upgrade');
+    assert.ok(reads.some(row => row.statement.includes('FROM workspace_read_rows')));
+    const upgraded = await create().read({ kind: 'radar' });
+    assert.equal(upgraded.snapshot.rulesStale, false);
+    assert.equal(upgraded.snapshot.radarRulesVersion, RADAR_RULES_VERSION);
+    reads.length = 0;
+    await create().rebuild(connection, 'same-day-after-upgrade');
     assert.ok(reads.every(row => !row.statement.includes('FROM workspace_read_rows')));
     await putDocument('', 'read:statistics-version', { at: now - 86400000 }, false, connection);
     reads.length = 0;

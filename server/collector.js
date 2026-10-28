@@ -1,5 +1,5 @@
 // workers/site-discovery/data/trends-snapshots.json
-const trends_snapshots_default = [
+var trends_snapshots_default = [
   {
     keyword: "women's health gummies",
     market: 'US',
@@ -280,9 +280,9 @@ const trends_snapshots_default = [
 ];
 
 // workers/site-discovery/src/provider-config.js
-const STORAGE_KEY = 'provider:sorftime:mcp:v1';
-const encode = (value) => btoa(String.fromCodePoint(...value));
-const decode = (value) =>
+var STORAGE_KEY = 'provider:sorftime:mcp:v1';
+var encode = (value) => btoa(String.fromCodePoint(...value));
+var decode = (value) =>
   Uint8Array.from(atob(value), (letter) => letter.codePointAt(0));
 async function encryptionKey(env) {
   if (!env.PROVIDER_CONFIG_ENCRYPTION_KEY || !env.PROVIDER_CONFIG)
@@ -358,7 +358,7 @@ async function readSorftimeToken(env) {
 }
 
 // workers/site-discovery/src/server-relay.js
-const SERVER_ACTIONS = /* @__PURE__ */ new Set([
+var SERVER_ACTIONS = /* @__PURE__ */ new Set([
   'server_cancel',
   'server_clear_keywords',
   'server_import_keywords',
@@ -401,13 +401,13 @@ async function serverRelay(input, env, fetcher = fetch) {
 }
 
 // workers/site-discovery/src/sorftime.js
-const MCP_URL = 'https://mcp.sorftime.com/';
-const SOURCE = 'Sorftime \u00B7 Amazon';
-const TOOLS = {
+var MCP_URL = 'https://mcp.sorftime.com/';
+var SOURCE = 'Sorftime \xB7 Amazon';
+var TOOLS = {
   keyword_extends: { keyword: 'keyword', market: 'keyword_support_site' },
   keyword_related_words: { keyword: 'searchKeyword', market: 'amzSite' },
 };
-const MARKETS = /* @__PURE__ */ new Set(['MX', 'US']);
+var MARKETS = /* @__PURE__ */ new Set(['MX', 'US']);
 function safeError(message, token) {
   return String(message || 'Sorftime MCP \u8C03\u7528\u5931\u8D25')
     .replaceAll(token || '\0', '[redacted]')
@@ -781,37 +781,69 @@ async function sorftimeSuggestions(
 }
 
 // workers/site-discovery/src/product-public-fields.js
-const cumulative = (node) => ['period', 'window', 'interval', 'salesPeriod', 'soldPeriod', 'sold_count_period', 'time_window'].every((key) => node?.[key] === undefined || /^(?:all[_ -]?time|total|cumulative|lifetime)$/i.test(String(node[key])));
-const units = (value) => {
+var cumulative = (node) =>
+  [
+    'period',
+    'window',
+    'interval',
+    'salesPeriod',
+    'soldPeriod',
+    'sold_count_period',
+    'time_window',
+  ].every(
+    (key) =>
+      node?.[key] === void 0 ||
+      /^(?:all[_ -]?time|total|cumulative|lifetime)$/i.test(String(node[key])),
+  );
+var units = (value) => {
   let raw = value;
   if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if (value.unitCode && !/^(?:C62|H87|EA|PCS?|pieces?|items?|units?)$/i.test(value.unitCode)) return undefined;
+    if (
+      value.unitCode &&
+      !/^(?:C62|H87|EA|PCS?|pieces?|items?|units?)$/i.test(value.unitCode)
+    )
+      return void 0;
     raw = value.value;
   }
   if (typeof raw === 'string') {
-    if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw.trim())) return undefined;
+    if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw.trim())) return void 0;
     raw = Number(raw.replaceAll(',', '').trim());
   }
-  return Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined;
+  return Number.isSafeInteger(raw) && raw >= 0 ? raw : void 0;
 };
 function publicProductFields(product, prefix = 'Product JSON-LD') {
   const fields = {};
   for (const key of ['published_at', 'datePublished', 'releaseDate']) {
     const raw = product[key];
-    if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(raw) || !Number.isFinite(Date.parse(raw))) continue;
+    if (
+      typeof raw !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(raw) ||
+      !Number.isFinite(Date.parse(raw))
+    )
+      continue;
     const day = raw.slice(0, 10);
-    if (new Date(Date.parse(day + 'T00:00:00Z')).toISOString().slice(0, 10) !== day) continue;
+    if (
+      new Date(Date.parse(day + 'T00:00:00Z')).toISOString().slice(0, 10) !==
+      day
+    )
+      continue;
     fields.publishedAt = raw;
-    fields.publishedSourceField = product.publishedSourceField || prefix + '.' + key;
+    fields.publishedSourceField =
+      product.publishedSourceField || prefix + '.' + key;
     break;
   }
   if (cumulative(product))
     for (const key of ['numberOfItemsSold', 'soldCount', 'sold_count']) {
       if (!cumulative(product[key])) continue;
       const value = units(product[key]);
-      if (value === undefined) continue;
+      if (value === void 0) continue;
       fields.soldCount = value;
-      fields.soldRaw = typeof product.soldRaw === 'string' ? product.soldRaw : typeof product[key] === 'string' ? product[key].trim() : String(value);
+      fields.soldRaw =
+        typeof product.soldRaw === 'string'
+          ? product.soldRaw
+          : typeof product[key] === 'string'
+            ? product[key].trim()
+            : String(value);
       fields.soldPrecision = 'exact';
       fields.soldSourceField = product.soldSourceField || prefix + '.' + key;
       break;
@@ -819,8 +851,89 @@ function publicProductFields(product, prefix = 'Product JSON-LD') {
   return fields;
 }
 
+// workers/site-discovery/src/product-signal-rules.js
+function signalText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replaceAll(/\s+/g, ' ')
+    .trim();
+}
+function signalKey(value) {
+  return signalText(value)
+    .toLowerCase()
+    .replaceAll(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+var BOILERPLATE =
+  /not (?:been )?evaluated|food and drug administration|not intended to diagnose|diagnose.{0,30}treat.{0,30}cure|consult (?:your |a )?(?:physician|doctor|healthcare)|keep out of reach|if you are (?:pregnant|nursing)|all rights reserved|privacy policy|shipping|add to cart|subscribe|suggested (?:use|usage)|directions for use|daily value|servings? (?:size|per)|warning|disclaimer|advertencia|no (?:ha sido|está) evaluad|no est[aá] destinado|consulte.{0,25}(?:m[eé]dico|profesional)|không phải là thuốc|không có tác dụng thay thế thuốc|tham khảo ý kiến|免责声明|未经.{0,12}(?:评估|评价)|不用于.{0,12}(?:诊断|治疗)|请咨询|注意事项|用法用量|每日参考值/i;
+function benefitSignal(value) {
+  const text = signalText(value);
+  const minimum = /[\p{Script=Han}]/u.test(text) ? 2 : 4;
+  if (text.length < minimum || text.length > 240 || BOILERPLATE.test(text))
+    return '';
+  if (
+    /^(?:ingredients?|supplement facts?|nutrition facts?|benefits?|description|product details?|learn more|shop now|成分|营养成分表|商品详情)[\s:：.!*]*$/i.test(
+      text,
+    )
+  )
+    return '';
+  return text;
+}
+function ingredientSection(value) {
+  return signalText(value)
+    .split(
+      /\b(?:free (?:of|from)|does not contain|contains no|allergen(?:s| information)?|warnings?|suggested (?:use|usage))\s*[:：]?|不含[:：]?|无添加[:：]?/i,
+    )[0]
+    .trim();
+}
+function ingredientSignal(value, context = '') {
+  const text = signalText(value);
+  const key = signalKey(text);
+  if (text.length < 2 || text.length > 120 || BOILERPLATE.test(text)) return '';
+  if (
+    /\b(?:non[ -]?gmo|gmo[ -]?free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen)[ -]?free|free (?:from|of)|no added|without|does not contain|contains no|certified|vegan|vegetarian|kosher|halal)\b|非转基因|不含|无麸质|无乳糖|无添加|纯素/i.test(
+      text,
+    )
+  )
+    return '';
+  if (
+    /\b(?:non gmo|gmo free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen) free)\b/.test(
+      key,
+    )
+  )
+    return '';
+  if (
+    /^(?:ingredients?|other ingredients?|supplement facts?|nutrition facts?|未知|待识别|官网未公开|平台未返回|n\/?a|none)$/i.test(
+      text,
+    )
+  )
+    return '';
+  if (
+    /\b(?:supports?|promotes?|helps?|take|capsules? daily|tablets? daily)\b/i.test(
+      text,
+    )
+  )
+    return '';
+  const source = signalText(context);
+  const positive = ingredientSection(source);
+  if (positive !== source && !signalKey(positive).includes(key)) return '';
+  const sourceParts = source
+    .split(/[,;:.。；\n]/)
+    .map((part) => ` ${signalKey(part)} `);
+  if (
+    sourceParts.some(
+      (part) =>
+        part.includes(` ${key} free `) ||
+        part.includes(` without ${key} `) ||
+        part.includes(` no ${key} `),
+    )
+  )
+    return '';
+  return text;
+}
+
 // workers/site-discovery/src/index.js
-const MARKET_OPTIONS = {
+var MARKET_OPTIONS = {
   US: {
     country: 'us',
     language: 'en',
@@ -840,16 +953,16 @@ const MARKET_OPTIONS = {
     country: 'ALL',
     language: 'vi',
     intent:
-      'Vi\u1EC7t Nam th\u1EF1c ph\u1EA9m b\u1ED5 sung mua c\u1EEDa h\u00E0ng ch\u00EDnh h\u00E3ng',
+      'Vi\u1EC7t Nam th\u1EF1c ph\u1EA9m b\u1ED5 sung mua c\u1EEDa h\xE0ng ch\xEDnh h\xE3ng',
     currency: 'VND',
   },
 };
-const GOOGLE_SUGGEST_OPTIONS = {
+var GOOGLE_SUGGEST_OPTIONS = {
   US: { gl: 'us', hl: 'en' },
   MX: { gl: 'mx', hl: 'es' },
   VN: { gl: 'vn', hl: 'vi' },
 };
-const AMAZON_SUGGEST_OPTIONS = {
+var AMAZON_SUGGEST_OPTIONS = {
   US: {
     host: 'completion.amazon.com',
     locale: 'en_US',
@@ -861,14 +974,14 @@ const AMAZON_SUGGEST_OPTIONS = {
     marketplace: 'A1AM78C64UM0Y8',
   },
 };
-const LIVE_SOURCES = /* @__PURE__ */ new Set([
+var LIVE_SOURCES = /* @__PURE__ */ new Set([
   'amazon_autocomplete',
   'google_autocomplete',
   'google_trends',
   'site_discovery',
   'sorftime',
 ]);
-const EXCLUDED_DOMAINS = [
+var EXCLUDED_DOMAINS = [
   'alibaba.com',
   'aliexpress.com',
   'amazon.com',
@@ -897,7 +1010,7 @@ const EXCLUDED_DOMAINS = [
   'walmart.com.mx',
   'youtube.com',
 ];
-const PRODUCT_EXTENSIONS =
+var PRODUCT_EXTENSIONS =
   /\.(?:avi|css|docx?|gif|jpe?g|js|mp3|mp4|pdf|png|pptx?|svg|webp|xlsx?)(?:$|\?)/i;
 function json(data, status = 200, origin = '') {
   return new Response(status === 204 ? null : JSON.stringify(data), {
@@ -1081,7 +1194,7 @@ function benefitExcerpts(description) {
   return cleanText(description)
     .split(/(?<=[.!?。！？])\s+/)
     .map((item) => cleanText(item))
-    .filter((item) => item.length >= 12)
+    .filter((item) => benefitSignal(item))
     .map((item) => item.slice(0, 120))
     .slice(0, 4);
 }
@@ -1135,10 +1248,11 @@ function ingredientRole(name) {
   );
 }
 function ingredientRecords(ingredients, pageUrl) {
-  return cleanText(ingredients)
+  const seen = /* @__PURE__ */ new Set();
+  return ingredientSection(ingredients)
     .split(/[,;；•·|]/)
     .map((item) => cleanText(item))
-    .filter((item) => item.length >= 2 && item.length <= 120)
+    .filter((item) => ingredientSignal(item))
     .slice(0, 12)
     .map((item) => {
       const amount =
@@ -1146,13 +1260,21 @@ function ingredientRecords(ingredients, pageUrl) {
         '\u5B98\u7F51\u672A\u6807\u6CE8\u5355\u9879\u5242\u91CF';
       const name = cleanText(
         item.replace(amount, '').replaceAll(/[()（）]/g, ' '),
-      );
+      )
+        .replace(/[.。]+$/, '')
+        .trim();
       return {
         name: name || item,
         amount,
         role: ingredientRole(name || item),
         evidence: pageUrl,
       };
+    })
+    .filter((item) => {
+      const key = signalKey(item.name);
+      if (!ingredientSignal(item.name) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 }
 function absoluteUrl(value, pageUrl) {
@@ -1240,28 +1362,24 @@ function productFromJsonLd(product, pageUrl, market, fallbackBrand, html = '') {
       additionalProperty(product, [
         'ingredient',
         'ingrediente',
-        'th\u00E0nh ph\u1EA7n',
+        'th\xE0nh ph\u1EA7n',
         'formula',
       ]),
     ) ||
     plausibleIngredients(
-      labeledText(text, [
-        'ingredients',
-        'ingredientes',
-        'th\u00E0nh ph\u1EA7n',
-      ]),
+      labeledText(text, ['ingredients', 'ingredientes', 'th\xE0nh ph\u1EA7n']),
     );
   const servingSize = cleanText(
     product.servingSize ||
       additionalProperty(product, [
         'serving size',
         'servings',
-        'porci\u00F3n',
+        'porci\xF3n',
         'kh\u1EA9u ph\u1EA7n',
       ]) ||
       labeledText(text, [
         'serving size',
-        'tama\u00F1o de la porci\u00F3n',
+        'tama\xF1o de la porci\xF3n',
         'kh\u1EA9u ph\u1EA7n',
       ]),
   );
@@ -1275,7 +1393,7 @@ function productFromJsonLd(product, pageUrl, market, fallbackBrand, html = '') {
         'count',
         'net weight',
         'contents',
-        'tama\u00F1o',
+        'tama\xF1o',
         'kh\u1ED1i l\u01B0\u1EE3ng',
       ]) ||
       labeledText(text, [
@@ -1899,7 +2017,7 @@ function mergeSuggestionItems(sourceResults, limit) {
   }
   return items;
 }
-function braveSearchRequest(keyword, market, count) {
+function braveSearchRequest(keyword, market, count, offset = 0) {
   const options = MARKET_OPTIONS[market];
   const params = new URLSearchParams({
     q: `${keyword} ${options.intent}`,
@@ -1908,13 +2026,14 @@ function braveSearchRequest(keyword, market, count) {
     count: String(Math.min(20, count)),
     safesearch: 'moderate',
   });
+  if (offset > 0) params.set('offset', String(offset));
   return {
     locationCountry: market,
     url: `https://api.search.brave.com/res/v1/web/search?${params}`,
   };
 }
-async function braveSearch(keyword, market, env, count) {
-  const request = braveSearchRequest(keyword, market, count);
+async function braveSearch(keyword, market, env, count, offset = 0) {
+  const request = braveSearchRequest(keyword, market, count, offset);
   let response;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     response = await fetch(request.url, {
@@ -1952,6 +2071,20 @@ async function braveSearch(keyword, market, env, count) {
   return (data.web?.results || [])
     .map((item) => item.url)
     .filter((url) => isCandidateUrl(url));
+}
+async function mapWithConcurrency(values, limit, mapper) {
+  const results = Array.from({ length: values.length });
+  let cursor = 0;
+  async function worker() {
+    while (cursor < values.length) {
+      const index = cursor++;
+      results[index] = await mapper(values[index], index);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  );
+  return results;
 }
 function parseGoogleTrendsPayload(text) {
   const start = String(text).indexOf('{');
@@ -2027,7 +2160,7 @@ function googleCookieHeader(setCookie) {
     .filter(Boolean)
     .join('; ');
 }
-const GOOGLE_TRENDS_USER_AGENTS = [
+var GOOGLE_TRENDS_USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130 Safari/537.36',
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/129 Safari/537.36',
@@ -2494,12 +2627,20 @@ async function runResearch(input, env) {
     1,
     Math.min(100, Number(input.limit) || 100),
   );
-  const maxSites = Math.max(1, Math.min(10, Number(input.maxSites) || 6));
+  const maxSites = Math.max(1, Math.min(30, Number(input.maxSites) || 6));
   const productsPerSite = Math.max(
     1,
     Math.min(20, Number(input.productsPerSite) || 10),
   );
-  const candidateLimit = Math.min(20, Math.max(10, maxSites * 2));
+  const searchPages = Math.max(
+    1,
+    Math.min(3, Number(input.siteSearchPages) || 1),
+  );
+  const candidateConcurrency = Math.max(
+    1,
+    Math.min(4, Number(input.candidateConcurrency) || 4),
+  );
+  const candidateLimit = Math.min(60, Math.max(10, maxSites * 2));
   if (keywords.length === 0 || keywords.length > 3)
     throw new Error(
       '\u6BCF\u6B21\u8BF7\u8F93\u51651\u81F33\u4E2A\u5173\u952E\u8BCD',
@@ -2512,7 +2653,7 @@ async function runResearch(input, env) {
     );
   if (keywords.length * markets.length > 3)
     throw new Error(
-      '\u5355\u6B21\u6700\u591A\u8FD0\u884C3\u4E2A\u201C\u5173\u952E\u8BCD \u00D7 \u5E02\u573A\u201D\u7EC4\u5408\uFF0C\u8BF7\u51CF\u5C11\u5173\u952E\u8BCD\u6216\u5E02\u573A',
+      '\u5355\u6B21\u6700\u591A\u8FD0\u884C3\u4E2A\u201C\u5173\u952E\u8BCD \xD7 \u5E02\u573A\u201D\u7EC4\u5408\uFF0C\u8BF7\u51CF\u5C11\u5173\u952E\u8BCD\u6216\u5E02\u573A',
     );
   const groups = [];
   const suggestions = [];
@@ -2562,7 +2703,11 @@ async function runResearch(input, env) {
         );
       }
       if (sources.includes('site_discovery')) {
-        const urls = await braveSearch(keyword, market, env, 20);
+        const urls = [];
+        for (let searchPage = 0; searchPage < searchPages; searchPage += 1)
+          urls.push(
+            ...(await braveSearch(keyword, market, env, 20, searchPage * 20)),
+          );
         const unique = [];
         const domains = /* @__PURE__ */ new Set();
         for (const url of urls) {
@@ -2572,10 +2717,10 @@ async function runResearch(input, env) {
           unique.push(url);
           if (unique.length >= candidateLimit) break;
         }
-        const candidates = await Promise.all(
-          unique.map((url) =>
-            validateCandidate(url, keyword, market, productsPerSite),
-          ),
+        const candidates = await mapWithConcurrency(
+          unique,
+          candidateConcurrency,
+          (url) => validateCandidate(url, keyword, market, productsPerSite),
         );
         const validated = candidates
           .filter(Boolean)
@@ -2586,7 +2731,9 @@ async function runResearch(input, env) {
           market,
           coverage: {
             searchResults: urls.length,
+            searchPages,
             candidateDomains: unique.length,
+            candidateConcurrency,
             validatedSites: validated.length,
             rejectedOrUnreachable: unique.length - validated.length,
           },
@@ -2604,7 +2751,7 @@ async function runResearch(input, env) {
     trends,
   };
 }
-const src_default = {
+var src_default = {
   async fetch(request, env) {
     const originState = allowedOrigin(request, env);
     const internal =

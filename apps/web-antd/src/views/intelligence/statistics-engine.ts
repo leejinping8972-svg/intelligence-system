@@ -25,7 +25,8 @@ export function formulaOf(product: Product) {
 export interface FormulaRow { id: string; key: string; ingredients: string[]; brands: string[]; markets: string[]; products: number; verified: number; score: number }
 export function formulaStatistics(products: Product[]) {
   const groups = new Map<string, { ingredients: string[]; products: number; brands: Set<string>; markets: Set<string>; verified: number; signal: number }>();
-  let observed = 0, verified = 0;
+  let observed = 0;
+  let verified = 0;
   for (const product of products) {
     const formula = formulaOf(product);
     if (!formula.fingerprint || formula.status === 'unknown') continue;
@@ -47,14 +48,17 @@ export function formulaStatistics(products: Product[]) {
 export function radarStatistics(findings: RadarFinding[]) {
   const counts = { ad: 0, product: 0, concept: 0, ingredient: 0, verified: 0 };
   const activity: Record<string, Record<string, number>> = {};
-  let sum = 0, scored = 0;
+  let confirmedProducts = 0;
+  let scored = 0;
+  let sum = 0;
   for (const item of findings) {
     counts[item.type]++;
+    if (item.type === 'product' && item.status === 'confirmed') confirmedProducts++;
     if (item.confidenceScore >= 70) counts.verified++;
     if (item.businessScore !== null) { sum += item.businessScore; scored++; }
     const day = item.firstSeenAt.slice(0, 10);
     activity[day] ||= {};
     activity[day][item.type] = (activity[day][item.type] || 0) + 1;
   }
-  return { counts, averageScore: scored ? Math.round(sum / scored) : null, activity };
+  return { counts, confirmedProducts, scored, averageScore: scored ? Math.round(sum / scored) : null, activity };
 }

@@ -14,6 +14,8 @@ export interface StatisticsSnapshot {
   summary?: ReturnType<typeof radarStatistics>;
   coverage?: RadarSourceCoverage[] | { total: number; observed: number; verified: number; percent: number };
   publicDataStale?: boolean;
+  rulesStale?: boolean;
+  radarRulesVersion?: number;
 }
 interface Result<T> { rows: T[]; total: number; page: number; pageSize: number; snapshot: null | StatisticsSnapshot }
 const cache = new Map<string, { at: number; result: Result<unknown> }>();
