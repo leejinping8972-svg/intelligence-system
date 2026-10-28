@@ -205,6 +205,7 @@ export interface Product {
     soldCount?: number;
     soldRaw?: string;
     soldPrecision?: string;
+    soldPeriod?: 'cumulative' | 'unspecified';
     soldCollectedAt?: string;
     orderCount?: number;
     unclassifiedSales?: string;

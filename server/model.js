@@ -767,7 +767,7 @@ function productMetrics(p, days, context = {}) {
     metric(
       p,
       "cumulativeSold",
-      sm?.soldProvider ? "\u5B98\u7F51\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E" : "\u5E73\u53F0\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E",
+      sm?.soldPeriod === "unspecified" ? "\u5B98\u7F51\u5C55\u793A\u9500\u91CF" : sm?.soldProvider ? "\u5B98\u7F51\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E" : "\u5E73\u53F0\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E",
       raw || (validNumber(sold) ? sold : null),
       "\u4EF6",
       {
@@ -776,9 +776,9 @@ function productMetrics(p, days, context = {}) {
         platform: sm?.soldPlatform || meta.platform,
         evidenceUrl: sm?.soldEvidenceUrl || meta.evidenceUrl,
         collectedAt: sm?.soldCollectedAt || meta.collectedAt,
-        period: "\u7D2F\u8BA1\u8D77\u7B97\u65E5\u672A\u77E5\uFF1B\u5F53\u524D\u5FEB\u7167",
+        period: sm?.soldPeriod === "unspecified" ? "\u5B98\u7F51\u5C55\u793A\uFF1B\u7EDF\u8BA1\u5468\u671F\u672A\u660E\u786E\uFF1B\u5F53\u524D\u5FEB\u7167" : "\u7D2F\u8BA1\u8D77\u7B97\u65E5\u672A\u77E5\uFF1B\u5F53\u524D\u5FEB\u7167",
         precision: sm?.soldPrecision || "\u672A\u77E5",
-        reason: raw || validNumber(sold) ? "\u7D2F\u8BA1\u5C55\u793A\u4E0D\u7B49\u4E8E\u5468\u671F\u9500\u91CF\u6216\u51C0\u6210\u4EA4" + (sm?.soldSourceField ? "\uFF1B\u6765\u6E90\u5B57\u6BB5\uFF1A" + sm.soldSourceField : "") : "\u6765\u6E90\u672A\u8FD4\u56DE\u660E\u786E\u7684\u7D2F\u8BA1\u552E\u51FA\u4EF6\u6570",
+        reason: raw || validNumber(sold) ? (sm?.soldPeriod === "unspecified" ? "\u4FDD\u7559\u5B98\u7F51\u5C55\u793A\u539F\u6587\u53CA\u52A0\u53F7\uFF0C\u4E0D\u63A8\u7B97\u7CBE\u786E\u9500\u91CF\u6216\u5468\u671F\u9500\u91CF" : "\u7D2F\u8BA1\u5C55\u793A\u4E0D\u7B49\u4E8E\u5468\u671F\u9500\u91CF\u6216\u51C0\u6210\u4EA4") + (sm?.soldSourceField ? "\uFF1B\u6765\u6E90\u5B57\u6BB5\uFF1A" + sm.soldSourceField : "") : "\u6765\u6E90\u672A\u8FD4\u56DE\u660E\u786E\u7684\u7D2F\u8BA1\u552E\u51FA\u4EF6\u6570",
         ...!raw && !validNumber(sold) ? missingPublicMetric("sold") : {}
       }
     ),

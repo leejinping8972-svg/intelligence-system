@@ -43,6 +43,8 @@ test('official completion SQL submission, journal, budget and searchable evidenc
       calls.push(request);
       return enrichPublicProduct(request, { now: () => now, fetchPage: async requested => {
         if (mode === 'failure') throw Object.assign(new Error('synthetic HTTP failure'), { status: 429 });
+        if (requested.startsWith('https://api-x.westmonth.com/'))
+          return { url: requested, html: JSON.stringify({ code: 0, data: { id: 123, month_sale: '3000+', onsale_at: '2026-10-10 10:00:00' } }) };
         const node = { '@type': 'Product', name: request.product.title, url: request.product.evidenceUrl, ...(mode === 'observed' ? { datePublished: '2019-02-03T00:00:00Z', numberOfItemsSold: 123 } : { dateModified: '2026-10-22', reviewCount: 123, sales: 456 }) };
         return { url: requested, html: '<script type="application/ld+json">' + JSON.stringify(node) + '</script>' };
       } });
@@ -131,6 +133,37 @@ test('official completion SQL submission, journal, budget and searchable evidenc
       const done=await drain(job.id);assert.equal(done.status,'partial');assert.equal(calls.length,before+1);
       assert.equal((await readProduct(c.id)).publicDataEvidence.sold.reason,'rate_limited');
       assert.equal((await readProduct(d.id)).dataCompletion.public_detail.status,'failed');
+    });
+    await t.test('Westmonth completion saves dates and raw plus sales through SQL and the paged product list', async () => {
+      mode = 'observed';
+      const originalAt = new Date(now - 60_000).toISOString();
+      const p = { ...a, id: 'VN-westmonth-qa', market: 'VN', siteId: 'VN-westmonth.com',
+        evidenceUrl: 'https://www.westmonth.com/products/123', catalogListedAtRaw: '2026-10-09 09:00:00',
+        catalogEvidenceUrl: 'https://api-x.westmonth.com/product-center/shop/products/load-list?source=rankings', lastCollectedAt: originalAt,
+      };
+      await upsertProduct(p);
+      const before = calls.length;
+      const job = await submit({ requestId: randomUUID(), productIds: [p.id], maxRequests: 1 });
+      const done = await drain(job.id);
+      assert.equal(done.status, 'completed');
+      assert.equal(done.checkpoint.requests, 1);
+      assert.equal(calls.length, before + 1);
+      const saved = await readProduct(p.id);
+      assert.equal(saved.sourceMetrics.soldRaw, '3000+');
+      assert.equal(saved.sourceMetrics.soldCount, undefined);
+      assert.equal(saved.sourceMetrics.soldPrecision, 'lower_bound');
+      assert.equal(saved.decisionData.listing.date, '2026-10-09');
+      assert.equal(saved.decisionData.listing.collectedAt, originalAt);
+      assert.equal(saved.favorite, true);
+      assert.equal(saved.reviewed, true);
+      const reads = createWorkspaceReads({ pool,sql,lock,unlock,putDocument,isWorkspaceSyncKey:()=>true,loadPublic:async()=>({collector:null,free:null}) });
+      for (let i = 0; i < 25; i++) if (!await reads.refresh()) break;
+      const result = await reads.list({ collection: 'products', market: 'VN', listedFrom: '2026-10-01', listedTo: '2026-10-31', pageSize: 20 });
+      assert.equal(result.total, 1);
+      assert.equal(result.rows[0].sourceMetrics.soldRaw, '3000+');
+      assert.equal(result.rows[0].decisionData.listing.date, '2026-10-09');
+      const exported = await reads.exportRecords({ collection: 'products', ids: [p.id] });
+      assert.equal(exported.rows[0].sourceMetrics.soldRaw, '3000+');
     });
     assert.equal(externalCalls,0);
   } finally {

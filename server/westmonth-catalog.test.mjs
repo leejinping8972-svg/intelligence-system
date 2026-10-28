@@ -25,15 +25,21 @@ test('uses the public new-item feed with fixed host, bounded paging and no crede
   assert.equal(canonicalCatalogUrl(page.catalogLinks[0], 'https://www.westmonth.com'), 'https://www.westmonth.com/products/ranking?page=2&ranking_type=new');
   assert.deepEqual(fallbackProductUrls(site), [westmonthEntry()]);
 });
-test('unknown price, ambiguous sales and raw listing time do not become confirmed metrics', async () => {
+test('catalog listing and the official sales display are persisted without inventing exact or monthly sales', async () => {
   const page = await fetchWestmonthCatalog(westmonthEntry(), site, async () => response([row(123)]));
   const raw = page.catalogProducts[0];
   assert.equal(raw.price, undefined);
   assert.equal(raw.publishedAt, undefined);
   const item = normalizeProduct(raw, site);
   assert.equal(item.brand, '品牌未公开');
-  assert.equal(item.sourceMetrics, undefined);
-  assert.equal(item.decisionData, undefined);
+  assert.equal(item.sourceMetrics.soldRaw, '200+');
+  assert.equal(item.sourceMetrics.soldPrecision, 'lower_bound');
+  assert.equal(item.sourceMetrics.soldPeriod, 'unspecified');
+  assert.equal(item.sourceMetrics.soldCount, undefined);
+  assert.equal(item.sourceMetrics.monthlySales, undefined);
+  assert.equal(item.decisionData.listing.date, '2026-10-01');
+  assert.equal(item.decisionData.listing.rawDate, '2026-10-01 12:00:00');
+  assert.equal(item.decisionData.listing.sourceField, 'Westmonth catalog JSON.product_addtime');
   assert.equal(item.catalogListedAtRaw, '2026-10-01 12:00:00');
   assert.equal(item.catalogScope, '官网公开全部商品目录');
   assert.ok(item.catalogEvidenceUrl.startsWith('https://api-x.westmonth.com/'));
@@ -78,5 +84,5 @@ test('the normal product job saves public Westmonth items within its product and
   assert.equal(items.size, 2);
   assert.equal(saved.cp.requests, 1);
   assert.equal(saved.cp.products, 2);
-  assert.ok([...items.values()].every((item) => item.catalogEvidenceUrl && item.market === 'VN'));
+  assert.ok([...items.values()].every((item) => item.catalogEvidenceUrl && item.market === 'VN' && item.sourceMetrics.soldRaw === '200+' && item.decisionData.listing.date === '2026-10-01'));
 });

@@ -6,6 +6,8 @@ import { collectionPolicyMessage, resolveCollectionPolicy } from './collection-p
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
 import { validDiscoveryDate } from './discovery-newness.mjs';
 import { publicProductFields } from './collector.js';
+import { isWestmonth } from './westmonth-catalog.mjs';
+import { westmonthMetricPatch } from './westmonth-product-metrics.mjs';
 export function siteHostAllowed(host, domain) {
   const root = String(domain)
     .toLowerCase()
@@ -123,6 +125,9 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
       collectedAt: at, soldCollectedAt: at, soldProvider: '官网公开商品数据',
       soldPlatform: site.platform || '官网', soldEvidenceUrl: url.toString(), soldSourceField: publicFields.soldSourceField,
     } } : {}),
+    ...(isWestmonth(site) && p.catalogEvidenceUrl && p.catalogProductMetrics
+      ? westmonthMetricPatch(p.catalogProductMetrics, { market: site.market, at, evidenceUrl: p.catalogEvidenceUrl })
+      : {}),
     lastCollectedAt: at,
     evidenceUrl: url.toString(),
     dataNature: 'collected',

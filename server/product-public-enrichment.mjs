@@ -4,6 +4,7 @@ import { load } from 'cheerio';
 
 import { discoveryDecision, validDiscoveryDate } from './discovery-newness.mjs';
 import { fetchPublicPage, landingUrl } from './safe-web.mjs';
+import { fetchWestmonthProduct, westmonthMetricPatch, westmonthProductId, westmonthSavedListing } from './westmonth-product-metrics.mjs';
 
 const provider = '官网公开商品数据';
 const list = (value) => (Array.isArray(value) ? value : value ? [value] : []);
@@ -202,6 +203,33 @@ export async function enrichPublicProduct(request, overrides = {}) {
   const fetchPage = overrides.fetchPage || fetchPublicPage;
   let providerCalls = 0;
   let stopReason = original ? 'not_publicly_provided' : 'unsupported_product_url';
+
+  if (westmonthProductId(original)) {
+    let patch = {};
+    try {
+      providerCalls++;
+      const result = await fetchWestmonthProduct({ ...product, sourceUrl: original }, fetchPage);
+      patch = westmonthMetricPatch(result.row, { market: product.market, at, evidenceUrl: result.evidenceUrl, kind: result.kind });
+    } catch (error) {
+      stopReason = error.status === 429 ? 'rate_limited' : 'request_failed';
+      errors.push({ url: original, reason: stopReason, ...(Number.isInteger(error.status) ? { status: error.status } : {}) });
+    }
+    const savedListing = westmonthSavedListing(product, at);
+    if (savedListing) patch.decisionData = { listing: savedListing };
+    const listing = patch.decisionData?.listing;
+    const sold = patch.sourceMetrics;
+    patch.id = product.id;
+    patch.publicDataEvidence = {
+      checkedAt: at, evidenceUrl: original, requests: providerCalls,
+      listing: stateFor(listing, Boolean(discoveryDecision(product, 'product', now).evidenceDate), stopReason, original),
+      sold: stateFor(sold && { evidenceUrl: sold.soldEvidenceUrl, sourceField: sold.soldSourceField }, Boolean(product.sourceMetrics?.soldRaw) || product.sourceMetrics?.soldCount !== undefined, stopReason, original),
+      ...(errors.length ? { errors } : {}),
+    };
+    return {
+      patch, empty: !listing && !sold, providerCalls,
+      message: listing || sold ? '已取得西之月官网上架日期或展示销量，销量保留官网加号及来源' : '未取得该编号的西之月公开商品数据，已有结果保留',
+    };
+  }
 
   async function readExact(url, types, identityUrl = url) {
     let current = url;
