@@ -1,34 +1,32 @@
 {
-  "title": "数据源消耗看板超时修复",
-  "sourceSha": "308c1d25e59460874229078bd833b35c7e28b531",
+  "title": "登录后工作区首屏等待优化",
+  "sourceSha": "0abe83ada5aa3651a84d1fcfa2c3f3db363e293d",
   "includedCommits": [
-    "afc062501e7448fceadf7ae43c641a330689ce7b"
+    "5060d26faadd76c4b5b07f1b2ceac721345f38be"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/SourceUsageDashboard.vue",
-    "apps/web-antd/src/views/intelligence/source-usage.ts",
-    "server/SOURCE-USAGE.md",
-    "server/source-usage-domain.mjs",
-    "server/source-usage-reader.mjs",
-    "server/source-usage-reader.test.mjs",
-    "server/source-usage.mjs",
-    "server/source-usage.test.mjs"
+    "apps/web-antd/LOGIN-ENTRY.md",
+    "apps/web-antd/src/adapter/setup.ts",
+    "apps/web-antd/src/bootstrap.ts",
+    "apps/web-antd/src/views/intelligence/overview.vue",
+    "deploy/server/create-release.mjs",
+    "packages/locales/src/i18n.ts"
   ],
   "changes": [
-    "监控消耗按原始JSON类型分批提取，压缩派生缓存按revision增量更新，保留原始记账和未知扣费语义。",
-    "合并并发读取，超过2秒先返回加载状态并自动查询；失败不返回部分总量。",
-    "取消首次重复请求，翻页复用结果、手动刷新读取最新；首次失败显示未获取，后续失败保留原结果，离开停止轮询。"
+    "原生情报页面无需等待通用表单适配器；框架页面保留原初始化、并发复用与失败重试。",
+    "首页图表异步加载，不阻塞导航与统计，保留固定区域和局部加载失败提示。",
+    "同语言文件、核心和应用语言包并行；语言、状态与独立插件并行准备，就绪后再启动路由与挂载。"
   ],
   "validation": [
-    "功能开发21项Node/PGlite、完整Web类型检查、独立server/history构建、服务端专项ESLint及diff通过。",
-    "Edge合成验收含桌面及390/320px、分页、加载/错误/重试/导航，页面错误及横向溢出0。",
-    "真实MySQL100条记录新旧投影一致、6组合成类型边界一致；6773条监控首次143秒、复用缓存1.6秒，仅为只读基准。",
+    "功能开发37项登录/会话/启动/语言测试、完整Web类型检查、独立server/history构建、启动/语言/测试专项ESLint和diff通过。",
+    "Edge桌面/390px登录、已有会话刷新与直达、原生表单输入、图表阻断/失败/恢复像素检查通过，页面错误及横向溢出0。",
+    "限速合成标题出现时间桌面8299至6248ms、手机7674至6298ms，JS解码减少986047字节；非生产账号或整页耗时。",
     "发布阶段重复测试、类型/lint、回归、隔离库/UI、验证构建及CI等待按用户策略跳过。",
     "无schema、依赖、迁移或启动业务写入变更，跳过完整数据库备份；保留17锁、业务/认证/配置/任务/journal/public-data核验及应用回退。",
-    "上线后生成可重建的read缓存并核对完整API及版本/健康/任务恢复；不调用提供方或重放任务。"
+    "上线后核对公网健康/版本/入口及任务恢复，不调用提供方或重放任务。"
   ],
-  "id": "20261028050015-29914db3",
-  "builtAt": "2026-10-28T05:00:15.928Z",
-  "sourceDigest": "29914db39690b03b33df6d31b22487f00523334f148abe2e77c27d9176314671",
+  "id": "20261028070234-2c6ca8c7",
+  "builtAt": "2026-10-28T07:02:34.905Z",
+  "sourceDigest": "2c6ca8c7931d77e670b979cd593195a806fd99440e3676d6b32cfb9d30e1b914",
   "operator": "Codex"
 }
