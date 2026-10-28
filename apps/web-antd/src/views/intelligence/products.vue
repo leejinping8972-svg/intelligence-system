@@ -451,7 +451,7 @@ async function exportProducts() {
             </Tag>
           </div>
           <div class="hci-product-insights">
-            <div><span>累计销量</span><EvidenceMetric :metric="core.metric(product, 'core:cumulativeSold')" /></div>
+            <div><span>展示销量</span><EvidenceMetric :metric="core.metric(product, 'core:cumulativeSold')" /></div>
             <div><span>上架时间</span><EvidenceMetric :metric="core.metric(product, 'core:listingDate')" /></div>
             <div>
               <span>功效卖点</span>
@@ -529,7 +529,7 @@ async function exportProducts() {
         { title: '商品', key: 'product', width: 320, fixed: 'left' },
         { title: '市场 / 品类', key: 'category', width: 150 },
         { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: serverMode ? true : (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
-        { title: '累计销量', key: 'core:cumulativeSold', width: 170 },
+        { title: '展示销量', key: 'core:cumulativeSold', width: 170 },
         { title: '上架时间', key: 'core:listingDate', width: 170 },
         { title: '决策标签（点击看依据）', key: 'decisions', width: 280 },
         { title: '规格 / 剂型', key: 'spec', width: 170 },

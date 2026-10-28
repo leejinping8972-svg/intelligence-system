@@ -130,6 +130,18 @@ describe('core list evidence and unit boundaries', () => {
     expect(get(productMetrics(p, 90), 'cumulativeSold').value).toBe('10K+');
     expect(get(productMetrics(p, 90), 'sales').value).toBeNull();
   });
+  it('preserves official sales display and its plus without assigning a reporting period', () => {
+    const record = product({ sourceMetrics: {
+      soldRaw: '3000+', soldPrecision: 'lower_bound', soldPeriod: 'unspecified',
+      collectedAt: at, soldProvider: '西之月官网公开商品目录',
+    } });
+    expect(get(productMetrics(record, 30), 'cumulativeSold')).toMatchObject({
+      value: '3000+', label: '官网展示销量', precision: 'lower_bound',
+      period: '官网展示；统计周期未明确；当前快照',
+    });
+    expect(get(productMetrics(record, 30), 'sales').value).toBeNull();
+    expect(coreExport('products', record)['cumulativeSold_值']).toBe('3000+');
+  });
   it('rejects natural-month sales as a rolling 30-day window', () => {
     const p = product({
       decisionData: {

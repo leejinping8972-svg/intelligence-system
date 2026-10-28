@@ -39,6 +39,7 @@ export async function fetchWestmonthCatalog(url, site, fetchPage) {
       extractionMethod: '西之月公开商品目录',
       catalogEvidenceUrl: api.toString(), catalogScope: newOnly ? '官网公开新品榜' : '官网公开全部商品目录',
       catalogListedAtRaw: typeof row.product_addtime === 'string' ? row.product_addtime : '',
+      catalogProductMetrics: { product_addtime: row.product_addtime, month_sale: row.month_sale },
       collectionFields: ['title', ...(image ? ['image'] : [])],
     };
   });

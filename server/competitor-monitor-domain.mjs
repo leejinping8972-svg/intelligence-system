@@ -108,5 +108,12 @@ export function mergeObserved(old, item, at) {
       lastCollectedAt: at,
     };
   // Keep human decisions, associations and enriched fields from other collectors.
-  return { ...item, ...old, lastCollectedAt: at };
+  const merged = { ...item, ...old, lastCollectedAt: at };
+  if (item.siteId === 'VN-westmonth.com' &&
+      (item.sourceMetrics?.soldPlatform === '西之月' || item.decisionData?.listing?.platform === '西之月')) {
+    if (item.sourceMetrics) merged.sourceMetrics = { ...old.sourceMetrics, ...item.sourceMetrics };
+    if (item.decisionData?.listing)
+      merged.decisionData = { ...old.decisionData, listing: item.decisionData.listing };
+  }
+  return merged;
 }

@@ -378,7 +378,7 @@ export function productMetrics(
     metric(
       p,
       'cumulativeSold',
-      sm?.soldProvider ? '官网累计展示已售' : '平台累计展示已售',
+      sm?.soldPeriod === 'unspecified' ? '官网展示销量' : sm?.soldProvider ? '官网累计展示已售' : '平台累计展示已售',
       raw || (validNumber(sold) ? sold : null),
       '件',
       {
@@ -387,11 +387,11 @@ export function productMetrics(
         platform: sm?.soldPlatform || meta.platform,
         evidenceUrl: sm?.soldEvidenceUrl || meta.evidenceUrl,
         collectedAt: sm?.soldCollectedAt || meta.collectedAt,
-        period: '累计起算日未知；当前快照',
+        period: sm?.soldPeriod === 'unspecified' ? '官网展示；统计周期未明确；当前快照' : '累计起算日未知；当前快照',
         precision: sm?.soldPrecision || '未知',
         reason:
           raw || validNumber(sold)
-            ? '累计展示不等于周期销量或净成交' + (sm?.soldSourceField ? '；来源字段：' + sm.soldSourceField : '')
+            ? (sm?.soldPeriod === 'unspecified' ? '保留官网展示原文及加号，不推算精确销量或周期销量' : '累计展示不等于周期销量或净成交') + (sm?.soldSourceField ? '；来源字段：' + sm.soldSourceField : '')
             : '来源未返回明确的累计售出件数',
         ...(!raw && !validNumber(sold) ? missingPublicMetric('sold') : {}),
       },
