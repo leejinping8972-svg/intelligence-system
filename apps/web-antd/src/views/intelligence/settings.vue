@@ -12,16 +12,9 @@ import {
 } from 'ant-design-vue';
 
 import { clearCloudKeywords } from './cloud-workspace';
-import AdsSettings from './components/AdsSettings.vue';
-import AnalysisSettings from './components/AnalysisSettings.vue';
-import BraveSettings from './components/BraveSettings.vue';
+import SourceConnections from './components/SourceConnections.vue';
 import PageHeader from './components/PageHeader.vue';
-import SemrushSettings from './components/SemrushSettings.vue';
-import SiteCollectionSettings from './components/SiteCollectionSettings.vue';
 import SorftimeSettings from './components/SorftimeSettings.vue';
-import SourceUsageDashboard from './components/SourceUsageDashboard.vue';
-import WestmonthSettings from './components/WestmonthSettings.vue';
-import YouTubeSettings from './components/YouTubeSettings.vue';
 import {
   audit,
   clearWorkspaceResults,
@@ -32,6 +25,7 @@ import {
 } from './data';
 import { serverMode } from './session';
 
+const settingsView = ref('connections');
 const draft = reactive({ ...state.settings });
 const brandingDraft = reactive({ ...state.branding });
 const logoInput = ref<HTMLInputElement>();
@@ -259,30 +253,12 @@ function handleLogo(event: Event) {
       title="数据源与设置"
       description="明确每个市场的覆盖边界，控制研究规模与成本。"
     />
-    <SourceUsageDashboard v-if="serverMode">
-      <template #configuration="{ sourceId }">
-        <SemrushSettings v-if="sourceId === 'semrush'" />
-        <SiteCollectionSettings
-          v-else-if="sourceId === 'firecrawl' || sourceId === 'official_sites'"
-        />
-        <YouTubeSettings v-else-if="sourceId === 'youtube'" />
-        <AdsSettings v-else-if="sourceId === 'scrapecreators'" />
-        <AnalysisSettings v-else-if="sourceId === 'analysis'" />
-        <BraveSettings v-else-if="sourceId === 'brave'" />
-        <SorftimeSettings
-          v-else-if="sourceId === 'sorftime'"
-          :api-url="draft.researchApiUrl"
-          :access-key="draft.researchAccessKey"
-        />
-      </template>
-    </SourceUsageDashboard>
-    <SorftimeSettings
-      v-else
-      :api-url="draft.researchApiUrl"
-      :access-key="draft.researchAccessKey"
-      @status="sorftimeState = $event"
-    />
-    <WestmonthSettings v-if="serverMode" />
+    <nav class="workspace-tabs" aria-label="设置分组">
+      <button v-for="view in [{ value: 'connections', label: '数据源连接' }, { value: 'general', label: '工作区与采集配置' }]" :key="view.value" type="button" :class="{ 'is-active': settingsView === view.value }" @click="settingsView = view.value">{{ view.label }}</button>
+    </nav>
+    <SourceConnections v-if="serverMode && settingsView === 'connections'" />
+    <SorftimeSettings v-if="!serverMode && settingsView === 'connections'" :api-url="draft.researchApiUrl" :access-key="draft.researchAccessKey" @status="sorftimeState = $event" />
+    <div v-show="settingsView === 'general'">
     <section class="hci-panel">
       <div class="hci-panel-head">
         <div>
@@ -553,6 +529,7 @@ function handleLogo(event: Event) {
         <Button danger @click="resetOpen = true">清空全部结果数据</Button>
       </div>
     </section>
+    </div>
     <Modal
       v-model:open="resetOpen"
       title="清空云端关键词及本机全部结果数据？"

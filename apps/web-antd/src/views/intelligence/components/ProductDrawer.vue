@@ -81,6 +81,7 @@ function addMonitor() {
           ><Tag>{{ product.category }}</Tag>
         </div>
       </div></div>
+      <Button type="primary" @click="emit('close'); router.push({ path: '/product-research', query: { product: product.id } })">进入商品研究</Button>
       <ProductCompletionDialog :product-ids="[product.id]" compact />
       <Tabs>
         <Tabs.TabPane v-if="product.resourceEvidence" key="resource-evidence" tab="资源路径与排名证据"><ProductResourceEvidence :evidence="product.resourceEvidence" :history="product.resourceHistory" :product-id="product.id" /></Tabs.TabPane>

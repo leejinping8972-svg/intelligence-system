@@ -44,7 +44,7 @@ const columns = [
         v-if="kind === 'products' || kind === 'keywords'"
         v-model:value="period"
         aria-label="详情统计周期"
-        :options="[30, 90, 365].map((d) => ({ value: d, label: `近${d}天` }))"
+        :options="[30, 90, 180, 365].map((d) => ({ value: d, label: `近${d}天` }))"
         style="width: 120px"
       />
     </div>

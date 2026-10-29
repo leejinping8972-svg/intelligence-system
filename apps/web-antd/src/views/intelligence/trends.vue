@@ -264,7 +264,7 @@ async function refreshTrend() {
         />
         <div class="hci-toolbar-end">
           <Radio.Group v-model:value="days">
-            <Radio.Button :value="30">近30天</Radio.Button><Radio.Button :value="90">近90天</Radio.Button><Radio.Button :value="365">过去一年</Radio.Button>
+            <Radio.Button :value="30">近30天</Radio.Button><Radio.Button :value="90">近90天</Radio.Button><Radio.Button :value="180">近180天</Radio.Button><Radio.Button :value="365">过去一年</Radio.Button>
           </Radio.Group>
         </div>
       </div>

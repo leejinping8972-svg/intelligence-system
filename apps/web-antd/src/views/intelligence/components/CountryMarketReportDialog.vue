@@ -14,6 +14,7 @@ import {
 import { cloudRequest } from '../cloud-workspace';
 import { marketOptions } from '../data';
 
+defineProps<{ hideTrigger?: boolean }>();
 const emit = defineEmits<{ submitted: [id: string] }>();
 const open = ref(false);
 const busy = ref(false);
@@ -45,10 +46,11 @@ async function submit() {
     busy.value = false;
   }
 }
+defineExpose({ begin: () => { open.value = true; } });
 import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
-  <Button type="primary" @click="open = true">生成国家市场报告</Button>
+  <Button v-if="!hideTrigger" type="primary" @click="open = true">生成国家市场报告</Button>
   <Modal
     v-model:open="open"
     title="生成国家市场商品与消费者报告"

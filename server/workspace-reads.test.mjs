@@ -397,6 +397,21 @@ async function exerciseReadModel(
     });
   }
   await drain();
+  const currentProduct = (await reads.details({ collection: 'products', id: 'p10' })).record;
+  await putDocument('workspace_documents', 'business:products:p10', { ...currentProduct, sourceProvider: 'Synthetic Provider', sourcePlatform: 'Amazon', currency: 'USD' });
+  await drain();
+  assert.equal((await reads.list({ collection: 'products', provider: 'Synthetic Provider', productPlatform: 'Amazon', pageSize: 1 })).total, 1);
+  assert.equal((await reads.selection({ collection: 'products', provider: 'Synthetic Provider', productPlatform: 'Shopee' })).count, 0);
+  assert.equal((await reads.list({ collection: 'products', provider: 'Synthetic Provider', siteLinked: 'unlinked' })).total, 0);
+  assert.equal((await reads.list({ collection: 'products', provider: 'Synthetic Provider', siteLinked: 'linked' })).total, 1);
+  const identityFacets = (await reads.facets({ collection: 'products' })).facets;
+  assert.ok(identityFacets.provider.includes('Synthetic Provider'));
+  assert.ok(identityFacets.productPlatform.includes('Amazon'));
+  assert.ok(identityFacets.productPlatform.includes('未记录'));
+  assert.ok(!identityFacets.productPlatform.includes('独立站'));
+  assert.equal((await reads.list({ collection: 'products', productPlatform: '独立站' })).total, 0);
+  assert.ok(identityFacets.currency.includes('USD'));
+  assert.ok(identityFacets.currency.includes('未记录'));
   const listingFilter = { collection: 'products', market: 'US', listedFrom: '2026-10-15', listedTo: '2026-10-22' };
   assert.equal((await reads.list({ ...listingFilter, pageSize: 1 })).total, 2);
   assert.equal((await reads.list({ ...listingFilter, page: 2, pageSize: 1 })).rows.length, 1);

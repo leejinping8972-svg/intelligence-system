@@ -8,6 +8,8 @@ import { updatePreferences } from '@vben/preferences';
 import { useMediaQuery } from '@vueuse/core';
 import { Button, Dropdown, Menu, message, Tag } from 'ant-design-vue';
 
+import WorkspaceNavigation from '#/views/intelligence/components/WorkspaceNavigation.vue';
+
 import { state } from '#/views/intelligence/data';
 import {
   launchPlatformLink,
@@ -69,6 +71,7 @@ watchEffect(() => {
     :logo-text="state.branding.appName"
     :text="state.branding.workspaceName"
   >
+    <template #sidebar-menu="{ closeMenu }"><WorkspaceNavigation @select="closeMenu" /></template>
     <template #user-dropdown>
       <div class="hci-header-controls">
         <a

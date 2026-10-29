@@ -26,7 +26,7 @@ import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
 const core = useCoreList('ads');
 const { preset: corePreset, period: corePeriod } = core;
-const adColumns = [{ title: '广告主 / 素材', key: 'brand', width: 270, fixed: 'left' as const }, { title: '市场', key: 'market', width: 90 }, { title: '操作', key: 'actions', width: 100, fixed: 'right' as const }];
+const adColumns = [{ title: '广告主 / 素材', key: 'brand', width: 270, fixed: 'left' as const }, { title: '市场', key: 'market', width: 90 }, { title: '平台', key: 'platform', dataIndex: 'platform', width: 100 }, { title: '数据来源', key: 'source', dataIndex: 'source', width: 150 }, { title: '操作', key: 'actions', width: 100, fixed: 'right' as const }];
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import AdsResearchPanel from './components/AdsResearchPanel.vue';
@@ -52,6 +52,9 @@ const search = ref(''),
   open = ref(false),
   busy = ref(false),
   error = ref('');
+const platformFilter = ref('ALL'), sourceFilter = ref('ALL');
+const platformOptions = computed(() => [{ label: '全部平台', value: 'ALL' }, ...(serverMode ? remote.facets.value.platform || [] : [...new Set(state.ads.map(a => a.platform))]).map(value => ({label: value, value}))]);
+const sourceOptions = computed(() => [{ label: '全部数据来源', value: 'ALL' }, ...(serverMode ? remote.facets.value.source || [] : [...new Set(state.ads.map(a => a.source).filter(Boolean))]).map(value => ({label: value, value}))]);
 const keywordIds = ref<string[]>([]);
 const viewTab = ref('ads');
 watch(() => route.query.tab, (value) => { if (value === 'advertisers' || value === 'ads') viewTab.value = value; }, { immediate: true });
@@ -80,6 +83,8 @@ const rows = computed(() => serverMode ? remote.rows.value :
         `${a.brand} ${a.headline} ${a.copy} ${a.query || ''} ${a.pageId || ''}`
           .toLowerCase()
           .includes(search.value.toLowerCase()) &&
+        (platformFilter.value === 'ALL' || a.platform === platformFilter.value) &&
+        (sourceFilter.value === 'ALL' || a.source === sourceFilter.value) &&
         (status.value === 'ALL' || a.status === status.value) &&
         (newness.value === 'ALL' ||
           (newness.value === 'discovered' ? discoveryDecision(a, 'ad').recentDiscovery
@@ -97,7 +102,7 @@ const rows = computed(() => serverMode ? remote.rows.value :
 const page = ref(1);
 const pageSize = ref(20);
 const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.market, search: search.value,
-  status: status.value, newness: newness.value, keywordId: route.query.keywordId, linkedSite: route.query.site,
+  platform: platformFilter.value, source: sourceFilter.value, status: status.value, newness: newness.value, keywordId: route.query.keywordId, linkedSite: route.query.site,
 })), page, pageSize);
 const { ids: bulkIds, selectable, selectAll, clear } = useFilteredSelection(rows, undefined, serverMode ? remote.selectAll : undefined);
 const pagedRows = computed(() => serverMode ? rows.value : rows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
@@ -109,7 +114,7 @@ watch(() => selected.value?.id, async (id) => {
   } catch (cause) { message.error((cause as Error).message); }
 });
 const adResearch = ref<InstanceType<typeof AdsResearchPanel>>();
-watch([search, status, newness, () => state.market, () => route.query], () => { page.value = 1; clear(); });
+watch([search, status, newness, platformFilter, sourceFilter, () => state.market, () => route.query], () => { page.value = 1; clear(); });
 watch([() => keywordIds.value.length, () => form.maxPages], () => {
   form.maxRequests = Math.max(
     1,
@@ -217,6 +222,7 @@ async function exportAds() {
         v-if="!rows.length"
         description="暂无广告；选择已入选关键词采集，或导入真实广告资料"
       />
+      <div class="hci-toolbar"><Select v-model:value="platformFilter" :options="platformOptions" show-search option-filter-prop="label" aria-label="按广告平台筛选" style="min-width: 150px" /><Select v-model:value="sourceFilter" :options="sourceOptions" show-search option-filter-prop="label" aria-label="按广告数据来源筛选" style="min-width: 180px" /></div>
       <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="ads" />
       <Table v-if="corePreset !== 'original'" size="small" row-key="id" :columns="core.columns(adColumns)" :data-source="pagedRows" :pagination="false" :scroll="{ x: 'max-content' }" :row-selection="{ selectedRowKeys: bulkIds, onChange: (keys) => bulkIds = keys.map(String), getCheckboxProps: (a) => ({disabled:a.dataNature === 'demo'}) }">
         <template #bodyCell="{column,record}">
@@ -241,7 +247,7 @@ async function exportAds() {
             <DiscoveryTag :item="ad" kind="ad" />
             <p class="hci-ad-copy">{{ ad.copy || '未返回广告文案' }}</p>
             <p class="hci-subtle">
-              {{ marketName(ad.market) }} · {{ ad.source || '人工导入' }} ·
+              {{ marketName(ad.market) }} · 平台：{{ ad.platform || '未记录' }} · 来源：{{ ad.source || '人工导入' }} ·
               {{ time(ad.lastCollectedAt || ad.firstSeenAt) }}
             </p>
             <div class="hci-toolbar">

@@ -8,7 +8,7 @@ import { discoveryDecision } from './discovery';
 import { rollingTrendComparison } from './trend-comparison';
 
 export type CoreKind = 'ads' | 'keywords' | 'products' | 'sites';
-export type CorePeriod = 30 | 90 | 365;
+export type CorePeriod = 30 | 90 | 180 | 365;
 export type MetricStatus =
   | 'accumulating'
   | 'available'
@@ -601,7 +601,7 @@ export function productMetrics(
           status: reset ? 'unverified' : 'available',
           reason: reset
             ? '计数回退/重置，增量无效'
-            : '首尾展示差值，非净成交，不外推为30/90/365天销量',
+            : '首尾展示差值，非净成交，不外推为30/90/180/365天销量',
         },
       ),
     );
@@ -1172,7 +1172,7 @@ export function coreExport(
     市场: record.market,
   };
   const periods: CorePeriod[] =
-    kind === 'products' || kind === 'keywords' ? [30, 90, 365] : [30];
+    kind === 'products' || kind === 'keywords' ? [30, 90, 180, 365] : [30];
   const seen = new Set<string>();
   for (const days of periods)
     for (const m of coreMetrics(kind, record, days, context)) {

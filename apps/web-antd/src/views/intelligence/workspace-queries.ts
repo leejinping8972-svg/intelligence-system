@@ -258,6 +258,7 @@ export interface OverviewSnapshot {
     keywords: number;
     sites: number;
     products: number;
+    ads?: number;
     reviews: number;
   };
   keywords: {

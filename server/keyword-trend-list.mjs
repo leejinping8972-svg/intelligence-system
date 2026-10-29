@@ -1,4 +1,4 @@
-import { fourPeriodComparisons } from './model.js';
+import { fourPeriodComparisons, rollingTrendComparison } from './model.js';
 
 // Read only the saved Google trend fields needed by the visible list page.
 export function keywordTrendList(record) {
@@ -11,5 +11,6 @@ export function keywordTrendList(record) {
     series: (record.series || []).slice(-366),
     trendPoints: (record.trendPoints || []).slice(-366),
     trendCalendarSummary: fourPeriodComparisons(record),
+    trendRollingSummary: [30, 90, 180].map((days) => rollingTrendComparison(record, days)),
   };
 }

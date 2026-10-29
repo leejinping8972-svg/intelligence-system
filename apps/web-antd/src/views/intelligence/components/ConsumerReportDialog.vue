@@ -27,6 +27,9 @@ const props = withDefaults(
     compact?: boolean;
     label?: string;
     disabled?: boolean;
+    hideTrigger?: boolean;
+    initialQuery?: string;
+    initialMarket?: Market;
   }>(),
   {
     keywords: () => [],
@@ -79,9 +82,9 @@ async function begin() {
     requestId: crypto.randomUUID(),
   }));
   Object.assign(form, {
-    query: batch.value[0]?.term || '',
+    query: batch.value[0]?.term || props.initialQuery || '',
     market:
-      batch.value[0]?.market || (state.market === 'ALL' ? 'US' : state.market),
+      batch.value[0]?.market || props.initialMarket || (state.market === 'ALL' ? 'US' : state.market),
     sourceKind: 'reddit_search',
     urls: '',
     autoComments: true,
@@ -158,10 +161,12 @@ async function submit() {
     busy.value = false;
   }
 }
+defineExpose({ begin });
 import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
   <Button
+    v-if="!hideTrigger"
     :type="compact ? 'link' : 'primary'"
     :size="compact ? 'small' : 'middle'"
     :disabled="disabled || !serverMode"

@@ -7,6 +7,7 @@ import { serverMode } from './session';
 import { useOverviewSnapshot } from './workspace-queries';
 
 import { trendOption } from './charts';
+import NewResearchDialog from './components/NewResearchDialog.vue';
 import PageHeader from './components/PageHeader.vue';
 import {
   filteredKeywords,
@@ -29,7 +30,7 @@ const Chart = defineAsyncComponent({
 const router = useRouter();
 const overview = useOverviewSnapshot();
 const overviewKeywords = computed(() => serverMode ? overview.snapshot.value?.topKeywords || [] : filteredKeywords.value);
-const count = (key: 'keywords' | 'products' | 'reviews' | 'sites') => serverMode ? overview.snapshot.value?.counts[key] ?? '—' : ({ keywords: filteredKeywords.value.length, sites: filteredSites.value.length, products: filteredProducts.value.length, reviews: pendingReviews.value.length })[key];
+const count = (key: 'ads' | 'keywords' | 'products' | 'reviews' | 'sites') => serverMode ? overview.snapshot.value?.counts[key] ?? '—' : ({ ads: state.ads.filter(a => state.market === 'ALL' || a.market === state.market).length, keywords: filteredKeywords.value.length, sites: filteredSites.value.length, products: filteredProducts.value.length, reviews: pendingReviews.value.length })[key];
 const productCount = (market: string) => serverMode ? overview.snapshot.value?.productMarkets[market] ?? '—' : state.products.filter((p) => p.market === market).length;
 const selectedTerm = ref('k1');
 const keyword = computed(
@@ -58,6 +59,13 @@ const stats = computed(() => [
     note: '包含不同配方与规格',
     icon: '▦',
     route: '/products',
+  },
+  {
+    title: '广告资料',
+    value: count('ads'),
+    note: '采集与导入的广告记录',
+    icon: '◫',
+    route: '/ads',
   },
   {
     title: '待审核事项',
@@ -126,19 +134,17 @@ function selectMarket(name: string) {
 <template>
   <main class="hci-page">
     <PageHeader
-      title="把市场信号，变成下一步行动"
+      title="情报总览"
       description="从需求变化到竞品动态，在一处完成你的选品研究。"
     >
-      <Button @click="router.push('/imports')">导入数据</Button><Button type="primary" @click="router.push('/research?new=1')">
-        ＋ 新建研究
-      </Button>
+      <Button @click="router.push('/imports')">导入数据</Button><NewResearchDialog />
     </PageHeader>
     <Alert v-if="overview.error.value" type="error" :message="overview.error.value" show-icon />
     <div v-if="serverMode && overview.snapshot.value" class="hci-subtle" style="margin-bottom:12px">数据更新于 {{ new Date(overview.snapshot.value.generatedAt).toLocaleString('zh-CN') }}<span v-if="overview.indexing.value"> · 更新中</span></div>
     <div v-if="!serverMode || overview.snapshot.value?.counts.keywords === 0" class="hci-demo-note">
       <b>空白工作区</b>系统不再预置样本。请从关键词研究、公开数据采集或数据导入开始建立真实结果。
     </div>
-    <div class="hci-stats">
+    <div class="hci-stats overview-asset-stats">
       <button
         v-for="s in stats"
         :key="s.title"

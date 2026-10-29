@@ -18,7 +18,7 @@ export default defineConfig(async ({ mode }) => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api/, ''),
             // mock代理目标地址
-            target: 'http://localhost:5320/api',
+            target: process.env.HCI_DEV_API_TARGET || env.VITE_HCI_DEV_API_TARGET || 'http://localhost:5320/api',
             ws: true,
           },
         },

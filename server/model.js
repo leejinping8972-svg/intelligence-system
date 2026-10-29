@@ -898,7 +898,7 @@ function productMetrics(p, days, context = {}) {
           end: b.at,
           period: `\u5B9E\u9645\u89C2\u5BDF${Math.round(elapsed * 100) / 100}\u5929`,
           status: reset ? "unverified" : "available",
-          reason: reset ? "\u8BA1\u6570\u56DE\u9000/\u91CD\u7F6E\uFF0C\u589E\u91CF\u65E0\u6548" : "\u9996\u5C3E\u5C55\u793A\u5DEE\u503C\uFF0C\u975E\u51C0\u6210\u4EA4\uFF0C\u4E0D\u5916\u63A8\u4E3A30/90/365\u5929\u9500\u91CF"
+          reason: reset ? "\u8BA1\u6570\u56DE\u9000/\u91CD\u7F6E\uFF0C\u589E\u91CF\u65E0\u6548" : "\u9996\u5C3E\u5C55\u793A\u5DEE\u503C\uFF0C\u975E\u51C0\u6210\u4EA4\uFF0C\u4E0D\u5916\u63A8\u4E3A30/90/180/365\u5929\u9500\u91CF"
         }
       )
     );
@@ -2458,6 +2458,7 @@ export {
   productDataSource,
   productDecisions,
   radarStatistics,
+  rollingTrendComparison,
   trendComparisons,
   trendRecordFields
 };

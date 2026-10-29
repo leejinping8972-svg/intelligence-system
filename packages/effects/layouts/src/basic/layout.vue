@@ -379,7 +379,8 @@ const headerSlots = computed(() => {
       </LayoutHeader>
     </template>
     <!-- 侧边菜单区域 -->
-    <template #menu>
+    <template #menu="{ closeMenu }">
+      <slot name="sidebar-menu" :close-menu="closeMenu">
       <LayoutMenu
         :accordion="preferences.navigation.accordion"
         :collapse="preferences.sidebar.collapsed"
@@ -392,6 +393,7 @@ const headerSlots = computed(() => {
         @open="handleMenuOpen"
         @select="handleMenuSelect"
       />
+      </slot>
     </template>
     <template #mixed-menu>
       <LayoutMixedMenu

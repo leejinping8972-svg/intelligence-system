@@ -77,6 +77,8 @@ function changedFields(previous: string | undefined, value: unknown) {
           'productCount',
           'score',
           'trendSummary',
+          'trendRollingSummary',
+          'trendCalendarSummary',
         ].includes(key) && JSON.stringify(old[key]) !== JSON.stringify(next),
     ),
   );

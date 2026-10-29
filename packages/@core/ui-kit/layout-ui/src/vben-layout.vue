@@ -560,6 +560,10 @@ function resolveHeaderVisibilityOnScroll() {
   });
 }
 
+function closeMobileSidebar() {
+  if (props.isMobile) mobileSidebarOpen.value = false;
+}
+
 function handleClickMask() {
   activeSidebarCollapse.value = true;
 }
@@ -625,7 +629,7 @@ const layoutStaticHeaderTarget = `#${idLayoutStaticHeader}`;
         <slot name="mixed-menu"></slot>
       </template>
       <template v-else>
-        <slot name="menu"></slot>
+        <slot name="menu" :close-menu="closeMobileSidebar"></slot>
       </template>
 
       <template #extra>

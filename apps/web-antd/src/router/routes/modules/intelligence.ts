@@ -15,7 +15,7 @@ const routes: RouteRecordRaw[] = [
     name: 'HciResearch',
     path: '/research',
     component: () => import('#/views/intelligence/research.vue'),
-    meta: { title: '关键词研究', icon: 'lucide:scan-search', order: 1 },
+    meta: { title: '关键词', icon: 'lucide:scan-search', order: 1 },
   },
   {
     name: 'HciTrends',
@@ -62,7 +62,7 @@ const routes: RouteRecordRaw[] = [
     path: '/consumer-insights',
     component: () => import('#/views/intelligence/consumer-insights.vue'),
     meta: {
-      title: '消费者需求洞察',
+      title: '研究档案',
       icon: 'lucide:messages-square',
       order: 5.5,
     },
@@ -112,7 +112,7 @@ const routes: RouteRecordRaw[] = [
     path: '/settings',
     component: () => import('#/views/intelligence/settings.vue'),
     meta: {
-      title: '数据源与设置',
+      title: '设置',
       icon: 'lucide:settings-2',
       order: 12,
       authority: ['super'],
@@ -129,6 +129,8 @@ const routes: RouteRecordRaw[] = [
       authority: ['super'],
     },
   },
+  { name: 'HciProductResearch', path: '/product-research', component: () => import('#/views/intelligence/product-research.vue'), meta: { title: '商品研究', hideInMenu: true } },
+  { name: 'HciSourceUsage', path: '/usage', component: () => import('#/views/intelligence/usage.vue'), meta: { title: '资源消耗', authority: ['super'] } },
   ...(import.meta.env.VITE_HCI_SERVER === 'true'
     ? [
         {

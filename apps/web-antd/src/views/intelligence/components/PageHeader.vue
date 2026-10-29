@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import {
@@ -8,7 +8,8 @@ import {
   startCloudSync,
 } from '../cloud-workspace';
 import { state, storageError } from '../data';
-import { serverMode } from '../session';
+import { workspaceTabs } from '../navigation';
+import { serverMode, session } from '../session';
 import MarketSwitcher from './MarketSwitcher.vue';
 import RepeatResearchDialog from './RepeatResearchDialog.vue';
 const props = withDefaults(
@@ -21,6 +22,7 @@ const props = withDefaults(
   { showMarket: true },
 );
 const route = useRoute();
+const tabs = computed(() => workspaceTabs(route.path, !serverMode || session.user?.role === 'admin'));
 watch(
   () => [route.path, props.mode] as const,
   ([path, mode]) => {
@@ -80,5 +82,8 @@ watch(
   >
     正在读取最新数据；如有上次成功内容会继续显示，不会先清空再刷新。
   </div>
+  <nav v-if="tabs.length" class="workspace-tabs" aria-label="页面视图">
+    <RouterLink v-for="tab in tabs" :key="tab.path" :to="{ path: tab.path, query: route.query.market ? { market: route.query.market } : {} }" :class="{ 'is-active': route.path === tab.path }">{{ tab.title }}</RouterLink>
+  </nav>
   <RepeatResearchDialog />
 </template>

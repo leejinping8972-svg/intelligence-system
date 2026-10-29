@@ -67,7 +67,7 @@ export function projectRecord(collection, value) {
     const historical = collection === 'products'
       ? value.decisionData?.series?.length || evidence?.history?.length
       : collection === 'keywords' && (value.trendHistoryPoints?.length || value.trendPoints?.length);
-    if (historical) data.coreSummary = { periods: Object.fromEntries([30, 90, 365].map((days) => [days, coreMetrics(collection, value, days).filter((metric) => ['sales', 'dailySales', 'sourceSales', 'observedDelta', 'relativeHeat', 'trendChange'].includes(metric.key))])) };
+    if (historical) data.coreSummary = { periods: Object.fromEntries([30, 90, 180, 365].map((days) => [days, coreMetrics(collection, value, days).filter((metric) => ['sales', 'dailySales', 'sourceSales', 'observedDelta', 'relativeHeat', 'trendChange'].includes(metric.key))])) };
     if (collection === 'products' && value.sourceContent) {
       const summary = pick(value.sourceContent, ['collectedAt', 'sellingPoints']);
       if (Object.keys(summary).length) data.sourceContent = summary;
@@ -596,6 +596,7 @@ export function createWorkspaceReads({
           keywords: count('keywords'),
           sites: count('sites'),
           products: count('products'),
+          ads: count('ads'),
           reviews: reviews
             .filter((r) => market === 'ALL' || r.market === market)
             .reduce((sum, r) => sum + Number(r.total), 0),
@@ -671,6 +672,18 @@ export function createWorkspaceReads({
     equals('platform', 'platform');
     equals('ownership', 'ownership');
     equals('siteId', 'site_id');
+    if (collection === 'products') {
+      const field = key => sql(
+        `NULLIF(r.payload->>'${key}','')`,
+        `NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.${key}')),'')`,
+      );
+      const provider = `COALESCE(${field('sourceProvider')},CASE WHEN ${field('dataNature')}='demo' THEN '演示样本' ELSE '人工导入 / 来源待确认' END)`;
+      const platform = `COALESCE(${field('sourcePlatform')},'未记录')`;
+      if (input.provider && input.provider !== 'ALL') clauses.push(`${provider}=${bind(input.provider)}`);
+      if (input.productPlatform && input.productPlatform !== 'ALL') clauses.push(`${platform}=${bind(input.productPlatform)}`);
+      if (input.siteLinked === 'linked') clauses.push("r.site_id<>''");
+      if (input.siteLinked === 'unlinked') clauses.push("COALESCE(r.site_id,'')=''");
+    }
     if (input.rating === 'UNRATED') clauses.push("r.grade=''");
     else equals('rating', 'grade');
     if (input.status && input.status !== 'ALL') {
@@ -776,7 +789,7 @@ export function createWorkspaceReads({
       // Read only sort metadata across the filtered set; fetch full payloads for this page.
       const field = (path) => sql(`r.payload${path.split('.').map((part) => `->'${part}'`).join('')}`, `JSON_EXTRACT(r.payload,'$.${path}')`);
       const pairs = [
-        "'market'", field('market'), "'lastCollectedAt'", field('lastCollectedAt'),
+        "'price'", field('price'), "'market'", field('market'), "'lastCollectedAt'", field('lastCollectedAt'),
         "'sourceMetrics'", sql('jsonb_build_object', 'JSON_OBJECT') + `('collectedAt',${field('sourceMetrics.collectedAt')},'soldRaw',${field('sourceMetrics.soldRaw')},'soldCount',${field('sourceMetrics.soldCount')})`,
         "'sourceContent'", sql('jsonb_build_object', 'JSON_OBJECT') + `('collectedAt',${field('sourceContent.collectedAt')})`,
         "'decisionData'", field('decisionData'),
@@ -837,6 +850,13 @@ export function createWorkspaceReads({
           ...links.filter((r) => r.relation === name).map((r) => r.target),
         ]),
       ].sort();
+    if (input.collection === 'products') {
+      const field = key => sql(`NULLIF(payload->>'${key}','')`, `NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.${key}')),'')`);
+      const identity = (await pool.query(`SELECT ${field('sourceProvider')} AS provider,${field('sourcePlatform')} AS product_platform,${field('dataNature')} AS nature,${field('currency')} AS currency,site_id FROM workspace_read_rows WHERE collection=$1${market} GROUP BY provider,product_platform,nature,currency,site_id`, values)).rows;
+      result.currency = [...new Set(identity.map(row => row.currency || '未记录'))].sort();
+      result.provider = [...new Set(identity.map(row => row.provider || (row.nature === 'demo' ? '演示样本' : '人工导入 / 来源待确认')))].sort();
+      result.productPlatform = [...new Set(identity.map(row => row.product_platform || '未记录'))].sort();
+    }
     // Lookup options stay small and omit source evidence and time series.
     for (const collection of ['keywords', 'sites']) {
       const fields = ['term', 'brand', 'domain', 'reviewStatus'];

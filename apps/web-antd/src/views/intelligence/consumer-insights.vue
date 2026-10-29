@@ -15,11 +15,9 @@ import { useRoute, useRouter } from 'vue-router';
 import { Alert, Button, Input, Select, Table, Tag } from 'ant-design-vue';
 
 import { cloudRequest } from './cloud-workspace';
-import ConsumerReportDialog from './components/ConsumerReportDialog.vue';
-import CountryMarketReportDialog from './components/CountryMarketReportDialog.vue';
 import MarketCollectionDialog from './components/MarketCollectionDialog.vue';
+import NewResearchDialog from './components/NewResearchDialog.vue';
 import PageHeader from './components/PageHeader.vue';
-import PersonaResearchDialog from './components/PersonaResearchDialog.vue';
 import { reportStatus, reportTopics } from './consumer-reports';
 import { marketName, state } from './data';
 import { serverMode, session } from './session';
@@ -158,34 +156,11 @@ function reset() {
 <template>
   <main class="hci-page">
     <PageHeader
-      title="消费者需求洞察"
+      title="研究档案"
       description="按关键词查看公开讨论的话题方向、样本热度和来源。"
     >
-      <Button
-        v-if="session.user?.role === 'admin'"
-        @click="router.push('/ai-config')"
-        >
-AI 配置
-</Button>
-      <ConsumerReportDialog
-        :keywords="generationKeywords"
-        :site-ids="
-          typeof route.query.site === 'string' ? [route.query.site] : []
-        "
-        :product-ids="
-          typeof route.query.product === 'string' ? [route.query.product] : []
-        "
-        label="新建消费者洞察报告"
-        @submitted="load"
-      />
-      <MarketCollectionDialog
-        v-if="session.user?.role === 'admin'"
-        @submitted="load"
-      />
-      <CountryMarketReportDialog
-        @submitted="(id) => router.push(`/consumer-insights/reports/${id}`)"
-      />
-      <PersonaResearchDialog v-if="session.user?.role === 'admin'" @submitted="(id) => router.push(`/consumer-insights/reports/${id}`)" />
+      <MarketCollectionDialog v-if="session.user?.role === 'admin'" @submitted="load" />
+      <NewResearchDialog :keywords="generationKeywords" :site-ids="typeof route.query.site === 'string' ? [route.query.site] : []" :product-ids="typeof route.query.product === 'string' ? [route.query.product] : []" @submitted="load" />
     </PageHeader>
     <Alert
       v-if="!serverMode"

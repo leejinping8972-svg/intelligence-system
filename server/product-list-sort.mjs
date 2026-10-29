@@ -1,6 +1,6 @@
 import { productListingDate } from './product-listing.mjs';
 
-export const productSortKeys = ['collectedAt', 'core:cumulativeSold', 'core:listingDate'];
+export const productSortKeys = ['collectedAt', 'core:cumulativeSold', 'core:listingDate', 'core:priceOriginal'];
 
 export function productCollectionTime(product) {
   return [product.lastCollectedAt, product.sourceMetrics?.collectedAt, product.sourceContent?.collectedAt]
@@ -25,6 +25,7 @@ export function productSortValue(product, key) {
     const time = productCollectionTime(product);
     return time ? Date.parse(time) : null;
   }
+  if (key === 'core:priceOriginal') return typeof product.price === 'number' && Number.isFinite(product.price) && product.price >= 0 ? product.price : null;
   if (key === 'core:cumulativeSold') return displayedSalesOrder(product.sourceMetrics);
   if (key === 'core:listingDate') return productListingDate(product) || null;
   return null;

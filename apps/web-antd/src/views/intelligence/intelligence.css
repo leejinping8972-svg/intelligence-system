@@ -1845,3 +1845,88 @@ textarea {
     gap: 8px;
   }
 }
+
+/* Approved compact workspace, 2026-10-29. Wide business tables scroll inside panels. */
+.workspace-nav { padding: 6px; font-size: 12px; color: #525866; }
+.workspace-nav section + section { margin-top: 10px; }
+.workspace-nav-label { margin: 8px 10px 3px; font-size: 10px; color: #9096a2; }
+.workspace-nav a { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 6px 10px; margin: 2px 0; border-radius: 4px; color: inherit; text-decoration: none; }
+.workspace-nav a svg { flex: none; width: 15px; height: 15px; }
+.workspace-nav a:hover { background: #f1f3f6; color: #17191d; }
+.workspace-nav a.is-active { color: white; background: #17191d; font-weight: 600; }
+.workspace-nav.is-collapsed a { justify-content: center; padding-inline: 4px; }
+.workspace-tabs { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 8px; min-height: 30px; border-bottom: 1px solid #e4e7ec; }
+.workspace-tabs a, .workspace-tabs button { display: inline-flex; align-items: center; padding: 4px 0 7px; border: 0; border-bottom: 2px solid transparent; color: #727a87; background: transparent; cursor: pointer; font: inherit; font-size: 12px; text-decoration: none; }
+.workspace-tabs .is-active { color: #17191d; font-weight: 700; border-bottom-color: #17191d; }
+.workspace-nav a:focus-visible, .workspace-tabs a:focus-visible, .workspace-tabs button:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.hci-page { padding: 8px 10px 14px; font-size: 12px; }
+.hci-page h1 { font-size: 18px; line-height: 1.5; }
+.hci-page h2 { font-size: 13px; }
+.hci-page h3 { font-size: 12px; }
+.hci-page .hci-panel { padding: 8px 10px; border-radius: 5px; }
+.hci-page .hci-stat { padding: 8px 10px; border-radius: 4px; }
+.hci-stat-value { font-size: 23px; line-height: 1.2; }
+.hci-stat-label, .hci-stat-foot, .hci-subtle { font-size: 11px; }
+.hci-page .ant-btn, .hci-page .ant-input, .hci-page .ant-select-selector, .hci-page .ant-input-number { font-size: 12px; }
+.hci-page .hci-toolbar { gap: 6px; margin-block: 6px; }
+.hci-page .hci-toolbar > .ant-select { max-width: 100%; }
+.hci-page .hci-toolbar > .ant-select .ant-select-selector { min-height: 30px; }
+.hci-page .ant-tabs-nav { margin-bottom: 8px; }
+.hci-page .ant-tabs-tab { padding: 6px 0; font-size: 12px; }
+.hci-page .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: #17191d; font-weight: 700; text-shadow: none; }
+.hci-page .ant-tabs-ink-bar { background: #17191d; }
+.hci-page .insight-toolbar { gap: 6px; margin-bottom: 8px; }
+.hci-page .ant-table-wrapper, .hci-page section, .hci-page .ant-tabs-content-holder { min-width: 0; }
+.hci-page .source-heading h2 { font-size: 13px; }
+.hci-page .source-grid { gap: 8px; grid-template-columns: repeat(auto-fill,minmax(230px,1fr)); }
+.hci-page .source-card { border-radius: 5px; }
+.hci-page .source-card-open { padding: 10px; }
+.hci-page .source-card-heading h3 { font-size: 13px; }
+.hci-page .source-overview { gap: 8px; margin-block: 8px; }
+.source-connections .ant-table-cell { vertical-align: middle; }
+.source-connections .ant-table-cell p { margin: 0; }
+.research-type-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 12px; }
+.research-type-grid button { display: flex; flex-direction: column; gap: 7px; text-align: left; padding: 14px; border: 1px solid #dfe3e9; border-radius: 5px; background: #fff; cursor: pointer; }
+.research-type-grid button:hover { border-color: #5b7ce7; background: #f7f9ff; }
+.research-type-grid button:disabled { opacity: .5; cursor: not-allowed; }
+.research-type-grid strong { font-size: 14px; color: #17191d; }
+.research-type-grid span { font-size: 12px; color: #667085; line-height: 1.6; }
+.research-type-grid small { color: #8a6112; }
+.product-research-layout { display: grid; grid-template-columns: minmax(380px,.9fr) minmax(0,1.1fr); gap: 8px; align-items: start; }
+.product-research-detail { min-height: 340px; }
+.research-report-row { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid #e4e7ec; }
+@media(max-width: 1100px) { .product-research-layout { grid-template-columns: minmax(0,1fr); } }
+@media(max-width: 767px) {
+  .hci-page { padding: 8px; width: 100%; overflow-x: clip; }
+  .workspace-tabs { gap: 12px; }
+  .hci-page .hci-toolbar > .ant-select { min-width: 0 !important; width: calc(50% - 3px); }
+  .hci-page .hci-toolbar > .ant-input-search { width: 100% !important; }
+  .research-type-grid { grid-template-columns: minmax(0,1fr); }
+}
+
+@media (min-width: 1024px) { .overview-asset-stats { grid-template-columns: repeat(5,minmax(0,1fr)); } }
+
+/* Dense toolbars and evidence rows preserve advanced actions without tall gaps. */
+.hci-page .product-filters { margin-bottom: 6px; }
+.hci-page .product-filters .hci-toolbar > .ant-select { min-width: 125px !important; flex: 1 1 140px; }
+.hci-page .product-filters .ant-input-search { width: 260px; }
+.hci-page .product-filters .hci-toolbar-end { flex: 0 0 auto; margin-left: auto; }
+.product-controls-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.hci-page .product-controls-row .hci-toolbar { margin: 2px 0; }
+.hci-page .product-controls-row .ant-picker { max-width: 235px; }
+.hci-page .hci-selection-bar { padding: 4px 8px; margin: 4px 0; }
+.hci-page .core-list-controls { margin: 5px 0; }
+.product-compact-table .core-metric-cell small { font-size: 11px; -webkit-line-clamp: 1; }
+.product-compact-table .product-list-thumb { width: 36px; height: 42px; }
+.product-compact-table .product-list-name { gap: 6px; }
+.hci-page .ant-table-cell p { margin-bottom: 0; }
+@media(max-width:767px) { .hci-page .product-filters .hci-toolbar > .ant-select { flex: 1 1 calc(50% - 6px); } .product-controls-row { align-items: stretch; } }
+
+/* Dense list labels keep the complete evidence popover without inflating rows. */
+.product-compact-table .discovery-tags, .product-compact-table .decision-tags { gap: 3px; margin: 2px 0; }
+.product-compact-table .decision-tag { min-height: 20px; }
+.product-compact-table .ant-table-cell .ant-tag { font-size: 11px; line-height: 18px; padding-inline: 4px; }
+
+.product-compact-table .ant-table-cell-fix-right, .product-compact-table .ant-table-cell-fix-left { background: var(--hci-surface, #fff); }
+.product-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
+.product-row-actions .ant-btn { padding-inline: 4px; }

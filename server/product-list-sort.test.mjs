@@ -27,3 +27,9 @@ test('unknown values remain last in both directions and equal keys remain ties',
     assert.equal(compareProductValues(500, 500, order), 0);
   }
 });
+
+test('original price ordering keeps zero and unknown values distinct', () => {
+  assert.equal(productSortValue({ price: 0 }, 'core:priceOriginal'), 0);
+  assert.equal(productSortValue({ price: 12.5 }, 'core:priceOriginal'), 12.5);
+  assert.equal(productSortValue({}, 'core:priceOriginal'), null);
+});

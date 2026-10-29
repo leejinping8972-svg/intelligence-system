@@ -1,6 +1,7 @@
 // Context IDs belong to the previous market. Keep unrelated view/query settings.
 const contextKeys: Record<string, string[]> = {
   '/sites': ['keywordId', 'keyword', 'site'],
+  '/product-research': ['product'],
   '/products': ['keyword', 'site', 'product'],
   '/ads': ['keywordId', 'site', 'report', 'pageId'],
   '/trends': ['keyword', 'term', 'market'],

@@ -245,7 +245,7 @@ export function formatTrendComparison(value: TrendComparison) {
   return `${value.label}：${value.heat}(${value.change > 0 ? '+' : ''}${value.change}%)`;
 }
 
-export function rollingTrendComparison(record: TrendRecord, days: 30 | 90 | 365): TrendComparison {
+export function rollingTrendComparison(record: TrendRecord, days: 30 | 90 | 180 | 365): TrendComparison {
   const daily = intervals(record.trendDailyPoints, 'day', record.trendDailyCollectedAt);
   const history = intervals(record.trendHistoryPoints, record.trendHistoryResolution, record.trendHistoryCollectedAt);
   const annual = intervals(record.trendPoints, record.trendResolution, record.trendCollectedAt);

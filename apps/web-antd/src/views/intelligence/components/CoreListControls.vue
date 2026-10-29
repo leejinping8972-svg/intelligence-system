@@ -42,7 +42,7 @@ async function refreshRates() {
         ><Segmented
           v-model:value="period"
           aria-label="列表统计周期"
-          :options="[30, 90, 365].map((d) => ({ value: d, label: `近${d}天` }))"
+          :options="[30, 90, 180, 365].map((d) => ({ value: d, label: `近${d}天` }))"
         /></div
     ></template>
     <template v-if="kind === 'products'"

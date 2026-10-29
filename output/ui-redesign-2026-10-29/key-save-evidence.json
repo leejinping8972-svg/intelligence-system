@@ -1,0 +1,22 @@
+[
+  {
+    "action": "server_semrush_status",
+    "fields": [
+      "action"
+    ]
+  },
+  {
+    "action": "server_semrush_usage",
+    "fields": [
+      "action"
+    ]
+  },
+  {
+    "action": "server_semrush_config",
+    "fields": [
+      "apiKey",
+      "action"
+    ],
+    "secretReceived": true
+  }
+]

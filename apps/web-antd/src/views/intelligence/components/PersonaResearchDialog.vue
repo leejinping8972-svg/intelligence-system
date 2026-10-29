@@ -14,6 +14,7 @@ import {
 
 import { cloudRequest } from '../cloud-workspace';
 import { defaultPersonaPlan } from '../persona-research';
+defineProps<{ hideTrigger?: boolean }>();
 const emit = defineEmits<{ submitted: [id: string] }>();
 const busy = ref(false);
 const error = ref('');
@@ -72,10 +73,11 @@ async function submit() {
     busy.value = false;
   }
 }
+defineExpose({ begin: () => { open.value = true; } });
 import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
-  <Button @click="open = true">从人群画像研究</Button>
+  <Button v-if="!hideTrigger" @click="open = true">从人群画像研究</Button>
   <Modal
     v-model:open="open"
     title="人群画像研究"

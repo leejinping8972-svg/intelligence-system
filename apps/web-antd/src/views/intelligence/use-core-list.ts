@@ -99,7 +99,7 @@ export function useCoreList(kind: CoreKind) {
         : base;
     if (preset.value === 'original') return responsive;
     const identity = responsive.filter((c) =>
-      ['product', 'brand', 'term', 'market', 'category', 'actions'].includes(
+      ['product', 'brand', 'term', 'market', 'category', 'platform', 'provider', 'source', 'actions'].includes(
         c.key || '',
       ),
     );

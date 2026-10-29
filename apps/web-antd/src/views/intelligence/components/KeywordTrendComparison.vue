@@ -7,10 +7,20 @@ import { Tooltip } from 'ant-design-vue';
 
 import {
   formatTrendComparison,
-  fourPeriodComparisons,
+  rollingTrendComparison,
 } from '../trend-comparison';
 const props = defineProps<{ keyword: Keyword }>();
-const comparisons = computed(() => fourPeriodComparisons(props.keyword));
+const comparisons = computed(() => [30, 90, 180].map(days => {
+  const fresh = props.keyword.trendRollingSummary?.find(item => item.label === '近' + days + '天');
+  if (fresh) return fresh;
+  const summary = props.keyword.coreSummary?.periods?.[days as 30 | 90 | 180];
+  if (summary) {
+    const heat = summary.find(metric => metric.key === 'relativeHeat');
+    const change = summary.find(metric => metric.key === 'trendChange');
+    return { key: String(days), label: '近' + days + '天', heat: typeof heat?.value === 'number' ? heat.value : null, change: typeof change?.value === 'number' ? change.value : null, currentMean: null, previousMean: null, start: undefined, end: undefined, reason: heat?.reason || '按等长滚动窗口比较' };
+  }
+  return rollingTrendComparison(props.keyword, days as 30 | 90 | 180);
+}));
 const capturedAt = computed(() => props.keyword.trendDailyCollectedAt || props.keyword.trendCollectedAt || props.keyword.trendHistoryCollectedAt);
 </script>
 <template>
@@ -18,7 +28,7 @@ const capturedAt = computed(() => props.keyword.trendDailyCollectedAt || props.k
     <Tooltip
       v-for="value in comparisons"
       :key="value.key"
-      :title="`${value.reason}；${value.start ? `${value.start} 至 ${value.end}` : '待采集'}。Google按原始UTC日期，本周从周一、本月从1日起，比较上一周/月同期；近3/6个月比较此前等长周期。热度为原始查询尺度0–100的日数加权均值，非搜索量。不同来源不比较绝对值。`"
+      :title="`${value.reason}；${value.start ? `${value.start} 至 ${value.end}` : '待采集'}。按原始UTC日期，比较此前等长的30/90/180天窗口。热度为原始查询尺度0–100的日数加权均值，非搜索量。不同来源不比较绝对值。`"
     >
       <p
         :class="

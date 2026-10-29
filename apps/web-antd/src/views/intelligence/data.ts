@@ -62,6 +62,7 @@ export interface Keyword {
   listSummary?: boolean;
   trendSummary?: import('./trend-comparison').TrendComparison[];
   trendCalendarSummary?: import('./trend-comparison').TrendComparison[];
+  trendRollingSummary?: import('./trend-comparison').TrendComparison[];
   adCollection?: {
     jobId?: string;
     status: string;

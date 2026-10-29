@@ -121,10 +121,13 @@ async function retryTrends(task: Task) {
 watch(
   () => route.query.tab,
   (v) => {
-    if (v === 'tasks' || v === 'monitors') tab.value = v;
+    if (v === 'tasks' || v === 'monitors' || v === 'audit') tab.value = v;
   },
   { immediate: true },
 );
+watch(tab, value => {
+  if (route.query.tab !== value) void router.replace({ query: { ...route.query, tab: value } });
+});
 const monitors = computed(() =>
   focusedMonitorRows(
     state.products,
@@ -195,7 +198,7 @@ const auditRows = computed(() =>
   <main class="hci-page">
     <PageHeader
       :mode="tab === 'tasks' ? 'tasks' : 'legacy'"
-      title="监控与任务"
+      :title="tab === 'monitors' ? '跟踪计划' : tab === 'audit' ? '操作记录' : '采集任务'"
       description="让重点对象持续可见，让每个研究步骤都有明确状态。"
     >
       <Button type="primary" @click="router.push('/research?new=1')">
