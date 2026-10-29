@@ -19,7 +19,8 @@ import {
 
 import PageHeader from './components/PageHeader.vue';
 import CollectionTime from './components/CollectionTime.vue';
-import { collectionTimeOrder, productCollectedAt } from './resource-metadata';
+import { productCollectedAt } from './resource-metadata';
+import { compareProductValues, productSortKeys, productSortValue } from '../../../../../server/product-list-sort.mjs';
 import CompactTags from './components/CompactTags.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
@@ -71,6 +72,13 @@ function setListedQuick(days: number) {
 const viewMode = ref<'cards' | 'list'>('list');
 const page = ref(1),
   pageSize = ref(20);
+const tableSort = ref<{ key: string; order?: 'ascend' | 'descend' }>({ key: '' });
+function tableChange(pagination: unknown, filters: unknown, sorter: any) {
+  const value = Array.isArray(sorter) ? sorter[0] || {} : sorter;
+  tableSort.value = value.order ? { key: String(value.columnKey), order: value.order } : { key: '' };
+  page.value = 1;
+  remote.tableChange(pagination, filters, value.order ? value : {});
+}
 const failedImages = ref(new Set<string>());
 const category = ref('ALL');
 const favorites = ref(false);
@@ -217,11 +225,33 @@ const rows = computed(() => serverMode ? remote.rows.value :
 );
 const { ids: bulkIds, selected: bulkSelected, selectable, selectAll, clear, rowSelection } = useFilteredSelection(rows, undefined, serverMode ? remote.selectAll : undefined);
 const pagedRows = computed(() =>
-  serverMode ? rows.value : rows.value.slice(
+  serverMode ? rows.value : sortedRows.value.slice(
     (page.value - 1) * pageSize.value,
     page.value * pageSize.value,
   ),
 );
+const sortedRows = computed(() => {
+  const { key, order } = tableSort.value;
+  if (!order || !productSortKeys.includes(key)) return rows.value;
+  return [...rows.value].sort((a, b) => compareProductValues(productSortValue(a, key), productSortValue(b, key), order) || a.id.localeCompare(b.id));
+});
+const tableColumns = computed(() => core.columns([
+  { title: '商品', key: 'product', width: 280, fixed: 'left' as const },
+  { title: '市场 / 品类', key: 'category', width: 100 },
+  { title: '采集时间（北京时间）', key: 'collectedAt', width: 158 },
+  { title: '展示销量', key: 'core:cumulativeSold', width: 100 },
+  { title: '上架时间', key: 'core:listingDate', width: 112 },
+  { title: '决策标签', key: 'decisions', width: 210 },
+  { title: '原币价格', key: 'core:priceOriginal', width: 116 },
+  { title: '美元对比价', key: 'core:priceUsd', width: 116 },
+  { title: '规格 / 剂型', key: 'spec', width: 125 },
+  { title: '配方与成分', key: 'ingredient', width: 190 },
+  { title: '数据来源 / 独立站', key: 'source', width: 185 },
+  { title: '资源口径 / 覆盖', key: 'resourceEvidence', width: 220 },
+  { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
+]).map((column) => productSortKeys.includes(column.key || '') ? {
+  ...column, sorter: true, sortOrder: tableSort.value.key === column.key ? tableSort.value.order : null,
+} : column));
 watch(
   [
     search,
@@ -338,32 +368,45 @@ async function exportProducts() {
           style="min-width: 240px"
         /><Select
           v-model:value="category"
+          show-search
+          option-filter-prop="label"
+          aria-label="按品类筛选商品"
           :options="[
             { label: '全部品类', value: 'ALL' },
             ...categories.map((c) => ({ label: c, value: c })),
           ]"
         /><Select
           v-model:value="benefitFilter"
+          show-search
+          option-filter-prop="label"
           :options="benefitOptions"
           aria-label="按功效卖点筛选商品"
           style="min-width: 170px"
         /><Select
           v-model:value="ingredientFilter"
+          show-search
+          option-filter-prop="label"
           :options="ingredientOptions"
           aria-label="按成分分析筛选商品"
           style="min-width: 190px"
         /><Select
           v-model:value="siteFilter"
+          show-search
+          option-filter-prop="label"
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
-        /><Select id="product-newness" aria-label="商品新旧标签" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /><Select
+        /><Select id="product-newness" aria-label="商品新旧标签" v-model:value="newness" show-search option-filter-prop="label" :options="discoveryFilters" style="min-width: 180px" /><Select
           v-model:value="decisionFilter"
+          show-search
+          option-filter-prop="label"
           :options="productDecisionFilters"
           aria-label="按商品决策标签筛选"
           style="min-width: 200px"
         /><Select
           v-model:value="sourceFilter"
+          show-search
+          option-filter-prop="label"
           :options="sourceOptions"
           aria-label="按商品数据来源筛选"
           style="min-width: 210px"
@@ -517,28 +560,16 @@ async function exportProducts() {
     <Table
       v-if="viewMode === 'list'"
       :loading="remote.loading.value"
-      @change="remote.tableChange"
-      class="hci-resource-table"
+      @change="tableChange"
+      class="hci-resource-table product-compact-table"
       :row-selection="rowSelection"
       :data-source="pagedRows"
       row-key="id"
-      size="middle"
+      size="small"
+      table-layout="fixed"
       :pagination="false"
-      :scroll="{ x: 'max-content' }"
-      :columns="core.columns([
-        { title: '商品', key: 'product', width: 320, fixed: 'left' },
-        { title: '市场 / 品类', key: 'category', width: 150 },
-        { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: serverMode ? true : (a: Product, b: Product) => collectionTimeOrder(productCollectedAt(a)) - collectionTimeOrder(productCollectedAt(b)) },
-        { title: '展示销量', key: 'core:cumulativeSold', width: 170 },
-        { title: '上架时间', key: 'core:listingDate', width: 170 },
-        { title: '决策标签（点击看依据）', key: 'decisions', width: 280 },
-        { title: '规格 / 剂型', key: 'spec', width: 170 },
-        { title: '配方与成分', key: 'ingredient', width: 240 },
-        { title: '价格', key: 'price', width: 130 },
-        { title: '数据来源 / 独立站', key: 'source', width: 220 },
-        { title: '资源口径 / 覆盖', key: 'resourceEvidence', width: 270 },
-        { title: '操作', key: 'actions', width: 210, fixed: 'right' },
-      ])"
+      :scroll="{ x: tableColumns.reduce((total, column) => total + (column.width || 0), 32) }"
+      :columns="tableColumns"
     >
       <template #bodyCell="{ column, record }">
         <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Product, column.key)" />
@@ -592,9 +623,6 @@ async function exportProducts() {
             record.reviewed ? '已核验' : '待审核'
           }}</Tag></template
         >
-        <template v-else-if="column.key === 'price'">{{
-          record.price > 0 ? money(record.price, record.currency) : '价格待获取'
-        }}</template>
         <template v-else-if="column.key === 'source'"
           ><Tag>{{ productDataSource(record) }}</Tag
           ><Button
@@ -699,17 +727,17 @@ async function exportProducts() {
 }
 .product-list-name {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
 }
 .product-list-name > div {
   min-width: 0;
-  max-width: 242px;
+  flex: 1;
 }
 .product-list-thumb {
-  width: 66px;
-  height: 66px;
+  width: 48px;
+  height: 48px;
   background: #f5f7fb;
   flex-shrink: 0;
   border-radius: 5px;
@@ -734,5 +762,18 @@ async function exportProducts() {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.product-compact-table :deep(.ant-table-cell) {
+  padding: 8px 6px;
+  overflow-wrap: anywhere;
+}
+.product-compact-table :deep(.ant-table-selection-column) {
+  width: 32px;
+}
+.product-compact-table :deep(.ant-btn-link) {
+  padding-inline: 6px;
+}
+.product-compact-table :deep(.product-name-link) {
+  padding: 0;
 }
 </style>

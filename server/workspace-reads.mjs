@@ -15,6 +15,7 @@ import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
 import { productChineseName } from './product-names.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
+import { compareProductValues, productSortKeys, productSortValue } from './product-list-sort.mjs';
 
 const collections = new Set([
   'keywords',
@@ -770,7 +771,24 @@ export function createWorkspaceReads({
           ? 'r.score'
           : 'r.collected_at';
     const direction = input.order === 'ascend' ? 'ASC' : 'DESC';
-    const result = await pool.query(
+    let result;
+    if (query.collection === 'products' && productSortKeys.includes(input.sort)) {
+      // Read only sort metadata across the filtered set; fetch full payloads for this page.
+      const field = (path) => sql(`r.payload${path.split('.').map((part) => `->'${part}'`).join('')}`, `JSON_EXTRACT(r.payload,'$.${path}')`);
+      const pairs = [
+        "'market'", field('market'), "'lastCollectedAt'", field('lastCollectedAt'),
+        "'sourceMetrics'", sql('jsonb_build_object', 'JSON_OBJECT') + `('collectedAt',${field('sourceMetrics.collectedAt')},'soldRaw',${field('sourceMetrics.soldRaw')},'soldCount',${field('sourceMetrics.soldCount')})`,
+        "'sourceContent'", sql('jsonb_build_object', 'JSON_OBJECT') + `('collectedAt',${field('sourceContent.collectedAt')})`,
+        "'decisionData'", field('decisionData'),
+      ];
+      const metadata = (await pool.query(`SELECT r.id,${sql('jsonb_build_object', 'JSON_OBJECT')}(${pairs.join(',')}) AS sort_data FROM workspace_read_rows r WHERE ${query.where}`, query.values)).rows;
+      const ordered = metadata.map((row) => ({ id: row.id, value: productSortValue(typeof row.sort_data === 'string' ? JSON.parse(row.sort_data) : row.sort_data, input.sort) }))
+        .sort((a, b) => compareProductValues(a.value, b.value, input.order) || a.id.localeCompare(b.id));
+      const ids = ordered.slice((page - 1) * pageSize, page * pageSize).map((row) => row.id);
+      result = ids.length ? await pool.query(`SELECT r.id,r.payload FROM workspace_read_rows r WHERE r.collection='products' AND r.id IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids) : { rows: [] };
+      const positions = new Map(ids.map((id, i) => [id, i]));
+      result.rows.sort((a, b) => positions.get(a.id) - positions.get(b.id));
+    } else result = await pool.query(
       `SELECT r.payload,${query.collection === 'sites' ? "(SELECT COUNT(*) FROM workspace_read_rows p WHERE p.collection='products' AND p.site_id=r.id)" : '0'} AS product_count FROM workspace_read_rows r WHERE ${query.where} ORDER BY CASE WHEN ${sortColumn} IS NULL THEN 1 ELSE 0 END,${sortColumn} ${direction},r.id ASC LIMIT $${query.values.length + 1} OFFSET $${query.values.length + 2}`,
       [...query.values, pageSize, (page - 1) * pageSize],
     );

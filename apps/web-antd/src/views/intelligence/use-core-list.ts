@@ -10,6 +10,7 @@ import { serverMode } from './session';
 
 const presets: Record<CoreKind, Array<[string, string]>> = {
   products: [
+    ['priceOriginal', '原币价格'],
     ['priceUsd', '美元对比价'],
     ['sales', '所选周期销量'],
     ['dailySales', '日均件数'],
@@ -46,7 +47,6 @@ const extra: Record<CoreKind, Array<[string, string]>> = {
   products: [
     ['cumulativeSold', '累计展示已售'],
     ['listingDate', '上架时间'],
-    ['priceOriginal', '原币价格'],
     ['spec', '规格'],
     ['sellingPoints', '卖点'],
   ],
@@ -125,7 +125,7 @@ export function useCoreList(kind: CoreKind) {
           'landingPages',
         ].includes(key)
           ? 230
-          : 165,
+          : kind === 'products' ? 116 : 165,
       })),
       ...actions,
     ];

@@ -1,4 +1,5 @@
 import type { Product, Site } from './data';
+import { productCollectionTime } from '../../../../../server/product-list-sort.mjs';
 
 // Collection timestamps only: source publication, first discovery, metric dates and
 // task start/finish dates must not be presented as a successful resource capture.
@@ -18,12 +19,7 @@ export const siteCollectedAt = (
   ]);
 export const productCollectedAt = (
   product: Pick<Product, 'lastCollectedAt' | 'sourceContent' | 'sourceMetrics'>,
-) =>
-  latest([
-    product.lastCollectedAt,
-    product.sourceMetrics?.collectedAt,
-    product.sourceContent?.collectedAt,
-  ]);
+) => productCollectionTime(product);
 export function collectionTimeLabel(value?: string) {
   if (!value || !Number.isFinite(Date.parse(value))) return '未记录';
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}（仅日期）`;
