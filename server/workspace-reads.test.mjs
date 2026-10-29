@@ -407,6 +407,28 @@ async function exerciseReadModel(
   assert.equal((await reads.list({ ...listingFilter, search: 'MAGNESIUM' })).total, 2);
   assert.equal((await reads.list({ ...listingFilter, market: 'MX' })).total, 0);
   await assert.rejects(reads.list({ ...listingFilter, listedFrom: '2026-10-30' }), /开始日期/);
+  for (const [i, raw] of ['500+', '3,000+', '12.3K', undefined].entries()) {
+    const id = `sort-probe-${i}`;
+    await putDocument('workspace_documents', `business:products:${id}`, {
+      id, title: `sort-probe ${i}`, market: 'US', benefits: [], ingredientInsights: [],
+      firstSeenAt: '2026-10-26T00:00:00Z',
+      lastCollectedAt: i === 3 ? undefined : `2026-10-25T0${i}:00:00Z`,
+      sourceMetrics: { soldRaw: raw, collectedAt: i === 0 ? '2026-10-25T12:00:00+08:00' : undefined },
+      sourceContent: { collectedAt: i === 1 ? '2026-10-25T05:00:00Z' : undefined },
+      decisionData: i === 3 ? {} : { listing: { date: `2026-10-${20 + i}`, provider: 'Synthetic', platform: 'Test', market: 'US', collectedAt: '2026-10-25T00:00:00Z', evidenceUrl: 'https://synthetic.example/product' } },
+    });
+  }
+  await drain();
+  const sortQuery = { collection: 'products', search: 'sort-probe', pageSize: 2 };
+  for (const [sort, ascending] of [['collectedAt', [2, 0, 1, 3]], ['core:cumulativeSold', [0, 1, 2, 3]], ['core:listingDate', [0, 1, 2, 3]]]) {
+    for (const [order, expected] of [['ascend', ascending], ['descend', [...ascending.slice(0, 3).reverse(), 3]]]) {
+      const firstPage = await reads.list({ ...sortQuery, sort, order });
+      const secondPage = await reads.list({ ...sortQuery, sort, order, page: 2 });
+      assert.equal(firstPage.total, 4);
+      assert.deepEqual([...firstPage.rows, ...secondPage.rows].map((row) => row.id), expected.map((i) => `sort-probe-${i}`));
+    }
+  }
+  assert.equal((await reads.list({ ...sortQuery, market: 'MX', sort: 'core:cumulativeSold' })).total, 0);
   if (engine === 'mysql') {
     for (const table of ['workspace_read_dirty', 'workspace_read_rows'])
       await pool.query(`ALTER TABLE ${table} MODIFY source_key varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL`);
