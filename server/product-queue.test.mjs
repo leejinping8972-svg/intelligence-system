@@ -232,6 +232,7 @@ test('catalog products are saved immediately with real image, price and evidence
   assert.equal(p.imageUrl, 'https://cdn.example/creatine.jpg');
   assert.equal(p.price, 29.95);
   assert.equal(p.evidenceUrl, 'https://s0.example/products/creatine');
+  assert.equal(p.sourcePlatform, '独立站');
   assert.match(p.ingredient, /Creatine monohydrate/);
   assert.equal(h.saved.checkpoint.products, 1);
 });

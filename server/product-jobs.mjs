@@ -116,6 +116,7 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
       : '未提取到公开卖点',
     ingredientInsights: p.ingredientInsights || [],
     siteId: site.id,
+    sourcePlatform: '独立站',
     imageUrl: p.image || undefined,
     collectionFields: p.collectionFields || [],
     extractionMethod: p.extractionMethod || '官网结构化商品数据',

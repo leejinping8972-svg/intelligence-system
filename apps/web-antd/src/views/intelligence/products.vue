@@ -17,7 +17,7 @@ import {
   Tag,
 } from 'ant-design-vue';
 
-import { productProvider, productPlatform } from './product-source';
+import { productProvider, productPlatform, productSiteLabel } from './product-source';
 import PageHeader from './components/PageHeader.vue';
 import CollectionTime from './components/CollectionTime.vue';
 import { productCollectedAt } from './resource-metadata';
@@ -323,8 +323,9 @@ function toggleCompare(id: string) {
   else if (compareIds.value.length < 3) compareIds.value.push(id);
   else message.info('最多同时对比3个商品');
 }
-function siteField(id: string, field: 'brand' | 'domain') {
-  return state.sites.find((row) => row.id === id)?.[field] || remote.facets.value.sites?.find((row) => row.value === id)?.[field] || '';
+function siteField(product: Product, field: 'brand' | 'domain') {
+  if (product.linkedSite !== undefined) return product.linkedSite?.[field] || '';
+  return state.sites.find((row) => row.id === product.siteId)?.[field] || remote.facets.value.sites?.find((row) => row.value === product.siteId)?.[field] || '';
 }
 async function exportProducts() {
   try {
@@ -338,8 +339,8 @@ async function exportProducts() {
       商品图片: p.imageUrl || '', 平台: productPlatform(p), 数据来源: productProvider(p),
       采集时间: productCollectedAt(p) || '', 决策标签: productDecisions(p).map((item) => item.label).join('、'),
       决策依据: productDecisions(p).map((item) => `${item.label}：${item.reason} 来源：${item.source} 日期：${item.date}`).join('；'),
-      已采集字段: p.collectionFields?.join('、') || '', 独立站品牌: siteField(p.siteId, 'brand'),
-      独立站域名: siteField(p.siteId, 'domain'), 证据网址: p.evidenceUrl || '', 性质: productDataSource(p),
+      已采集字段: p.collectionFields?.join('、') || '', 独立站品牌: siteField(p, 'brand'),
+      独立站域名: siteField(p, 'domain'), 证据网址: p.evidenceUrl || '', 性质: productDataSource(p),
     })));
   } catch (cause) { message.error((cause as Error).message); }
 }
@@ -543,7 +544,7 @@ async function exportProducts() {
           >
             <span>关联独立站</span>
             <b>{{
-              siteField(product.siteId, 'domain')
+              productSiteLabel(product, siteField(product, 'domain'))
             }}</b>
             <span>查看档案 →</span>
           </button>
@@ -659,8 +660,7 @@ async function exportProducts() {
               router.push({ path: '/sites', query: { site: record.siteId } })
             "
             >{{
-              siteField(record.siteId, 'domain') ||
-              '未关联站点'
+              productSiteLabel(record as Product, siteField(record as Product, 'domain'))
             }}</Button
           >
           <span v-if="!record.siteId" class="hci-subtle">未关联</span>

@@ -16,6 +16,7 @@ import { keywordTrendList } from './keyword-trend-list.mjs';
 import { productChineseName } from './product-names.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 import { compareProductValues, productSortKeys, productSortValue } from './product-list-sort.mjs';
+import { productPlatformSql, resolvedProductPlatform } from './product-platform.mjs';
 
 const collections = new Set([
   'keywords',
@@ -237,6 +238,18 @@ export function createWorkspaceReads({
   }
   async function withRelations(collection, records) {
     if (!records.length) return records;
+    if (collection === 'products') {
+      const ids = [...new Set(records.map((record) => record.siteId).filter(Boolean))];
+      const fields = ['id', 'brand', 'domain', 'market'];
+      const columns = fields.map((key) => sql(`value->>'${key}'`, `JSON_UNQUOTE(JSON_EXTRACT(value,'$.${key}'))`) + ` AS ${key}`).join(',');
+      const sites = ids.length ? (await pool.query(`SELECT ${columns} FROM workspace_documents WHERE name IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids.map((id) => `business:sites:${id}`))).rows : [];
+      const byId = new Map(sites.map((site) => [site.id, site]));
+      return records.map((record) => {
+        const linkedSite = byId.get(record.siteId) || null;
+        const platform = resolvedProductPlatform(record, linkedSite);
+        return { ...record, linkedSite, ...(platform !== '未记录' ? { sourcePlatform: platform } : {}) };
+      });
+    }
     const values = records.map((record) => record.id);
     const slots = values.map((_, index) => `$${index + 1}`).join(',');
     if (collection === 'sites') {
@@ -678,7 +691,7 @@ export function createWorkspaceReads({
         `NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.${key}')),'')`,
       );
       const provider = `COALESCE(${field('sourceProvider')},CASE WHEN ${field('dataNature')}='demo' THEN '演示样本' ELSE '人工导入 / 来源待确认' END)`;
-      const platform = `COALESCE(${field('sourcePlatform')},'未记录')`;
+      const platform = productPlatformSql(sql);
       if (input.provider && input.provider !== 'ALL') clauses.push(`${provider}=${bind(input.provider)}`);
       if (input.productPlatform && input.productPlatform !== 'ALL') clauses.push(`${platform}=${bind(input.productPlatform)}`);
       if (input.siteLinked === 'linked') clauses.push("r.site_id<>''");
@@ -856,7 +869,7 @@ export function createWorkspaceReads({
       ].sort();
     if (input.collection === 'products') {
       const field = key => sql(`NULLIF(payload->>'${key}','')`, `NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.${key}')),'')`);
-      const identity = (await pool.query(`SELECT ${field('sourceProvider')} AS provider,${field('sourcePlatform')} AS product_platform,${field('dataNature')} AS nature,${field('currency')} AS currency,site_id FROM workspace_read_rows WHERE collection=$1${market} GROUP BY provider,product_platform,nature,currency,site_id`, values)).rows;
+      const identity = (await pool.query(`SELECT ${field('sourceProvider')} AS provider,${productPlatformSql(sql)} AS product_platform,${field('dataNature')} AS nature,${field('currency')} AS currency,site_id FROM workspace_read_rows r WHERE collection=$1${market} GROUP BY provider,product_platform,nature,currency,site_id`, values)).rows;
       result.currency = [...new Set(identity.map(row => row.currency || '未记录'))].sort();
       result.provider = [...new Set(identity.map(row => row.provider || (row.nature === 'demo' ? '演示样本' : '人工导入 / 来源待确认')))].sort();
       result.productPlatform = [...new Set(identity.map(row => row.product_platform || '未记录'))].sort();
@@ -909,7 +922,7 @@ export function createWorkspaceReads({
     return {
       selectionId,
       count: rows.length,
-      rows: rows.map((r) => r.payload),
+      rows: await withRelations(query.collection, rows.map((r) => r.payload)),
     };
   }
   async function details(input) {

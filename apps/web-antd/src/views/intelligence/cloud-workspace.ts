@@ -74,6 +74,7 @@ function changedFields(previous: string | undefined, value: unknown) {
           'coreSummary',
           'decisionTags',
           'listSummary',
+          'linkedSite',
           'productCount',
           'score',
           'trendSummary',

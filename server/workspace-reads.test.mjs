@@ -139,6 +139,10 @@ async function exerciseReadModel(
       dataNature: 'collected',
     });
   await drain();
+  const firstProducts = await reads.list({ collection: 'products', pageSize: 1 });
+  assert.equal(firstProducts.rows[0].linkedSite.domain, 'synthetic.example');
+  assert.equal(firstProducts.rows[0].linkedSite.brand, 'Test brand');
+  assert.deepEqual(Object.keys(firstProducts.rows[0].linkedSite).sort(), ['brand', 'domain', 'id', 'market']);
   const dates = Array.from({ length: 365 }, (_, i) => ({ date: new Date(Date.parse('2026-10-26T00:00:00Z') - (365 - i) * 86400000).toISOString().slice(0, 10), value: 50 }));
   assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'p1', linkedSite: 's1' })).total, 2);
   assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'p1', linkedSite: 'missing' })).total, 0);
@@ -414,6 +418,25 @@ async function exerciseReadModel(
   assert.ok(identityFacets.productPlatform.includes('未记录'));
   assert.ok(!identityFacets.productPlatform.includes('独立站'));
   assert.equal((await reads.list({ collection: 'products', productPlatform: '独立站' })).total, 0);
+  const legacy = (await reads.details({ collection: 'products', id: 'p2' })).record;
+  await putDocument('workspace_documents', 'business:products:p2', { ...legacy, siteId: 's1', evidenceUrl: 'https://www.synthetic.example/products/2' });
+  await drain();
+  const websitePage = await reads.list({ collection: 'products', productPlatform: '独立站', pageSize: 1 });
+  assert.equal(websitePage.total, 1);
+  assert.equal(websitePage.rows[0].id, 'p2');
+  assert.equal(websitePage.rows[0].sourcePlatform, '独立站');
+  assert.equal(websitePage.rows[0].linkedSite.domain, 'synthetic.example');
+  assert.equal((await reads.details({ collection: 'products', id: 'p10' })).record.sourcePlatform, 'Amazon');
+  assert.ok((await reads.facets({ collection: 'products' })).facets.productPlatform.includes('独立站'));
+  assert.equal((await reads.selection({ collection: 'products', productPlatform: '独立站' })).rows[0].linkedSite.domain, 'synthetic.example');
+  assert.equal((await reads.exportRecords({ collection: 'products', ids: ['p2'] })).rows[0].sourcePlatform, '独立站');
+  // Site display is read from the small authoritative document fields, even
+  // when its projection and the separate facets request have not refreshed.
+  const sourceSite = (await pool.query("SELECT value FROM workspace_documents WHERE name='business:sites:s1'")).rows[0].value;
+  await putDocument('workspace_documents', 'business:sites:s1', { ...sourceSite, brand: 'Updated brand', secretExtra: 'not-returned' });
+  const updatedPage = await reads.list({ collection: 'products', productPlatform: '独立站' });
+  assert.equal(updatedPage.rows[0].linkedSite.brand, 'Updated brand');
+  assert.equal(updatedPage.rows[0].linkedSite.secretExtra, undefined);
   assert.ok(identityFacets.currency.includes('USD'));
   assert.ok(identityFacets.currency.includes('未记录'));
   const listingFilter = { collection: 'products', market: 'US', listedFrom: '2026-10-15', listedTo: '2026-10-22' };
