@@ -110,6 +110,7 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
     ingredient: p.ingredients || '官网未公开可验证配方',
     dose: p.servingSize || '官网未公开每份用量',
     claim: p.description || '',
+    sourceContent: { collectedAt: at, descriptions: [p.description || ''], rawFields: { ...(p.ingredients ? { ingredients: p.ingredients } : {}), ...(p.servingSize ? { servingSize: p.servingSize } : {}) } },
     benefits: p.benefits || [],
     benefitEvidence: p.description
       ? `官网商品页描述：${p.description}`

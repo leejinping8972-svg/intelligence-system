@@ -36,6 +36,13 @@ export async function mergeBusiness(key, patch, options = {}) {
       lastCollectedAt: Date.parse(patch.lastCollectedAt || '') > Date.parse(old.lastCollectedAt || '1970-01-01') ? patch.lastCollectedAt : old.lastCollectedAt,
     };
     let value = { ...old, ...patch };
+    const kind = key.split(':')[0];
+    if (['products', 'sites', 'ads'].includes(kind) && !options.evidenceOnlyIfExists) {
+      const { gateSourceFields } = await import('./source-field-domain.mjs');
+      const { queueSourceFields } = await import('./source-field-store.mjs');
+      value = gateSourceFields(kind, old, value, patch);
+      await queueSourceFields(kind, value, c);
+    }
     for (const field of ['sources', 'sourceEvidence', 'keywordIds', 'siteIds'])
       if (old[field] || patch[field])
         value[field] = [
@@ -54,7 +61,6 @@ export async function mergeBusiness(key, patch, options = {}) {
     if (key.startsWith('sites:')) value.assessment = scoreSite(value);
     if (key.startsWith('ads:')) value = observeDiscovery(old, value, 'ad');
     if (key.startsWith('products:')) value = withFormulaIntelligence(observeDiscovery(old, value, 'product'));
-    const kind = key.split(':')[0];
     if (['products', 'sites', 'ads'].includes(kind)) {
       value = appendCoreEvidence(kind, old, value, { ...patch, market: value.market, id: value.id, sourceProductId: value.sourceProductId, sourceProvider: value.sourceProvider, sourcePlatform: value.sourcePlatform, domain: value.domain });
       if (kind === 'ads' && !value.productId && value.landingUrls?.length) {

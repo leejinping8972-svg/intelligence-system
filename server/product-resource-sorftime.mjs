@@ -16,7 +16,7 @@ const productIdAliases = ['product_id', 'productId', 'item_id', 'itemId', 'asin'
 const variantIdAliases = ['variant_id', 'variantId', 'sku_id', 'skuId', 'source_variant_id'];
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const cleanId = (value) => ['string', 'number'].includes(typeof value) ? String(value).trim().slice(0, 500) : '';
-const safeError = (error, token) => String(error?.message || 'Sorftime 来源请求失败')
+export const safeError = (error, token) => String(error?.message || 'Sorftime 来源请求失败')
   .replaceAll(token || '\0', '[redacted]')
   .replaceAll(/https?:\/\/mcp\.sorftime\.com[^\s"<>]*/gi, 'Sorftime MCP')
   .replaceAll(/(?:api[_-]?key|token|authorization)\s*[:=]\s*[^\s,;]+/gi, 'credential=[redacted]')
@@ -41,7 +41,7 @@ function toolNames(request) {
   return names.map((name) => `${prefix}${name}`);
 }
 
-function schemaValue(value, schema, name) {
+export function schemaValue(value, schema, name) {
   if (!schema || typeof schema !== 'object' || ['$ref', 'anyOf', 'oneOf', 'allOf', 'not', 'if', 'then', 'else', 'const', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'contains'].some((key) => Object.hasOwn(schema, key))) throw new Error(`Sorftime 不支持尚未适配的 ${name} 参数schema`);
   if (!['string', 'integer', 'number', 'boolean', 'array'].includes(schema.type)) throw new Error(`Sorftime 不支持尚未适配的 ${name} 参数类型`);
   if (schema.type === 'integer' || schema.type === 'number') {
@@ -148,7 +148,7 @@ function argumentsFor(tool, request) {
   return args;
 }
 
-async function resourceClient(overrides) {
+export async function resourceClient(overrides = {}) {
   if (overrides.client) return { client: overrides.client, token: '', controlRequests: () => 0 };
   const env = overrides.env || await (overrides.collectorEnv || collectorEnv)();
   const token = overrides.token || overrides.config?.token || await (overrides.readSorftimeToken || readSorftimeToken)(env);
@@ -274,7 +274,7 @@ function rawEvidence(row, request) {
   };
 }
 
-function normalizeProduct(row, request, at) {
+export function normalizeSorftimeProduct(row, request, at) {
   if (!row || typeof row !== 'object') return null;
   if (row.product_info && typeof row.product_info === 'object') row = { ...row, ...row.product_info };
   const explicitMarket = field(row, ...marketAliases, 'market', 'country_code');
@@ -372,7 +372,7 @@ export async function collectSorftimeResource(request, overrides = {}) {
     }
     let rows = productRows(value);
     if (request.op === 'detail' && !rows.length) rows = [value.data || value.Data || value];
-    const normalized = rows.slice(0, 100).map((row) => normalizeProduct(row, request, at)).filter(Boolean);
+    const normalized = rows.slice(0, 100).map((row) => normalizeSorftimeProduct(row, request, at)).filter(Boolean);
     const products = request.op === 'search' && request.term ? normalized.filter((p) => matchesProductTerm(p, request.term)) : normalized;
     const report = value?.data || value?.Data || value;
     const aggregateOnly = !rows.length && ['category', 'bestsellers'].includes(request.op) && report && typeof report === 'object' && ['sales', 'sales_volume', 'monthly_sales', 'monthly_sale_volume', 'gmv', 'revenue', 'report', 'summary', 'aggregate'].some((key) => Object.hasOwn(report, key));

@@ -22,21 +22,25 @@ import {
   retryCloudTrends,
   syncCloudWorkspace,
 } from './cloud-workspace';
-import { useCompetitorWorkspace } from './competitor-workspace';
 import FocusedMonitors from './components/FocusedMonitors.vue';
+import NewMonitorDialog from './components/NewMonitorDialog.vue';
+import DiscoveryMonitors from './components/DiscoveryMonitors.vue';
+import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
+import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
+import MarketCollectionDialog from './components/MarketCollectionDialog.vue';
+import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
 import PageHeader from './components/PageHeader.vue';
 import ResearchTaskList from './components/ResearchTaskList.vue';
 import TaskCollections from './components/TaskCollections.vue';
 import TaskProgress from './components/TaskProgress.vue';
 import { audit, marketName, state } from './data';
-import { focusedMonitorRows } from './focused-monitors';
 import { resourceTaskCanResume } from './product-resources';
 import { groupTasks, taskStatus, taskStatuses, taskSummary } from './task-list';
 const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
-const watchWorkspace = useCompetitorWorkspace();
 const selected = ref<TaskGroup>();
+const discoveryMonitors = ref<InstanceType<typeof DiscoveryMonitors>>();
 const detailsLoading = ref(false);
 const detailsError = ref('');
 let detailsSequence = 0;
@@ -128,15 +132,6 @@ watch(
 watch(tab, value => {
   if (route.query.tab !== value) void router.replace({ query: { ...route.query, tab: value } });
 });
-const monitors = computed(() =>
-  focusedMonitorRows(
-    state.products,
-    state.monitors,
-    watchWorkspace.targets,
-    watchWorkspace.runs,
-    state.market,
-  ),
-);
 const tasks = computed(() => groupTasks(state.tasks, state.market));
 watch(
   () => [route.query.job, tasks.value] as const,
@@ -201,6 +196,7 @@ const auditRows = computed(() =>
       :title="tab === 'monitors' ? '跟踪计划' : tab === 'audit' ? '操作记录' : '采集任务'"
       description="让重点对象持续可见，让每个研究步骤都有明确状态。"
     >
+      <NewMonitorDialog @saved="discoveryMonitors?.refresh()" />
       <Button type="primary" @click="router.push('/research?new=1')">
         ＋ 新建研究
       </Button>
@@ -222,7 +218,9 @@ const auditRows = computed(() =>
     </div>
     <section class="hci-panel">
       <Tabs v-model:active-key="tab">
-        <Tabs.TabPane key="monitors" :tab="`重点监控（${monitors.length}）`">
+        <Tabs.TabPane key="monitors" tab="重点监控">
+          <DiscoveryMonitors ref="discoveryMonitors" />
+          <div class="hci-toolbar"><DailyDiscoveryPlan /><KeywordTrendsControl :ids="[]" /><MarketCollectionDialog /><SemrushHotwordsSidebar /></div>
           <FocusedMonitors /> </Tabs.TabPane
         ><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
           <ResearchTaskList

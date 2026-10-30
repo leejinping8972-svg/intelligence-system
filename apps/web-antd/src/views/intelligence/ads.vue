@@ -20,6 +20,7 @@ import {
   Table,
 } from 'ant-design-vue';
 import PageHeader from './components/PageHeader.vue';
+import SourceFieldsButton from './components/SourceFieldsButton.vue';
 import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
@@ -204,7 +205,7 @@ async function exportAds() {
       ><Button @click="router.push('/imports')">导入资料</Button
       ><Button :disabled="!rows.length" @click="exportAds">完整导出</Button><Button type="primary" @click="begin"
         >采集广告与独立站</Button
-      ></PageHeader
+      ><SourceFieldsButton kind="ads" :ids="bulkIds" /></PageHeader
     >
     <AdsResearchPanel v-if="viewTab !== 'advertisers'" ref="adResearch" :ads="serverMode ? state.ads : rows" :show-list="viewTab === 'reports'" />
     <section v-if="viewTab === 'ads'" class="hci-panel">

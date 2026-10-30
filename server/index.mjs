@@ -24,6 +24,8 @@ import {
 } from './competitor-monitor-store.mjs';
 import { coreListAction } from './core-list-service.mjs';
 import { dailyDiscoveryAction } from './daily-discovery.mjs';
+import { discoveryAction } from './discovery-monitor-store.mjs';
+import { sourceFieldsAction } from './source-field-store.mjs';
 import { databaseAction, maintenance } from './database-admin.mjs';
 import {
   currentDatabase,
@@ -152,6 +154,8 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_source_fields_')) return sourceFieldsAction(input, user);
+  if (input.action?.startsWith('server_discovery_')) return discoveryAction(input, user);
   if (input.action?.startsWith('server_keyword_views_'))
     return keywordViewsAction(input, user);
   if (input.action?.startsWith('server_source_'))
@@ -816,6 +820,8 @@ const server = createServer(async (request, response) => {
             ![
               'auth_status',
               'server_core_rates',
+              'server_discovery_snapshot',
+              'server_discovery_capabilities',
               'server_keyword_views_list',
               'server_keyword_views_save',
               'server_keyword_views_delete',

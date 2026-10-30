@@ -122,7 +122,13 @@ export async function collect(job, step, request) {
     const provider = process.env.COLLECTOR_URL
       ? null
       : await import('./local-provider.mjs');
-    const response = request.sources?.includes('semrush_sites')
+    const response = request.sources?.includes('discovery_sorftime')
+      ? Response.json(await (await import('./discovery-sorftime.mjs')).discoverySorftime(request))
+      : request.sources?.includes('field_analysis')
+        ? Response.json(await (await import('./discovery-ai.mjs')).fieldAnalysisRequest(request))
+        : request.sources?.includes('ingredient_analysis')
+          ? Response.json(await (await import('./discovery-ai.mjs')).ingredientAnalysisRequest(request))
+      : request.sources?.includes('semrush_sites')
       ? Response.json(await (await import('./semrush-sites-provider.mjs')).collectSemrushSites(request))
       : request.sources?.includes('platform_products')
       ? Response.json(

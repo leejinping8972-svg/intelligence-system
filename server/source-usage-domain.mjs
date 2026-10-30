@@ -190,7 +190,7 @@ export function requestSources(step = '', record = {}, allowance = 0) {
   if (provider === 'sorftime' || allowance > 0) return ['sorftime'];
   if (provider === 'public_product') return ['official_sites'];
   if (/^(?:https?:\/\/|browser:https?:\/\/)/.test(step)) return ['official_sites'];
-  if (sources.includes('semantic_analysis') || /^model/.test(step))
+  if (sources.some((s) => ['semantic_analysis', 'field_analysis', 'ingredient_analysis'].includes(s)) || /^model/.test(step))
     return ['analysis'];
   if (sources.includes('google_trends_part') || /^trend/.test(step))
     return ['google_trends'];
@@ -212,7 +212,7 @@ export function sourceCharge(id, record, status) {
     amount = number(record.creditsCharged);
   else if (id === 'analysis')
     amount = number(
-      record.usage?.total_tokens ?? record.usage?.totalTokenCount,
+      record.usage?.total_tokens ?? record.usage?.totalTokenCount ?? record.usage?.modelTokens,
     );
   else if (id === 'youtube') amount = number(record.quotaUnits);
   else if (sourceById(id)) amount = number(record.requests);

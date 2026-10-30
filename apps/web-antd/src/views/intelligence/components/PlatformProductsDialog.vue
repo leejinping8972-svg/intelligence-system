@@ -44,6 +44,7 @@ import {
 } from '../product-resources';
 import { serverMode } from '../session';
 import CollectionEstimate from './CollectionEstimate.vue';
+import DiscoveryPlanForm from './DiscoveryPlanForm.vue';
 const props = defineProps<{
   terms?: string[];
   market?: string;
@@ -449,16 +450,18 @@ async function submitResource() {
     v-model:open="open"
     title="从平台获取商品"
     :width="900"
+    :footer="activeTab === 'new-listings' ? null : undefined"
     :body-style="{ maxHeight: '70vh', overflowY: 'auto' }"
     :confirm-loading="busy"
     :closable="!busy"
     :mask-closable="!busy"
     :cancel-button-props="{ disabled: busy }"
-    :ok-button-props="{ disabled: submitDisabled }"
+    :ok-button-props="{ disabled: activeTab === 'new-listings' || submitDisabled }"
     ok-text="提交后台采集"
     @ok="submit"
   >
     <Tabs v-model:active-key="activeTab">
+      <Tabs.TabPane key="new-listings" tab="新上架保健品"><DiscoveryPlanForm v-if="activeTab === 'new-listings'" kind="regular_new" @submitted="open=false" /></Tabs.TabPane>
       <Tabs.TabPane key="resources" tab="资源路径">
         <Spin :spinning="capabilitiesLoading">
           <Alert

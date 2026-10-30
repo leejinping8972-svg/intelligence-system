@@ -83,7 +83,9 @@ function addMonitor() {
       </div></div>
       <Button type="primary" @click="emit('close'); router.push({ path: '/product-research', query: { product: product.id } })">进入商品研究</Button>
       <ProductCompletionDialog :product-ids="[product.id]" compact />
+      <Tag v-for="item in product.newProductClassifications" :key="item.type + item.observedAt" color="green">{{item.label}} · {{item.listingDate}}</Tag>
       <Tabs>
+        <Tabs.TabPane v-if="product.fieldAnalysis" key="field-analysis" tab="AI字段证据"><p>{{product.fieldAnalysis.status === 'pending' ? '待AI分析' : 'AI已分析'}} {{product.fieldAnalysis.analyzedAt}}</p><dl class="hci-detail-grid"><template v-for="(evidence,field) in product.fieldAnalysis.fields" :key="field"><dt>{{field}}</dt><dd><blockquote>{{evidence.quote}}</blockquote><a :href="evidence.url" target="_blank" rel="noreferrer">来源原文</a></dd></template></dl></Tabs.TabPane>
         <Tabs.TabPane v-if="product.resourceEvidence" key="resource-evidence" tab="资源路径与排名证据"><ProductResourceEvidence :evidence="product.resourceEvidence" :history="product.resourceHistory" :product-id="product.id" /></Tabs.TabPane>
         <Tabs.TabPane key="core-evidence" tab="销售、价格与数据证据"><CoreMetricsPanel kind="products" :record="product" /></Tabs.TabPane>
         <Tabs.TabPane
@@ -94,6 +96,7 @@ function addMonitor() {
           <dl class="hci-detail-grid">
             <dt>数据来源</dt>
             <dd>{{ productDataSource(product) }} · {{ product.market }}</dd>
+            <template v-if="product.sourceMarket"><dt>来源市场</dt><dd>{{product.sourceMarket}}</dd></template>
             <dt>平台商品标识</dt>
             <dd>{{ product.sourceProductId }}</dd>
             <dt>平台上架日期</dt>

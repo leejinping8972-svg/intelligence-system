@@ -384,6 +384,7 @@ export function normalizeAmazonContent(value, product, at) {
       descriptions,
       attributes,
       productInfo: attributeTable(row.product_info),
+      rawFields: Object.fromEntries(['ingredients', 'Ingredients', 'servingSize', 'serving_size'].filter((key) => typeof row[key] === 'string').map((key) => [key, row[key]])),
     },
   };
   const image = field(
@@ -421,22 +422,18 @@ export function normalizeAmazonContent(value, product, at) {
   }
   const ingredient = text(
     field(row, 'ingredients', 'Ingredients', 'ingredient', 'Ingredient') ||
-      attributes['Ingredients'] ||
-      attributes['Special Ingredients'],
-  );
-  const dose = text(
-    field(row, 'servingSize', 'ServingSize', 'serving_size') ||
-      attributes['Serving Size'],
+      attributes['Ingredients'],
   );
   if (ingredient) patch.ingredient = ingredient;
-  if (dose) patch.dose = dose;
+  const servingSize = text(field(row, 'servingSize', 'ServingSize', 'serving_size') || attributes['Serving Size']);
+  // Serving size is a portion specification, not an ingredient dose.
   if (attributes['Item Form']) patch.form = attributes['Item Form'];
   if (attributes['Unit Count']) patch.size = attributes['Unit Count'];
   if (ingredient)
     patch.ingredientInsights = [
       {
         name: ingredient,
-        amount: dose || '平台未返回含量',
+        amount: '平台未返回含量',
         role: '平台商品属性提及，完整配方与含量待核验',
         evidence: `Sorftime · Amazon 属性原文：${ingredient}`,
       },
@@ -447,7 +444,7 @@ export function normalizeAmazonContent(value, product, at) {
       ...(patch.imageUrl ? ['image'] : []),
       ...(patch.claim ? ['description'] : []),
       ...(ingredient ? ['ingredients'] : []),
-      ...(dose ? ['servingSize'] : []),
+      ...(servingSize ? ['servingSize'] : []),
     ]),
   ];
   return patch;
@@ -571,6 +568,7 @@ export function mergePlatformProduct(old, patch) {
     reviewed: old.reviewed ?? false,
     firstSeenAt: old.firstSeenAt || patch.firstSeenAt,
   };
+  const resetFields = ['pending', 'analyzed'].includes(patch.fieldAnalysis?.status);
   if (old.resourceEvidence || patch.resourceEvidence) merged.resourceHistory = mergeResourceHistory(old, patch);
   if (!patch.siteId && old.siteId) merged.siteId = old.siteId;
   for (const key of [
@@ -590,7 +588,7 @@ export function mergePlatformProduct(old, patch) {
       !patch[key] ||
       /^(平台未返回|官网未公开|品牌待确认|待分类|待识别)/.test(patch[key])
     )
-      merged[key] = old[key] || patch[key];
+      merged[key] = resetFields && ['ingredient', 'dose', 'claim', 'category', 'form', 'size'].includes(key) ? patch[key] : old[key] || patch[key];
   }
   if (
     patch.price === 0 &&
@@ -604,6 +602,7 @@ export function mergePlatformProduct(old, patch) {
     'collectionFields',
     'sourceEvidence',
     'imageUrls',
+    'newProductClassifications',
   ])
     merged[key] = [
       ...new Map(
@@ -614,13 +613,14 @@ export function mergePlatformProduct(old, patch) {
       ).values(),
     ];
   merged.sourceEvidence = merged.sourceEvidence.slice(-100);
+  merged.newProductClassifications = [...new Map(merged.newProductClassifications.map((v) => [`${v.type}|${v.listingDate}|${v.days}`, v])).values()].slice(-30);
   merged.sourceMetrics = { ...old.sourceMetrics, ...patch.sourceMetrics };
   if ((old.sourceMetrics?.soldRaw || old.sourceMetrics?.soldCount !== undefined || old.sourcePlatform === 'TikTok Shop' && old.sourceMetrics?.reportedSales !== undefined) && !patch.sourceMetrics?.soldRaw && patch.sourceMetrics?.soldCount === undefined && patch.sourceMetrics?.reportedSales === undefined)
     merged.sourceMetrics.soldCollectedAt = old.sourceMetrics.soldCollectedAt || old.sourceMetrics.collectedAt;
   if (old.sourceContent?.sellingPoints?.length && !patch.sourceContent?.sellingPoints?.length)
     merged.sourceContent = { ...merged.sourceContent, sellingPoints: old.sourceContent.sellingPoints };
   for (const key of ['benefits', 'ingredientInsights'])
-    if (patch[key]?.length === 0 && old[key]?.length > 0)
+    if (!resetFields && patch[key]?.length === 0 && old[key]?.length > 0)
       merged[key] = old[key];
   const series = new Map();
   for (const s of [

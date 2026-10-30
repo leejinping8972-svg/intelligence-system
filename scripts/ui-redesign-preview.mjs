@@ -11,7 +11,7 @@ import { productSortKeys, productSortValue, compareProductValues } from '../serv
 import { projectRecord } from '../server/workspace-reads.mjs';
 const now = '2026-10-29T08:00:00Z';
 const { PGlite } = createRequire(new URL('../server/package.json', import.meta.url))('@electric-sql/pglite');
-const dataDir = fileURLToPath(new URL('../output/ui-redesign-2026-10-30/local-only/keyword-views-db', import.meta.url));
+const dataDir = process.env.HCI_UI_QA_KEYWORD_DB || fileURLToPath(new URL('../output/ui-redesign-2026-10-30/local-only/keyword-views-db', import.meta.url));
 await mkdir(dataDir, { recursive: true });
 const db = new PGlite(dataDir);
 await db.exec('CREATE TABLE IF NOT EXISTS workspace_documents(name varchar(180) PRIMARY KEY,value jsonb NOT NULL,revision integer DEFAULT 1)');
@@ -43,7 +43,7 @@ function filtered(input) { return (rows[input.collection] || []).filter(r =>
   (!input.linkedSite || r.siteIds?.includes(input.linkedSite)) &&
   (!input.linkedProduct || r.productId === input.linkedProduct || r.productIds?.includes(input.linkedProduct)) &&
   (!input.review || input.review === 'ALL' || r.reviewStatus === input.review)); }
-async function action(input) {
+export async function action(input) {
   calls.push({action:input.action, fields:Object.keys(input), ...(input.apiKey ? { secretReceived:true } : {})});
   if (input.action?.startsWith('server_keyword_views_')) return keywordViewsAction(input, { id: 'local-qa' });
   switch(input.action) {
@@ -74,4 +74,4 @@ async function action(input) {
     default: return {error:'本地验收未提供此接口；不会执行真实调用',action:input.action};
   }
 }
-http.createServer(async(req,res)=>{if(req.url==='/qa-calls'){res.setHeader('content-type','application/json');return res.end(JSON.stringify(calls));}let body='';for await(const chunk of req)body+=chunk;try{const result=await action(JSON.parse(body||'{}'));res.writeHead(result?.error?400:200,{'content-type':'application/json'});res.end(JSON.stringify(result));}catch(error){res.writeHead(error.status||500,{'content-type':'application/json'});res.end(JSON.stringify({error:error.message}));}}).listen(5399,'127.0.0.1',()=>console.log('Synthetic UI fixture at 127.0.0.1:5399'));
+if (process.argv[1] === fileURLToPath(import.meta.url)) http.createServer(async(req,res)=>{if(req.url==='/qa-calls'){res.setHeader('content-type','application/json');return res.end(JSON.stringify(calls));}let body='';for await(const chunk of req)body+=chunk;try{const result=await action(JSON.parse(body||'{}'));res.writeHead(result?.error?400:200,{'content-type':'application/json'});res.end(JSON.stringify(result));}catch(error){res.writeHead(error.status||500,{'content-type':'application/json'});res.end(JSON.stringify({error:error.message}));}}).listen(5399,'127.0.0.1',()=>console.log('Synthetic UI fixture at 127.0.0.1:5399'));

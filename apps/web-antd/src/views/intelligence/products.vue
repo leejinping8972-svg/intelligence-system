@@ -19,6 +19,7 @@ import {
 
 import { productProvider, productPlatform, productSiteLabel } from './product-source';
 import PageHeader from './components/PageHeader.vue';
+import SourceFieldsButton from './components/SourceFieldsButton.vue';
 import CollectionTime from './components/CollectionTime.vue';
 import { productCollectedAt } from './resource-metadata';
 import { compareProductValues, productSortKeys, productSortValue } from '../../../../../server/product-list-sort.mjs';
@@ -353,6 +354,7 @@ async function exportProducts() {
     >
       <FormulaInsights />
       <PlatformProductsDialog />
+      <SourceFieldsButton kind="products" :ids="bulkIds" />
       <ProductCompletionDialog :product-ids="rows.map((p) => p.id)" :total="serverMode ? remote.total.value : undefined" :resolve-product-ids="serverMode ? async () => (await remote.selectAll()).map((p) => p.id) : undefined" />
       <Button
         :disabled="!rows.length"
@@ -625,6 +627,7 @@ async function exportProducts() {
               >
               <ProductChineseName :product="record as Product" />
               <p class="hci-subtle">{{ record.brand }}</p>
+              <Tag v-for="item in record.newProductClassifications" :key="item.type + item.listingDate" color="green">{{item.label}} · {{item.listingDate}}</Tag>
             </div>
           </div></template
         >

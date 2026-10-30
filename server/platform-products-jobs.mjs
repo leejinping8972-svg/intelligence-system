@@ -231,9 +231,11 @@ export async function upsertProduct(patch) {
       await c.query('COMMIT');
       return undefined;
     }
-    const merged = withFormulaIntelligence(
-      observeDiscovery(old, mergePlatformProduct(old, patch), 'product'),
-    );
+    const { gateSourceFields } = await import('./source-field-domain.mjs');
+    const { queueSourceFields } = await import('./source-field-store.mjs');
+    const merged = withFormulaIntelligence(gateSourceFields('products', old,
+      observeDiscovery(old, mergePlatformProduct(old, patch), 'product'), patch));
+    await queueSourceFields('products', merged, c);
     const value = appendCoreEvidence('products', old, merged, {
       ...patch,
       id: merged.id,

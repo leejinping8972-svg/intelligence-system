@@ -15,6 +15,7 @@ import {
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
+import SourceFieldsButton from './components/SourceFieldsButton.vue';
 import CollectionTime from './components/CollectionTime.vue';
 import { collectionTimeOrder, siteCollectedAt } from './resource-metadata';
 import CompactTags from './components/CompactTags.vue';
@@ -242,6 +243,7 @@ const columns = [
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"
     >
       <ManualSiteDialog @saved="remote.reload(true)" />
+      <SourceFieldsButton kind="sites" :ids="ids" />
       <ProductCollectDialog :site-ids="ids" />
       <BulkSiteWatch :site-ids="ids" />
       <SemrushSitesDialog />

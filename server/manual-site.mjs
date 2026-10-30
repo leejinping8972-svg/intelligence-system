@@ -100,7 +100,10 @@ export async function addManualSite(input, overrides = {}) {
     if (!old?.description) site.description = profile.description;
     if (!old?.platform || old.platform === '其他') site.platform = profile.platform;
     site.assessment = scoreSite(site);
-    const saved = appendCoreEvidence('sites', old, site, profile);
+    const { gateSourceFields } = await import('./source-field-domain.mjs');
+    const { queueSourceFields } = await import('./source-field-store.mjs');
+    const saved = gateSourceFields('sites', old, appendCoreEvidence('sites', old, site, profile), profile);
+    await queueSourceFields('sites', saved, c);
     const write = (name, data, only = false) => io.putDocument('workspace_documents', name, data, only, c);
     await archiveCoreEvidence('sites', saved.id, saved, write, old);
     await write(`business:sites:${saved.id}`, saved);

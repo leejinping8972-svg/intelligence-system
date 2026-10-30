@@ -1,5 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router';
 const routes: RouteRecordRaw[] = [
+  { name: 'HciIngredientResearch', path: '/ingredient-research', component: () => import('#/views/intelligence/ingredient-research.vue'), meta: { title: '成分研究', hideInMenu: true } },
   {
     name: 'HciOverview',
     path: '/overview',

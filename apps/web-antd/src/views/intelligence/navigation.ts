@@ -20,7 +20,7 @@ export const workspaceSections: { title?: string; links: WorkspaceLink[] }[] = [
 ];
 export function workspaceActivePath(path: string, _tab?: unknown) {
   if (['/research', '/selected-keywords', '/trends'].includes(path)) return '/research';
-  if (['/radar', '/opportunities'].includes(path)) return '/radar';
+  if (['/radar', '/opportunities', '/ingredient-research'].includes(path)) return '/radar';
   if (path.startsWith('/consumer-insights') || path === '/product-research') return '/consumer-insights';
   if (path === '/reviews') return '/overview';
   if (path === '/monitor') return '/monitor';
@@ -31,7 +31,7 @@ export function workspaceActivePath(path: string, _tab?: unknown) {
 export function workspaceTabs(path: string, admin: boolean): WorkspaceLink[] {
   const active = workspaceActivePath(path);
   if (active === '/research') return [{ title: '全部关键词', path: '/research' }, { title: '已入选', path: '/selected-keywords' }, { title: '趋势对比', path: '/trends' }];
-  if (active === '/radar') return [{ title: '新品雷达', path: '/radar' }, { title: '机会研究', path: '/opportunities' }];
+  if (active === '/radar') return [{ title: '新品雷达', path: '/radar' }, { title: '机会研究', path: '/opportunities' }, { title: '成分研究', path: '/ingredient-research' }];
   if (active === '/overview') return [{ title: '情报总览', path: '/overview' }, { title: '全局待审核', path: '/reviews' }];
   if (active === '/consumer-insights') return [{ title: '研究与报告', path: '/consumer-insights' }, { title: '商品研究', path: '/product-research' }];
   if (active === '/ads') return [{ title: '广告素材', path: '/ads' }, { title: '广告主', path: '/advertisers' }, { title: '广告分析报告', path: '/ad-reports' }];

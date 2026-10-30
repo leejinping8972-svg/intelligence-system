@@ -3,6 +3,8 @@ import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { tickDailyDiscovery } from './daily-discovery.mjs';
+import { discoveryKinds, runDiscoveryMonitor, tickDiscoveryMonitors } from './discovery-monitor-store.mjs';
+import { runSourceFields } from './source-field-store.mjs';
 import { lock, sql, unlock } from './database.mjs';
 import { naturalKey, normalizeTerm } from './domain.mjs';
 import { patchCollection, runEnrichment } from './enrichment-jobs.mjs';
@@ -31,6 +33,14 @@ export function jobTasks(job) {
   );
 }
 function projectKnownJob(job) {
+  if (['discovery_monitor', 'source_fields'].includes(job.input.kind)) return [{
+    id: `${job.id}:${job.input.market}`, cloudJobId: job.id, market: job.input.market,
+    mode: 'live', stage: job.input.kind === 'source_fields' ? 'analysis' : 'products',
+    title: job.input.kind === 'source_fields' ? '云端 · 来源字段AI分析' : `云端 · ${discoveryKinds[job.input.plan.kind]}`,
+    status: job.cancelled ? 'cancelled' : job.status, created: job.checkpoint.submittedAt,
+    steps: [...(job.checkpoint.logs || []), ...(job.checkpoint.failures || [])],
+    requests: job.checkpoint.calls || 0, maxRequests: job.input.plan?.maxCalls || 1,
+  }];
   if (job.input.kind === 'semrush_sites')
     return job.input.markets.map((market) => ({
       id: `${job.id}:${market}`,
@@ -556,6 +566,7 @@ async function runLane(signal, trends = false) {
         lostConnection = () => process.exit(1);
         connection.on('error', lostConnection);
         if (!trends) {
+          await tickDiscoveryMonitors().catch((error) => console.error('Discovery scheduling unavailable:', error.code || error.name));
           await tickDailyDiscovery().catch((error) => {
             console.error(
               'Daily discovery unavailable:',
@@ -583,6 +594,8 @@ async function runLane(signal, trends = false) {
             [next.id],
           );
           if (trends) await runTrendJob(next);
+          else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next);
+          else if (next.input.kind === 'source_fields') await runSourceFields(next);
           else if (
             ['ad_analysis', 'consumer_research', 'evidence_analysis'].includes(
               next.input.kind,

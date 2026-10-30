@@ -289,12 +289,18 @@ export async function persistObservation(c, target, kind, item, event, at) {
         [businessName],
       )
     ).rows[0]?.value;
-    const observed = appendCoreEvidence(
+    let observed = appendCoreEvidence(
       kind,
       old,
       mergeObserved(old, item, at),
       item,
     );
+    if (['products', 'sites', 'ads'].includes(kind)) {
+      const { gateSourceFields } = await import('./source-field-domain.mjs');
+      const { queueSourceFields } = await import('./source-field-store.mjs');
+      observed = gateSourceFields(kind, old, observed, item);
+      await queueSourceFields(kind, observed, c);
+    }
     await archiveCoreEvidence(
       kind,
       item.id,

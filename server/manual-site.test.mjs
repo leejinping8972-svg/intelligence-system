@@ -43,7 +43,9 @@ test('adds site and bounded free product job atomically; retry does not fetch or
   assert.equal(first.reused, false);
   assert.deepEqual(await addManualSite(request, h.io), first);
   assert.equal(h.fetched(), 1);
-  const jobs = (await h.db.query('SELECT input FROM research_jobs')).rows;
+  const allJobs = (await h.db.query('SELECT input FROM research_jobs')).rows;
+  assert.equal(allJobs.filter((j) => j.input.kind === 'source_fields').length, 1);
+  const jobs = allJobs.filter((j) => j.input.kind === 'products');
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].input.maxPaidRequests, 0);
   assert.equal(jobs[0].input.maxProducts, 30);
@@ -63,9 +65,12 @@ test('reuses an existing domain ID, manual decisions and active job', async (t) 
   assert.equal(site.favorite, true);
   assert.equal(site.brand, old.brand);
   assert.deepEqual(site.keywordIds, ['keep']);
-  assert.equal((await h.db.query('SELECT * FROM research_jobs')).rows.length, 1);
+  const jobs = (await h.db.query('SELECT * FROM research_jobs')).rows;
+  assert.equal(jobs.filter((j) => j.input.kind === 'products').length, 1);
+  assert.equal(jobs.filter((j) => j.input.kind === 'source_fields').length, 1);
+  assert.ok(site.sourceContent.rawMainProducts.includes('Magnesium tablets'));
 });
-test('site-only mode skips jobs and a full queue rolls back a new site', async (t) => {
+test('site-only mode skips product collection, retains AI analysis and a full queue rolls back a new site', async (t) => {
   const h = await harness(t);
   const saved = await addManualSite(input({ collectProducts: false }), h.io);
   assert.equal(saved.jobId, '');

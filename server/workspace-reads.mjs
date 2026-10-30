@@ -42,7 +42,7 @@ const listKeys = {
   keywords:
     'id term termZh market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
-    'id title titleZh publicDataEvidence brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery',
+    'id title titleZh publicDataEvidence brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications',
   sites:
     'id brand domain market platform type keyword keywordIds category mainProducts ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand market platform headline copy format productId status color archiveId pageId keywordIds query siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
