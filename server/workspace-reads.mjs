@@ -738,6 +738,10 @@ export function createWorkspaceReads({
     }
     if (collection === 'ads' && input.linkedSite)
       relation('sites', [input.linkedSite]);
+    if (collection === 'ads' && input.linkedProduct) {
+      const product = bind(input.linkedProduct);
+      clauses.push(`(${sql("r.payload->>'productId'", "JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.productId'))")}=${product} OR EXISTS(SELECT 1 FROM workspace_read_links l WHERE l.collection=r.collection AND l.id=r.id AND l.relation='products' AND l.target=${product}))`);
+    }
     if (input.search?.trim()) {
       const search = bind(
         `%${String(input.search).normalize('NFKC').trim().toLowerCase().slice(0, 200).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`,

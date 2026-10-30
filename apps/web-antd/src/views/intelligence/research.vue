@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Keyword, Market } from './data';
 
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
+import type { KeywordViewFilters } from './keyword-views';
+import SavedKeywordViews from './components/SavedKeywordViews.vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import {
@@ -42,7 +44,7 @@ import { serverMode } from './session';
 import { useCoreList } from './use-core-list';
 import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
 const core = useCoreList('keywords');
-const { preset: corePreset, period: corePeriod } = core;
+const { period: corePeriod } = core;
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
 import ResearchTrendOptions from './components/ResearchTrendOptions.vue';
@@ -136,6 +138,25 @@ const remote = useWorkspaceList<Keyword>(
   pageSize,
 );
 const overview = useOverviewSnapshot();
+remote.sort.value = 'score';
+const viewFilters = computed<KeywordViewFilters>(() => ({
+  market: state.market, search: search.value, category: category.value,
+  rating: rating.value, ratingStatus: ratingStatus.value, score: scoreFilter.value,
+  tags: tagFilter.value, timeRange: timeRange.value, review: reviewFilter.value,
+  favorite: favoritesOnly.value, sort: remote.sort.value, order: remote.order.value,
+  pageSize: pageSize.value, period: corePeriod.value,
+}));
+async function applyView(filters: KeywordViewFilters) {
+  state.market = filters.market as typeof state.market;
+  await nextTick();
+  search.value = filters.search; category.value = filters.category;
+  rating.value = filters.rating; ratingStatus.value = filters.ratingStatus;
+  scoreFilter.value = { ...filters.score }; tagFilter.value = [...filters.tags];
+  timeRange.value = filters.timeRange; reviewFilter.value = filters.review;
+  favoritesOnly.value = filters.favorite; remote.sort.value = filters.sort;
+  remote.order.value = filters.order; pageSize.value = filters.pageSize;
+  corePeriod.value = filters.period; currentPage.value = 1; clearSelection();
+}
 const gradeColors: Record<string, string> = {
   A: 'green',
   B: 'blue',
@@ -147,7 +168,7 @@ const form = reactive({
   markets: (state.market === 'ALL' ? ['US'] : [state.market]) as Market[],
   sources: ['google_autocomplete', 'amazon_autocomplete', 'semrush'],
   depth: 1,
-  limit: Math.min(100, state.settings.trendLimit),
+  limit: 100,
   socialTrends: defaultResearchTrends(),
 });
 const automaticSorftimeCalls = computed(() => {
@@ -341,38 +362,43 @@ const pagination = computed(() => ({
   },
 }));
 const columns = [
-  { title: '关键词 / 种子词', key: 'term', width: 250, fixed: 'left' as const },
-  { title: '市场 / 品类', key: 'market', width: 150 },
-  { title: '研究评级', key: 'grade', width: 110 },
+  { title: '关键词 / 种子词', key: 'term', width: 195, fixed: 'left' as const },
+  { title: '市场 / 品类', key: 'market', width: 100 },
+  { title: '研究评级', key: 'grade', width: 82 },
   {
     title: '研究评分',
     key: 'score',
-    defaultSortOrder: 'descend' as const,
-    width: 130,
+    width: 88,
     sorter: serverMode
       ? true
       : (a: Keyword, b: Keyword) =>
           (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
   },
-  { title: '分析标签', key: 'tags', width: 240 },
-  { title: '谷歌趋势', key: 'trend', width: 200 },
-  { title: 'TK趋势', key: 'tiktok', width: 185 },
-  { title: 'INS趋势', key: 'instagram', width: 185 },
-  { title: 'FB趋势', key: 'facebook', width: 185 },
-  { title: '来源', key: 'source', width: 180 },
+  { title: '分析标签', key: 'tags', width: 150 },
+  { title: '谷歌趋势', key: 'trend', width: 158 },
+  { title: 'TK趋势', key: 'tiktok', width: 118 },
+  { title: 'INS趋势', key: 'instagram', width: 118 },
+  { title: 'FB趋势', key: 'facebook', width: 118 },
+  { title: '来源', key: 'source', width: 115 },
   {
     title: '抓取时间',
     key: 'collectedAt',
-    width: 170,
+    width: 140,
     sorter: serverMode
       ? true
       : (a: Keyword, b: Keyword) =>
           (Date.parse(a.collectedAt || '') || 0) -
           (Date.parse(b.collectedAt || '') || 0),
   },
-  { title: '人工筛选', key: 'review', width: 120 },
-  { title: '操作', key: 'actions', width: 145, fixed: 'right' as const },
+  { title: '人工筛选', key: 'review', width: 95 },
+  { title: '操作', key: 'actions', width: 135, fixed: 'right' as const },
 ];
+const displayColumns = computed(() => core.columns(columns).map(column => ({
+  ...column,
+  ...(['score', 'collectedAt'].includes(column.key || '') ? {
+    sortOrder: remote.sort.value === column.key ? remote.order.value as 'ascend' | 'descend' : null,
+  } : {}),
+})));
 function formatTime(value?: string) {
   if (!value) return '未记录';
   const date = new Date(value);
@@ -815,6 +841,8 @@ function saveMetrics() {
             { label: '最近24小时', value: '1' },
             { label: '最近7天', value: '7' },
             { label: '最近30天', value: '30' },
+            { label: '最近90天', value: '90' },
+            { label: '最近180天', value: '180' },
           ]"
         />
         <Select
@@ -928,15 +956,15 @@ function saveMetrics() {
         @retry="remote.reload(true)"
       />
       <CoreListControls
-        v-model:preset="corePreset"
         v-model:period="corePeriod"
         kind="keywords"
       />
+      <SavedKeywordViews :filters="viewFilters" @apply="applyView" />
       <Table
         @change="remote.tableChange"
         :data-source="rows"
-        :columns="core.columns(columns)"
-        class="hci-resource-table"
+        :columns="displayColumns"
+        class="hci-resource-table keyword-compact-table"
         size="small"
         :row-selection="rowSelection"
         row-key="id"
@@ -948,7 +976,8 @@ function saveMetrics() {
               !cloudWorkspace.ready &&
               rows.length === 0
         "
-        :scroll="{ x: 'max-content' }"
+        table-layout="fixed"
+        :scroll="{ x: core.columns(columns).reduce((total, column) => total + (column.width || 0), 32) }"
       >
         <template #bodyCell="{ column, record }">
           <KeywordRelatedQueries

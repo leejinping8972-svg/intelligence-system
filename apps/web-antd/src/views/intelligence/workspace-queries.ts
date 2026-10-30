@@ -232,6 +232,8 @@ export function useWorkspaceList<T extends { id: string }>(
   }
   return {
     rows,
+    sort,
+    order,
     total,
     loading,
     error,

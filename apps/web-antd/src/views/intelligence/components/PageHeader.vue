@@ -33,6 +33,8 @@ watch(
           ? 'tasks'
           : [
                 'ads',
+                'advertisers',
+                'ad-reports',
                 'opportunities',
                 'overview',
                 'products',
@@ -40,6 +42,7 @@ watch(
                 'research',
                 'selected-keywords',
                 'settings',
+                'workspace-settings',
                 'sites',
                 'trends',
               ].includes(page || '')

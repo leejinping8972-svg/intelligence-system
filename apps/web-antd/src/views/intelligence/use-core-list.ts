@@ -82,7 +82,6 @@ type Column = {
 };
 export function useCoreList(kind: CoreKind) {
   const { width } = useWindowSize();
-  const preset = ref('original');
   const period = ref<CorePeriod>(30);
   const context = () => ({
     complete: !serverMode,
@@ -97,21 +96,18 @@ export function useCoreList(kind: CoreKind) {
       width.value < 768
         ? base.map((c) => ({ ...c, fixed: false as const }))
         : base;
-    if (preset.value === 'original') return responsive;
-    const identity = responsive.filter((c) =>
-      ['product', 'brand', 'term', 'market', 'category', 'platform', 'provider', 'source', 'actions'].includes(
-        c.key || '',
-      ),
-    );
-    const actions = identity.filter((c) => c.key === 'actions');
+    const actions = responsive.filter((c) => c.key === 'actions');
+    const covered = new Set(base.map(c => c.key));
+    if (kind === 'products' && covered.has('spec')) covered.add('core:spec');
+    if (kind === 'sites' && covered.has('products')) covered.add('core:linkedProducts');
     const fields: Array<[string, string]> = [
       ...presets[kind],
-      ...(preset.value === 'evidence' ? extra[kind] : []),
-      ['sourceContext', '来源 / 更新时间'],
+      ...extra[kind],
+      ...(covered.has('collectedAt') ? [] : [['sourceContext', '来源 / 更新时间'] as [string, string]]),
     ];
     return [
-      ...identity.filter((c) => c.key !== 'actions'),
-      ...fields.map(([key, title]) => ({
+      ...responsive.filter((c) => c.key !== 'actions'),
+      ...fields.filter(([key]) => !covered.has(`core:${key}`)).map(([key, title]) => ({
         key: `core:${key}`,
         title,
         width: [
@@ -124,8 +120,8 @@ export function useCoreList(kind: CoreKind) {
           'creative',
           'landingPages',
         ].includes(key)
-          ? 230
-          : kind === 'products' ? 116 : 165,
+          ? kind === 'keywords' ? 160 : 190
+          : kind === 'keywords' ? 105 : 116,
       })),
       ...actions,
     ];
@@ -148,5 +144,5 @@ export function useCoreList(kind: CoreKind) {
   function exportRecord(record: Product | Site | Ad | Keyword) {
     return coreExport(kind, record, context());
   }
-  return { preset, period, columns, metric, exportRecord };
+  return { period, columns, metric, exportRecord };
 }

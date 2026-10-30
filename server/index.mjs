@@ -48,6 +48,7 @@ import { retryRecords } from './job-progress.mjs';
 import { keywordNamesAction } from './keyword-names.mjs';
 import { submitKeywordJob } from './keyword-submit.mjs';
 import { keywordTrendsAction } from './keyword-trends-store.mjs';
+import { createKeywordViewsAction } from './keyword-views.mjs';
 import { localCollect, migrateCredentials } from './local-provider.mjs';
 import { addManualSite } from './manual-site.mjs';
 import { submitMarketJob } from './market-jobs.mjs';
@@ -105,6 +106,7 @@ const workspaceReads = createWorkspaceReads({
   putDocument,
   isWorkspaceSyncKey,
 });
+const keywordViewsAction = createKeywordViewsAction({ pool });
 let readTimer;
 async function refreshWorkspaceReads() {
   const more = !maintenance && (await workspaceReads.refresh());
@@ -150,6 +152,8 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_keyword_views_'))
+    return keywordViewsAction(input, user);
   if (input.action?.startsWith('server_source_'))
     return sourceUsageAction(input, user);
   if (input.action === 'server_product_resource_resume') {
@@ -812,6 +816,9 @@ const server = createServer(async (request, response) => {
             ![
               'auth_status',
               'server_core_rates',
+              'server_keyword_views_list',
+              'server_keyword_views_save',
+              'server_keyword_views_delete',
               'server_product_resource_capabilities',
               'server_product_resource_observations',
               'server_snapshot',

@@ -13,19 +13,19 @@ export const workspaceSections: { title?: string; links: WorkspaceLink[] }[] = [
     { title: '内容与公共情报', path: '/signals', icon: 'lucide:book-open' },
   ] },
   { title: '运行中心', links: [
-    { title: '跟踪计划', path: '/monitor?tab=monitors', icon: 'lucide:activity' },
-    { title: '采集任务', path: '/monitor?tab=tasks', icon: 'lucide:database' },
+    { title: '监控与任务', path: '/monitor', icon: 'lucide:activity' },
     { title: '资源消耗', path: '/usage', icon: 'lucide:chart-no-axes-combined', admin: true },
     { title: '设置', path: '/settings', icon: 'lucide:settings-2', admin: true },
   ] },
 ];
-export function workspaceActivePath(path: string, tab?: unknown) {
+export function workspaceActivePath(path: string, _tab?: unknown) {
   if (['/research', '/selected-keywords', '/trends'].includes(path)) return '/research';
   if (['/radar', '/opportunities'].includes(path)) return '/radar';
   if (path.startsWith('/consumer-insights') || path === '/product-research') return '/consumer-insights';
   if (path === '/reviews') return '/overview';
-  if (path === '/monitor') return tab === 'monitors' ? '/monitor?tab=monitors' : '/monitor?tab=tasks';
-  if (['/settings', '/ai-config', '/administration', '/imports', '/releases'].includes(path)) return '/settings';
+  if (path === '/monitor') return '/monitor';
+  if (['/ads', '/advertisers', '/ad-reports'].includes(path)) return '/ads';
+  if (['/settings', '/ai-config', '/administration', '/imports', '/releases', '/workspace-settings'].includes(path)) return '/settings';
   return path;
 }
 export function workspaceTabs(path: string, admin: boolean): WorkspaceLink[] {
@@ -34,10 +34,12 @@ export function workspaceTabs(path: string, admin: boolean): WorkspaceLink[] {
   if (active === '/radar') return [{ title: '新品雷达', path: '/radar' }, { title: '机会研究', path: '/opportunities' }];
   if (active === '/overview') return [{ title: '情报总览', path: '/overview' }, { title: '全局待审核', path: '/reviews' }];
   if (active === '/consumer-insights') return [{ title: '研究与报告', path: '/consumer-insights' }, { title: '商品研究', path: '/product-research' }];
+  if (active === '/ads') return [{ title: '广告素材', path: '/ads' }, { title: '广告主', path: '/advertisers' }, { title: '广告分析报告', path: '/ad-reports' }];
   if (active === '/settings') return [
     ...(admin ? [{ title: '数据源连接', path: '/settings' }, { title: 'AI 配置', path: '/ai-config' }] : []),
     { title: '账号与管理', path: '/administration' }, { title: '数据导入', path: '/imports' },
     ...(admin ? [{ title: '代码日志', path: '/releases' }] : []),
+    ...(admin ? [{ title: '工作区', path: '/workspace-settings' }] : []),
   ];
   return [];
 }

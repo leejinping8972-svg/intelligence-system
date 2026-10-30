@@ -36,7 +36,7 @@ import { useCoreList } from './use-core-list';
 import { matchesListingRange, recentListingRange } from '../../../../../server/product-listing.mjs';
 import { productChineseName } from '../../../../../server/product-names.mjs';
 const core = useCoreList('products');
-const { preset: corePreset, period: corePeriod } = core;
+const { period: corePeriod } = core;
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import { discoveryDecision, discoveryFilters } from './discovery';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
@@ -252,19 +252,24 @@ watch(originalPriceSortable, allowed => {
 });
 const tableColumns = computed(() => core.columns([
   { title: '商品', key: 'product', width: 240, fixed: 'left' as const },
-  { title: '市场 / 品类', key: 'category', width: 90 },
   { title: '平台', key: 'platform', width: 100 },
-  { title: '数据来源', key: 'provider', width: 110 },
+  { title: '关联独立站', key: 'source', width: 165 },
   { title: '决策标签', key: 'decisions', width: 160 },
   { title: originalPriceSortable.value ? '原币价格' : '原币价格（分币种）', key: 'core:priceOriginal', width: 110 },
   { title: '美元对比价', key: 'core:priceUsd', width: 116 },
   { title: '展示销量', key: 'core:cumulativeSold', width: 100 },
-  { title: '规格 / 剂型', key: 'spec', width: 125 },
+  { title: '所选周期销量', key: 'core:sales', width: 110 },
+  { title: '日均件数', key: 'core:dailySales', width: 100 },
   { title: '上架时间', key: 'core:listingDate', width: 112 },
-  { title: '关联独立站', key: 'source', width: 185 },
-  { title: '采集时间（北京时间）', key: 'collectedAt', width: 158 },
+  { title: '规格 / 剂型', key: 'spec', width: 125 },
   { title: '配方与成分', key: 'ingredient', width: 190 },
+  { title: '成分与剂量', key: 'core:ingredients', width: 180 },
+  { title: '品牌宣称', key: 'core:claim', width: 150 },
+  { title: '卖点', key: 'core:sellingPoints', width: 160 },
   { title: '资源口径 / 覆盖', key: 'resourceEvidence', width: 220 },
+  { title: '市场 / 品类', key: 'category', width: 90 },
+  { title: '采集时间（北京时间）', key: 'collectedAt', width: 150 },
+  { title: '数据来源', key: 'provider', width: 110 },
   { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
 ]).map((column) => productSortKeys.includes(column.key || '') && (column.key !== 'core:priceOriginal' || originalPriceSortable.value) ? {
   ...column, sorter: true, showSorterTooltip: column.key === 'core:priceOriginal' ? { title: '按当前市场单一币种排序' } : true, sortOrder: tableSort.value.key === column.key ? tableSort.value.order : null,
@@ -577,7 +582,7 @@ async function exportProducts() {
         </div>
       </article>
     </div>
-    <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="products" />
+    <CoreListControls v-model:period="corePeriod" kind="products" />
     <Table
       v-if="viewMode === 'list'"
       :loading="remote.loading.value"

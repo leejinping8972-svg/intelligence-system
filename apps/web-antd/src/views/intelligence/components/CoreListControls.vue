@@ -4,7 +4,6 @@ import { onMounted, ref } from 'vue';
 import { loadCoreRates, coreListContext } from '../core-list-context';
 import type { CoreKind, CorePeriod } from '../core-list-metrics';
 const props = defineProps<{ kind: CoreKind }>();
-const preset = defineModel<string>('preset', { default: 'original' });
 const period = defineModel<CorePeriod>('period', { default: 30 });
 const busy = ref(false);
 onMounted(() => {
@@ -24,18 +23,6 @@ async function refreshRates() {
 </script>
 <template>
   <div class="hci-toolbar core-list-controls">
-    <div class="core-control-group">
-      <span>列预设</span
-      ><Segmented
-        v-model:value="preset"
-        aria-label="列预设"
-        :options="[
-          { value: 'original', label: '原有列' },
-          { value: 'decision', label: '决策概览' },
-          { value: 'evidence', label: '数据证据' },
-        ]"
-      />
-    </div>
     <template v-if="kind === 'products' || kind === 'keywords'"
       ><div class="core-control-group">
         <span>统计周期</span

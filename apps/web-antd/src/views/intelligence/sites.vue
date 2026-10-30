@@ -23,11 +23,9 @@ import SemrushSitesDialog from './components/SemrushSitesDialog.vue';
 import ManualSiteDialog from './components/ManualSiteDialog.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import SiteDrawer from './components/SiteDrawer.vue';
-import CoreListControls from './components/CoreListControls.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
 const core = useCoreList('sites');
-const { preset: corePreset, period: corePeriod } = core;
 import BulkSiteWatch from './components/BulkSiteWatch.vue';
 import { emptyScoreFilter, matchesScore, useFilteredSelection } from './resource-list';
 import ProductCollectDialog from './components/ProductCollectDialog.vue';
@@ -316,7 +314,7 @@ const columns = [
         :message="scoreError"
         type="error"
         show-icon
-      /><CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="sites" /><Table
+      /><Table
         :loading="remote.loading.value"
         @change="remote.tableChange"
         class="hci-resource-table"

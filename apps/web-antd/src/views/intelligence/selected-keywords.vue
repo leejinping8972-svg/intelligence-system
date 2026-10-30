@@ -38,7 +38,7 @@ import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
 const core = useCoreList('keywords');
-const { preset: corePreset, period: corePeriod } = core;
+const { period: corePeriod } = core;
 const evidenceKeyword = ref<Keyword>();
 import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
@@ -185,26 +185,26 @@ watch(selected, () => {
   ids.value = ids.value.filter((id) => selected.value.some((k) => k.id === id));
 });
 const columns = [
-  { title: '关键词 / 种子词', key: 'term', width: 220, fixed: 'left' as const },
-  { title: '市场 / 品类', key: 'market', width: 115 },
+  { title: '关键词 / 种子词', key: 'term', width: 195, fixed: 'left' as const },
+  { title: '市场 / 品类', key: 'market', width: 100 },
   {
     title: '研究评分',
     key: 'score',
-    width: 105,
+    width: 88,
     defaultSortOrder: 'descend' as const,
     sorter: serverMode ? true : (a: { score: null | number }, b: { score: null | number }) =>
       (a.score ?? -1) - (b.score ?? -1),
   },
-  { title: '趋势热度 / 周期变化', key: 'trend', width: 215 },
-  { title: '消费者重点话题 / 样本热度', key: 'consumer', width: 290 },
-  { title: 'TK趋势', key: 'tiktok', width: 185 },
-  { title: 'INS趋势', key: 'instagram', width: 185 },
-  { title: 'FB趋势', key: 'facebook', width: 185 },
-  { title: '站点采集状态', key: 'status', width: 145 },
-  { title: '广告采集状态', key: 'ads', width: 145 },
+  { title: '趋势热度 / 周期变化', key: 'trend', width: 158 },
+  { title: '消费者重点话题 / 样本热度', key: 'consumer', width: 230 },
+  { title: 'TK趋势', key: 'tiktok', width: 118 },
+  { title: 'INS趋势', key: 'instagram', width: 118 },
+  { title: 'FB趋势', key: 'facebook', width: 118 },
+  { title: '站点采集状态', key: 'status', width: 115 },
+  { title: '广告采集状态', key: 'ads', width: 115 },
   { title: '关联站点', key: 'sites', width: 100 },
-  { title: '采集时间 / 说明', key: 'time', width: 260 },
-  { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
+  { title: '采集时间 / 说明', key: 'time', width: 180 },
+  { title: '操作', key: 'actions', width: 135, fixed: 'right' as const },
 ];
 async function remove(r: Keyword) {
   const current = state.keywords.find((row) => row.id === r.id);
@@ -316,10 +316,10 @@ async function exportSelectedKeywords() {
         <KeywordNamesDialog :ids="ids" />
       </SelectionBar>
       <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
-      <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="keywords" />
+      <CoreListControls v-model:period="corePeriod" kind="keywords" />
       <Table
         @change="remote.tableChange"
-        class="hci-resource-table"
+        class="hci-resource-table keyword-compact-table"
         size="small"
         :columns="core.columns(columns)"
         :data-source="rows"

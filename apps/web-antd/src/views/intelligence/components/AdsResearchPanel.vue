@@ -35,7 +35,7 @@ import { reportStatus } from '../report-document';
 import { cachedReport, readReport, saveReport } from '../report-details';
 import ResearchReport from './ResearchReport.vue';
 import AdReportPrompt from './AdReportPrompt.vue';
-const props = defineProps<{ ads: Ad[] }>(),
+const props = withDefaults(defineProps<{ ads: Ad[]; showList?: boolean }>(), { showList: true }),
   router = useRouter(),
   route = useRoute();
 const open = ref(false),
@@ -76,7 +76,7 @@ function stop() {
   timer = undefined;
 }
 async function load() {
-  if (!serverMode) return;
+  if (!serverMode || !props.showList) return;
   const token = ++listToken;
   listBusy.value = !reports.value.length;
   try {
@@ -161,6 +161,7 @@ watch(
     void load();
   },
 );
+watch(() => props.showList, value => { stop(); if (value) void load(); });
 watch(
   () => list.search,
   () => {
@@ -317,7 +318,8 @@ const asReport = (r: Record<string, any>) => r as Report;
 const isActive = (r: Report) => ['queued', 'running'].includes(r.status);
 </script>
 <template>
-  <section class="hci-panel">
+  <section :class="{ 'hci-panel': showList }">
+    <template v-if="showList">
     <div class="hci-panel-head">
       <div>
         <h2>广告分析报告</h2>
@@ -445,6 +447,7 @@ const isActive = (r: Report) => ['queued', 'running'].includes(r.status);
         </div>
       </template>
     </Table>
+    </template>
     <Modal
       v-model:open="open"
       :title="reusing ? '基于已有证据重新分析' : '生成广告分析报告'"

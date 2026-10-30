@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Ad } from './data';
+import type { Ad, Product, Site } from './data';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
@@ -16,16 +16,15 @@ import {
   Modal,
   Select,
   Tag,
-  Tabs,
+  Segmented,
   Table,
 } from 'ant-design-vue';
 import PageHeader from './components/PageHeader.vue';
-import CoreListControls from './components/CoreListControls.vue';
 import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
 const core = useCoreList('ads');
-const { preset: corePreset, period: corePeriod } = core;
+const displayMode = ref('cards');
 const adColumns = [{ title: '广告主 / 素材', key: 'brand', width: 270, fixed: 'left' as const }, { title: '市场', key: 'market', width: 90 }, { title: '平台', key: 'platform', dataIndex: 'platform', width: 100 }, { title: '数据来源', key: 'source', dataIndex: 'source', width: 150 }, { title: '操作', key: 'actions', width: 100, fixed: 'right' as const }];
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
@@ -35,7 +34,6 @@ import CompetitorWatchPanel from './components/CompetitorWatchPanel.vue';
 import DiscoveryTag from './components/DiscoveryTag.vue';
 import DailyDiscoveryPlan from './components/DailyDiscoveryPlan.vue';
 import AdvertiserList from './components/AdvertiserList.vue';
-import { groupAdvertisers } from './advertisers';
 import { discoveryDecision, discoveryFilters } from './discovery';
 import { exportCsv, inMarket, marketName, state } from './data';
 import { cloudRequest, syncCloudWorkspace } from './cloud-workspace';
@@ -53,14 +51,22 @@ const search = ref(''),
   busy = ref(false),
   error = ref('');
 const platformFilter = ref('ALL'), sourceFilter = ref('ALL');
+const linkedProduct = ref<string>(), linkedSite = ref<string>();
+const productSearch = ref(''), siteSearch = ref('');
 const platformOptions = computed(() => [{ label: '全部平台', value: 'ALL' }, ...(serverMode ? remote.facets.value.platform || [] : [...new Set(state.ads.map(a => a.platform))]).map(value => ({label: value, value}))]);
 const sourceOptions = computed(() => [{ label: '全部数据来源', value: 'ALL' }, ...(serverMode ? remote.facets.value.source || [] : [...new Set(state.ads.map(a => a.source).filter(Boolean))]).map(value => ({label: value, value}))]);
 const keywordIds = ref<string[]>([]);
-const viewTab = ref('ads');
-watch(() => route.query.tab, (value) => { if (value === 'advertisers' || value === 'ads') viewTab.value = value; }, { immediate: true });
-const advertiserCount = computed(() => groupAdvertisers(rows.value, state.sites).length);
+const viewTab = computed(() => route.path === '/advertisers' ? 'advertisers' : route.path === '/ad-reports' ? 'reports' : 'ads');
+watch(() => [route.query.tab, route.query.report], () => {
+  if (route.path !== '/ads') return;
+  if (route.query.tab === 'advertisers' || route.query.report) {
+    const { tab: _tab, ...query } = route.query;
+    void router.replace({ path: route.query.report ? '/ad-reports' : '/advertisers', query });
+  }
+}, { immediate: true });
+watch(() => route.query.site, value => { linkedSite.value = typeof value === 'string' ? value : undefined; }, { immediate: true });
 watch(() => route.query.pageId, (value) => {
-  if (value) { search.value = ''; status.value = 'ALL'; newness.value = 'ALL'; }
+  if (value) { search.value = String(value); status.value = 'ALL'; newness.value = 'ALL'; }
 }, { immediate: true });
 const advertiser = ref<Ad>();
 const form = reactive({
@@ -91,7 +97,8 @@ const rows = computed(() => serverMode ? remote.rows.value :
             : String(discoveryDecision(a, 'ad').isNew === null ? 'unknown' : discoveryDecision(a, 'ad').isNew ? 'yes' : 'no') === newness.value)) &&
         (!route.query.keywordId ||
           a.keywordIds?.includes(String(route.query.keywordId))) &&
-        (!route.query.site || a.siteIds?.includes(String(route.query.site))),
+        (!linkedSite.value || a.siteIds?.includes(linkedSite.value)) &&
+        (!linkedProduct.value || a.productId === linkedProduct.value),
     )
     .toSorted((a, b) =>
       (b.lastCollectedAt || b.firstSeenAt || '').localeCompare(
@@ -102,8 +109,12 @@ const rows = computed(() => serverMode ? remote.rows.value :
 const page = ref(1);
 const pageSize = ref(20);
 const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.market, search: search.value,
-  platform: platformFilter.value, source: sourceFilter.value, status: status.value, newness: newness.value, keywordId: route.query.keywordId, linkedSite: route.query.site,
+  enabled: viewTab.value !== 'advertisers', platform: platformFilter.value, source: sourceFilter.value, status: status.value, newness: newness.value, keywordId: route.query.keywordId, linkedSite: linkedSite.value, linkedProduct: linkedProduct.value,
 })), page, pageSize);
+const productLookup = useWorkspaceList<Product>('products', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: productSearch.value })), ref(1), ref(50));
+const siteLookup = useWorkspaceList<Site>('sites', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: siteSearch.value })), ref(1), ref(50));
+const productOptions = computed(() => (serverMode ? productLookup.rows.value : state.products.filter(p => inMarket(p.market))).map(p => ({ value: p.id, label: `${p.titleZh || p.title} · ${p.market} · ${p.sourcePlatform || '未记录平台'} · ${p.sourceProductId || p.id}` })));
+const siteOptions = computed(() => (serverMode ? siteLookup.rows.value : state.sites.filter(s => inMarket(s.market))).map(s => ({ value: s.id, label: `${s.brand} · ${s.domain}` })));
 const { ids: bulkIds, selectable, selectAll, clear } = useFilteredSelection(rows, undefined, serverMode ? remote.selectAll : undefined);
 const pagedRows = computed(() => serverMode ? rows.value : rows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value));
 watch(() => selected.value?.id, async (id) => {
@@ -114,7 +125,7 @@ watch(() => selected.value?.id, async (id) => {
   } catch (cause) { message.error((cause as Error).message); }
 });
 const adResearch = ref<InstanceType<typeof AdsResearchPanel>>();
-watch([search, status, newness, platformFilter, sourceFilter, () => state.market, () => route.query], () => { page.value = 1; clear(); });
+watch([search, status, newness, platformFilter, sourceFilter, linkedProduct, linkedSite, () => state.market, () => route.query], () => { page.value = 1; clear(); });
 watch([() => keywordIds.value.length, () => form.maxPages], () => {
   form.maxRequests = Math.max(
     1,
@@ -138,6 +149,8 @@ watch(() => state.market, () => {
   pendingRequest = '';
   open.value = false;
   search.value = '';
+  linkedProduct.value = undefined;
+  linkedSite.value = undefined;
 });
 async function submit() {
   if (busy.value) return;
@@ -193,38 +206,40 @@ async function exportAds() {
         >采集广告与独立站</Button
       ></PageHeader
     >
-    <div class="hci-toolbar" style="margin-bottom: 16px"><CompetitorWatchPanel kind="advertiser" /><DailyDiscoveryPlan /><label for="ad-newness">广告新旧标签</label><Select id="ad-newness" v-model:value="newness" :options="discoveryFilters" style="min-width: 180px" /></div>
-    <Tabs v-model:active-key="viewTab">
-    <Tabs.TabPane key="ads" :tab="`广告素材（${serverMode ? remote.total.value : rows.length}）`">
-    <AdsResearchPanel ref="adResearch" :ads="serverMode ? state.ads : rows" />
-    <section class="hci-panel">
-      <div class="hci-toolbar">
+    <AdsResearchPanel v-if="viewTab !== 'advertisers'" ref="adResearch" :ads="serverMode ? state.ads : rows" :show-list="viewTab === 'reports'" />
+    <section v-if="viewTab === 'ads'" class="hci-panel">
+      <div class="hci-toolbar hci-filter-toolbar ad-filters">
         <Input.Search
           v-model:value="search"
           placeholder="搜索关键词、品牌或广告文案"
+          aria-label="检索广告"
           allow-clear
         /><Select
           v-model:value="status"
+          aria-label="广告状态"
           :options="[
             { label: '全部广告状态', value: 'ALL' },
             { label: '投放中', value: '投放中' },
             { label: '已停止', value: '已停止' },
           ]"
-        /><Button v-if="route.query.site" @click="router.replace('/ads')"
-          >清除站点筛选</Button
-        ><span class="hci-toolbar-end hci-subtle"
+        />
+        <Select v-model:value="platformFilter" :options="platformOptions" show-search option-filter-prop="label" aria-label="按广告平台筛选" />
+        <Select v-model:value="sourceFilter" :options="sourceOptions" show-search option-filter-prop="label" aria-label="按广告数据来源筛选" />
+        <Select v-model:value="linkedProduct" :options="productOptions" :loading="productLookup.loading.value" show-search :filter-option="serverMode ? false : undefined" option-filter-prop="label" allow-clear placeholder="关联商品" aria-label="检索关联商品" @search="value => productSearch = value" />
+        <Select v-model:value="linkedSite" :options="siteOptions" :loading="siteLookup.loading.value" show-search :filter-option="serverMode ? false : undefined" option-filter-prop="label" allow-clear placeholder="关联独立站" aria-label="检索关联独立站" @search="value => siteSearch = value" />
+        <Select v-model:value="newness" :options="discoveryFilters" aria-label="广告新旧标签" />
+        <span class="hci-toolbar-end hci-subtle"
           >{{ serverMode ? remote.total.value : rows.length }} 条广告</span
         >
       </div>
+      <div class="hci-toolbar"><CompetitorWatchPanel kind="advertiser" /><DailyDiscoveryPlan /><Segmented v-model:value="displayMode" :options="[{ label: '素材视图', value: 'cards' }, { label: '列表', value: 'list' }]" aria-label="广告显示方式" /></div>
       <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
       <SelectionBar :count="bulkIds.length" :total="serverMode ? remote.total.value : selectable.length" @all="selectAll" @clear="clear"><Button size="small" :disabled="!bulkIds.length || bulkIds.length > 100" @click="adResearch?.begin(bulkIds)">分析所选广告</Button><span v-if="bulkIds.length > 100" class="hci-subtle">每份报告最多100条，请缩小筛选</span></SelectionBar>
       <Empty
         v-if="!rows.length"
         description="暂无广告；选择已入选关键词采集，或导入真实广告资料"
       />
-      <div class="hci-toolbar"><Select v-model:value="platformFilter" :options="platformOptions" show-search option-filter-prop="label" aria-label="按广告平台筛选" style="min-width: 150px" /><Select v-model:value="sourceFilter" :options="sourceOptions" show-search option-filter-prop="label" aria-label="按广告数据来源筛选" style="min-width: 180px" /></div>
-      <CoreListControls v-model:preset="corePreset" v-model:period="corePeriod" kind="ads" />
-      <Table v-if="corePreset !== 'original'" size="small" row-key="id" :columns="core.columns(adColumns)" :data-source="pagedRows" :pagination="false" :scroll="{ x: 'max-content' }" :row-selection="{ selectedRowKeys: bulkIds, onChange: (keys) => bulkIds = keys.map(String), getCheckboxProps: (a) => ({disabled:a.dataNature === 'demo'}) }">
+      <Table v-if="displayMode === 'list'" size="small" row-key="id" :columns="core.columns(adColumns)" :data-source="pagedRows" :pagination="false" :scroll="{ x: 'max-content' }" :row-selection="{ selectedRowKeys: bulkIds, onChange: (keys) => bulkIds = keys.map(String), getCheckboxProps: (a) => ({disabled:a.dataNature === 'demo'}) }">
         <template #bodyCell="{column,record}">
           <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Ad,column.key)" />
           <template v-else-if="column.key === 'brand'"><Button type="link" @click="selected = record as Ad">{{ record.brand }}</Button><p class="hci-clamp-2">{{ record.headline }}</p></template>
@@ -265,11 +280,7 @@ async function exportAds() {
       </div>
       <div v-if="rows.length" class="hci-list-pagination"><Pagination :current="page" :page-size="pageSize" :total="serverMode ? remote.total.value : rows.length" :show-size-changer="true" :page-size-options="['10','20','50','100']" @change="(current: number, size: number) => { page = current; pageSize = size; }" /></div>
     </section>
-    </Tabs.TabPane>
-    <Tabs.TabPane key="advertisers" :tab="serverMode ? '广告主' : `广告主（${advertiserCount}）`">
-      <AdvertiserList :ads="rows" :page-id="typeof route.query.pageId === 'string' ? route.query.pageId : undefined" @ads="(pageId) => { search=pageId; viewTab='ads'; }" />
-    </Tabs.TabPane>
-    </Tabs>
+    <AdvertiserList v-else-if="viewTab === 'advertisers'" :ads="rows" :page-id="typeof route.query.pageId === 'string' ? route.query.pageId : undefined" @ads="(pageId) => { search=pageId; router.push({ path: '/ads', query: { pageId } }); }" />
     <Drawer
       :open="!!selected"
       title="广告详情与来源"

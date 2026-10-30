@@ -133,12 +133,16 @@ async function exerciseReadModel(
       copy: 'x'.repeat(1499) + '\uD83D\uDC8A' + 'x'.repeat(8500),
       keywordIds: ['k0'],
       siteIds: ['s1'],
+      productId: i < 2 ? 'p1' : 'p2',
       status: '投放中',
       lastCollectedAt: '2026-10-22T00:00:00Z',
       dataNature: 'collected',
     });
   await drain();
   const dates = Array.from({ length: 365 }, (_, i) => ({ date: new Date(Date.parse('2026-10-26T00:00:00Z') - (365 - i) * 86400000).toISOString().slice(0, 10), value: 50 }));
+  assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'p1', linkedSite: 's1' })).total, 2);
+  assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'p1', linkedSite: 'missing' })).total, 0);
+  assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'missing' })).total, 0);
   const saved = { ...keyword(0), series: dates.map((p) => p.value), trendPoints: dates, trendResolution: 'day', trendCollectedAt: '2026-10-26T00:00:00Z', trendDailyPoints: dates.slice(-60), trendDailyCollectedAt: '2026-10-26T00:00:00Z', trendRelatedTop: Array.from({ length: 25 }, (_, i) => ({ query: `saved query ${i}`, value: i, formattedValue: String(i) })) };
   await pool.query('UPDATE research_keywords SET data=$1 WHERE natural_key=$2', [saved, 'key0']);
   // Simulate a v6 projection that predates calendar summaries; no rebuild is needed.

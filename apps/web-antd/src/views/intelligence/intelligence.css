@@ -1,6 +1,7 @@
 @import './resource-density.css';
 
 :root {
+  --font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   --hci-accent: #2563ff;
   --hci-muted: #667085;
   --hci-border: #e2e6ed;
@@ -10,6 +11,32 @@
   --hci-green-soft: #edf3ff;
   --hci-sand: #f4eee2;
   --hci-purple: #eeedf7;
+}
+
+body {
+  font-family: var(--font-family);
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+.keyword-compact-table .ant-table-cell {
+  padding: 6px 8px !important;
+  overflow-wrap: anywhere;
+}
+
+.hci-page .hci-toolbar.ad-filters .ant-input-search { flex: 0 1 240px; max-width: 300px; }
+.hci-page .hci-toolbar.ad-filters > .ant-select { flex: 0 1 135px; min-width: 135px; }
+.hci-page .hci-toolbar.ad-filters > .ant-select[aria-label^='检索关联'] { flex-basis: 190px; }
+@media (max-width: 767px) {
+  .hci-page .hci-toolbar.ad-filters > .ant-select { flex: 1 1 calc(50% - 6px); }
+  .hci-page .hci-toolbar.ad-filters .ant-input-search { flex: 1 1 100%; max-width: none; }
+}
+.saved-keyword-views { margin: 6px 0; }
+
+.keyword-compact-table .ant-tag {
+  margin-inline-end: 3px;
 }
 
 .dark {
@@ -378,7 +405,7 @@
 }
 
 .hci-bottle-body strong {
-  font-family: Georgia, serif;
+  font-family: var(--font-family);
   font-size: 12px;
   line-height: 1.2;
   text-align: center;
@@ -1588,7 +1615,7 @@
 html,
 body,
 #app {
-  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }

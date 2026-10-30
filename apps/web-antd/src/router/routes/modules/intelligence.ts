@@ -130,6 +130,9 @@ const routes: RouteRecordRaw[] = [
     },
   },
   { name: 'HciProductResearch', path: '/product-research', component: () => import('#/views/intelligence/product-research.vue'), meta: { title: '商品研究', hideInMenu: true } },
+  { name: 'HciAdvertisers', path: '/advertisers', component: () => import('#/views/intelligence/ads.vue'), meta: { title: '广告主', hideInMenu: true } },
+  { name: 'HciAdReports', path: '/ad-reports', component: () => import('#/views/intelligence/ads.vue'), meta: { title: '广告分析报告', hideInMenu: true } },
+  { name: 'HciWorkspaceSettings', path: '/workspace-settings', component: () => import('#/views/intelligence/settings.vue'), meta: { title: '工作区', hideInMenu: true, authority: ['super'] } },
   { name: 'HciSourceUsage', path: '/usage', component: () => import('#/views/intelligence/usage.vue'), meta: { title: '资源消耗', authority: ['super'] } },
   ...(import.meta.env.VITE_HCI_SERVER === 'true'
     ? [
