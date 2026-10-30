@@ -1,35 +1,25 @@
 {
-  "title": "商品独立站平台识别与关联站点随列表加载",
+  "title": "修复数据源连接统计天数错误和首次状态展示",
   "includedCommits": [
-    "58c4b421ff1d491e9805b34baeedb9f08d524b08"
+    "ea4ae5eb7d0e42f885b6308fbd9363d78e5e78ab"
   ],
-  "sourceSha": "58c4b421ff1d491e9805b34baeedb9f08d524b08",
+  "sourceSha": "ea4ae5eb7d0e42f885b6308fbd9363d78e5e78ab",
   "changes": [
-    "官网商品采集记录独立站平台；历史来源网址与关联域名匹配时兼容显示，明确的平台记录优先。",
-    "商品分页/详情/选择/导出批量携带关联站点轻量摘要，不等待筛选选项或全局站点库，区分未关联与信息未加载。",
-    "平台筛选及选项口径同步；不批量修改历史业务数据，不重抓、不升级或重建读模型。"
+    "数据源连接请求改为接口已支持的7天统计窗口，修复统计天数无效导致的来源列表空白。",
+    "首次状态未读取时不误报0个来源已配置，后续读取失败保留已有成功列表并支持刷新。",
+    "仅前端组件修正；不改写密钥、来源目录或统计校验，不重抓或主动调用真实供应商。"
   ],
   "validation": [
-    "功能30项Node/PGlite及前端11项、完整Web类型和diff检查通过。",
-    "独立MySQL8空库7条合成数据验证平台SQL筛选/分组通过；Edge1440/390px阻塞facets时首屏显示正确，页面错误/文档横向溢出0。",
-    "发布阶段重复测试/验证构建/CI等待按用户策略跳过，未执行全仓lint及自动修改式钩子。",
-    "无schema/迁移/依赖变更；完整数据库备份按策略跳过，保留21锁、应用回退及业务/认证/配置/队列/检查点/journal/public-data一致性保护。"
+    "完整Web类型及diff检查通过。",
+    "Edge合成浏览器19行来源、首次503/重试恢复、后续失败保留列表与恢复通过，实际使用服务端周期校验，页面错误0。",
+    "正式只读7天接口返回18项来源和正常西之月会话状态；未读取或输出凭证值。",
+    "发布阶段重复测试/验证构建/CI等待按用户策略跳过；无schema/迁移/依赖变更，完整数据库备份按策略跳过，保留应用回退、21锁与数据保护。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/product-source.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "server/product-jobs.mjs",
-    "server/product-platform.mjs",
-    "server/product-platform.test.mjs",
-    "server/product-queue.test.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs",
-    "tests/product-source.test.ts"
+    "apps/web-antd/src/views/intelligence/components/SourceConnections.vue"
   ],
-  "id": "20261030071032-817f4657",
-  "builtAt": "2026-10-30T07:10:32.388Z",
-  "sourceDigest": "817f4657fe4d63a73378a5accc97612eaaf6fdc1beed66b4b1fa68a0f64df9f8",
+  "id": "20261030090233-eb553d2f",
+  "builtAt": "2026-10-30T09:02:33.560Z",
+  "sourceDigest": "eb553d2f54e75b28d89d9824b10e3478d421a1719f26e011d8f4eb4296f4999d",
   "operator": "Codex"
 }
