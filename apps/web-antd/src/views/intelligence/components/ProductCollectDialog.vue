@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import {
   Alert,
   Button,
+  Checkbox,
   Form,
   InputNumber,
   message,
@@ -25,10 +26,9 @@ const form = reactive({
   profile: 'explore',
   maxProducts: 30,
   maxDetailProducts: 10,
-  maxRequests: 20,
-  maxRequestsPerSite: 20,
+  maxPagesPerSite: 20,
   maxBrowserPages: 1,
-  maxPaidRequests: 0,
+  hostedEnabled: false,
 });
 function applyProfile(profile: string) {
   const count = Math.max(1, props.siteIds.length);
@@ -36,16 +36,14 @@ function applyProfile(profile: string) {
     Object.assign(form, {
       maxProducts: 100,
       maxDetailProducts: 100,
-      maxRequests: Math.min(2000, 120 * count),
-      maxRequestsPerSite: 120,
+      maxPagesPerSite: 120,
       maxBrowserPages: Math.min(50, 3 * count),
     });
   else
     Object.assign(form, {
       maxProducts: 30,
       maxDetailProducts: 10,
-      maxRequests: 20 * count,
-      maxRequestsPerSite: 20,
+      maxPagesPerSite: 20,
       maxBrowserPages: Math.min(50, count),
     });
 }
@@ -113,13 +111,7 @@ async function submit() {
           :min="1"
           :max="1000"
         /> </Form.Item
-      ><Form.Item label="整批网页请求上限（1～2000）">
-        <InputNumber
-          v-model:value="form.maxRequests"
-          :min="siteIds.length || 1"
-          :max="2000"
-        />
-      </Form.Item>
+      >
       <Form.Item label="每站商品详情目标">
         <InputNumber
           v-model:value="form.maxDetailProducts"
@@ -127,27 +119,17 @@ async function submit() {
           :max="form.maxProducts"
         />
       </Form.Item>
-      <Form.Item label="单站网页请求上限（留空则按站点数分配）">
+      <Form.Item label="单站页面上限">
         <InputNumber
-          v-model:value="form.maxRequestsPerSite"
+          v-model:value="form.maxPagesPerSite"
           :min="1"
-          :max="form.maxRequests"
-          :placeholder="
-            String(Math.ceil(form.maxRequests / Math.max(1, siteIds.length)))
-          "
+          :max="2000"
         />
       </Form.Item>
       <Form.Item label="整批浏览器渲染上限（0关闭，最多50页）">
         <InputNumber v-model:value="form.maxBrowserPages" :min="0" :max="50" />
       </Form.Item>
-      <Form.Item label="整批Firecrawl托管备用上限（默认0，不调用）">
-        <InputNumber
-          v-model:value="form.maxPaidRequests"
-          :min="0"
-          :max="100"
-          :disabled="session.user?.role !== 'admin'"
-        />
-      </Form.Item> </Form
+      <Form.Item label="托管备用"><Checkbox v-model:checked="form.hostedEnabled" :disabled="session.user?.role !== 'admin'">启用 Firecrawl 托管备用</Checkbox></Form.Item> </Form
     ><CollectionEstimate
       v-if="open"
       :input="{ kind: 'products', siteIds, ...form }"
@@ -157,7 +139,7 @@ async function submit() {
       :message="`${form.profile === 'deep' ? '深度' : '探索'}模式：各站轮流采集，目录发现达到商品上限后仍继续完成已排队的 ${form.maxDetailProducts} 个详情目标。429先冷却整个站点；动态页按预算使用浏览器。`"
     />
     <p class="hci-subtle">
-      每批最多20站；目录、详情、浏览器与托管各计一次页面采集，均受整批和单站上限约束。浏览器每页最多读取24个必要文本资源、正文10MB，单页45秒，不下载商品图片。托管尝试可能消耗平台积分；响应未知时不自动重放。图片内标签仍需人工核验。
+      每批最多20站；目录、详情、浏览器与托管各计一次页面采集，受商品数和页面上限约束。浏览器每页最多读取24个必要文本资源、正文10MB，单页45秒，不下载商品图片。托管尝试可能消耗平台积分；响应未知时不自动重放。图片内标签仍需人工核验。
     </p>
     <Alert v-if="error" :message="error" type="error" show-icon />
   </Modal>

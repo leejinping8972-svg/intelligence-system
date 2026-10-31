@@ -18,7 +18,6 @@ export function researchSignature(input) {
     socialTrends: input.socialTrends
       ? {
           sources: sorted(input.socialTrends.sources),
-          maxRequests: input.socialTrends.maxRequests,
           maxPages: input.socialTrends.maxPages,
         }
       : null,

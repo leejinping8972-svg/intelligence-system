@@ -25,15 +25,13 @@ watch(admin, value => { if (!value) model.value.sources = []; }, { immediate: tr
   </Form.Item>
   <template v-if="model.sources.length">
     <div class="hci-form-grid">
-      <Form.Item label="每日社媒请求总上限（与其他趋势任务共用）">
-        <InputNumber v-model:value="model.maxRequests" :min="1" :max="1000" :precision="0" />
-      </Form.Item>
+
       <Form.Item label="每词每来源最多页数（INS最多11页）">
         <InputNumber v-model:value="model.maxPages" :min="1" :max="100" :precision="0" />
       </Form.Item>
     </div>
     <Form.Item>
-      <Checkbox v-model:checked="model.budgetAcknowledged">确认按上述预算使用已配置的 ScrapeCreators 额度</Checkbox>
+      <Checkbox v-model:checked="model.budgetAcknowledged">确认使用已配置的 ScrapeCreators 额度</Checkbox>
     </Form.Item>
   </template>
 </template>

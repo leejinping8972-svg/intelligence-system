@@ -84,7 +84,6 @@ export function validateInsight(input) {
     researchFocus: String(input.researchFocus || '')
       .trim()
       .slice(0, 2000),
-    maxRequests: Number(input.maxRequests ?? 10),
     maxPages: Number(input.maxPages ?? 2),
     limit: Number(input.limit ?? 200),
     keywordIds: input.keywordIds || [],
@@ -92,7 +91,6 @@ export function validateInsight(input) {
     productIds: input.productIds || [],
   };
   for (const [key, max] of [
-    ['maxRequests', 100],
     ['maxPages', 10],
     ['limit', 1000],
   ])
@@ -478,8 +476,7 @@ export async function runInsightJob(job, overrides = {}) {
         r.id = `${job.id}-${r.id}`;
         if (
           v.fetchTranscript &&
-          ad.videoUrls?.length &&
-          cp.requests < v.maxRequests
+          ad.videoUrls?.length
         ) {
           try {
             const t = await io.collect(job, `transcript:${cp.index}`, {
@@ -523,7 +520,6 @@ export async function runInsightJob(job, overrides = {}) {
         for (; cp.page < v.maxPages; cp.page++) {
           await check();
           if (
-            cp.requests >= v.maxRequests ||
             cp.evidenceIds.length >= v.limit
           ) {
             cp.limited = true;
@@ -566,7 +562,7 @@ export async function runInsightJob(job, overrides = {}) {
         cp.page = 0;
         cp.cursor = '';
         await io.saveCheckpoint(job, { ...cp, index: cp.index + 1 });
-        if (cp.requests >= v.maxRequests || cp.evidenceIds.length >= v.limit)
+        if (cp.evidenceIds.length >= v.limit)
           break;
       }
     }
@@ -608,7 +604,7 @@ export async function runInsightJob(job, overrides = {}) {
     report.message = !cp.evidenceIds.length
       ? '接口未返回可用文本；不代表没有市场需求'
       : cp.limited
-        ? '已保存限定范围内的样本；达到数量、页数或请求上限，并非全量'
+        ? '已保存限定范围内的样本；达到数量或页数上限，并非全量'
         : '研究范围内采集结束，等待人工审阅';
     report.requests = cp.requests;
     report.finishedAt = new Date().toISOString();

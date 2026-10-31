@@ -292,13 +292,6 @@ export async function sorftimeSuggestions(
       status: 'unsupported',
       message: '当前 Sorftime 来源为 Amazon 关键词，不支持越南市场，未跨国替代',
     };
-  if (budget.remaining <= 0)
-    return {
-      source: SOURCE,
-      items: [],
-      status: 'error',
-      message: '本任务 Sorftime 调用额度已用完，未继续请求',
-    };
   const items = new Map();
   let message = '';
   try {
@@ -316,8 +309,6 @@ export async function sorftimeSuggestions(
         message: '此账户的关键词工具不支持所选市场，未跨国替代',
       };
     const query = async (term) => {
-      if (budget.remaining <= 0) return;
-      budget.remaining -= 1;
       budget.used += 1;
       const response = await client.rpc('tools/call', {
         name: client.tool.name,
@@ -339,7 +330,7 @@ export async function sorftimeSuggestions(
     await query(keyword);
     if (depth === 2) {
       for (const item of [...items.values()]) {
-        if (items.size >= limit || budget.remaining <= 0) break;
+        if (items.size >= limit) break;
         if (
           item.term.toLocaleLowerCase() ===
           keyword.normalize('NFKC').toLocaleLowerCase()
@@ -348,9 +339,7 @@ export async function sorftimeSuggestions(
         await query(item.term);
       }
     }
-    if (budget.remaining <= 0 && items.size < limit)
-      message = '已达到本任务 Sorftime 调用上限，保留已获取关键词';
-    else if (items.size > 0 && items.size < limit)
+    if (items.size > 0 && items.size < limit)
       message = `${depth === 2 ? '已完成二级扩词并遍历首轮返回词' : '已完成一级扩词'}；本来源去重后返回${items.size}个词，低于本组目标${limit}个，未继续更深层扩词`;
     return {
       source: SOURCE,

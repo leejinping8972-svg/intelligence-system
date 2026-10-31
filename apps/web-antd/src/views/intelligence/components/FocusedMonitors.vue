@@ -39,7 +39,7 @@ const busy = ref('');
   const status = ref('ALL');
 const editor = ref<FocusedMonitorRow>();
 const productId = ref<string>();
-const form = reactive({ hour: 8, maxRequests: 10, enabled: false });
+const form = reactive({ hour: 8, maxPages: 10, enabled: false });
 const canEdit = computed(() => !serverMode || session.user?.role === 'admin');
 const rows = computed(() =>
   focusedMonitorRows(
@@ -235,7 +235,7 @@ function view(row: FocusedMonitorRow) {
         <template v-else>
 {{ record.schedule }}
           <p class="hci-subtle">
-            最多{{ record.target.maxRequests }}次请求/天
+            最多{{ record.target.maxPages }}页/渠道
           </p>
 </template>
       </template>
@@ -247,7 +247,7 @@ function view(row: FocusedMonitorRow) {
           }}
 </Tag>{{ record.run.day }}
           <p class="hci-subtle">
-            {{ record.run.requests }}次请求 · {{ record.run.added || 0 }}项上新
+            {{ record.run.requests }}页/渠道 · {{ record.run.added || 0 }}项上新
           </p>
           <p v-for="text in record.run.errors" :key="text" class="hci-subtle">
             {{ text }}
@@ -327,14 +327,8 @@ function view(row: FocusedMonitorRow) {
           :max="23"
           :precision="0"
 />
-</Form.Item><Form.Item label="每日请求上限">
-<InputNumber
-          v-model:value="form.maxRequests"
-          :min="1"
-          :max="100"
-          :precision="0"
-/>
-</Form.Item><Form.Item label="启用自动检查">
+</Form.Item>
+<Form.Item label="每渠道页面上限"><InputNumber v-model:value="form.maxPages" :min="1" :max="100" :precision="0" /></Form.Item><Form.Item label="启用自动检查">
 <Switch v-model:checked="form.enabled" />
 </Form.Item>
 </Form>

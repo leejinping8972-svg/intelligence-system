@@ -28,12 +28,13 @@ function fixture() {
 }
 test('research validates explicit sources and credit consent; old jobs remain opted out', () => {
   assert.equal(input({ socialTrends: undefined }).socialTrends, undefined);
-  for (const invalid of [{ ...socialTrends, budgetAcknowledged: false }, { ...socialTrends, sources: ['google'] }, { ...socialTrends, sources: [] }, { ...socialTrends, maxPages: 101 }, { ...socialTrends, maxRequests: 0 }])
+  for (const invalid of [{ ...socialTrends, budgetAcknowledged: false }, { ...socialTrends, sources: ['google'] }, { ...socialTrends, sources: [] }, { ...socialTrends, maxPages: 101 }])
     assert.throws(() => input({ socialTrends: invalid }));
   const a = input(); const b = input({ socialTrends: { ...socialTrends, sources: [...socialTrends.sources].reverse() } });
   assert.equal(researchSignature(a), researchSignature(b));
   assert.notEqual(researchSignature(a), researchSignature(input({ socialTrends: undefined })));
-  assert.notEqual(researchSignature(a), researchSignature(input({ socialTrends: { ...socialTrends, maxRequests: 10 } })));
+  assert.equal(researchSignature(a), researchSignature(input({ socialTrends: { ...socialTrends, maxRequests: 0 } })));
+  assert.notEqual(researchSignature(a), researchSignature(input({ socialTrends: { ...socialTrends, maxPages: 10 } })));
 });
 test('durable dispatch survives checkpoint loss across midnight and same-day overlap deduplicates', async () => {
   const io = fixture(); const job = { id: 'research-a', input: input() };

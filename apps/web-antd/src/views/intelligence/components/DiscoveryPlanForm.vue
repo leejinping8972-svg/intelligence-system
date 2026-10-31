@@ -236,9 +236,7 @@ async function submit(save: boolean) {
             ).map((value) => ({ value, label: `近${value}天` }))
           "
       /></Form.Item>
-      <Form.Item label="来源与AI调用总上限"
-        ><InputNumber v-model:value="form.maxCalls" :min="1" :max="100"
-      /></Form.Item>
+
       <Form.Item
         :label="form.kind === 'ingredients' ? '最多讨论数' : '最多商品数'"
         ><InputNumber v-model:value="form.maxProducts" :min="1" :max="500"

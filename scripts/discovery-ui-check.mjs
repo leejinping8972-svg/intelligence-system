@@ -47,6 +47,7 @@ try {
   await page.getByRole('button', { name: '新建监控', exact: true }).click();
   let dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: '保存监控', exact: true }).waitFor();
+  assert.doesNotMatch(await dialog.innerText(), /调用总上限|请求上限/);
   await dialog.locator('textarea').fill('dietary supplements\nvitamins');
   await screenshot('fbm-desktop');
   await dialog.getByRole('button', { name: '保存监控', exact: true }).click();
@@ -134,6 +135,7 @@ try {
     .click();
   dialog = page.getByRole('dialog');
   await dialog.getByRole('tab', { name: /新上架/ }).click();
+  assert.doesNotMatch(await dialog.innerText(), /调用总上限|请求上限/);
   await choose(item(dialog, '上架时间').locator('.ant-select'), '近90天');
   await screenshot('manual-new-listings');
   await dialog

@@ -17,20 +17,20 @@ import { fetchPublicPage } from './safe-web.mjs';
 const site = { domain: 'shop.example' },
   url = 'https://shop.example/products/creatine';
 const resolver = async () => [{ address: '8.8.8.8', family: 4 }];
-test('fallback budgets default to zero paid requests and require admin for nonzero budgets', () => {
-  assert.equal(collectionBudget({}).maxPaidRequests, 0);
+test('hosted fallback defaults off and requires admin; only page count is capped', () => {
+  assert.equal(collectionBudget({}).hostedEnabled, false);
   assert.equal(collectionBudget({}).maxBrowserPages, 5);
   assert.throws(
     () => collectionBudget({ maxPaidRequests: 1 }, { role: 'researcher' }),
     /管理员/,
   );
   assert.equal(
-    collectionBudget({ maxPaidRequests: 1 }, { role: 'admin' }).maxPaidRequests,
-    1,
+    collectionBudget({ hostedEnabled: true }, { role: 'admin' }).hostedEnabled,
+    true,
   );
   for (const v of [-1, 1.5, 101, Infinity])
     assert.throws(() =>
-      collectionBudget({ maxPaidRequests: v }, { role: 'admin' }),
+      collectionBudget({ maxBrowserPages: v }, { role: 'admin' }),
     );
 });
 test('config save encrypts and never probes the key; blank keeps it and paid defaults off', async () => {

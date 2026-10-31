@@ -56,14 +56,14 @@ export interface ResourceCapabilities {
 }
 
 export interface ResourceBudget {
-  requests: number;
-  providerCalls: number;
-  sorftimeCalls: number;
-  scrapeCredits: number;
-  semrushUnits: number;
-  braveRequests: number;
-  browserPages: number;
-  modelTokens: number;
+  requests?: number;
+  providerCalls?: number;
+  sorftimeCalls?: number;
+  scrapeCredits?: number;
+  semrushUnits?: number;
+  braveRequests?: number;
+  browserPages?: number;
+  modelTokens?: number;
   maxPages: number;
   maxDetailProducts: number;
 }
@@ -215,7 +215,7 @@ export function resourceBudgetRows(progress: ResourceTaskProgress) {
     label,
     confirmed: progress.usage?.[key] ?? null,
     reserved: progress.reserved?.[key] ?? null,
-    limit: key === 'semrushUnits' ? '不限积分' : progress.budget?.[key] ?? null,
+    limit: undefined,
   }));
 }
 
@@ -313,25 +313,7 @@ export function resourceSalesFieldDescription(
     .map((value) => labels[value] || value)
     .join(' · ');
 }
-export const resourceBudgetMaximums: ResourceBudget = {
-  requests: 500,
-  providerCalls: 200,
-  sorftimeCalls: 100,
-  scrapeCredits: 100,
-  semrushUnits: 0,
-  braveRequests: 50,
-  browserPages: 0,
-  modelTokens: 0,
-  maxPages: 10,
-  maxDetailProducts: 100,
-};
-const providerBudgetKeys: Record<string, keyof ResourceBudget | undefined> = {
-  sorftime: 'sorftimeCalls',
-  tiktok_shop: 'scrapeCredits',
-  scrapecreators: 'scrapeCredits',
-  semrush: 'semrushUnits',
-  brave: 'braveRequests',
-};
+export const resourceBudgetMaximums = { maxPages: 10, maxDetailProducts: 100 };
 
 export function splitResourceLines(value: string) {
   return [
@@ -443,26 +425,18 @@ export function validateResourceInput(
     }
   }
   if (
-    (Object.keys(resourceBudgetMaximums) as Array<keyof ResourceBudget>).some(
+    (Object.keys(resourceBudgetMaximums) as Array<keyof typeof resourceBudgetMaximums>).some(
       (key) =>
-        key !== 'semrushUnits' &&
         (!Number.isInteger(input.budget[key]) ||
           input.budget[key] < 0 ||
           input.budget[key] > resourceBudgetMaximums[key]),
     )
   )
-    return '预算必须为有限非负整数';
-  if (!input.budget.requests || !input.budget.maxPages)
-    return '请求和翻页上限至少为1';
+    return '页数与商品数量必须为有限非负整数';
+  if (!input.budget.maxPages)
+    return '翻页上限至少为1';
   if (route.limits.maxPages && input.budget.maxPages > route.limits.maxPages)
     return `此路径最多翻页${route.limits.maxPages}次`;
-  const required = providerBudgetKeys[route.provider];
-  if (
-    required &&
-    ((required !== 'semrushUnits' && !input.budget[required]) ||
-      !input.budget.providerCalls)
-  )
-    return '所选来源额度为0，请设置有限额度或使用公开链接';
   if (
     input.includeDetails &&
     (!resourceSupports(route, 'detail') || !input.budget.maxDetailProducts)

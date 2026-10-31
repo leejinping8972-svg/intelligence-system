@@ -8,7 +8,7 @@ const evidence = () => personaEvidence(raw,personaQueries(plan())[0],plan());
 test('validates independent profile, date and finite budget',()=>{
  assert.throws(()=>plan({groups:[{label:'a',minAge:35,maxAge:28}]}));
  assert.throws(()=>plan({startDate:'2026-02-30'}));
- assert.throws(()=>plan({budget:{requests:-1}}));
+ assert.throws(()=>plan({budget:{perQuery:0}}));
  assert.throws(()=>plan({sources:['unconfigured']}));
  assert.equal(plan().groups[0].lifeStage,'independent stage');
 });
@@ -58,8 +58,8 @@ test('report denominators include accepted priced products only',()=>{
 test('historical timestamps remain historical after reuse',()=>assert.equal(personaEvidence({...raw,postedAt:'2023-10-01'},null,plan()).timeScope,'historical_context'));
 const study = p => ({id:'qa',plan:p,queries:personaQueries(p),evidence:[],journal:[],findings:[],status:'queued',createdAt:'now'});
 function io(extra={}) {return {existing:async()=>[],cancelled:async()=>false,save:async()=>{},publish:async r=>r,collect:async()=>({records:[raw],credits:1}),...extra};}
-test('collection never exceeds request or credit budget',async()=>{
- const s=study(plan());let calls=0;await executePersonaStudy(s,io({collect:async()=>{calls++;return {records:[raw],credits:1};}}));assert.equal(calls,3);assert.equal(s.journal.length,3);
+test('collection completes every query beyond legacy request and credit caps',async()=>{
+ const s=study(plan());let calls=0;await executePersonaStudy(s,io({collect:async()=>{calls++;return {records:[raw],credits:1};}}));assert.equal(calls,10);assert.equal(s.journal.length,10);
 });
 test('zero request reuse never calls provider',async()=>{
  const s=study(plan({budget:{requests:0,credits:0,perQuery:10,commentVideos:0}}));await executePersonaStudy(s,io({existing:async()=>[{...raw,text:'mệt ngủ'}],collect:async()=>{throw new Error('must not call');}}));assert.equal(s.journal.length,0);assert.equal(s.evidence.length,1);

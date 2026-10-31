@@ -141,7 +141,7 @@ function insightHarness(responses) {
     },
   };
 }
-test('consumer pagination saves deduplicated evidence and reports request cap as partial', async () => {
+test('consumer pagination saves deduplicated evidence up to page cap despite legacy zero request cap', async () => {
   const record = {
     id: 'r1',
     text: 'price?',
@@ -167,8 +167,8 @@ test('consumer pagination saves deduplicated evidence and reports request cap as
         title: 'Test',
         sourceKind: 'reddit_comments',
         urls: [url],
-        maxPages: 5,
-        maxRequests: 2,
+        maxPages: 2,
+        maxRequests: 0,
         limit: 200,
       },
       checkpoint: {},
@@ -271,7 +271,7 @@ test('product identity ignores marketing parameters and unknown formulation is e
     /不是当前独立站/,
   );
 });
-test('product crawl persists images as links and respects request cap', async () => {
+test('product crawl persists images as links and respects page cap', async () => {
   const docs = new Map(),
     saved = [];
   let calls = 0;
@@ -294,6 +294,7 @@ test('product crawl persists images as links and respects request cap', async ()
         ],
         maxProducts: 100,
         maxRequests: 1,
+        maxPagesPerSite: 1,
       },
       checkpoint: {},
     },

@@ -106,15 +106,12 @@ export function validateMarketJob(input) {
     maxAds: input.maxAds ?? 100,
     maxSites: input.maxSites ?? 10,
     siteSearchPages: input.siteSearchPages ?? 1,
-    maxRequests:
-      input.maxRequests ?? Math.min(1000, ids.length * (input.maxPages ?? 3)),
   };
   for (const [name, max] of [
     ['maxPages', 10],
     ['maxAds', 100],
     ['maxSites', 20],
     ['siteSearchPages', 3],
-    ['maxRequests', 1000],
   ])
     if (
       !Number.isInteger(limits[name]) ||
@@ -122,7 +119,7 @@ export function validateMarketJob(input) {
       limits[name] > max
     )
       throw new Error(
-        '广告页数1～10、每词广告1～100、每词站点1～20、搜索页数1～3、任务请求上限1～1000',
+        '广告页数1～10、每词广告1～100、每词站点1～20、搜索页数1～3',
       );
   if (input.adStatus && !['ACTIVE', 'ALL', 'INACTIVE'].includes(input.adStatus))
     throw new Error('广告状态不正确');
@@ -437,6 +434,10 @@ export async function runMarketJob(job, overrides = {}) {
           cp.failures++;
           continue;
         }
+        if (current.adCollection?.jobId && current.adCollection.jobId !== job.id) {
+          cp.logs.push(`${r.term}：已关联其他采集任务，跳过`);
+          continue;
+        }
         await io.patchCollection(r.id, 'adCollection', {
           jobId: job.id,
           status: 'running',
@@ -445,15 +446,6 @@ export async function runMarketJob(job, overrides = {}) {
           startedAt: cp.startedAt,
         });
         for (; cp.page < v.maxPages && count < v.maxAds; cp.page++) {
-          if (cp.requests >= v.maxRequests) {
-            cp.logs.push('已达广告请求上限，剩余对象未采集');
-            cp.failures++;
-            return io.saveCheckpoint(
-              job,
-              { ...cp, finishedAt: new Date().toISOString() },
-              'partial',
-            );
-          }
           if (await io.isCancelled())
             return io.saveCheckpoint(job, cp, 'cancelled');
           const data = await io.collect(job, `ads:${cp.index}:${cp.page}`, {
@@ -551,7 +543,7 @@ export async function runMarketJob(job, overrides = {}) {
           cp.recordSiteIds = [...siteIds];
           cp.cursor = data.cursor;
           cp.logs.push(
-            `${r.term}：第${cp.page + 1}页，本词累计${count}条广告，${siteIds.size}家官网；已请求${cp.requests}/${v.maxRequests}次`,
+            `${r.term}：第${cp.page + 1}页，本词累计${count}条广告，${siteIds.size}家官网；已请求${cp.requests}次`,
           );
           await io.patchCollection(
             r.id,

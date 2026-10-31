@@ -80,14 +80,7 @@ const resourceForm = reactive({
   includeDetails: true,
   includeHistory: false,
   budget: {
-    requests: 30,
-    providerCalls: 30,
-    sorftimeCalls: 20,
-    scrapeCredits: 30,
-    semrushUnits: 0,
-    braveRequests: 10,
     browserPages: 0,
-    modelTokens: 0,
     maxPages: 5,
     maxDetailProducts: 10,
   },
@@ -297,7 +290,6 @@ const form = reactive({
   providers: ['sorftime', 'semrush', 'tiktok_shop'],
   maxProducts: 100,
   perKeyword: 20,
-  maxRequests: 150,
   completeAll: false,
   maxDetailProducts: 20,
   maxDomains: 3,
@@ -354,13 +346,6 @@ async function submit() {
   }
   if (form.market === 'VN' && form.providers.includes('sorftime')) {
     errorMessage.value = 'Sorftime Amazon 不支持越南，请取消此来源';
-    return;
-  }
-  if (
-    form.maxRequests > 0 &&
-    form.maxRequests < parsedTerms.value.length * form.providers.length
-  ) {
-    errorMessage.value = `本次有${parsedTerms.value.length}个词、${form.providers.length}个来源，基础发现至少需要${parsedTerms.value.length * form.providers.length}次处理额度；请调整上限或减少关键词。`;
     return;
   }
   busy.value = true;
@@ -571,7 +556,7 @@ async function submitResource() {
                   <p class="hci-subtle">
                     由
                     {{ resourceRoute.provider }}
-                    返回类目；每次查询最多5个物理HTTP请求、1次Sorftime调用（含最多4个工具控制请求），独立于采集任务预算。
+                    返回类目；按所选路径查询真实类目。
                   </p>
                 </Form.Item>
                 <Alert
@@ -658,17 +643,7 @@ async function submitResource() {
                     :precision="0"
                   />
                 </Form.Item>
-                <Form.Item
-                  label="发现 / 翻页 / 补全物理HTTP请求总上限"
-                  :name="['budget', 'requests']"
-                >
-                  <InputNumber
-                    v-model:value="resourceForm.budget.requests"
-                    :min="1"
-                    :max="500"
-                    :precision="0"
-                  />
-                </Form.Item>
+
               </div>
               <Alert type="info" show-icon class="resource-discovery-notice">
                 <template #message>
@@ -726,52 +701,12 @@ async function submitResource() {
                 </p>
               </Form.Item>
               <Collapse class="resource-budget-collapse">
-                <Collapse.Panel key="budget" header="独立预算与翻页上限">
+                <Collapse.Panel key="budget" header="数量与翻页上限">
                   <div class="platform-form-grid">
-                    <Form.Item
-                      label="来源调用次数上限"
-                      :name="['budget', 'providerCalls']"
-                    >
-                      <InputNumber
-                        v-model:value="resourceForm.budget.providerCalls"
-                        :min="0"
-                        :max="200"
-                        :precision="0"
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      label="Sorftime 调用上限"
-                      :name="['budget', 'sorftimeCalls']"
-                    >
-                      <InputNumber
-                        v-model:value="resourceForm.budget.sorftimeCalls"
-                        :min="0"
-                        :max="100"
-                        :precision="0"
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      label="ScrapeCreators credits 上限"
-                      :name="['budget', 'scrapeCredits']"
-                    >
-                      <InputNumber
-                        v-model:value="resourceForm.budget.scrapeCredits"
-                        :min="0"
-                        :max="100"
-                        :precision="0"
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      label="Brave 请求上限"
-                      :name="['budget', 'braveRequests']"
-                    >
-                      <InputNumber
-                        v-model:value="resourceForm.budget.braveRequests"
-                        :min="0"
-                        :max="50"
-                        :precision="0"
-                      />
-                    </Form.Item>
+
+
+
+
                     <Form.Item
                       label="受控浏览器页面上限"
                       :name="['budget', 'browserPages']"
@@ -784,18 +719,7 @@ async function submitResource() {
                       />
                       <p class="hci-subtle">此路径未启用受控浏览器</p>
                     </Form.Item>
-                    <Form.Item
-                      label="模型 token 上限"
-                      :name="['budget', 'modelTokens']"
-                    >
-                      <InputNumber
-                        v-model:value="resourceForm.budget.modelTokens"
-                        :min="0"
-                        :max="0"
-                        disabled
-                      />
-                      <p class="hci-subtle">此路径不调用模型</p>
-                    </Form.Item>
+
                     <Form.Item label="翻页上限" :name="['budget', 'maxPages']">
                       <InputNumber
                         v-model:value="resourceForm.budget.maxPages"
@@ -834,7 +758,7 @@ async function submitResource() {
                   ·
                   {{
                     resourceRoute.cost.reason ||
-                    '受已配置账户余额与每任务预算限制'
+                    '使用已配置来源额度'
                   }}
                 </dd>
                 <dt>销量字段</dt>
@@ -989,13 +913,7 @@ async function submitResource() {
                 :max="1000"
               />
             </Form.Item>
-            <Form.Item label="发现与补全共用请求上限">
-              <InputNumber
-                v-model:value="form.maxRequests"
-                :min="1"
-                :max="100000"
-              />
-            </Form.Item>
+
             <Form.Item label="商品详情补全数量上限">
               <InputNumber
                 v-model:value="form.maxDetailProducts"
@@ -1027,9 +945,9 @@ async function submitResource() {
           {{ parsedTerms.length }} 个词；基础发现参考约
           {{ expected }}
           次数据请求；过滤不相关商品可能追加翻页。发现与补全共用
-          {{ form.maxRequests }} 次预算；默认最多补全
+          按商品数与页数采集；默认最多补全
           {{ form.maxDetailProducts }}
-          件，勾选“补全全部”后仍受共用预算约束。相同查询优先复用缓存。
+          件，勾选“补全全部”后按商品逐件处理。相同查询优先复用缓存。
         </p>
         <p class="hci-subtle">
           Sorftime 与 TikTok Shop 消耗现有平台额度，Semrush 按报告行消耗 API

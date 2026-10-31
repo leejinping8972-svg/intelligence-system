@@ -12,7 +12,7 @@ function route(id, label, platform, provider, supportedMarkets, modes, extra = {
     id, label, platform, provider, markets: supportedMarkets, modes,
     rankings: ['sample'], operations: ['search'], salesFields: [],
     history: { supported: false, reason: '无可靠历史销量接口；今天的采集不能补造过去180天。' },
-    verification, cost: { unit: 'request', reason: '按本次手动设置的请求上限执行；实际扣费以提供方回执为准。' },
+    verification, cost: { unit: 'request', reason: '按商品数与页数执行；实际扣费以提供方回执为准。' },
     limits: { maxProducts: 100, maxPages: 5 }, reason: noWindow,
     alternatives: ['保留关键词样本', '补齐可核验详情并持续积累观察'],
     ...extra,
@@ -25,7 +25,7 @@ const sorftime = (id, name, platform, countries, search = true) => route(
     rankings: ['sample', 'platform_bestsellers'],
     salesFields: [{ field: 'sourceMetrics.monthlySales', label: '来源月销量或累计已售', window: 'source_reported', nature: 'provider_estimate_or_display', unit: 'units', coverage: 'source_list' }],
     history: { supported: true, reason: '仅返回提供方已收录历史，原始分辨率按来源保存。Amazon通常为自然月，不能折算成滚动天数。' },
-    cost: { unit: 'sorftime_call', reason: '每步最多一个数据工具调用；工具发现另有最多4个MCP控制请求。工具费用依账户，调用上限不是金额承诺。' },
+    cost: { unit: 'sorftime_call', reason: '按所选商品与页数调用MCP；费用以账户实际回执为准。' },
   },
 );
 
@@ -49,7 +49,7 @@ export const RESOURCE_ROUTES = [
   }),
   route('shopping-semrush', 'Google Shopping · Semrush', 'shopping', 'semrush', markets, ['keyword'], {
     operations: ['domains', 'shopping'], salesFields: [{ field: 'sourceMetrics.position', label: '购物广告位置/关键词搜索量', window: 'indexed_snapshot', nature: 'search_advertising', unit: 'position', coverage: 'indexed_merchants' }],
-    cost: { unit: 'semrush_units', reason: '每步最多14次HTTP（连接、工具发现、schema与报告）；域名发现预留20 units/行，Shopping预留30 units/行，回执超预留立即停止。' },
+    cost: { unit: 'semrush_units', reason: '连接、工具发现和报告调用按实际流程记录；域名发现预留20 units/行，Shopping预留30 units/行，实际扣费以来源回执为准。' },
     reason: '购物广告和站点商品发现，不是平台销量或交易订单来源。',
   }),
   ...[
@@ -57,7 +57,7 @@ export const RESOURCE_ROUTES = [
     ['shopee', 'Shopee', ['VN']], ['mercadolibre', 'Mercado Libre', ['MX']],
     ['temu', 'Temu', ['US', 'MX']], ['website', '公开品牌/本土站', markets],
   ].flatMap(([platform, name, countries]) => [
-    route(`${platform}-public`, `${name} · 公开链接`, platform, 'public_web', countries, ['urls'], { operations: ['public_page'], reason: '读取公开商品/类目页中的结构化商品和原始类目路径。登录、验证码、动态空页或无结构化商品时明确停止；不保证全目录。', verification: { status: 'synthetic_adapter_tested', reason: '适配器合成测试；真实网站可访问性和市场覆盖需运行环境核实。' }, cost: { unit: 'public_request', reason: '每次HTTP请求、重定向和下一页分别计入请求上限；不绕过访问限制。' } }),
+    route(`${platform}-public`, `${name} · 公开链接`, platform, 'public_web', countries, ['urls'], { operations: ['public_page'], reason: '读取公开商品/类目页中的结构化商品和原始类目路径。登录、验证码、动态空页或无结构化商品时明确停止；不保证全目录。', verification: { status: 'synthetic_adapter_tested', reason: '适配器合成测试；真实网站可访问性和市场覆盖需运行环境核实。' }, cost: { unit: 'public_request', reason: '按公开页面上限采集；不绕过访问限制。' } }),
     route(`${platform}-brave`, `${name} · Brave发现`, platform, 'brave', countries, ['keyword'], { operations: ['search', 'public_page'], reason: '关键词搜索只提供线索；仅后续公开页面可核验的商品入库。不是原生类目全量或销量榜。', cost: { unit: 'brave_request', reason: '每个搜索页1次Brave请求；每个落地页另外计入公开HTTP请求，不自动调用浏览器或模型。' } }),
   ]),
   route('instagram-scrapecreators', 'Instagram 内容与落地商品 · ScrapeCreators', 'instagram', 'scrapecreators', markets, ['keyword'], {
@@ -116,27 +116,16 @@ export function validateResourceInput(input) {
   }
   const maxProducts = input.maxProducts ?? 100;
   if (!Number.isInteger(maxProducts) || maxProducts < 1 || maxProducts > 100) throw new Error('本次商品目标须为1至100，不自动扫描全市场');
-  const defaults = { requests: 30, providerCalls: 20, sorftimeCalls: r.provider === 'sorftime' ? 10 : 0, scrapeCredits: ['tiktok_shop', 'scrapecreators'].includes(r.provider) ? 10 : 0, semrushUnits: 0, braveRequests: r.provider === 'brave' ? 5 : 0, browserPages: 0, modelTokens: 0, maxPages: 5, maxDetailProducts: 10 };
-  const maximums = { requests: 500, providerCalls: 200, sorftimeCalls: 100, scrapeCredits: 100, braveRequests: 50, browserPages: 0, modelTokens: 0, maxPages: 10, maxDetailProducts: 100 };
-  const budget = {};
-  for (const [key, fallback] of Object.entries(defaults)) {
-    if (key === 'semrushUnits') {
-      budget[key] = 0;
-      continue;
-    }
-    const value = input.budget?.[key] ?? fallback;
-    if (!Number.isInteger(value) || value < (['requests', 'maxPages'].includes(key) ? 1 : 0) || value > (key === 'maxPages' ? r.limits.maxPages : maximums[key])) throw new Error(`${key}预算超出范围；此路径不使用模型或浏览器`);
-    budget[key] = value;
-  }
-  const required = { sorftime: 'sorftimeCalls', tiktok_shop: 'scrapeCredits', scrapecreators: 'scrapeCredits', semrush: 'semrushUnits', brave: 'braveRequests' }[r.provider];
-  if (required && ((required !== 'semrushUnits' && !budget[required]) || !budget.providerCalls)) throw new Error('所选来源预算为0，请设置有限来源额度或改用公开链接');
+  const budget = { maxPages: input.budget?.maxPages ?? 5, maxDetailProducts: input.budget?.maxDetailProducts ?? 10 };
+  if (!Number.isInteger(budget.maxPages) || budget.maxPages < 1 || budget.maxPages > r.limits.maxPages || !Number.isInteger(budget.maxDetailProducts) || budget.maxDetailProducts < 0 || budget.maxDetailProducts > 100) throw new Error('页数或详情商品数量超出范围');
+  const required = { sorftime: 'sorftimeCalls', tiktok_shop: 'scrapeCredits', scrapecreators: 'scrapeCredits', brave: 'braveRequests' }[r.provider];
   if (input.includeHistory && !r.history.supported) throw new Error(r.history.reason);
   if (input.includeDetails && !r.operations.includes('detail')) throw new Error('此来源没有可用详情接口；可使用公开商品链接补全');
   const websiteDomain = clean(input.websiteDomain).toLowerCase();
   if (r.platform === 'website' && !/^(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z]{2,}$/i.test(websiteDomain)) throw new Error('请填写允许读取的品牌或本土站域名，例如 brand.com');
   const initialOperation = mode === 'urls' ? r.operations.includes('shop_products') ? 'shop_products' : r.provider === 'public_web' ? 'public_page' : 'detail' : r.operations[0];
   const plan = { routeId: r.id, platform: r.platform, provider: r.provider, market: input.market, mode, terms: mode === 'keyword' ? terms : [], urls: mode === 'urls' ? urls : [], category, websiteDomain, researchCategory: clean(input.researchCategory), salesWindowDays: days, ranking, maxProducts, includeDetails: Boolean(input.includeDetails), includeHistory: Boolean(input.includeHistory), budget, initialOperation, operations: r.operations, supportedOperations: r.operations, cost: { providerCalls: r.provider === 'public_web' ? 0 : 1, ...(required && required !== 'semrushUnits' ? { [required]: 1 } : {}) } };
-  return { kind: 'platform_products', resourceDiscovery: true, resourcePlan: plan, market: input.market, markets: [input.market], providers: [r.provider], seeds: plan.terms.length ? plan.terms : [category?.id || urls[0]], maxProducts, perKeyword: maxProducts, maxRequests: budget.requests, maxDetailProducts: budget.maxDetailProducts, maxDomains: 3, semrushUnitLimit: budget.semrushUnits, completeAll: false, enrich: plan.includeDetails, trend: plan.includeHistory };
+  return { kind: 'platform_products', resourceDiscovery: true, resourcePlan: plan, market: input.market, markets: [input.market], providers: [r.provider], seeds: plan.terms.length ? plan.terms : [category?.id || urls[0]], maxProducts, perKeyword: maxProducts, maxDetailProducts: budget.maxDetailProducts, maxDomains: 3, completeAll: false, enrich: plan.includeDetails, trend: plan.includeHistory };
 }
 
 export function requestedSalesWindow(plan, at = new Date().toISOString()) {

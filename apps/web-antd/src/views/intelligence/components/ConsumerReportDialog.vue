@@ -52,7 +52,6 @@ const form = reactive({
   autoComments: true,
   maxDiscussionPosts: 3,
   maxPages: 1,
-  maxRequests: 5,
   limit: 200,
   analyze: false,
 });
@@ -188,8 +187,7 @@ import CollectionEstimate from './CollectionEstimate.vue';
     @ok="submit"
   >
     <p>
-      按词生成 {{ total }} 份报告 · 每份最多
-      {{ form.maxRequests }} 次采集请求<span v-if="form.analyze">
+      按词生成 {{ total }} 份报告<span v-if="form.analyze">
         + 1 次 AI 分析</span
       >
     </p>
@@ -265,9 +263,7 @@ import CollectionEstimate from './CollectionEstimate.vue';
         <Form.Item label="每来源最多页数">
           <InputNumber v-model:value="form.maxPages" :min="1" :max="10" />
         </Form.Item>
-        <Form.Item label="每词采集请求上限">
-          <InputNumber v-model:value="form.maxRequests" :min="1" :max="100" />
-        </Form.Item>
+
         <Form.Item label="每词文本样本上限">
           <InputNumber v-model:value="form.limit" :min="1" :max="1000" />
         </Form.Item>
@@ -307,7 +303,6 @@ import CollectionEstimate from './CollectionEstimate.vue';
       :input="{
         kind: 'consumer_research',
         ...form,
-        maxRequests: form.maxRequests * total,
       }"
     />
   </Modal>

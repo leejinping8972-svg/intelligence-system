@@ -15,12 +15,10 @@ export function validateResearchTrends(value, markets) {
   const plan = validateTrendPlan({
     sources: value.sources,
     markets,
-    maxRequests: value.maxRequests,
     maxPages: value.maxPages,
   });
   return {
     sources: plan.sources,
-    maxRequests: plan.maxRequests,
     maxPages: plan.maxPages,
     budgetAcknowledged: true,
   };

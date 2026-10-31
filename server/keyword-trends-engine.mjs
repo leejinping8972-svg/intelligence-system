@@ -106,8 +106,6 @@ export async function enqueueTrendWork(
         ...new Set([...work.researchParents, parentJobId]),
       ];
   }
-  // Request budget is shared by manual and scheduled work for the entire day.
-  run.maxRequests = plan.maxRequests;
   await db.write(name, run);
   return {
     accepted: added.length,
@@ -338,11 +336,6 @@ export async function advanceTrendQueue(io) {
     });
     return finish('unknown', '本日已有未确认请求，请先核对供应商账单');
   }
-  const used = dayRequests.length;
-  const dayBudget = savedPlan
-    ? Math.min(run.maxRequests, plan.maxRequests)
-    : run.maxRequests;
-  if (used >= dayBudget) return finish('skipped', '已达本日共享社媒请求预算');
   let key;
   try {
     key = await io.key();
@@ -407,14 +400,11 @@ export async function advanceTrendQueue(io) {
       entry.maxPages,
       entry.source === 'instagram' ? 11 : 100,
     );
-    const budget = dayBudget;
     const continuing =
-      result.hasMore && !reached && entry.page < maxPages && used + 1 < budget;
+      result.hasMore && !reached && entry.page < maxPages;
     if (result.hasMore && !reached && !continuing)
       snapshot.history.stopReason =
-        used + 1 >= budget
-          ? '已达本日请求预算，可提高预算后手动续查未请求的新分页'
-          : `已达${maxPages}页上限${entry.source === 'instagram' && maxPages === 11 ? '（INS接口最多11页）' : '，可提高页数后手动续查'}`;
+        `已达${maxPages}页上限${entry.source === 'instagram' && maxPages === 11 ? '（INS接口最多11页）' : '，可提高页数后手动续查'}`;
     const summaryName = `${P}summary:${trendDigest(word.id)}:${entry.source}`;
     const priorSummary = await db.read(summaryName);
     const summary = summarizeSocial(snapshot);

@@ -56,7 +56,6 @@ async function collectResource(request, overrides) {
     const { client } = await import('./semrush-reports.mjs');
     let requests = 0;
     const fetcher = async (...args) => {
-      if (requests >= 14) throw new Error('Semrush已达到本步14次HTTP硬上限，停止工具发现或报告调用');
       requests++;
       return (overrides.fetcher || fetch)(...args);
     };

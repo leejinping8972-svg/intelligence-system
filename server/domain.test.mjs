@@ -48,7 +48,7 @@ test('supplementation requires the selected count, received list and target to a
   }), /数量、名单/);
 });
 
-test('accepts 100 keyword jobs and derives Sorftime calls from the result target and depth', () => {
+test('accepts 100 keyword jobs and ignores legacy Sorftime call caps at either depth', () => {
   const input = {
     seeds: ['magnesium'],
     markets: ['US'],
@@ -58,30 +58,30 @@ test('accepts 100 keyword jobs and derives Sorftime calls from the result target
     sorftimeRequestLimit: 3,
   };
   assert.equal(validateJob(input).limit, 100);
-  assert.equal(validateJob(input).sorftimeRequestLimit, 1);
+  assert.equal(validateJob(input).sorftimeRequestLimit, undefined);
   assert.equal(
     validateJob({ ...input, depth: 2, sorftimeRequestLimit: 3 })
       .sorftimeRequestLimit,
-    100,
+    undefined,
   );
   assert.equal(
     validateJob({ ...input, depth: 1, markets: ['US', 'MX', 'VN'] })
       .sorftimeRequestLimit,
-    2,
+    undefined,
   );
-  assert.equal(validateJob({ ...input, limit: 1 }).sorftimeRequestLimit, 0);
+  assert.equal(validateJob({ ...input, limit: 1 }).sorftimeRequestLimit, undefined);
   assert.equal(
     validateJob({ ...input, markets: ['VN'] }).sorftimeRequestLimit,
-    0,
+    undefined,
   );
   assert.equal(
     validateJob({ ...input, depth: 2, markets: ['VN'] }).sorftimeRequestLimit,
-    0,
+    undefined,
   );
   assert.equal(
     validateJob({ ...input, sources: ['google_autocomplete'] })
       .sorftimeRequestLimit,
-    0,
+    undefined,
   );
   for (const change of [
     { limit: 101 },

@@ -136,11 +136,12 @@ test('product content parses observed escaped alternating attributes and preserv
   );
   assert.equal(content.form, 'Gummy');
   assert.equal(content.size, '60 Count');
-  assert.equal(content.ingredient, 'Creatine Monohydrate');
+  assert.equal(content.ingredient, undefined);
+  assert.match(JSON.stringify(content.sourceContent), /Creatine Monohydrate/);
   assert.equal(content.dose, undefined);
   assert.equal(content.claim, 'Claim\nMore claim');
   assert.ok(content.imageUrl);
-  assert.match(content.ingredientInsights[0].role, /待核验/);
+  assert.equal(content.ingredientInsights, undefined);
   assert.throws(
     () => normalizeAmazonContent({ data: { asin: 'B0WRONG123' } }, p, at),
     /不一致/,
@@ -240,7 +241,7 @@ test('validation keeps full seed list and rejects insufficient starting budget o
   const terms = Array.from({ length: 34 }, (_, i) => `keyword ${i}`).join('\n');
   const v = request({ terms, maxRequests: 100 });
   assert.equal(v.seeds.length, 34);
-  assert.throws(() => request({ terms, maxRequests: 9 }), /不足以覆盖/);
+  assert.equal(request({ terms, maxRequests: 0 }).seeds.length, 34);
   assert.throws(() => request({ market: 'VN' }), /不支持越南/);
 });
 function harness(input, handler) {
@@ -334,7 +335,7 @@ test('one word obtains both platforms, no website crawler, then enriches exact A
   assert.equal(h.links.length, 2);
   assert.ok(h.calls.every((c) => c.request.sources[0] === 'platform_products'));
 });
-test('request ceiling retains already-saved products and does not replay later enrichment', async () => {
+test('legacy request ceiling does not truncate product enrichment', async () => {
   const h = harness(
     request({ maxRequests: 2, enrich: true, trend: true }),
     async (r) =>
@@ -343,9 +344,9 @@ test('request ceiling retains already-saved products and does not replay later e
         : { domains: ['shop.example.com'], apiUnits: 20 },
   );
   await h.run();
-  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls.length, 5);
   assert.equal(h.docs.size, 1);
-  assert.equal(h.job.status, 'partial');
+  assert.equal(h.job.status, 'completed');
 });
 test('one provider auth failure does not prevent other source; duplicate ASIN preserves multi-keyword provenance', async () => {
   const h = harness(

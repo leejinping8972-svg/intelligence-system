@@ -107,7 +107,6 @@ export function validateJob(value) {
     sources: [...new Set(Array.isArray(value.sources) ? value.sources : [])],
     depth: value.depth === 2 ? 2 : 1,
     limit: value.limit,
-    sorftimeRequestLimit: 0,
     existingRecords: value.existingRecords?.map(cleanKeyword),
     trendComparisonVersion: 2,
   };
@@ -145,20 +144,6 @@ export function validateJob(value) {
     input.sources.some((source) => !sources.has(source))
   )
     throw new Error('请检查种子词、结果上限与关键词渠道');
-  const remaining = input.limit - input.seeds.length * input.markets.length;
-  const supportedPairs =
-    input.seeds.length *
-    input.markets.filter((market) => market === 'US' || market === 'MX').length;
-  if (
-    !input.existingRecords &&
-    input.sources.includes('sorftime') &&
-    remaining > 0 &&
-    supportedPairs > 0
-  )
-    input.sorftimeRequestLimit =
-      input.depth === 2
-        ? Math.min(input.limit, supportedPairs + remaining)
-        : supportedPairs;
   if (value.socialTrends !== undefined)
     input.socialTrends = validateResearchTrends(value.socialTrends, input.markets);
   return input;

@@ -222,10 +222,10 @@ test('new opted-in research discovers Reddit posts then samples comments within 
   assert.ok(report.topicSummary.length);
   assert.deepEqual(report.keywordIds, ['k']);
 });
-test('legacy jobs never expand scope; budget exhaustion and cancellation prevent added requests', async () => {
+test('comment acquisition remains opt-in and ignores legacy request caps', async () => {
   for (const [autoComments, maxRequests, expected] of [
     [false, 10, 1],
-    [true, 1, 1],
+    [true, 1, 2],
   ]) {
     const { io, calls, store } = jobIO();
     const input = validateInsight({
@@ -240,7 +240,7 @@ test('legacy jobs never expand scope; budget exhaustion and cancellation prevent
     await runInsightJob({ id: 'sample', input }, io);
     assert.equal(calls.length, expected);
     if (autoComments)
-      assert.equal(store.get('insightReports:sample').status, 'partial');
+      assert.equal(store.get('insightReports:sample').status, 'completed');
   }
 });
 test('resuming completed comment sampling reuses checkpoints without provider calls', async () => {

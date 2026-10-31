@@ -43,7 +43,6 @@ const plan = reactive<TrendPlan>({
   time: '09:00',
   sources: ['google', 'tiktok', 'instagram', 'facebook'],
   markets: ['US', 'MX', 'VN'],
-  maxRequests: 100,
   maxPages: 11,
 });
 const sources = [
@@ -185,14 +184,7 @@ async function submit(kind: 'collect' | 'save') {
         />
       </Form.Item>
       <div class="trend-plan-grid">
-        <Form.Item label="每日社媒请求总上限（手动与定时共用）">
-          <InputNumber
-            v-model:value="plan.maxRequests"
-            :min="1"
-            :max="1000"
-            :disabled="!admin || busy"
-          />
-        </Form.Item>
+
         <Form.Item label="每个来源回查最多页数（INS最多11页）">
           <InputNumber
             v-model:value="plan.maxPages"
@@ -205,10 +197,10 @@ async function submit(kind: 'collect' | 'save') {
       <p class="hci-subtle">
         当前勾选 {{ ids.length }} 个词，按所选来源最多安排
         {{ searchPages }}
-        次社媒搜索请求，实际执行受每日上限约束。Google进入原趋势队列；INS/FB为公开样本。达到预算或自设页数上限后，可提高上限并重新提交，从未请求的新分页续查；提高已保存的每日预算需先保存计划。INS接口最多11页。
+        页社媒搜索结果。Google进入原趋势队列；INS/FB为公开样本。达到页数上限后，可增加页数重新提交，从新分页续查。INS接口最多11页。
       </p>
       <Checkbox v-if="admin" v-model:checked="acknowledged">
-        确认按上述预算消耗已配置ScrapeCreators额度
+        确认使用已配置ScrapeCreators额度
       </Checkbox>
       <div class="hci-toolbar trend-plan-actions">
         <Button

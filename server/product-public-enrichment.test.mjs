@@ -136,22 +136,22 @@ test('Shopify endpoint mismatching handle or URL cannot replace original product
   }
 });
 
-test('request budget and redirect budget are bounded; cross-domain/product redirects are not followed', async () => {
+test('page count bounds enrichment; cross-domain/product redirects are not followed', async () => {
   const limited = read([html('<script src="https://cdn.shopify.com/theme.js"></script>')]);
-  const result = await enrichPublicProduct({ product: product() }, { ...limited, now, maxRequests: 1 });
+  const result = await enrichPublicProduct({ product: product() }, { ...limited, now, maxPages: 1 });
   assert.equal(result.providerCalls, 1);
-  assert.equal(result.patch.publicDataEvidence.listing.reason, 'request_limit');
-  assert.equal(result.patch.publicDataEvidence.sold.reason, 'request_limit');
+  assert.equal(result.patch.publicDataEvidence.listing.reason, 'page_limit');
+  assert.equal(result.patch.publicDataEvidence.sold.reason, 'page_limit');
   for (const redirect of ['https://other.example/products/qa-supplement', 'https://brand.example/products/another', 'http://brand.example/products/qa-supplement']) {
     const reader = read([{ redirect }]);
     const redirected = await enrichPublicProduct({ product: product() }, { ...reader, now });
     assert.equal(redirected.providerCalls, 1);
     assert.equal(redirected.patch.publicDataEvidence.listing.reason, 'product_redirect_mismatch');
   }
-  const redirected = read([{ redirect: url }, { redirect: url }]);
+  const redirected = read([{ redirect: url }, { redirect: url }, { redirect: url }, { redirect: url }, { redirect: url }, { redirect: url }]);
   const exhausted = await enrichPublicProduct({ product: product() }, { ...redirected, now });
-  assert.equal(exhausted.providerCalls, 2);
-  assert.equal(exhausted.patch.publicDataEvidence.requests, 2);
+  assert.equal(exhausted.providerCalls, 6);
+  assert.equal(exhausted.patch.publicDataEvidence.requests, 6);
   assert.equal(exhausted.empty, true);
 });
 

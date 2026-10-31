@@ -176,6 +176,7 @@ export function initializeProducts(job, now = Date.now()) {
         cp.logs.push(w.message);
       }
       cleanProductQueue(w, site);
+      w.pageUrls ||= [...w.visited];
     }
     cp.productPolicyVersion = PRODUCT_POLICY_VERSION;
     return cp;
@@ -225,16 +226,12 @@ export function resumeProductFallbacks(job, now = Date.now()) {
   )
     return null;
   const cp = initializeProducts(job, now);
-  const perSite =
-    job.input.maxRequestsPerSite ||
-    Math.ceil(job.input.maxRequests / job.input.records.length);
-  if (cp.requests >= job.input.maxRequests || now >= cp.deadlineAt) return null;
+  if (now >= cp.deadlineAt) return null;
   let resumed = 0;
   for (const [i, w] of cp.siteWork.entries()) {
     if (
       w.status !== 'blocked' ||
       !/429/.test(w.message) ||
-      w.requests >= perSite ||
       w.fallbackRecoveryVersion === PRODUCT_POLICY_VERSION
     )
       continue;
@@ -270,7 +267,7 @@ export function resumeProductFallbacks(job, now = Date.now()) {
     ['partial', 'blocked', 'failed'].includes(w.status),
   ).length;
   cp.logs.push(
-    `已恢复${resumed}家站点的公开入口补齐；不重置请求预算，不重复被拒地址`,
+    `已恢复${resumed}家站点的公开入口补齐；保留请求记录，不重复被拒地址`,
   );
   return cp;
 }
@@ -281,12 +278,10 @@ export function productProgress(cp, input) {
     total: input.records.length,
     products: cp.products || 0,
     requests: cp.requests || 0,
-    requestLimit: input.maxRequests,
     previousRequests: cp.previousRequests || 0,
     browserPages: cp.browserPages || 0,
     browserPageLimit: input.maxBrowserPages || 0,
     paidRequests: cp.paidRequests || 0,
-    paidRequestLimit: input.maxPaidRequests || 0,
     profile: input.profile || 'legacy',
     policyWarnings: input.policyWarnings || [],
     detailTarget: works.reduce((sum, work) => sum + (work.detailTargets?.length || 0), 0),
@@ -571,18 +566,16 @@ export async function runProductsJob(job, overrides = {}) {
   io.maxDetailProducts = job.input.maxDetailProducts ?? job.input.maxProducts;
   const cp = initializeProducts(job, io.now()),
     v = job.input,
-    perSite =
-      v.maxRequestsPerSite ||
-      Math.max(1, Math.ceil(v.maxRequests / v.records.length));
+    maxPages = v.maxPagesPerSite ?? (v.profile === 'deep' ? 120 : 20);
   const browserLimit = v.collectionPolicyVersion ? v.maxBrowserPages || 0 : 0;
-  const paidLimit = v.collectionPolicyVersion ? v.maxPaidRequests || 0 : 0;
+  const hostedEnabled = v.collectionPolicyVersion && (v.hostedEnabled === true || (v.hostedEnabled === undefined && v.maxPaidRequests > 0));
   function fallback(
     work,
     url,
     method,
     until = io.now() + productPacing(io.random),
   ) {
-    if (method === 'hosted' && (cp.paidRequests || 0) >= paidLimit)
+    if (method === 'hosted' && !hostedEnabled)
       return false;
     if (method === 'browser' && (cp.browserPages || 0) >= browserLimit)
       return false;
@@ -595,7 +588,7 @@ export async function runProductsJob(job, overrides = {}) {
     work.message =
       method === 'browser'
         ? '动态页面待浏览器渲染；按站点间隔执行'
-        : '直连未成功，冷却后按本任务预算尝试托管备用';
+        : '直连未成功，冷却后使用已启用的托管备用';
     return true;
   }
   async function patch(i) {
@@ -660,19 +653,15 @@ export async function runProductsJob(job, overrides = {}) {
     for (const [i, w] of cp.siteWork.entries())
       if (
         !done(w) &&
-        (cp.requests >= v.maxRequests ||
-          w.requests >= perSite ||
-          io.now() >= cp.deadlineAt)
+        (((w.pageUrls?.length || 0) >= maxPages && !w.pageUrls?.includes(w.urls[0])) || io.now() >= cp.deadlineAt)
       ) {
         w.status = 'partial';
         w.nextRunAt = 0;
         w.message =
           io.now() >= cp.deadlineAt
             ? '已达到24小时补齐期限'
-            : cp.requests >= v.maxRequests
-              ? '整批网页请求上限已用完，保留已有结果'
-              : '达到单站请求上限，已给其他站点保留执行机会';
-        w.stopReason = io.now() >= cp.deadlineAt ? 'deadline' : cp.requests >= v.maxRequests ? 'batch_request_limit' : 'site_request_limit';
+            : '达到单站页面上限，保留已有结果';
+        w.stopReason = io.now() >= cp.deadlineAt ? 'deadline' : 'page_limit';
         await patch(i);
       }
     let index = -1;
@@ -716,7 +705,7 @@ export async function runProductsJob(job, overrides = {}) {
     const method = w.methods?.[url] || 'direct';
     if (
       (method === 'browser' && (cp.browserPages || 0) >= browserLimit) ||
-      (method === 'hosted' && (cp.paidRequests || 0) >= paidLimit)
+      (method === 'hosted' && !hostedEnabled)
     ) {
       w.status = 'partial';
       w.nextRunAt = 0;
@@ -725,6 +714,7 @@ export async function runProductsJob(job, overrides = {}) {
       await patch(index);
       return save();
     }
+    w.pageUrls = [...new Set([...(w.pageUrls || w.visited), url])];
     w.requests++;
     cp.requests++;
     w.attempts[url] = (w.attempts[url] || 0) + 1;
@@ -935,7 +925,7 @@ export async function runProductsJob(job, overrides = {}) {
     cp.requestLog.push(entry);
     cp.requestLog = cp.requestLog.slice(-200);
     cp.logs.push(
-      `${site.brand}：${w.message}（本站${w.requests}/${perSite}次，整批${cp.requests}/${v.maxRequests}次）`,
+      `${site.brand}：${w.message}（本站${w.requests}次，整批${cp.requests}次）`,
     );
     cp.logs = cp.logs.slice(-200);
     if (!done(w) && w.status !== 'retry_wait') {
@@ -958,24 +948,14 @@ export async function runProductsJob(job, overrides = {}) {
         w.nextRunAt = 0;
         w.stopReason = 'directory_exhausted';
         w.message = '公开目录遍历结束，缺失字段保留未知';
-      } else if (cp.requests >= v.maxRequests || w.requests >= perSite) {
+      } else if ((w.pageUrls?.length || 0) >= maxPages) {
         w.status = 'partial';
         w.nextRunAt = 0;
-        w.stopReason = cp.requests >= v.maxRequests ? 'batch_request_limit' : 'site_request_limit';
-        w.message = '达到网页请求上限，已保存结果保留';
+        w.stopReason = 'page_limit';
+        w.message = '达到单站页面上限，已保存结果保留';
       }
     }
     await patch(index);
-    // Close other unfinished sites explicitly when the batch budget is exhausted.
-    if (cp.requests >= v.maxRequests)
-      for (const [i, other] of cp.siteWork.entries())
-        if (!done(other)) {
-          other.status = 'partial';
-          other.nextRunAt = 0;
-          other.stopReason = 'batch_request_limit';
-          other.message = '整批网页请求上限已用完，保留已有结果';
-          await patch(i);
-        }
     if (await io.cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
     await save();
   } catch (error) {

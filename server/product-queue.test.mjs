@@ -182,7 +182,7 @@ test('in-flight hosted recovery retains the reserved counter and never sends aga
   assert.match(h.saved.checkpoint.siteWork[0].message, /不自动重放/);
   assert.equal(h.saved.checkpoint.siteWork[0].status, 'partial');
 });
-test('browser and hosted attempts cannot exceed overall page budget', async () => {
+test('legacy request caps do not prevent rendering the same page', async () => {
   const h = dynamicHarness(1);
   h.job.input.maxPaidRequests = 1;
   let calls = 0;
@@ -192,8 +192,8 @@ test('browser and hosted attempts cannot exceed overall page budget', async () =
   await runProductsJob(h.job, h.io);
   h.advance();
   await runProductsJob(h.saved, h.io);
-  assert.equal(calls, 0);
-  assert.equal(h.saved.checkpoint.requests, 1);
+  assert.equal(calls, 1);
+  assert.equal(h.saved.checkpoint.requests, 2);
   assert.equal(h.saved.checkpoint.siteWork[0].status, 'partial');
 });
 test('first round touches every site; a busy catalog cannot consume the entire batch', async () => {
@@ -307,9 +307,10 @@ test('reaching the catalog product cap still completes queued detail evidence', 
     1,
   );
 });
-test('single-site request ceiling is enforced before moving on and total cap is never exceeded', async () => {
+test('per-site page limit is enforced independently of legacy request limits', async () => {
   const h = harness(2, 4);
   h.job.input.maxRequestsPerSite = 1;
+  h.job.input.maxPagesPerSite = 1;
   await runProductsJob(h.job, h.io);
   await runProductsJob(h.saved, h.io);
   await runProductsJob(h.saved, h.io);
@@ -363,6 +364,7 @@ test('cancelled tasks issue no new request and 24h expiry settles all remaining 
 });
 test('a real empty catalog does not fabricate products or claim a successful collection', async () => {
   const h = harness(1, 1);
+  h.job.input.maxPagesPerSite = 1;
   h.io.fetchPage = async (url) => ({ url, html: '{"products":[]}' });
   await runProductsJob(h.job, h.io);
   assert.equal(h.saved.checkpoint.products, 0);
@@ -629,8 +631,8 @@ test('bounded recovery preserves counters and products, skips rejected paths, an
     resumeProductFallbacks(
       { ...h.job, checkpoint: { ...cp, requests: 20 } },
       h.now(),
-    ),
-    null,
+    )?.requests,
+    20,
   );
   assert.equal(resumeProductFallbacks(h.job, h.now() + 86400001), null);
 });

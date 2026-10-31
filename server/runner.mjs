@@ -39,7 +39,7 @@ function projectKnownJob(job) {
     title: job.input.kind === 'source_fields' ? '云端 · 来源字段AI分析' : `云端 · ${discoveryKinds[job.input.plan.kind]}`,
     status: job.cancelled ? 'cancelled' : job.status, created: job.checkpoint.submittedAt,
     steps: [...(job.checkpoint.logs || []), ...(job.checkpoint.failures || [])],
-    requests: job.checkpoint.calls || 0, maxRequests: job.input.plan?.maxCalls || 1,
+    requests: job.checkpoint.calls || 0,
   }];
   if (job.input.kind === 'semrush_sites')
     return job.input.markets.map((market) => ({
@@ -113,8 +113,8 @@ function projectKnownJob(job) {
         job.input.kind === 'market_analysis'
           ? `正在冻结${job.input.period === 'week' ? '周' : job.input.period === 'quarter' ? '季度' : '月度'}市场数据并生成报告`
           : job.input.kind === 'platform_products' && job.input.completeAll
-            ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；发现与补全共用数据请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`
-            : `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
+            ? `已发现商品 ${job.checkpoint.products || job.input.productIds?.length || 0} 件；发现与补全共用数据请求 ${job.checkpoint.requests || 0} 次`
+            : `已采集 ${job.checkpoint.evidenceIds?.length || job.checkpoint.products || 0} 条；请求 ${job.checkpoint.requests || 0} 次`,
         ...(job.checkpoint.logs || []),
       ],
       researchProgress: {
@@ -132,7 +132,6 @@ function projectKnownJob(job) {
         evidence: job.checkpoint.evidenceIds?.length || 0,
         products: job.checkpoint.products || 0,
         requests: job.checkpoint.requests || 0,
-        requestLimit: job.input.maxRequests,
         credits: job.checkpoint.creditsCharged,
         unknownCharges: job.checkpoint.unknownCharges || 0,
         stopReason: job.checkpoint.stopReason || '',
@@ -188,7 +187,7 @@ function projectKnownJob(job) {
       steps: [
         job.input.kind === 'site_metrics'
           ? `已处理 ${job.checkpoint.index || 0}/${job.input.records.length} 家站点；Semrush 已确认 ${job.checkpoint.semrushUnits || 0} API units`
-          : `已处理 ${job.checkpoint.index || 0}/${job.input.records.length} 个对象；广告 ${job.checkpoint.ads || 0} 条；官网 ${job.checkpoint.sites || 0} 家；广告请求 ${job.checkpoint.requests || 0}/${job.input.maxRequests} 次`,
+          : `已处理 ${job.checkpoint.index || 0}/${job.input.records.length} 个对象；广告 ${job.checkpoint.ads || 0} 条；官网 ${job.checkpoint.sites || 0} 家；广告请求 ${job.checkpoint.requests || 0} 次`,
         ...(job.checkpoint.logs || []),
       ],
       collectionProgress: {
@@ -201,7 +200,6 @@ function projectKnownJob(job) {
         ads: job.checkpoint.ads || 0,
         sites: job.checkpoint.sites || 0,
         requests: job.checkpoint.requests || 0,
-        requestLimit: job.input.maxRequests,
         credits: job.checkpoint.creditsCharged,
         unknownCharges: job.checkpoint.unknownCharges || 0,
       },
@@ -344,19 +342,7 @@ export async function runJob(job, overrides = {}) {
         const { seed, market } = combinations[cp.discoveryIndex];
         const remaining = input.limit - cp.keywords.length;
         if (remaining <= 0) break;
-        const consumed = await io.usage(job.id);
-        const paidLimit = input.sources.includes('sorftime')
-          ? Math.max(
-              0,
-              input.sorftimeRequestLimit -
-                consumed.confirmed -
-                consumed.reserved,
-            )
-          : 0;
-        const requestSources = input.sources.filter(
-          (source) =>
-            source !== 'semrush' && (source !== 'sorftime' || paidLimit > 0),
-        );
+        const requestSources = input.sources.filter((source) => source !== 'semrush');
         if (input.sources.includes('semrush')) {
           try {
             const sem = await io.collect(
@@ -396,10 +382,7 @@ export async function runJob(job, overrides = {}) {
             cp.failures++;
           }
         }
-        if (requestSources.length === 0 && !input.sources.includes('semrush')) {
-          cp.logs.push(`${seed}：Sorftime任务额度已用完，未额外调用`);
-          cp.failures += 1;
-        } else if (requestSources.length && cp.keywords.length < input.limit)
+        if (requestSources.length && cp.keywords.length < input.limit)
           try {
             cp.currentTerm = seed;
             await io.saveCheckpoint(job, cp);
@@ -414,7 +397,6 @@ export async function runJob(job, overrides = {}) {
                 limit: Math.ceil(
                   remaining / (combinations.length - cp.discoveryIndex),
                 ),
-                sorftimeRequestLimit: paidLimit,
               },
             );
             for (const group of result.suggestions || []) {

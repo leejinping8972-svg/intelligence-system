@@ -6,17 +6,17 @@ export const dayKey = (now = Date.now()) =>
   new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
 export function validateSchedule(input) {
   const hour = Number(input.hour ?? 8);
-  const maxRequests = Number(input.maxRequests ?? 10);
+  const maxPages = Number(input.maxPages ?? 10);
   if (
     !Number.isInteger(hour) ||
     hour < 0 ||
     hour > 23 ||
-    !Number.isInteger(maxRequests) ||
-    maxRequests < 1 ||
-    maxRequests > 100
+    !Number.isInteger(maxPages) ||
+    maxPages < 1 ||
+    maxPages > 100
   )
-    throw new Error('北京时间更新小时须为0～23，每日请求上限须为1～100');
-  return { enabled: input.enabled === true, hour, maxRequests };
+    throw new Error('北京时间更新小时须为0～23，每渠道页数须为1～100');
+  return { enabled: input.enabled === true, hour, maxPages };
 }
 export function due(config, run, now = Date.now()) {
   return (
@@ -45,7 +45,6 @@ export function validateHotwords(input) {
     ...config,
     market: input.market,
     seeds,
-    maxRequests: seeds.length,
     unitLimit: 0,
   };
 }

@@ -20,12 +20,11 @@ export interface KeywordResearchInput {
 }
 export interface ResearchSocialTrends {
   sources: string[];
-  maxRequests: number;
   maxPages: number;
   budgetAcknowledged: boolean;
 }
 export const defaultResearchTrends = (): ResearchSocialTrends => ({
-  sources: ['tiktok', 'instagram', 'facebook'], maxRequests: 100, maxPages: 11, budgetAcknowledged: false,
+  sources: ['tiktok', 'instagram', 'facebook'], maxPages: 11, budgetAcknowledged: false,
 });
 export interface KeywordResearchCallbacks {
   onKeyword: (keyword: Keyword) => void;

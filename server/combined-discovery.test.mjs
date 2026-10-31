@@ -194,7 +194,7 @@ test('same domain stays separated by market and retains each keyword link', asyn
   assert.equal(h.saved.at(-1).checkpoint.sites, 2);
 });
 
-test('ads request budget is independent: exhausting it preserves search for every selected keyword', async () => {
+test('legacy ad request caps do not stop search and ads for selected keywords', async () => {
   const h = fixture([
     { id: 'a', term: 'a', market: 'US' },
     { id: 'b', term: 'b', market: 'US' },
@@ -205,8 +205,8 @@ test('ads request budget is independent: exhausting it preserves search for ever
     h.calls.filter((c) => c.request.sources[0] === 'site_discovery').length,
     2,
   );
-  assert.equal(h.calls.filter((c) => c.request.sources[0] === 'ads').length, 1);
-  assert.equal(h.saved.at(-1).status, 'partial');
+  assert.equal(h.calls.filter((c) => c.request.sources[0] === 'ads').length, 2);
+  assert.equal(h.saved.at(-1).status, 'completed');
   assert.deepEqual(h.docs.get('sites:US-brand.example').keywordIds, ['a', 'b']);
   assert.equal(h.saved.at(-1).checkpoint.sites, 1);
 });

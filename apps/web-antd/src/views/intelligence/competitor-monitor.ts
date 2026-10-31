@@ -8,7 +8,7 @@ export interface WatchConfig {
   pageId: string;
   enabled: boolean;
   hour: number;
-  maxRequests: number;
+  maxPages: number;
 }
 export interface HotConfig {
   market: Market;

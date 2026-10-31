@@ -43,7 +43,7 @@ test('only exact official numeric product URLs are accepted', () => {
 
 test('completion uses one anonymous GET for the exact product id and retains the plus from the detail', async () => {
   const calls = [];
-  const result = await enrichPublicProduct({ product }, { now: Date.parse(at), maxRequests: 1, fetchPage: async (url, depth, types, options) => {
+  const result = await enrichPublicProduct({ product }, { now: Date.parse(at), maxPages: 1, fetchPage: async (url, depth, types, options) => {
     calls.push(url);
     const requested = new URL(url);
     assert.equal(requested.origin, 'https://api-x.westmonth.com');

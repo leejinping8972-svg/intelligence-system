@@ -23,13 +23,13 @@ test('capabilities distinguish native categories, public paths, Instagram, marke
   assert.match(c.platforms.find((p) => p.id === 'instagram').reason, /没有交易销量/);
   assert.equal(c.routes.find((r) => r.id === 'amazon-sorftime').configured, false);
 });
-test('resource validation rejects fake categories, unsupported country and budget-free paid routes', () => {
+test('resource validation retains evidence, market, page and quantity rules while ignoring legacy call caps', () => {
   assert.throws(() => plan({ routeId: 'shopee-sorftime', market: 'US' }), /不支持所选国家/);
   assert.throws(() => plan({ mode: 'category' }), /关键词样本/);
   assert.throws(() => plan({ routeId: 'amazon-sorftime', market: 'US', mode: 'category', category: { id: 'fake', market: 'US', path: ['fake'] } }), /拼造ID/);
-  assert.throws(() => plan({ budget: { scrapeCredits: 0 } }), /预算为0/);
-  assert.throws(() => plan({ budget: { browserPages: 1 } }), /不使用模型或浏览器/);
-  assert.throws(() => plan({ budget: { maxPages: 6 } }), /maxPages预算/);
+  assert.deepEqual(plan({ budget: { scrapeCredits: 0, providerCalls: 0, requests: 0 } }).budget, { maxPages: 5, maxDetailProducts: 10 });
+  assert.equal(plan({ budget: { modelTokens: 1 } }).budget.modelTokens, undefined);
+  assert.throws(() => plan({ budget: { maxPages: 6 } }), /页数/);
   assert.throws(() => plan({ maxProducts: 101 }), /1至100/);
   assert.throws(() => plan({ salesWindowDays: 365 }), /不是上架时间/);
   assert.throws(() => plan({ ranking: 'period_sales' }), /滚动30/);
@@ -40,9 +40,9 @@ test('operations and independent budgets are fixed for category, URL, Semrush an
   assert.equal(plan({ routeId: 'shopping-semrush' }).initialOperation, 'domains');
   for (const semrushUnits of [0, 1, 200_000]) {
     const p = plan({ routeId: 'shopping-semrush', budget: { semrushUnits } });
-    assert.equal(p.budget.semrushUnits, 0);
+    assert.equal(p.budget.semrushUnits, undefined);
   }
-  assert.throws(() => plan({ routeId: 'shopping-semrush', budget: { providerCalls: 0 } }), /预算为0/);
+  assert.equal(plan({ routeId: 'shopping-semrush', budget: { providerCalls: 0 } }).provider, 'semrush');
   assert.equal(plan({ routeId: 'amazon-public', market: 'US', mode: 'urls', urls: 'https://www.amazon.com/dp/B000000001' }).initialOperation, 'public_page');
   assert.throws(() => plan({ routeId: 'website-public', mode: 'urls', urls: 'https://brand.example/product' }), /域名/);
 });
@@ -182,7 +182,7 @@ test('unknown public label fields preserve existing verified specifications and 
   assert.equal(merged.size, '60 capsules');
 });
 
-test('Semrush counts paginated MCP discovery plus report HTTP and blocks the fifteenth transport request', async () => {
+test('Semrush records all MCP and report requests, including more than the former fourteen-call limit', async () => {
   let calls = 0;
   const fetcher = async (_url, options) => {
     calls++;
@@ -202,11 +202,13 @@ test('Semrush counts paginated MCP discovery plus report HTTP and blocks the fif
   assert.equal(result.usage.semrushUnits, 20);
   assert.deepEqual(result.domains, ['synthetic.example']);
   calls = 0;
-  await assert.rejects(productResourceRequest(request({ routeId: 'shopping-semrush', provider: 'semrush', platform: 'shopping', market: 'US', op: 'domains' }), { cache: false, fetcher, semrushClient, legacyRequest: async (_request, overrides) => {
+  const beyond = await productResourceRequest(request({ routeId: 'shopping-semrush', provider: 'semrush', platform: 'shopping', market: 'US', op: 'domains' }), { cache: false, fetcher, semrushClient, legacyRequest: async (_request, overrides) => {
     const { c } = await overrides.semrushClient();
     await c.rpc('tools/call', { name: 'get_report_schema' });
     await c.rpc('tools/call', { name: 'execute_report' });
     await c.rpc('tools/call', { name: 'unexpected_extra' });
     return {};
-  } }), /14次HTTP/);
+  } });
+  assert.equal(calls, 15);
+  assert.equal(beyond.usage.requests, 15);
 });

@@ -20,8 +20,6 @@ export async function executeMonitor(target, io) {
   };
   await io.saveRun(run);
   const request = async (key, call) => {
-    if (run.requests >= target.maxRequests)
-      throw new Error('已达到本日请求预算');
     run.requests++;
     await io.saveRun(run);
     return io.request(key, call);
@@ -31,12 +29,7 @@ export async function executeMonitor(target, io) {
     if (kind === 'products' ? !target.siteId : !target.pageId) continue;
     const baseline = await io.baseline(kind);
     try {
-      const remaining = target.maxRequests - run.requests;
-      const channelLimit =
-        kind === 'products' && target.pageId && !io.publicOnly
-          ? Math.max(1, Math.floor(remaining / 2))
-          : remaining;
-      const result = await io.scan(kind, request, channelLimit);
+      const result = await io.scan(kind, request, target.maxPages ?? 10);
       let added = 0,
         keywords = 0;
       for (const item of result.items) {
@@ -101,7 +94,7 @@ export async function executeMonitor(target, io) {
   if (run.channels.every((c) => c.status === 'completed'))
     run.status = 'completed';
   if (run.manualRequired) run.status = 'blocked';
-  else if (run.nextRunAt > (io.now?.() || Date.now()) && run.requests < target.maxRequests && run.publicRecoveryAttempts < 3) run.status = 'retry_wait';
+  else if (run.nextRunAt > (io.now?.() || Date.now()) && run.publicRecoveryAttempts < 3) run.status = 'retry_wait';
   run.finishedAt = new Date().toISOString();
   await io.saveRun(run);
   return run;
@@ -124,8 +117,6 @@ export async function executeHotwords(config, io) {
     const requestsBefore = run.requests;
     try {
       const result = await io.fetchSeed(seed, async (key, call) => {
-        if (run.requests >= config.maxRequests)
-          throw new Error('已达到Semrush每日请求次数上限');
         run.requests++;
         run.reservedUnits += 2000;
         await io.saveRun(run);

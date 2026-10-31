@@ -120,25 +120,25 @@ test('page and request limits count discovery before the call and stop bounded p
   assert.equal(h.status, 'partial');
 });
 
-test('each independent provider budget blocks before a request without falling back to another paid resource', async () => {
-  const h = harness(plan({ provider: 'tiktok_shop', platform: 'tiktok_shop', routeId: 'tiktok-scrapecreators', budget: budget({ scrapeCredits: 0 }) }), async () => { throw new Error('must not call'); });
+test('legacy zero provider caps permit collection and keep usage accounting', async () => {
+  const h = harness(plan({ provider: 'tiktok_shop', platform: 'tiktok_shop', routeId: 'tiktok-scrapecreators', budget: budget({ scrapeCredits: 0, providerCalls: 0, requests: 0 }) }), async () => ({ products: [product('A')], usage: { scrapeCredits: 1, providerCalls: 1 } }));
   await h.drain();
-  assert.equal(h.requests.length, 0);
-  assert.equal(h.job.checkpoint.requests, 0);
-  assert.equal(h.products.size, 0);
-  assert.equal(h.job.checkpoint.stopReasons[0].reason, 'scrapeCredits_limit');
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.job.checkpoint.requests, 1);
+  assert.equal(h.products.size, 1);
+  assert.equal(h.job.checkpoint.stopReasons.length, 0);
   assert.equal(h.job.checkpoint.reserved.browserPages, 0);
   assert.equal(h.job.checkpoint.reserved.modelTokens, 0);
 });
 
-test('physical Sorftime HTTP budget reserves control and data requests, then reconciles only confirmed actual usage', async () => {
+test('physical Sorftime usage can exceed the old cap while unknown results still stop the source', async () => {
   const h = harness(plan({ budget: budget({ requests: 5 }) }), async () => ({ products: [product('A')], providerCalls: 1, usage: { requests: 4 }, hasMore: true }));
   await h.drain();
-  assert.equal(h.requests.length, 1);
+  assert.equal(h.requests.length, 2);
   assert.equal(h.checkpoints[0].checkpoint.inFlight.cost.requests, 5);
-  assert.equal(h.job.checkpoint.reserved.requests, 4);
-  assert.equal(h.job.checkpoint.confirmedUsage.requests, 4);
-  assert.ok(h.job.checkpoint.stopReasons.some((reason) => reason.reason === 'requests_limit'));
+  assert.equal(h.job.checkpoint.reserved.requests, 8);
+  assert.equal(h.job.checkpoint.confirmedUsage.requests, 8);
+  assert.ok(h.job.checkpoint.stopReasons.some((reason) => reason.reason === 'repeated_page'));
   const unknown = harness(plan({ terms: ['one', 'two'] }), async () => ({ products: [product('A')], providerCalls: 1, usage: { requests: undefined } }));
   await unknown.drain();
   assert.equal(unknown.requests.length, 1);

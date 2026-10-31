@@ -192,7 +192,7 @@ export function normalizeProduct(p, site, at = new Date().toISOString()) {
 }
 export async function submitProducts(input, user) {
   const fallbackBudget = collectionBudget(input, user);
-  if (fallbackBudget.maxPaidRequests > 0) {
+  if (fallbackBudget.hostedEnabled) {
     const config = await fetchConfiguration();
     if (!config.paidEnabled || !config.apiKey)
       throw new Error('请先在数据源与设置中配置并启用托管备用');
@@ -210,27 +210,20 @@ export async function submitProducts(input, user) {
   const {
     maxProducts,
     maxDetailProducts,
-    maxRequests,
-    maxRequestsPerSite: perSite,
+    maxPagesPerSite,
     maxBrowserPages,
   } = policy;
   if (
     !Number.isInteger(maxProducts) ||
     maxProducts < 1 ||
     maxProducts > 1000 ||
-    !Number.isInteger(maxRequests) ||
-    maxRequests < 1 ||
-    maxRequests > 2000 ||
-    maxRequests < new Set(input.siteIds).size ||
-    !Number.isInteger(perSite) ||
-    perSite < 1 ||
-    perSite > maxRequests ||
+    !Number.isInteger(maxPagesPerSite) || maxPagesPerSite < 1 || maxPagesPerSite > 2000 ||
     !Number.isInteger(maxDetailProducts) ||
     maxDetailProducts < 0 ||
     maxDetailProducts > maxProducts
   )
     throw new Error(
-      '单站商品上限1～1000；详情目标须在0～商品上限内；任务网页请求上限须覆盖全部站点且不超过2000；单站请求上限不得超过整批上限',
+      '单站商品上限1～1000；详情目标须在0～商品上限内；单站页数须为1～2000',
     );
   const c = await pool.connect();
   let locked = false;
@@ -274,8 +267,7 @@ export async function submitProducts(input, user) {
           markets: [...new Set(records.map((s) => s.market))],
           maxProducts,
           maxDetailProducts,
-          maxRequests,
-          maxRequestsPerSite: perSite,
+          maxPagesPerSite,
           ...fallbackBudget,
           maxBrowserPages,
           profile: policy.profile,

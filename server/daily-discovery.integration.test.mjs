@@ -187,18 +187,19 @@ test(
       await tickDailyDiscovery(noon + 24_000);
       assert.equal(
         (await db.query('SELECT * FROM research_jobs')).rows.length,
-        2,
+        4,
       );
+      assert.equal((await db.query('SELECT * FROM research_jobs')).rows.filter(j => j.input.kind === 'source_fields').length, 2);
       await api({ action: 'server_daily_discovery_save', plan }, admin);
       await tickDailyDiscovery(noon + 30_000);
       assert.equal(
         (await db.query('SELECT * FROM research_jobs')).rows.length,
-        2,
+        4,
       );
       await tickDailyDiscovery(noon + 86_400_000);
       assert.equal(
         (await db.query('SELECT * FROM research_jobs')).rows.length,
-        3,
+        5,
       );
       assert.equal(
         (await api({ action: 'server_daily_discovery_status' }, admin)).runs

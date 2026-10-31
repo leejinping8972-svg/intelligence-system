@@ -152,7 +152,6 @@ import CollectionEstimate from './CollectionEstimate.vue';
       :input="{
         kind: 'semrush_sites',
         ...form,
-        maxRequests: count * form.maxPages,
       }"
     />
   </Modal>

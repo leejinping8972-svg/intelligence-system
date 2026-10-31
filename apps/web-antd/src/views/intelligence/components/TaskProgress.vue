@@ -129,12 +129,7 @@ const visibleRows = computed(() =>
         >商品 {{ task.researchProgress.products }} 件</span
       ><span v-else>原文 {{ task.researchProgress.evidence }} 条</span
       ><span
-        >{{ resource ? '物理HTTP请求' : '请求' }} {{ task.researchProgress.requests }} /
-        {{
-          task.researchProgress.unlimitedRequests
-            ? '补全请求不截断'
-            : task.researchProgress.requestLimit
-        }}</span
+        >{{ resource ? '物理HTTP请求' : '请求' }} {{ task.researchProgress.requests }} 次</span
       ><span v-if="!resource && task.researchProgress.credits !== undefined"
         >确认扣除 {{ task.researchProgress.credits }} credits</span
       >
@@ -176,17 +171,16 @@ const visibleRows = computed(() =>
       <Table
         :data-source="resourceBudgets" row-key="key" size="small" :pagination="false" :scroll="{ x: 520 }"
         :columns="[
-          { title: '独立预算单位', dataIndex: 'label', width: 200 },
+          { title: '用量单位', dataIndex: 'label', width: 200 },
           { title: '已确认使用', key: 'confirmed', width: 110 },
           { title: '累计预留', key: 'reserved', width: 110 },
-          { title: '任务上限', key: 'limit', width: 100 },
         ]"
       ><template #bodyCell="{ column, record }">
         <template v-if="column.key === 'confirmed'">{{ record.confirmed ?? '未确认' }}</template>
         <template v-else-if="column.key === 'reserved'">{{ record.reserved ?? '未记录' }}</template>
         <template v-else-if="column.key === 'limit'">{{ record.limit === 0 ? '关闭' : record.limit ?? '未记录' }}</template>
       </template></Table>
-      <p class="hci-subtle">累计预留包含已确认部分，不是额外扣费；缺回执不按0处理。不同单位分别限制，不能相加作为费用。</p>
+      <p class="hci-subtle">累计预留包含已确认部分，不是额外扣费；缺回执不按0处理。不同单位不能相加作为费用。</p>
       <div v-for="(stop, index) in resource.stopReasons || []" :key="stop.key || `${stop.reason}:${index}`" class="resource-stop-reason">
         <Tag :color="stop.status === 'unknown' ? 'orange' : 'default'">{{ stop.status === 'budget_truncated' ? '预算截断' : stop.status === 'unknown' ? '结果未知' : stop.status === 'quantity_reached' ? '目标数量达到' : stop.status === 'not_found' ? '未收录' : stop.status === 'unsupported' ? '不支持' : stop.status === 'failed' ? '失败' : stop.status === 'not_executed' ? '未执行' : stop.status }}</Tag>
         <span>{{ [stop.provider, stop.op, stop.message].filter(Boolean).join(' · ') }}</span>
@@ -232,7 +226,7 @@ const visibleRows = computed(() =>
         >。
       </p>
       <p v-if="task.researchProgress.browserPageLimit !== undefined" class="hci-subtle">
-        浏览器渲染 {{ task.researchProgress.browserPages || 0 }}/{{ task.researchProgress.browserPageLimit }} 页；托管备用尝试 {{ task.researchProgress.paidRequests || 0 }}/{{ task.researchProgress.paidRequestLimit || 0 }} 次（含结果未知的已预留次数，非积分账单）。
+        浏览器渲染 {{ task.researchProgress.browserPages || 0 }}/{{ task.researchProgress.browserPageLimit }} 页；托管备用尝试 {{ task.researchProgress.paidRequests || 0 }} 次（含结果未知的已预留次数，非积分账单）。
       </p>
       <p v-if="task.researchProgress.previousRequests" class="hci-subtle">
         修复前历史网页请求
@@ -349,8 +343,7 @@ const visibleRows = computed(() =>
       ><span v-if="task.collectionProgress.kind !== 'site_metrics'"
         >官网 {{ task.collectionProgress.sites }} 家</span
       ><span v-if="task.collectionProgress.kind !== 'site_metrics'"
-        >{{ task.collectionProgress.kind === 'semrush_sites' ? 'Semrush报告' : '广告请求' }} {{ task.collectionProgress.requests }} /
-        {{ task.collectionProgress.requestLimit }}</span
+        >{{ task.collectionProgress.kind === 'semrush_sites' ? 'Semrush报告' : '广告请求' }} {{ task.collectionProgress.requests }} 次</span
       >
     </div>
     <div v-if="task.collectionProgress.channels" class="hci-toolbar">

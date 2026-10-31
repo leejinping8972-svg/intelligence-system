@@ -10,7 +10,6 @@ const budgetKeys = [
   'semrushUnits', 'braveRequests', 'browserPages', 'modelTokens',
 ];
 const counters = () => Object.fromEntries(budgetKeys.map((key) => [key, 0]));
-const cappedBudgetKeys = budgetKeys.filter((key) => key !== 'semrushUnits');
 const stamp = (io) => new Date(io.now()).toISOString();
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const discovery = (work) => work.discovery !== false && !work.productId;
@@ -228,11 +227,6 @@ export async function runProductResourceDiscovery(job, io) {
   const limit = Math.max(1, Math.min(work.op === 'domains' ? 3 : 20, isDiscovery ? plan.maxProducts - cp.productIds.length : 1));
   const cost = cp.inFlight?.cost || costFor(work, plan, limit);
   if (!cp.inFlight) {
-    const exceeded = cappedBudgetKeys.find((name) => cp.reserved[name] + cost[name] > (plan.budget[name] ?? 0));
-    if (exceeded) {
-      stop(work, `${exceeded}_limit`, 'budget_truncated', `达到 ${exceeded} 预算，本步骤未发起请求`);
-      return advance();
-    }
     if (state.nextAllowedAt > io.now()) {
       cp.nextRunAt = state.nextAllowedAt;
       return save();
@@ -285,11 +279,6 @@ export async function runProductResourceDiscovery(job, io) {
       state.reason = 'charge_unknown';
       cp.unknownCharges = (cp.unknownCharges || 0) + 1;
       stop(work, 'charge_unknown', 'unknown', `${usage.unknown.join('、')} 实际扣费未返回；保留预留额度并停止此来源`);
-    }
-    if (cappedBudgetKeys.some((name) => cp.reserved[name] > (plan.budget[name] ?? 0))) {
-      state.blocked = true;
-      state.reason = 'reported_cost_limit';
-      stop(work, 'reported_cost_limit', 'budget_truncated', '来源返回用量高于预留，已修正用量并停止该来源');
     }
     state.nextAllowedAt = io.now() + (work.provider === 'public_web' ? 2000 : 1500);
     cp.inFlight.accounted = true;

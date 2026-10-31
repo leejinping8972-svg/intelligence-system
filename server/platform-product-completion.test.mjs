@@ -109,10 +109,10 @@ const input = (patch) =>
     ...patch,
   });
 
-test('default unified budget covers normal completion and an explicit low cap stops all remaining steps', async () => {
+test('complete-all mode completes the selected products beyond legacy request caps', async () => {
   const v = input({});
   assert.equal(v.completeAll, true);
-  assert.equal(v.maxRequests, 150);
+  assert.equal(v.maxRequests, undefined);
   const h = harness(v);
   await h.run();
   assert.equal(h.job.status, 'completed');
@@ -128,8 +128,8 @@ test('default unified budget covers normal completion and an explicit low cap st
   assert.equal(completionProgress(h.job.checkpoint).withHistory, 20);
   const bounded = harness(input({ maxRequests: 1, maxDetailProducts: 1 }));
   await bounded.run();
-  assert.equal(bounded.job.status, 'partial');
-  assert.equal(bounded.calls.length, 1);
+  assert.equal(bounded.job.status, 'completed');
+  assert.equal(bounded.calls.length, 101);
   assert.equal(bounded.docs.size, 20);
 });
 

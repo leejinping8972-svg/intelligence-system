@@ -43,7 +43,6 @@ export interface TrendPlan {
   time: string;
   sources: string[];
   markets: string[];
-  maxRequests: number;
   maxPages: number;
 }
 export interface TrendSnapshot {

@@ -17,9 +17,9 @@ import { landingUrl } from './safe-web.mjs';
 export async function probePublicSite(input, io) {
   const url = landingUrl(input.url);
   if (!url) throw new Error('请提供不含凭证的公开独立站URL');
-  const maxRequests = Number(input.maxRequests ?? 3);
-  if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 10)
-    throw new Error('单次网页请求上限1～10');
+  const maxPages = Number(input.maxPages ?? 3);
+  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 10)
+    throw new Error('单次页面上限1～10');
   const now = io.now || Date.now,
     day = dayKey(now());
   const state = (await io.read()) || {};
@@ -37,12 +37,6 @@ export async function probePublicSite(input, io) {
       nextRunAt: state.progress.nextRunAt,
       message: '尚在站点要求的冷却期，未发送请求',
     };
-  if (used >= 10)
-    return {
-      status: 'budget',
-      requestsToday: used,
-      message: '本诊断检查点今日10次请求已用完',
-    };
   const save = (progress, result) =>
     io.save({
       host,
@@ -53,7 +47,6 @@ export async function probePublicSite(input, io) {
       result: { ...result, items: undefined },
     });
   const request = async (_step, call) => {
-    if (used >= 10) throw new Error('今日10次诊断请求上限已用完');
     used++;
     await save(state.progress, { status: 'requesting' });
     return call();
@@ -69,7 +62,7 @@ export async function probePublicSite(input, io) {
   const result = await io.scan(
     site,
     request,
-    Math.min(maxRequests, 10 - used),
+    maxPages,
     state.progress || null,
     input.browser === true,
   );
@@ -98,7 +91,7 @@ async function main() {
   const value = (name) => args[args.indexOf(name) + 1];
   if (!args.includes('--url'))
     throw new Error(
-      '用法：node public-site-probe.mjs --url https://example.com --state /tmp/site-check.json [--max-requests 3] [--browser] [--shopify]',
+      '用法：node public-site-probe.mjs --url https://example.com --state /tmp/site-check.json [--max-pages 3] [--browser] [--shopify]',
     );
   const url = value('--url'),
     checked = landingUrl(url);
@@ -126,8 +119,8 @@ async function main() {
     const result = await probePublicSite(
       {
         url: checked,
-        maxRequests: args.includes('--max-requests')
-          ? Number(value('--max-requests'))
+        maxPages: args.includes('--max-pages')
+          ? Number(value('--max-pages'))
           : 3,
         browser: args.includes('--browser'),
         shopify: args.includes('--shopify'),

@@ -9,8 +9,6 @@ export const defaultDailyPlan = {
   maxPages: 1,
   maxAds: 20,
   perKeyword: 10,
-  adRequestBudget: 100,
-  productRequestBudget: 100,
   semrushUnitBudget: 0,
 };
 export function validateDailyPlan(input) {
@@ -36,8 +34,6 @@ export function validateDailyPlan(input) {
     ['maxPages', 1, 10],
     ['maxAds', 1, 100],
     ['perKeyword', 1, 100],
-    ['adRequestBudget', 1, 1000],
-    ['productRequestBudget', 1, 10_000],
   ])
     if (!Number.isInteger(plan[key]) || plan[key] < min || plan[key] > max)
       throw new Error(`每日预算或采集数量超出范围：${key}`);
@@ -65,7 +61,7 @@ export function buildDailyRun(plan, keywords, now) {
       k.dataNature !== 'demo' &&
       plan.markets.includes(k.market),
   );
-  // Stable daily rotation shares a limited budget across a changing set of selected words.
+  // Stable ordering keeps the daily queue predictable as selected words change.
   selected.sort((a, b) =>
     dailyRequestId(day, 'order', a.id).localeCompare(
       dailyRequestId(day, 'order', b.id),
@@ -89,11 +85,6 @@ export function buildDailyRun(plan, keywords, now) {
       let reason = '';
       if (kind === 'products' && providers.length === 0)
         reason = '当前市场没有所选商品来源（Sorftime不支持越南）';
-      else if (
-        reserved[kind] + requests >
-          (kind === 'ads' ? plan.adRequestBudget : plan.productRequestBudget)
-      )
-        reason = '超出每日预留预算，本日未排队；请调整预算以覆盖全部入选词';
       const entry = {
         kind,
         keywordId: keyword.id,
@@ -132,7 +123,6 @@ export function dailySubmission(run, entry) {
         maxPages: plan.maxPages,
         maxAds: plan.maxAds,
         maxSites: 1,
-        maxRequests: entry.requests,
         adStatus: 'ALL',
       }
     : {
@@ -148,7 +138,6 @@ export function dailySubmission(run, entry) {
         maxDomains: 1,
         maxProducts: plan.perKeyword * entry.providers.length,
         perKeyword: plan.perKeyword,
-        maxRequests: entry.requests,
         semrushUnitLimit: 0,
       };
 }

@@ -28,7 +28,7 @@ const busy = ref(false);
   const open = ref(false);
 const frozen = ref<AdvertiserRow[]>([]);
 const ready = ref(false);
-const form = reactive({ enabled: false, hour: 8, maxRequests: 10 });
+const form = reactive({ enabled: false, hour: 8, maxPages: 10 });
 const known = computed(
   () =>
     new Set(
@@ -137,14 +137,8 @@ async function save() {
             :max="23"
             :precision="0"
 />
-</Form.Item><Form.Item label="每个广告主每日请求上限">
-<InputNumber
-            v-model:value="form.maxRequests"
-            :min="1"
-            :max="100"
-            :precision="0"
-        />
 </Form.Item>
+<Form.Item label="每渠道页面上限"><InputNumber v-model:value="form.maxPages" :min="1" :max="100" :precision="0" /></Form.Item>
       </div>
       <Form.Item label="启用自动检查">
 <Switch v-model:checked="form.enabled" /><span class="hci-subtle">
@@ -153,8 +147,8 @@ async function save() {
 </Form>
     <p class="hci-subtle">
       按市场和Page
-      ID去重，新对象仅监控新广告；已有监控的启停、预算和站点关联保持原设置。新对象的每日请求上限合计{{
-        additions * form.maxRequests
+      ID去重，新对象仅监控新广告；已有监控的启停、预算和站点关联保持原设置。新对象的每渠道页面上限合计{{
+        additions * form.maxPages
       }}次，启用后由后台调度并消耗广告源额度，首次完整扫描建立基线。
     </p>
   </Modal>

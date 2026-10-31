@@ -28,8 +28,6 @@ interface Plan {
   maxPages: number;
   maxAds: number;
   perKeyword: number;
-  adRequestBudget: number;
-  productRequestBudget: number;
   semrushUnitBudget: number;
 }
 interface Run {
@@ -68,8 +66,6 @@ const form = reactive<Plan>({
   maxPages: 1,
   maxAds: 20,
   perKeyword: 10,
-  adRequestBudget: 100,
-  productRequestBudget: 100,
   semrushUnitBudget: 0,
 });
 const canEdit = computed(() => session.user?.role === 'admin');
@@ -208,22 +204,8 @@ async function save() {
             ]"
           />
         </Form.Item>
-        <Form.Item label="每日广告请求上限">
-          <InputNumber
-            v-model:value="form.adRequestBudget"
-            :min="1"
-            :max="1000"
-            aria-label="每日广告请求上限"
-          />
-        </Form.Item>
-        <Form.Item label="每日商品请求上限">
-          <InputNumber
-            v-model:value="form.productRequestBudget"
-            :min="1"
-            :max="10000"
-            aria-label="每日商品请求上限"
-          />
-        </Form.Item>
+
+
         <Form.Item label="每词广告页数">
           <InputNumber
             v-model:value="form.maxPages"
@@ -253,11 +235,11 @@ async function save() {
         type="info"
         show-icon
         message="每日只做广告和商品发现，保留来源与新旧判断；商品详情/销量趋势通过商品库另行补全。"
-        description="预算按每词最大请求预留；不足时明确记录未执行原因，每日轮换词序。越南自动排除Sorftime。当天已开始的批次使用启动时的设置，修改从下一批生效；暂停会停止尚未排队的步骤。错过时间则当日恢复后执行一次，不补跑往日。"
+        description="按每词商品数、广告数与页数执行，每日轮换词序。越南自动排除Sorftime。当天已开始的批次使用启动时的设置，修改从下一批生效；暂停会停止尚未排队的步骤。错过时间则当日恢复后执行一次，不补跑往日。"
       />
       <Form.Item v-if="form.enabled" style="margin-top: 16px">
         <Checkbox v-model:checked="acknowledged">
-          我确认每日自动采集会消耗已配置来源的额度，并按上述有限预算运行
+          我确认每日自动采集会消耗已配置来源的额度，并按所选数量与页数运行
         </Checkbox>
       </Form.Item>
     </Form>
@@ -281,7 +263,7 @@ async function save() {
     <section v-for="run in runs" :key="run.day" class="daily-run">
       <strong>{{ run.day }} · {{ run.selectedCount }} 个入选词</strong>
       <p class="hci-subtle">
-        预算预留：广告 {{ run.reserved.ads }} 次 / 商品
+        预计来源用量：广告 {{ run.reserved.ads }} 次 / 商品
         {{ run.reserved.products }} 次 / Semrush
         {{ run.reserved.semrush }} units；已完成
         {{ run.work.filter((e) => e.status === 'completed').length }} 项，未执行

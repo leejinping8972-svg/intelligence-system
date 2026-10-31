@@ -150,13 +150,12 @@ test('ad landing evidence must pass storefront validation', async () => {
 });
 test('validates task bounds and rejects duplicate selected IDs', () => {
   assert.equal(
-    validateMarketJob({ kind: 'ads', keywordIds: ['a'] }).maxRequests,
-    3,
+    validateMarketJob({ kind: 'ads', keywordIds: ['a'], maxRequests: 1001 }).maxRequests,
+    undefined,
   );
   assert.equal(validateMarketJob({ kind: 'ads', keywordIds: ['a'] }).siteSearchPages, 1);
   for (const input of [
     { kind: 'ads', keywordIds: ['a', 'a'] },
-    { kind: 'ads', keywordIds: ['a'], maxRequests: 1001 },
     { kind: 'ads', keywordIds: [] },
     { kind: 'ads', keywordIds: ['a'], maxPages: 11 },
     { kind: 'ads', keywordIds: ['a'], siteSearchPages: 4 },
@@ -211,14 +210,14 @@ function harness(maxRequests = 1) {
   };
   return { job, io, docs, states, calls };
 }
-test('request cap stops pagination and preserves ads, sites, and partial status', async () => {
+test('legacy request caps do not stop pagination; page limits preserve ads and sites', async () => {
   const h = harness();
   await runMarketJob(h.job, h.io);
-  assert.equal(h.calls.filter((c) => c.startsWith('ads:')).length, 1);
+  assert.equal(h.calls.filter((c) => c.startsWith('ads:')).length, 3);
   assert.ok(h.docs.has('ads:a'));
   assert.ok(h.docs.has('sites:US-example.com'));
-  assert.equal(h.states.at(-1).status, 'partial');
-  assert.equal(h.states.at(-1).cp.requests, 1);
+  assert.equal(h.states.at(-1).status, 'completed');
+  assert.equal(h.states.at(-1).cp.requests, 3);
 });
 test('cancellation ends the job without issuing requests', async () => {
   const h = harness();
@@ -257,7 +256,7 @@ test('terminal partial and cancelled jobs clear only their own active keyword st
     await runMarketJob(h.job, h.io);
     assert.equal(
       keywords.get('k').adCollection.status,
-      cancelled ? 'cancelled' : 'partial',
+      cancelled ? 'cancelled' : 'completed',
     );
     assert.equal(keywords.get('other').adCollection.status, 'queued');
   }

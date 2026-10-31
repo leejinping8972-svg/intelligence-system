@@ -49,7 +49,8 @@ test('adds site and bounded free product job atomically; retry does not fetch or
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].input.maxPaidRequests, 0);
   assert.equal(jobs[0].input.maxProducts, 30);
-  assert.equal(jobs[0].input.maxRequests, 20);
+  assert.equal(jobs[0].input.maxPagesPerSite, 20);
+  assert.equal(jobs[0].input.maxRequests, undefined);
   assert.deepEqual(jobs[0].input.siteIds, [first.siteId]);
   await assert.rejects(addManualSite({ ...request, market: 'US' }, h.io), /提交编号/);
 });

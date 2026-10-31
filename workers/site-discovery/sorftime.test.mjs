@@ -256,7 +256,7 @@ test('redirects stop on Workers-compatible manual mode without forwarding the to
   assert.equal(JSON.stringify(result).includes('private-test-token'), false);
 });
 
-test('Sorftime respects its call budget and never invokes product tools', async () => {
+test('Sorftime continues beyond legacy call caps, records usage and only invokes keyword tools', async () => {
   const calls = [];
   const budget = { remaining: 1, used: 0 };
   const result = await sorftimeSuggestions(
@@ -270,9 +270,10 @@ test('Sorftime respects its call budget and never invokes product tools', async 
   );
   assert.equal(result.status, 'success');
   assert.equal(result.items.length, 2);
-  assert.equal(budget.used, 1);
+  assert.equal(budget.used, 3);
   const invoked = calls.filter((item) => item.method === 'tools/call');
-  assert.equal(invoked.length, 1);
+  assert.equal(invoked.length, 3);
+  assert.ok(invoked.every((call) => call.params.name === 'keyword_related_words'));
   assert.equal(invoked[0].params.name, 'keyword_related_words');
   assert.deepEqual(invoked[0].params.arguments, {
     amzSite: 'US',

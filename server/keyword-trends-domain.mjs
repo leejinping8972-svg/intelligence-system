@@ -7,7 +7,6 @@ export const defaultTrendPlan = {
   time: '09:00',
   sources: TREND_SOURCES,
   markets: ['US', 'MX', 'VN'],
-  maxRequests: 100,
   maxPages: 11,
 };
 const DAY = 86_400_000;
@@ -35,7 +34,6 @@ export function validateTrendPlan(input) {
     p[key] = [...new Set(p[key])];
   }
   for (const [key, max] of [
-    ['maxRequests', 1000],
     ['maxPages', 100],
   ]) {
     if (!Number.isInteger(p[key]) || p[key] < 1 || p[key] > max)

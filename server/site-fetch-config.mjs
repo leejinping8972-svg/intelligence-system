@@ -79,21 +79,18 @@ export async function siteFetchConfig(input, user, overrides = {}) {
     configured: !!stored.key,
     updatedAt: stored.updatedAt,
     message:
-      '公开目录与直连优先；渲染只用于动态页面。托管备用还需管理员在每次任务中设置大于0的请求上限；保存不检测或调用收费服务。',
+      '公开目录与直连优先；渲染只用于动态页面。托管备用还需管理员在每次任务中明确启用；保存不检测或调用收费服务。',
   };
 }
 export function collectionBudget(input, user) {
-  const maxBrowserPages = Number(input.maxBrowserPages ?? 5),
-    maxPaidRequests = Number(input.maxPaidRequests ?? 0);
+  const maxBrowserPages = Number(input.maxBrowserPages ?? 5);
+  const hostedEnabled = input.hostedEnabled === true || (input.hostedEnabled === undefined && Number(input.maxPaidRequests) > 0);
   if (
     !Number.isInteger(maxBrowserPages) ||
     maxBrowserPages < 0 ||
-    maxBrowserPages > 50 ||
-    !Number.isInteger(maxPaidRequests) ||
-    maxPaidRequests < 0 ||
-    maxPaidRequests > 100
+    maxBrowserPages > 50
   )
-    throw new Error('浏览器渲染上限0～50页，托管备用上限0～100次；0表示关闭');
-  if (maxPaidRequests > 0) requireAdmin(user);
-  return { collectionPolicyVersion: 1, maxBrowserPages, maxPaidRequests };
+    throw new Error('浏览器渲染上限0～50页；0表示关闭');
+  if (hostedEnabled) requireAdmin(user);
+  return { collectionPolicyVersion: 1, maxBrowserPages, hostedEnabled };
 }

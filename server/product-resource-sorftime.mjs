@@ -153,13 +153,10 @@ export async function resourceClient(overrides = {}) {
   const env = overrides.env || await (overrides.collectorEnv || collectorEnv)();
   const token = overrides.token || overrides.config?.token || await (overrides.readSorftimeToken || readSorftimeToken)(env);
   let controls = 0;
-  let calls = 0;
   const fetcher = async (url, init) => {
     let method;
     try { method = JSON.parse(init?.body || '{}').method; } catch {}
-    if (method === 'tools/call') {
-      if (++calls > 1) throw new Error('Sorftime 单步数据请求次数已达上限');
-    } else if (++controls > 4) throw new Error('Sorftime MCP 工具发现控制请求已达上限');
+    if (method !== 'tools/call') controls++;
     return (overrides.fetch || overrides.fetcher || fetch)(url, init);
   };
   try {

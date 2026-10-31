@@ -55,13 +55,11 @@ export function discoveryPlan(input, scheduled = false) {
   )
     throw new Error('请填写1至10个话题，每个不超过200字');
   const limits = {
-    maxCalls: input.maxCalls ?? 20,
     maxProducts: input.maxProducts ?? 100,
     maxPages: input.maxPages ?? 3,
     maxDetails: input.maxDetails ?? 5,
   };
   for (const [key, max] of Object.entries({
-    maxCalls: 100,
     maxProducts: 500,
     maxPages: 10,
     maxDetails: 20,
@@ -71,7 +69,7 @@ export function discoveryPlan(input, scheduled = false) {
       limits[key] < (key === 'maxDetails' ? 0 : 1) ||
       limits[key] > max
     )
-      throw new Error('采集数量或调用上限无效');
+      throw new Error('采集数量或页数无效');
   const sourceMarkets = Object.fromEntries(
     channels
       .filter((c) => input.sourceMarkets?.[c])

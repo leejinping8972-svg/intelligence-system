@@ -1,61 +1,4 @@
-// ../workers/site-discovery/src/source-scheduler.js
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-var key = Symbol.for('intelligence.source-lanes.v1');
-var lanes = (globalThis[key] ||= /* @__PURE__ */ new Map());
-function sourceLane(source, intervalMs = 1e3) {
-  if (!lanes.has(source))
-    lanes.set(source, { tail: Promise.resolve(), nextAt: 0, intervalMs });
-  return lanes.get(source);
-}
-async function scheduleSource(source, callback, options = {}) {
-  const lane = sourceLane(source, options.intervalMs);
-  const previous = lane.tail;
-  let release;
-  lane.tail = new Promise((resolve) => {
-    release = resolve;
-  });
-  await previous;
-  try {
-    const wait = Math.max(0, lane.nextAt - Date.now());
-    if (wait) await sleep(wait);
-    const result = await callback();
-    if (result?.status === 429)
-      lane.nextAt =
-        Date.now() +
-        Math.max(
-          6e4,
-          (Number(result.headers?.get?.('retry-after')) || 0) * 1e3,
-        );
-    return result;
-  } catch (error) {
-    if (error.status === 429)
-      lane.nextAt =
-        Date.now() + Math.max(6e4, (error.retryAfterSeconds || 0) * 1e3);
-    throw error;
-  } finally {
-    lane.nextAt = Math.max(
-      lane.nextAt,
-      Date.now() + (options.intervalMs ?? lane.intervalMs),
-    );
-    release();
-  }
-}
-function scheduledFetch(url, options) {
-  const host = new URL(
-    typeof url === 'string' || url instanceof URL ? url : url.url,
-  ).hostname
-    .toLowerCase()
-    .replace(/^www\./, '');
-  const source =
-    host === 'mcp.sorftime.com'
-      ? 'sorftime'
-      : host === 'api.search.brave.com'
-        ? 'brave'
-        : 'site:' + host;
-  return scheduleSource(source, () => fetch(url, options));
-}
-
-// ../workers/site-discovery/data/trends-snapshots.json
+// workers/site-discovery/data/trends-snapshots.json
 var trends_snapshots_default = [
   {
     keyword: "women's health gummies",
@@ -336,7 +279,159 @@ var trends_snapshots_default = [
   },
 ];
 
-// ../workers/site-discovery/src/provider-config.js
+// workers/site-discovery/src/product-public-fields.js
+var cumulative = (node) =>
+  [
+    'period',
+    'window',
+    'interval',
+    'salesPeriod',
+    'soldPeriod',
+    'sold_count_period',
+    'time_window',
+  ].every(
+    (key2) =>
+      node?.[key2] === void 0 ||
+      /^(?:all[_ -]?time|total|cumulative|lifetime)$/i.test(String(node[key2])),
+  );
+var units = (value) => {
+  let raw = value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (
+      value.unitCode &&
+      !/^(?:C62|H87|EA|PCS?|pieces?|items?|units?)$/i.test(value.unitCode)
+    )
+      return void 0;
+    raw = value.value;
+  }
+  if (typeof raw === 'string') {
+    if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw.trim())) return void 0;
+    raw = Number(raw.replaceAll(',', '').trim());
+  }
+  return Number.isSafeInteger(raw) && raw >= 0 ? raw : void 0;
+};
+function publicProductFields(product, prefix = 'Product JSON-LD') {
+  const fields = {};
+  for (const key2 of ['published_at', 'datePublished', 'releaseDate']) {
+    const raw = product[key2];
+    if (
+      typeof raw !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(raw) ||
+      !Number.isFinite(Date.parse(raw))
+    )
+      continue;
+    const day = raw.slice(0, 10);
+    if (
+      new Date(Date.parse(day + 'T00:00:00Z')).toISOString().slice(0, 10) !==
+      day
+    )
+      continue;
+    fields.publishedAt = raw;
+    fields.publishedSourceField =
+      product.publishedSourceField || prefix + '.' + key2;
+    break;
+  }
+  if (cumulative(product))
+    for (const key2 of ['numberOfItemsSold', 'soldCount', 'sold_count']) {
+      if (!cumulative(product[key2])) continue;
+      const value = units(product[key2]);
+      if (value === void 0) continue;
+      fields.soldCount = value;
+      fields.soldRaw =
+        typeof product.soldRaw === 'string'
+          ? product.soldRaw
+          : typeof product[key2] === 'string'
+            ? product[key2].trim()
+            : String(value);
+      fields.soldPrecision = 'exact';
+      fields.soldSourceField = product.soldSourceField || prefix + '.' + key2;
+      break;
+    }
+  return fields;
+}
+
+// workers/site-discovery/src/product-signal-rules.js
+function signalText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replaceAll(/\s+/g, ' ')
+    .trim();
+}
+function signalKey(value) {
+  return signalText(value)
+    .toLowerCase()
+    .replaceAll(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+var BOILERPLATE =
+  /not (?:been )?evaluated|food and drug administration|not intended to diagnose|diagnose.{0,30}treat.{0,30}cure|consult (?:your |a )?(?:physician|doctor|healthcare)|keep out of reach|if you are (?:pregnant|nursing)|all rights reserved|privacy policy|shipping|add to cart|subscribe|suggested (?:use|usage)|directions for use|daily value|servings? (?:size|per)|warning|disclaimer|advertencia|no (?:ha sido|está) evaluad|no est[aá] destinado|consulte.{0,25}(?:m[eé]dico|profesional)|không phải là thuốc|không có tác dụng thay thế thuốc|tham khảo ý kiến|免责声明|未经.{0,12}(?:评估|评价)|不用于.{0,12}(?:诊断|治疗)|请咨询|注意事项|用法用量|每日参考值/i;
+function benefitSignal(value) {
+  const text = signalText(value);
+  const minimum = /[\p{Script=Han}]/u.test(text) ? 2 : 4;
+  if (text.length < minimum || text.length > 240 || BOILERPLATE.test(text))
+    return '';
+  if (
+    /^(?:ingredients?|supplement facts?|nutrition facts?|benefits?|description|product details?|learn more|shop now|成分|营养成分表|商品详情)[\s:：.!*]*$/i.test(
+      text,
+    )
+  )
+    return '';
+  return text;
+}
+function ingredientSection(value) {
+  return signalText(value)
+    .split(
+      /\b(?:free (?:of|from)|does not contain|contains no|allergen(?:s| information)?|warnings?|suggested (?:use|usage))\s*[:：]?|不含[:：]?|无添加[:：]?/i,
+    )[0]
+    .trim();
+}
+function ingredientSignal(value, context = '') {
+  const text = signalText(value);
+  const key2 = signalKey(text);
+  if (text.length < 2 || text.length > 120 || BOILERPLATE.test(text)) return '';
+  if (
+    /\b(?:non[ -]?gmo|gmo[ -]?free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen)[ -]?free|free (?:from|of)|no added|without|does not contain|contains no|certified|vegan|vegetarian|kosher|halal)\b|非转基因|不含|无麸质|无乳糖|无添加|纯素/i.test(
+      text,
+    )
+  )
+    return '';
+  if (
+    /\b(?:non gmo|gmo free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen) free)\b/.test(
+      key2,
+    )
+  )
+    return '';
+  if (
+    /^(?:ingredients?|other ingredients?|supplement facts?|nutrition facts?|未知|待识别|官网未公开|平台未返回|n\/?a|none)$/i.test(
+      text,
+    )
+  )
+    return '';
+  if (
+    /\b(?:supports?|promotes?|helps?|take|capsules? daily|tablets? daily)\b/i.test(
+      text,
+    )
+  )
+    return '';
+  const source = signalText(context);
+  const positive = ingredientSection(source);
+  if (positive !== source && !signalKey(positive).includes(key2)) return '';
+  const sourceParts = source
+    .split(/[,;:.。；\n]/)
+    .map((part) => ` ${signalKey(part)} `);
+  if (
+    sourceParts.some(
+      (part) =>
+        part.includes(` ${key2} free `) ||
+        part.includes(` without ${key2} `) ||
+        part.includes(` no ${key2} `),
+    )
+  )
+    return '';
+  return text;
+}
+
+// workers/site-discovery/src/provider-config.js
 var STORAGE_KEY = 'provider:sorftime:mcp:v1';
 var encode = (value) => btoa(String.fromCodePoint(...value));
 var decode = (value) =>
@@ -414,7 +509,7 @@ async function readSorftimeToken(env) {
   return env.SORFTIME_MCP_TOKEN || '';
 }
 
-// ../workers/site-discovery/src/server-relay.js
+// workers/site-discovery/src/server-relay.js
 var SERVER_ACTIONS = /* @__PURE__ */ new Set([
   'server_cancel',
   'server_clear_keywords',
@@ -457,7 +552,64 @@ async function serverRelay(input, env, fetcher = fetch) {
   return payload;
 }
 
-// ../workers/site-discovery/src/sorftime.js
+// workers/site-discovery/src/source-scheduler.js
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var key = Symbol.for('intelligence.source-lanes.v1');
+var lanes = (globalThis[key] ||= /* @__PURE__ */ new Map());
+function sourceLane(source, intervalMs = 1e3) {
+  if (!lanes.has(source))
+    lanes.set(source, { tail: Promise.resolve(), nextAt: 0, intervalMs });
+  return lanes.get(source);
+}
+async function scheduleSource(source, callback, options = {}) {
+  const lane = sourceLane(source, options.intervalMs);
+  const previous = lane.tail;
+  let release;
+  lane.tail = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    const wait = Math.max(0, lane.nextAt - Date.now());
+    if (wait) await sleep(wait);
+    const result = await callback();
+    if (result?.status === 429)
+      lane.nextAt =
+        Date.now() +
+        Math.max(
+          6e4,
+          (Number(result.headers?.get?.('retry-after')) || 0) * 1e3,
+        );
+    return result;
+  } catch (error) {
+    if (error.status === 429)
+      lane.nextAt =
+        Date.now() + Math.max(6e4, (error.retryAfterSeconds || 0) * 1e3);
+    throw error;
+  } finally {
+    lane.nextAt = Math.max(
+      lane.nextAt,
+      Date.now() + (options.intervalMs ?? lane.intervalMs),
+    );
+    release();
+  }
+}
+function scheduledFetch(url, options) {
+  const host = new URL(
+    typeof url === 'string' || url instanceof URL ? url : url.url,
+  ).hostname
+    .toLowerCase()
+    .replace(/^www\./, '');
+  const source =
+    host === 'mcp.sorftime.com'
+      ? 'sorftime'
+      : host === 'api.search.brave.com'
+        ? 'brave'
+        : 'site:' + host;
+  return scheduleSource(source, () => fetch(url, options));
+}
+
+// workers/site-discovery/src/sorftime.js
 var MCP_URL = 'https://mcp.sorftime.com/';
 var SOURCE = 'Sorftime \xB7 Amazon';
 var TOOLS = {
@@ -755,14 +907,6 @@ async function sorftimeSuggestions(
       message:
         '\u5F53\u524D Sorftime \u6765\u6E90\u4E3A Amazon \u5173\u952E\u8BCD\uFF0C\u4E0D\u652F\u6301\u8D8A\u5357\u5E02\u573A\uFF0C\u672A\u8DE8\u56FD\u66FF\u4EE3',
     };
-  if (budget.remaining <= 0)
-    return {
-      source: SOURCE,
-      items: [],
-      status: 'error',
-      message:
-        '\u672C\u4EFB\u52A1 Sorftime \u8C03\u7528\u989D\u5EA6\u5DF2\u7528\u5B8C\uFF0C\u672A\u7EE7\u7EED\u8BF7\u6C42',
-    };
   const items = /* @__PURE__ */ new Map();
   let message = '';
   try {
@@ -781,8 +925,6 @@ async function sorftimeSuggestions(
           '\u6B64\u8D26\u6237\u7684\u5173\u952E\u8BCD\u5DE5\u5177\u4E0D\u652F\u6301\u6240\u9009\u5E02\u573A\uFF0C\u672A\u8DE8\u56FD\u66FF\u4EE3',
       };
     const query = async (term) => {
-      if (budget.remaining <= 0) return;
-      budget.remaining -= 1;
       budget.used += 1;
       const response = await client.rpc('tools/call', {
         name: client.tool.name,
@@ -804,7 +946,7 @@ async function sorftimeSuggestions(
     await query(keyword);
     if (depth === 2) {
       for (const item of [...items.values()]) {
-        if (items.size >= limit || budget.remaining <= 0) break;
+        if (items.size >= limit) break;
         if (
           item.term.toLocaleLowerCase() ===
           keyword.normalize('NFKC').toLocaleLowerCase()
@@ -813,10 +955,7 @@ async function sorftimeSuggestions(
         await query(item.term);
       }
     }
-    if (budget.remaining <= 0 && items.size < limit)
-      message =
-        '\u5DF2\u8FBE\u5230\u672C\u4EFB\u52A1 Sorftime \u8C03\u7528\u4E0A\u9650\uFF0C\u4FDD\u7559\u5DF2\u83B7\u53D6\u5173\u952E\u8BCD';
-    else if (items.size > 0 && items.size < limit)
+    if (items.size > 0 && items.size < limit)
       message = `${depth === 2 ? '\u5DF2\u5B8C\u6210\u4E8C\u7EA7\u6269\u8BCD\u5E76\u904D\u5386\u9996\u8F6E\u8FD4\u56DE\u8BCD' : '\u5DF2\u5B8C\u6210\u4E00\u7EA7\u6269\u8BCD'}\uFF1B\u672C\u6765\u6E90\u53BB\u91CD\u540E\u8FD4\u56DE${items.size}\u4E2A\u8BCD\uFF0C\u4F4E\u4E8E\u672C\u7EC4\u76EE\u6807${limit}\u4E2A\uFF0C\u672A\u7EE7\u7EED\u66F4\u6DF1\u5C42\u6269\u8BCD`;
     return {
       source: SOURCE,
@@ -838,159 +977,7 @@ async function sorftimeSuggestions(
   }
 }
 
-// ../workers/site-discovery/src/product-public-fields.js
-var cumulative = (node) =>
-  [
-    'period',
-    'window',
-    'interval',
-    'salesPeriod',
-    'soldPeriod',
-    'sold_count_period',
-    'time_window',
-  ].every(
-    (key2) =>
-      node?.[key2] === void 0 ||
-      /^(?:all[_ -]?time|total|cumulative|lifetime)$/i.test(String(node[key2])),
-  );
-var units = (value) => {
-  let raw = value;
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if (
-      value.unitCode &&
-      !/^(?:C62|H87|EA|PCS?|pieces?|items?|units?)$/i.test(value.unitCode)
-    )
-      return void 0;
-    raw = value.value;
-  }
-  if (typeof raw === 'string') {
-    if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw.trim())) return void 0;
-    raw = Number(raw.replaceAll(',', '').trim());
-  }
-  return Number.isSafeInteger(raw) && raw >= 0 ? raw : void 0;
-};
-function publicProductFields(product, prefix = 'Product JSON-LD') {
-  const fields = {};
-  for (const key2 of ['published_at', 'datePublished', 'releaseDate']) {
-    const raw = product[key2];
-    if (
-      typeof raw !== 'string' ||
-      !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(raw) ||
-      !Number.isFinite(Date.parse(raw))
-    )
-      continue;
-    const day = raw.slice(0, 10);
-    if (
-      new Date(Date.parse(day + 'T00:00:00Z')).toISOString().slice(0, 10) !==
-      day
-    )
-      continue;
-    fields.publishedAt = raw;
-    fields.publishedSourceField =
-      product.publishedSourceField || prefix + '.' + key2;
-    break;
-  }
-  if (cumulative(product))
-    for (const key2 of ['numberOfItemsSold', 'soldCount', 'sold_count']) {
-      if (!cumulative(product[key2])) continue;
-      const value = units(product[key2]);
-      if (value === void 0) continue;
-      fields.soldCount = value;
-      fields.soldRaw =
-        typeof product.soldRaw === 'string'
-          ? product.soldRaw
-          : typeof product[key2] === 'string'
-            ? product[key2].trim()
-            : String(value);
-      fields.soldPrecision = 'exact';
-      fields.soldSourceField = product.soldSourceField || prefix + '.' + key2;
-      break;
-    }
-  return fields;
-}
-
-// ../workers/site-discovery/src/product-signal-rules.js
-function signalText(value) {
-  return String(value || '')
-    .normalize('NFKC')
-    .replaceAll(/\s+/g, ' ')
-    .trim();
-}
-function signalKey(value) {
-  return signalText(value)
-    .toLowerCase()
-    .replaceAll(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-}
-var BOILERPLATE =
-  /not (?:been )?evaluated|food and drug administration|not intended to diagnose|diagnose.{0,30}treat.{0,30}cure|consult (?:your |a )?(?:physician|doctor|healthcare)|keep out of reach|if you are (?:pregnant|nursing)|all rights reserved|privacy policy|shipping|add to cart|subscribe|suggested (?:use|usage)|directions for use|daily value|servings? (?:size|per)|warning|disclaimer|advertencia|no (?:ha sido|está) evaluad|no est[aá] destinado|consulte.{0,25}(?:m[eé]dico|profesional)|không phải là thuốc|không có tác dụng thay thế thuốc|tham khảo ý kiến|免责声明|未经.{0,12}(?:评估|评价)|不用于.{0,12}(?:诊断|治疗)|请咨询|注意事项|用法用量|每日参考值/i;
-function benefitSignal(value) {
-  const text = signalText(value);
-  const minimum = /[\p{Script=Han}]/u.test(text) ? 2 : 4;
-  if (text.length < minimum || text.length > 240 || BOILERPLATE.test(text))
-    return '';
-  if (
-    /^(?:ingredients?|supplement facts?|nutrition facts?|benefits?|description|product details?|learn more|shop now|成分|营养成分表|商品详情)[\s:：.!*]*$/i.test(
-      text,
-    )
-  )
-    return '';
-  return text;
-}
-function ingredientSection(value) {
-  return signalText(value)
-    .split(
-      /\b(?:free (?:of|from)|does not contain|contains no|allergen(?:s| information)?|warnings?|suggested (?:use|usage))\s*[:：]?|不含[:：]?|无添加[:：]?/i,
-    )[0]
-    .trim();
-}
-function ingredientSignal(value, context = '') {
-  const text = signalText(value);
-  const key2 = signalKey(text);
-  if (text.length < 2 || text.length > 120 || BOILERPLATE.test(text)) return '';
-  if (
-    /\b(?:non[ -]?gmo|gmo[ -]?free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen)[ -]?free|free (?:from|of)|no added|without|does not contain|contains no|certified|vegan|vegetarian|kosher|halal)\b|非转基因|不含|无麸质|无乳糖|无添加|纯素/i.test(
-      text,
-    )
-  )
-    return '';
-  if (
-    /\b(?:non gmo|gmo free|(?:gluten|dairy|sugar|soy|wheat|lactose|allergen) free)\b/.test(
-      key2,
-    )
-  )
-    return '';
-  if (
-    /^(?:ingredients?|other ingredients?|supplement facts?|nutrition facts?|未知|待识别|官网未公开|平台未返回|n\/?a|none)$/i.test(
-      text,
-    )
-  )
-    return '';
-  if (
-    /\b(?:supports?|promotes?|helps?|take|capsules? daily|tablets? daily)\b/i.test(
-      text,
-    )
-  )
-    return '';
-  const source = signalText(context);
-  const positive = ingredientSection(source);
-  if (positive !== source && !signalKey(positive).includes(key2)) return '';
-  const sourceParts = source
-    .split(/[,;:.。；\n]/)
-    .map((part) => ` ${signalKey(part)} `);
-  if (
-    sourceParts.some(
-      (part) =>
-        part.includes(` ${key2} free `) ||
-        part.includes(` without ${key2} `) ||
-        part.includes(` no ${key2} `),
-    )
-  )
-    return '';
-  return text;
-}
-
-// ../workers/site-discovery/src/index.js
+// workers/site-discovery/src/index.js
 var MARKET_OPTIONS = {
   US: {
     country: 'us',
@@ -1963,8 +1950,6 @@ async function suggestionSource(
     }
   };
   const query = async (term) => {
-    if (requestBudget.remaining <= 0) return false;
-    requestBudget.remaining -= 1;
     add(await fetcher(term, market));
     return true;
   };
@@ -1979,10 +1964,6 @@ async function suggestionSource(
     const capped = items.slice(0, limit);
     return {
       items: capped,
-      message:
-        requestBudget.remaining <= 0 && depth === 2
-          ? '\u5DF2\u8FBE\u5230\u514D\u8D39\u8BF7\u6C42\u4FDD\u62A4\u4E0A\u9650\uFF0C\u4FDD\u7559\u5F53\u524D\u7ED3\u679C'
-          : '',
       source: label,
       status: capped.length > 0 ? 'success' : 'empty',
     };
@@ -2716,14 +2697,8 @@ async function runResearch(input, env) {
   const groups = [];
   const suggestions = [];
   const trends = [];
-  const suggestionRequestBudget = { remaining: 20 };
-  const sorftimeBudget = {
-    remaining: Math.max(
-      0,
-      Math.min(100, Math.floor(Number(input.sorftimeRequestLimit) || 0)),
-    ),
-    used: 0,
-  };
+  const suggestionRequestBudget = {};
+  const sorftimeBudget = { used: 0 };
   const totalCombinations = keywords.length * markets.length;
   let processedCombinations = 0;
   let remainingSuggestions = suggestionLimit;

@@ -18,18 +18,18 @@ import {
   normalizeTikTokShopSearch,
 } from './tiktok-shop-provider.mjs';
 
-test('collection profiles provide finite per-site and batch budgets', () => {
+test('collection profiles bound products and pages without request caps', () => {
   assert.deepEqual(resolveCollectionPolicy({}, 5), {
     profile: 'explore',
     maxProducts: 30,
     maxDetailProducts: 10,
-    maxRequests: 100,
-    maxRequestsPerSite: 20,
+    maxPagesPerSite: 20,
     maxBrowserPages: 5,
     recommendedSiteLimit: 20,
   });
   const deep = resolveCollectionPolicy({ profile: 'deep' }, 20);
-  assert.equal(deep.maxRequests, 2400);
+  assert.equal(deep.maxPagesPerSite, 120);
+  assert.equal(deep.maxRequests, undefined);
   assert.match(collectionPolicyMessage(deep, 20).join('；'), /16站/);
 });
 

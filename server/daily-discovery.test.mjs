@@ -56,7 +56,7 @@ test('plan defaults off, finite budgets, explicit acknowledgement, validation an
   assert.equal(defaultDailyPlan.enabled, false);
   assert.throws(() => validateDailyPlan({ enabled: true }), /确认/);
   for (const patch of [
-    { adRequestBudget: 0 },
+    { maxPages: 0 },
     { time: '24:00' },
     { providers: [] },
     { markets: ['ALL'] },
@@ -98,17 +98,16 @@ test('daily request IDs survive reconfiguration and change on next date, remain 
     /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/,
   );
 });
-test('finite reservations never exceed daily budgets and every uncovered word has an explicit reason', () => {
+test('legacy daily request budgets cannot omit selected keywords', () => {
   const result = run(
     { adRequestBudget: 1, productRequestBudget: 3, semrushUnitBudget: 320 },
     [keyword('1'), keyword('2'), keyword('3')],
   );
-  assert.deepEqual(result.reserved, { ads: 1, products: 3, semrush: 320 });
-  assert.equal(result.work.filter((e) => e.status === 'skipped').length, 4);
+  assert.deepEqual(result.reserved, { ads: 3, products: 9, semrush: 960 });
+  assert.equal(result.work.filter((e) => e.status === 'skipped').length, 0);
   assert.ok(
     result.work
-      .filter((e) => e.status === 'skipped')
-      .every((e) => /预算/.test(e.reason)),
+      .every((e) => e.status === 'pending' && !e.reason),
   );
 });
 test('daily product requests disable unbounded details and trends; ad query sees active and inactive results', () => {
@@ -119,7 +118,7 @@ test('daily product requests disable unbounded details and trends; ad query sees
   assert.equal(p.completeAll, false);
   assert.equal(p.enrich, false);
   assert.equal(p.trend, false);
-  assert.equal(p.maxRequests, 3);
+  assert.equal(p.maxRequests, undefined);
   assert.equal(p.maxProducts, 20);
   assert.equal(p.semrushUnitLimit, 0);
 });

@@ -28,8 +28,9 @@ test('schedule uses Beijing day boundaries and does not rerun the same day', () 
   assert.ok(!due({ enabled: true, hour: 8 }, { day: '2026-10-20' }, now));
   assert.ok(!due({ enabled: false, hour: 8 }, null, now));
 });
-test('schedule and hotword validation bound paid requests', () => {
-  assert.throws(() => validateSchedule({ maxRequests: 0 }));
+test('schedule validation retains page bounds and ignores legacy request caps', () => {
+  assert.equal(validateSchedule({ maxRequests: 0 }).maxRequests, undefined);
+  assert.throws(() => validateSchedule({ maxPages: 0 }));
   assert.throws(() => validateSchedule({ hour: 24 }));
   assert.throws(() => validateHotwords({ market: 'GB', seeds: ['collagen'] }));
   assert.throws(() => validateHotwords({ market: 'US', seeds: [] }));
@@ -38,7 +39,7 @@ test('schedule and hotword validation bound paid requests', () => {
     seeds: ['collagen', 'collagen', 'magnesium'],
     maxRequests: 100,
   });
-  assert.equal(v.maxRequests, 2);
+  assert.equal(v.maxRequests, undefined);
   assert.equal(v.unitLimit, 0);
 });
 test('ranking deduplicates, preserves missing data and limits to top100', () => {
@@ -164,15 +165,15 @@ test('incremental scan creates evidence and keywords for unseen items only', asy
   assert.ok(f.events[0].event.terms.includes('creatine gummies'));
   assert.equal(f.events[1].event, null);
 });
-test('site and advertiser share daily hard request budget', async () => {
+test('site and advertiser scans both run beyond a legacy shared request cap', async () => {
   const f = monitorFixture({ baseline: true });
   const run = await executeMonitor(
     { id: 'one', siteId: 's', pageId: '1', maxRequests: 1 },
     f.io,
   );
-  assert.equal(run.requests, 1);
-  assert.equal(run.status, 'partial');
-  assert.equal(f.requests.length, 1);
+  assert.equal(run.requests, 2);
+  assert.equal(run.status, 'completed');
+  assert.equal(f.requests.length, 2);
 });
 test('upstream errors cannot become successful empty scans', async () => {
   const f = monitorFixture({ failure: true });
@@ -230,14 +231,14 @@ test('hotwords reserve known worst-case units before every request', async () =>
   assert.equal(f.rankings[0].rows[0].change, 2);
   assert.equal(f.saved[1].requests, 1);
 });
-test('hotwords enforce budget even if callers supply too many seeds', async () => {
+test('hotwords process all configured seeds despite old request and unit caps', async () => {
   const f = hotFixture();
   const run = await executeHotwords(
     { seeds: ['collagen', 'magnesium'], unitLimit: 2000, maxRequests: 1 },
     f.io,
   );
-  assert.equal(f.calls(), 1);
-  assert.equal(run.status, 'partial');
+  assert.equal(f.calls(), 2);
+  assert.equal(run.status, 'completed');
 });
 test('unknown billing stops subsequent Semrush calls', async () => {
   const f = hotFixture({ unknown: true });

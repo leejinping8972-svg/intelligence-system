@@ -280,9 +280,9 @@ export async function enrichPublicProduct(request, overrides = {}) {
   const product = request.product;
   if (!product?.id || !product.market)
     throw new Error('公开商品补全缺少商品标识或市场');
-  const maxRequests = overrides.maxRequests ?? request.publicRequestLimit ?? 2;
-  if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 2)
-    throw new Error('单商品公开补全请求上限须为1～2');
+  const maxPages = overrides.maxPages ?? request.publicMaxPages ?? 2;
+  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 2)
+    throw new Error('单商品公开补全页面上限须为1～2');
   const now =
     typeof overrides.now === 'function'
       ? overrides.now()
@@ -321,7 +321,7 @@ export async function enrichPublicProduct(request, overrides = {}) {
     }
     if (
       !patch.priceEvidence &&
-      providerCalls < maxRequests &&
+      providerCalls < maxPages &&
       product.catalogEvidenceUrl
     ) {
       try {
@@ -385,9 +385,12 @@ export async function enrichPublicProduct(request, overrides = {}) {
     };
   }
 
+  let pages = 0;
   async function readExact(url, types, identityUrl = url) {
+    if (pages >= maxPages) { stopReason = 'page_limit'; return; }
+    pages++;
     let current = url;
-    while (providerCalls < maxRequests) {
+    for (let redirects = 0; redirects <= 5; redirects++) {
       providerCalls++;
       let response;
       try {
@@ -429,7 +432,7 @@ export async function enrichPublicProduct(request, overrides = {}) {
       }
       return { ...response, url: response.url || current, identityUrl };
     }
-    stopReason = 'request_limit';
+    stopReason = 'redirect_limit';
   }
 
   if (original) {
@@ -444,9 +447,9 @@ export async function enrichPublicProduct(request, overrides = {}) {
       const sold = records.map((row) => soldValue(row.node, row.prefix));
       const needsEndpoint =
         evidence.shopify && (!dates.some(Boolean) || !sold.some(Boolean));
-      if (needsEndpoint && providerCalls >= maxRequests)
-        stopReason = 'request_limit';
-      if (needsEndpoint && providerCalls < maxRequests) {
+      if (needsEndpoint && pages >= maxPages)
+        stopReason = 'page_limit';
+      if (needsEndpoint && pages < maxPages) {
         const url = new URL(page.url);
         const handle = shopifyHandle(page.url);
         const endpoint = new URL(

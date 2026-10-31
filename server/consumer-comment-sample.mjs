@@ -18,7 +18,7 @@ export async function sampleRedditComments(job, io, cp, remember, check) {
   for (; cp.commentIndex < cp.commentTargets.length; cp.commentIndex++) {
     for (; cp.commentPage < v.maxPages; cp.commentPage++) {
       await check();
-      if (cp.requests >= v.maxRequests || cp.evidenceIds.length >= v.limit) {
+      if (cp.evidenceIds.length >= v.limit) {
         cp.limited = true;
         return;
       }

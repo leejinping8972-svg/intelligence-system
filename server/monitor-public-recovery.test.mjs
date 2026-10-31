@@ -41,7 +41,7 @@ test('429 exponential backoff never ignores a longer Retry-After', () => {
   );
   assert.equal(publicRetryDelay({ status: 503 }), 5 * 60_000);
 });
-test('same-day public recovery requires remaining budget and an elapsed cooldown', () => {
+test('same-day public recovery ignores legacy request caps and requires elapsed cooldown', () => {
   assert.equal(publicRecoveryPlan(target, old, {}, now).ready, true);
   assert.equal(
     publicRecoveryPlan(target, old, { nextRunAt: now + 1000 }, now).ready,
@@ -53,8 +53,7 @@ test('same-day public recovery requires remaining budget and an elapsed cooldown
     {},
     now,
   );
-  assert.equal(exhausted.eligible, false);
-  assert.match(exhausted.reason, /预算/);
+  assert.equal(exhausted.eligible, true);
   assert.equal(
     publicRecoveryPlan(target, { ...old, publicRecoveryAttempts: 3 }, {}, now)
       .eligible,
@@ -247,7 +246,7 @@ test('public-only recovery keeps cumulative requests and never invokes advertise
       },
       scan: async (kind, request, limit) => {
         assert.equal(kind, 'products');
-        assert.equal(limit, 6);
+        assert.equal(limit, 10);
         scans++;
         await request('page', async () => ({}));
         return { items: [], complete: true, errors: [] };
@@ -261,7 +260,7 @@ test('public-only recovery keeps cumulative requests and never invokes advertise
   assert.equal(run.channels.find((c) => c.kind === 'ads').status, 'completed');
   assert.equal(run.publicRecoveryAttempts, 1);
 });
-test('the standalone probe preserves earlier products and refuses early retry, excess budget or a mismatched target', async () => {
+test('the standalone probe preserves earlier products and usage beyond ten requests, cooldown and target checks', async () => {
   let state = {
     host: 'example.com',
     day: '2026-10-20',
@@ -286,7 +285,7 @@ test('the standalone probe preserves earlier products and refuses early retry, e
     },
   };
   const result = await probePublicSite(
-    { url: 'https://example.com', maxRequests: 1 },
+    { url: 'https://example.com', maxPages: 1 },
     io,
   );
   assert.equal(result.requestsToday, 2);
@@ -302,8 +301,9 @@ test('the standalone probe preserves earlier products and refuses early retry, e
   );
   state.progress.nextRunAt = 0;
   state.requests = 10;
-  const budget = await probePublicSite({ url: 'https://example.com' }, io);
-  assert.equal(budget.status, 'budget');
+  const continued = await probePublicSite({ url: 'https://example.com' }, io);
+  assert.equal(continued.status, 'partial');
+  assert.equal(continued.requestsToday, 11);
 });
 
 test('a still empty dynamic browser response stays incomplete and requires inspection', async () => {

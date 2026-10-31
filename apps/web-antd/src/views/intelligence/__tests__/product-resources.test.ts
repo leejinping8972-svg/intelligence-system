@@ -215,22 +215,24 @@ describe('resource discovery contracts', () => {
     ).toContain('域名');
   });
 
-  it('keeps requests, provider credits and API units independent and bounded', () => {
+  it('ignores legacy request and credit caps while validating page counts', () => {
     const request = input();
     request.budget.sorftimeCalls = 0;
-    expect(validateResourceInput(request, route)).toContain('来源额度为0');
+    expect(validateResourceInput(request, route)).toBe('');
     request.budget.sorftimeCalls = 10;
     request.budget.requests = Number.POSITIVE_INFINITY;
-    expect(validateResourceInput(request, route)).toContain('有限非负整数');
+    expect(validateResourceInput(request, route)).toBe('');
     request.budget.requests = 30;
     request.budget.scrapeCredits = 101;
-    expect(validateResourceInput(request, route)).toContain('有限非负整数');
+    expect(validateResourceInput(request, route)).toBe('');
     request.budget.scrapeCredits = 0;
     request.budget.maxPages = 6;
     expect(validateResourceInput(request, route)).toContain('翻页5次');
     request.budget.maxPages = 3;
     request.budget.browserPages = 1;
-    expect(validateResourceInput(request, route)).toContain('有限非负整数');
+    expect(validateResourceInput(request, route)).toBe('');
+    request.budget.maxPages = 0;
+    expect(validateResourceInput(request, route)).toContain('至少为1');
   });
 
   it('does not enable unconfigured routes or unsupported detail/history controls', () => {
@@ -273,12 +275,12 @@ describe('resource discovery contracts', () => {
 });
 
 describe('resource task budgets and recovery', () => {
-  it('accepts Semrush without a unit budget and retains provider call limits', () => {
+  it('accepts Semrush with legacy unit and provider caps ignored', () => {
     const semrush = { ...route, id: 'shopping-semrush', provider: 'semrush', operations: ['domains', 'shopping'], history: { supported: false } };
     for (const semrushUnits of [0, 1, 200_000]) {
       expect(validateResourceInput(input({ routeId: semrush.id, includeDetails: false, budget: { ...input().budget, semrushUnits } }), semrush)).toBe('');
     }
-    expect(validateResourceInput(input({ routeId: semrush.id, includeDetails: false, budget: { ...input().budget, providerCalls: 0 } }), semrush)).toContain('额度为0');
+    expect(validateResourceInput(input({ routeId: semrush.id, includeDetails: false, budget: { ...input().budget, providerCalls: 0 } }), semrush)).toBe('');
   });
   it('keeps missing accounting distinct from confirmed zero and independent units', () => {
     const rows = resourceBudgetRows({
@@ -289,19 +291,19 @@ describe('resource task budgets and recovery', () => {
     expect(rows.find((row) => row.key === 'requests')).toMatchObject({
       confirmed: 0,
       reserved: null,
-      limit: 30,
+      limit: undefined,
     });
     expect(rows.find((row) => row.key === 'scrapeCredits')).toMatchObject({
       confirmed: 2,
       reserved: 3,
-      limit: 5,
+      limit: undefined,
     });
     expect(rows.find((row) => row.key === 'semrushUnits')).toMatchObject({
       confirmed: null,
       reserved: null,
-      limit: '不限积分',
+      limit: undefined,
     });
-    expect(rows.find((row) => row.key === 'modelTokens')?.limit).toBe(0);
+    expect(rows.find((row) => row.key === 'modelTokens')?.limit).toBeUndefined();
   });
 
   it('only offers recovery for a cancelled job explicitly marked resumable by the server', () => {

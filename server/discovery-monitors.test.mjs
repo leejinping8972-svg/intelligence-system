@@ -126,7 +126,8 @@ test('Beijing schedules run only on the selected day and time, with deterministi
     '2026-11-01',
   );
   assert.equal(stableId('same'), stableId('same'));
-  assert.throws(() => plan({ channels: ['amazon'], maxCalls: 101 }), /上限/);
+  assert.equal(plan({ channels: ['amazon'], maxCalls: 0 }).maxCalls, undefined);
+  assert.throws(() => plan({ maxPages: 101 }), /页数/);
   assert.throws(() => plan({ kind: 'fbm_new', channels: ['shopee'] }), /FBM/);
 });
 test('verified Sorftime parameter names: Amazon launch range and string shipping_type FBM', async () => {
@@ -492,12 +493,12 @@ test('source marketplaces remain explicit and analyzed omissions clear previousl
   assert.deepEqual(merged.ingredientInsights, []);
 });
 
-test('multi-channel first pass reaches every source before consuming the budget on one channel AI analysis', async () => {
+test('multi-channel first pass and AI processing continue beyond the legacy call cap', async () => {
   const seen = [];
   let saved;
   const job = {
     id: 'qa',
-    input: { plan: plan({ channels: ['amazon', 'walmart'], maxCalls: 5 }) },
+    input: { plan: { ...plan({ channels: ['amazon', 'walmart'] }), maxCalls: 1 } },
     checkpoint: { calls: 0, products: 0 },
   };
   const io = {
@@ -530,9 +531,10 @@ test('multi-channel first pass reaches every source before consuming the budget 
     await runDiscoveryMonitor(job, io);
   assert.deepEqual(seen.slice(0, 2), ['amazon', 'walmart']);
   assert.equal(saved, 'completed');
-  assert.ok(seen.length <= 5);
+  assert.equal(seen.length, 4);
+  assert.equal(job.checkpoint.products, 2);
 });
-test('runner checkpoints source results, admits only AI-confirmed supplements, stops within budget and cancellation', async () => {
+test('runner checkpoints source results, admits only AI-confirmed supplements and honors cancellation', async () => {
   let saved,
     writes = 0,
     calls = 0,

@@ -25,16 +25,13 @@ export const defaultMarketPlan = (market = 'VN') => ({
   budgets: {
     maxProducts: market === 'VN' ? 1000 : 500,
     perKeyword: 50,
-    productRequests: 2000,
     maxAdsPerKeyword: 100,
     adPages: 5,
-    adRequests: 1000,
     maxContentQueries: 10,
     contentPerQuery: 50,
     commentVideos: 20,
     commentPages: 3,
     siteProducts: 500,
-    siteRequests: 1000,
     siteDetailProducts: 100,
   },
 });
@@ -96,13 +93,6 @@ export function validateMarketPlan(input = {}) {
       100,
       '单词商品上限须为1～100',
     ),
-    productRequests: integer(
-      b.productRequests,
-      base.budgets.productRequests,
-      1,
-      100_000,
-      '商品请求上限须为1～100000',
-    ),
     maxAdsPerKeyword: integer(
       b.maxAdsPerKeyword,
       base.budgets.maxAdsPerKeyword,
@@ -116,13 +106,6 @@ export function validateMarketPlan(input = {}) {
       1,
       10,
       '广告页数须为1～10',
-    ),
-    adRequests: integer(
-      b.adRequests,
-      base.budgets.adRequests,
-      1,
-      1000,
-      '广告请求上限须为1～1000',
     ),
     maxContentQueries: integer(
       b.maxContentQueries,
@@ -159,13 +142,6 @@ export function validateMarketPlan(input = {}) {
       1000,
       '独立站商品上限须为1～1000',
     ),
-    siteRequests: integer(
-      b.siteRequests,
-      base.budgets.siteRequests,
-      1,
-      2000,
-      '独立站请求上限须为1～2000',
-    ),
     siteDetailProducts: integer(
       b.siteDetailProducts,
       base.budgets.siteDetailProducts,
@@ -174,8 +150,6 @@ export function validateMarketPlan(input = {}) {
       '独立站详情目标须为0～1000',
     ),
   };
-  if (budgets.productRequests < seeds.length)
-    throw new Error('商品请求上限不足以覆盖全部种子词');
   if (budgets.siteDetailProducts > budgets.siteProducts)
     throw new Error('独立站详情目标不能超过商品上限');
   return {

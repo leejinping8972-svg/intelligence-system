@@ -6,10 +6,6 @@ export function personaTaskProgress(study) {
   const unknown = journal.some(
     (j) => j.status === 'unknown' || (stopped && j.status === 'reserved'),
   );
-  const totalCredits = journal.reduce((sum, j) => sum + (j.credits ?? 1), 0);
-  const budgetReached =
-    journal.length >= study.plan.budget.requests ||
-    totalCredits >= study.plan.budget.credits;
   const rows = [
     {
       id: 'persona:reuse',
@@ -50,8 +46,6 @@ export function personaTaskProgress(study) {
                 ? '用户取消，尚未执行'
                 : unknown
                   ? '前序请求结果或扣费未确认，本项未执行'
-                  : budgetReached
-                    ? '达到本次请求或额度上限，本项未执行'
                     : '本轮未执行；可能没有符合条件的视频或来源样本'
               : '等待来源队列';
     return {
@@ -81,7 +75,7 @@ export function personaTaskProgress(study) {
       })),
     };
   };
-  if (study.plan.budget.requests > 0) {
+  if (study.plan.acquire === true || (study.plan.acquire === undefined && study.plan.budget.requests > 0)) {
     for (const q of study.queries || [])
       for (const source of study.plan.sources.filter((s) => s !== 'comments'))
         rows.push(

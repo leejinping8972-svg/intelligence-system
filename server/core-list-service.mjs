@@ -37,8 +37,6 @@ export async function coreListAction(input, overrides = {}) {
     return result.rows[0]?.value?.fx || null;
   }
   if (input.action !== 'server_core_rates_refresh') return undefined;
-  if (input.maxRequests !== 1)
-    throw new Error('汇率更新需要明确1次免费公开请求上限');
   const c = await db.connect();
   let held = false;
   try {

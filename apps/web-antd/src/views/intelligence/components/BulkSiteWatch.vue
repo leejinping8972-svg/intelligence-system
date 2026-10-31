@@ -43,7 +43,7 @@ const additions = computed(
   () => frozenIds.value.filter((id) => !known.value.has(id)).length,
 );
 const remaining = computed(() => Math.max(0, 100 - targets.value.length));
-const form = reactive({ enabled: false, hour: 8, maxRequests: 10 });
+const form = reactive({ enabled: false, hour: 8, maxPages: 10 });
 async function begin() {
   form.enabled = false;
   frozenIds.value = [...new Set(props.siteIds)];
@@ -124,14 +124,8 @@ async function save() {
             :max="23"
             :precision="0"
           />
-</Form.Item><Form.Item label="每个站点每日请求上限">
-          <InputNumber
-            v-model:value="form.maxRequests"
-            :min="1"
-            :max="100"
-            :precision="0"
-          />
-        </Form.Item>
+</Form.Item>
+<Form.Item label="每渠道页面上限"><InputNumber v-model:value="form.maxPages" :min="1" :max="100" :precision="0" /></Form.Item>
       </div>
       <Form.Item label="启用自动检查">
         <Switch v-model:checked="form.enabled" /><span class="hci-subtle">
@@ -142,9 +136,9 @@ async function save() {
       新监控按各站点所属市场保存；已有监控（含暂停对象和广告主关联）保持原设置。{{
         additions
       }}
-      个新对象的每日请求上限合计
-      {{ additions * form.maxRequests }}
-      次，实际按需执行。启用后由后台调度，首次完整扫描建立基线；不等于实际发布日期。
+      个新对象的每渠道页面上限合计
+      {{ additions * form.maxPages }}
+      页，实际按需执行。启用后由后台调度，首次完整扫描建立基线；不等于实际发布日期。
     </p>
     <Alert
       v-if="errorMessage"

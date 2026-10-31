@@ -21,7 +21,6 @@ import {
   Drawer,
   Form,
   Input,
-  InputNumber,
   Modal,
   Select,
   Table,
@@ -62,7 +61,6 @@ const form = reactive({
   title: '广告策略决策报告',
   analyze: false,
   fetchTranscript: false,
-  maxRequests: 10,
   researchFocus: '',
 });
 let requestId = '',
@@ -492,9 +490,7 @@ const isActive = (r: Report) => ['queued', 'running'].includes(r.status);
         <template v-if="!reusing"
           ><Checkbox v-model:checked="form.fetchTranscript"
             >补充所选视频广告转写（消耗 ScrapeCreators 额度）</Checkbox
-          ><Form.Item v-if="form.fetchTranscript" label="转写请求上限"
-            ><InputNumber v-model:value="form.maxRequests" :min="1" :max="100"
-          /></Form.Item>
+          >
           <p class="hci-subtle">
             不启用长视频额外付费转写。缺少转写时不编造视频口播或画面。
           </p>

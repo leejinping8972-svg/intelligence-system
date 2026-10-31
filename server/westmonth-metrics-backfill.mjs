@@ -17,7 +17,7 @@ export function westmonthBackfillPatch(product, observed = {}, at = new Date().t
 }
 
 export async function planWestmonthMetricsBackfill(products, options) {
-  const { fetchPage, wait = async () => {}, onProgress = async () => {}, maxRequests = 160 } = options;
+  const { fetchPage, wait = async () => {}, onProgress = async () => {}, maxPages = 160 } = options;
   const at = new Date(options.now ?? Date.now()).toISOString();
   const site = { id: 'VN-westmonth.com', domain: 'westmonth.com', market: 'VN' };
   const eligible = products.filter((product) => product.siteId === site.id && product.market === site.market && westmonthProductId(product.evidenceUrl));
@@ -25,14 +25,14 @@ export async function planWestmonthMetricsBackfill(products, options) {
   const errors = [];
   let requests = 0;
   async function boundedFetch(...args) {
-    if (requests >= maxRequests) throw new Error('西之月回填达到公开请求上限');
+    if (requests >= maxPages) throw new Error('西之月回填达到页面上限');
     if (requests) await wait();
     requests++;
     return fetchPage(...args);
   }
   let next = eligible.some(missingSales) ? westmonthEntry(true, site.market) : '';
   let stopped = false;
-  while (next && requests < maxRequests) {
+  while (next && requests < maxPages) {
     try {
       const page = await fetchWestmonthCatalog(next, site, boundedFetch);
       for (const product of page.catalogProducts) {
@@ -55,7 +55,7 @@ export async function planWestmonthMetricsBackfill(products, options) {
   const entries = [];
   for (const product of eligible) {
     let observed = observations.get(westmonthProductId(product.evidenceUrl));
-    if (!observed?.sourceMetrics && missingSales(product) && !stopped && requests < maxRequests) {
+    if (!observed?.sourceMetrics && missingSales(product) && !stopped && requests < maxPages) {
       try {
         const result = await fetchWestmonthProduct(product, boundedFetch);
         observed = westmonthMetricPatch(result.row, { market: site.market, at, evidenceUrl: result.evidenceUrl, kind: result.kind });

@@ -107,7 +107,7 @@ test('plans default paused, use v2, and require explicit valid daily budgets', (
   assert.throws(() => validateTrendPlan({ enabled: true }), /确认/);
   for (const bad of [
     { maxPages: 101 },
-    { maxRequests: 0 },
+    { maxPages: 0 },
     { sources: ['bogus'] },
     { time: '24:00' },
     { markets: [] },
@@ -288,7 +288,7 @@ test('readers can inspect; writes require admin, confirmed budget and a complete
   );
   assert.equal(io.values.size, 0);
 });
-test('manual/daily work deduplicates and shares a hard daily budget across platforms', async () => {
+test('manual/daily work deduplicates and collects all platforms despite legacy daily request caps', async () => {
   const io = fixture();
   for (const trigger of ['manual', 'daily'])
     await enqueueTrendWork(
@@ -299,10 +299,10 @@ test('manual/daily work deduplicates and shares a hard daily budget across platf
       trigger,
     );
   for (let n = 0; n < 4; n++) await advanceTrendQueue(io);
-  assert.equal(io.calls(), 1);
+  assert.equal(io.calls(), 2);
   const run = await io.db.read(`${P}run:${trendDay(now)}`);
   assert.equal(run.work.length, 2);
-  assert.equal(run.work[1].status, 'skipped');
+  assert.equal(run.work[1].status, 'completed');
 });
 test('started requests and unknown fees from either version stop subsequent paid requests', async () => {
   for (const log of [

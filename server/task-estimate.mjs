@@ -20,18 +20,15 @@ export function estimateTask(input = {}, history = [], active = []) {
         ? input.urls.split(/\s+/).filter(Boolean).length
         : 0) ||
     1;
-  let calls = positive(
-    input.maxRequests ?? input.budget?.requests,
-    objects * positive(input.maxPages),
-  );
+  let calls = objects * positive(input.maxPages ?? input.maxPagesPerSite ?? input.budget?.maxPages);
   if (kind === 'market_collection')
     calls =
       (input.sources?.tiktokShop
-        ? positive(input.budgets?.productRequests)
+        ? positive(input.budgets?.maxProducts) * 2
         : 0) +
-      (input.sources?.metaActiveAds ? positive(input.budgets?.adRequests) : 0) +
+      (input.sources?.metaActiveAds ? objects * positive(input.budgets?.adPages) : 0) +
       (input.sources?.independentSites
-        ? positive(input.budgets?.siteRequests)
+        ? positive(input.budgets?.siteProducts)
         : 0) +
       (input.sources?.tiktokContent
         ? positive(input.budgets?.maxContentQueries)
@@ -50,12 +47,9 @@ export function estimateTask(input = {}, history = [], active = []) {
         (input.seeds?.length || 0) * (input.markets?.length || 1),
     );
     calls += input.socialTrends?.sources?.length
-      ? Math.min(
-          positive(input.socialTrends.maxRequests),
-          keywords *
+      ? (keywords *
             input.socialTrends.sources.length *
-            positive(input.socialTrends.maxPages),
-        )
+            positive(input.socialTrends.maxPages))
       : 0;
     low = 3;
     high = 12;
@@ -70,7 +64,7 @@ export function estimateTask(input = {}, history = [], active = []) {
       'persona_research',
     ].includes(kind)
   ) {
-    calls = input.maxRequests || input.budget?.requests ? calls : 1;
+    calls = kind === 'persona_research' && input.plan?.acquire ? Math.max(1, (input.plan.groups?.length || 1) * 6 * (input.plan.sources?.length || 1)) : 1;
     low = 20;
     high = 120;
   }
@@ -108,7 +102,7 @@ export function estimateTask(input = {}, history = [], active = []) {
     basis:
       matches.length >= 3
         ? '参考同类历史任务'
-        : '按当前目标、请求上限和来源响应区间估算',
+        : '按当前数量、页数和来源响应区间估算',
     samples: matches.length,
     note: '预计为开始执行后的耗时；排队等待另计。来源限流、登录验证、重试及新增分页会延长时间，达到上限也不保证数据完整。',
   };

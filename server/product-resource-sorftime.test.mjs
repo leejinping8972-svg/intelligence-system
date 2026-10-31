@@ -230,16 +230,18 @@ test('successful Sorftime collection reports control plus data HTTP usage separa
   assert.equal(result.usage.sorftimeCalls, 1);
 });
 
-test('control requests are bounded and raw credential-bearing transport errors are scrubbed without a cause', async () => {
+test('control requests continue beyond the old cap and transport errors still scrub credentials', async () => {
   const token = 'synthetic-token-never-real';
   let controls = 0;
-  await assert.rejects(collectSorftimeResource(request(), {
+  const result = await collectSorftimeResource(request(), {
     token, env: {}, fetch: async () => { controls++; return Response.json({}); },
     connectSorftime: async (_token, fetcher) => {
       for (let index = 0; index < 5; index++) await fetcher('https://mcp.sorftime.com/', { body: JSON.stringify({ method: 'tools/list' }) });
+      return source([tool('product_search_from_name', { name: string, amz_site: market })], { data: [] }).overrides.client;
     },
-  }), /控制请求已达上限/);
-  assert.equal(controls, 4);
+  });
+  assert.equal(controls, 5);
+  assert.equal(result.usage.requests, 6);
   try {
     await collectSorftimeResource(request(), { token, env: {}, connectSorftime: async () => { throw new Error(`fetch https://mcp.sorftime.com/?key=${token}`); } });
     assert.fail('expected credential scrubbed error');

@@ -221,7 +221,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     io.saveCheckpoint(
       job,
       { ...cp, finishedAt: new Date(io.now()).toISOString() },
-      cp.failures.length || cp.budgetStopped ? 'partial' : 'completed',
+      cp.failures.length ? 'partial' : 'completed',
     );
   const cancelled = async () =>
     (
@@ -231,20 +231,13 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     ).rows[0]?.cancelled;
   try {
     if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
-    const firstPass = cp.work.some(
-      (w) => !w.detail && w.page === 1 && !cp.covered.includes(w.channel),
-    );
+    const firstPass = cp.work.some(w => !w.detail && w.page === 1 && !cp.covered.includes(w.channel));
     if (
       cp.pending.length &&
-      plan.kind !== 'ingredients' &&
-      (!firstPass || cp.calls >= plan.maxCalls - 1)
+      plan.kind !== 'ingredients' && !firstPass &&
+      cp.products < plan.maxProducts
     ) {
       const product = cp.pending.shift();
-      if (cp.calls >= plan.maxCalls) {
-        cp.budgetStopped = true;
-        cp.logs.push('达到本次来源与AI调用总上限，剩余候选未写入');
-        return finished();
-      }
       cp.calls++;
       try {
         const sample = sourceFieldSample('products', product);
@@ -277,8 +270,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
       }
     } else if (
       cp.work.length &&
-      cp.products < plan.maxProducts &&
-      cp.calls < plan.maxCalls - (plan.kind === 'ingredients' ? 1 : 0)
+      cp.products < plan.maxProducts
     ) {
       const work = cp.work.shift();
       cp.calls++;
@@ -376,8 +368,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
       }
     } else {
       if (cp.work.length || cp.pending.length) {
-        cp.budgetStopped = true;
-        cp.logs.push('达到本次数量或调用上限；保留已完成结果，未继续请求');
+        cp.logs.push('达到本次商品或结果数量，保留已完成结果');
       }
       if (
         plan.kind === 'ingredients' &&

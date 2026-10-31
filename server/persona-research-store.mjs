@@ -365,12 +365,11 @@ export async function personaResearchAction(input, user) {
     return {
       plan,
       queries: personaQueries(plan),
-      estimatedRequests: Math.min(
-        plan.budget.requests,
+      estimatedRequests: plan.acquire ? (
         personaQueries(plan).length *
           plan.sources.filter((s) => s !== 'comments').length +
-          plan.budget.commentVideos,
-      ),
+          plan.budget.commentVideos
+      ) : 0,
       configured: Boolean(
         (
           await pool.query('SELECT name FROM provider_configs WHERE name=$1', [
@@ -405,9 +404,7 @@ export async function personaResearchAction(input, user) {
       ).rows[0];
       if (duplicate) return { id: duplicate.id };
       const plan = validatePersonaPlan(input.plan);
-      if (plan.budget.requests > 0 && plan.budget.credits < 1)
-        throw new Error('补采须有明确额度；复用模式请求设为0');
-      if (plan.budget.requests > 0) await readConfig();
+      if (plan.acquire) await readConfig();
       const active = (
         await c.query(
           "SELECT id FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",

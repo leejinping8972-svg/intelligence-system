@@ -11,15 +11,12 @@ const queryInput = (input) => {
   const route = resourceRoute(input.routeId);
   if (!uuid(input.requestId)) throw new Error('类目查询需要有效提交编号');
   if (!route?.modes.includes('category') || !route.markets.includes(input.market)) throw new Error('此来源或国家不支持真实类目查询，请选择关键词样本或公开类目页');
-  const requests = input.budget?.requests ?? input.maxRequests ?? 5;
-  const calls = input.budget?.sorftimeCalls ?? 1;
-  if (requests !== 5 || calls !== 1) throw new Error('一次类目查询最多5次HTTP（4次控制及1次数据），请设置请求5次及Sorftime调用1次');
   const query = String(input.query || '').normalize('NFKC').trim();
   const parentId = String(input.parentId || '').trim();
   const parentReceiptId = String(input.parentReceiptId || '').trim();
   if (query.length > 200 || parentId.length > 200) throw new Error('类目查询参数过长');
   if (parentId && !uuid(parentReceiptId)) throw new Error('查询子类目需要父类来源凭证，请重新选择实际返回类目');
-  return { routeId: route.id, provider: route.provider, platform: route.platform, market: input.market, query, parentId, parentReceiptId, requests, calls };
+  return { routeId: route.id, provider: route.provider, platform: route.platform, market: input.market, query, parentId, parentReceiptId };
 };
 
 export async function resourceConfiguration(connection = pool) {
@@ -50,7 +47,7 @@ export async function queryResourceCategories(input, overrides = {}) {
     const configured = await resourceConfiguration(c);
     if (!configured[q.provider]) throw new Error('请先在数据源设置配置Sorftime；尚未调用供应商');
     const id = randomUUID();
-    const value = { kind: 'platform_products', resourceCategories: true, categorySignature: signature(q), markets: [q.market], market: q.market, seeds: [], maxRequests: 5, ...q };
+    const value = { kind: 'platform_products', resourceCategories: true, categorySignature: signature(q), markets: [q.market], market: q.market, seeds: [], ...q };
     const checkpoint = { requests: 5, submittedAt: new Date().toISOString(), logs: ['用户确认的单次类目查询；最多5次HTTP和一个数据工具调用。'] };
     await c.query("INSERT INTO research_jobs(id,request_id,input,checkpoint,status) VALUES($1,$2,$3,$4,'querying')", [id, input.requestId, value, checkpoint]);
     job = { id, input: value, checkpoint };
@@ -61,7 +58,7 @@ export async function queryResourceCategories(input, overrides = {}) {
   try {
     const result = await io.collect(job, 'resource:categories', { sources: ['platform_products'], resourceDiscovery: true, ...q, op: 'categories', limit: 200, sorftimeRequestLimit: 1 });
     const categories = (result.categories || []).slice(0, 200).map((category) => ({ ...category, receiptId: job.id, market: q.market, provider: q.provider, platform: q.platform }));
-    const response = { categories, receiptId: job.id, requests: result.usage?.requests ?? 5, requestLimit: 5, usage: result.usage || { sorftimeCalls: result.providerCalls }, stopReason: categories.length ? 'bounded_query' : 'not_indexed', message: result.message || '仅返回来源实际类目；选中路径和国家会随商品保存，未遍历全树。' };
+    const response = { categories, receiptId: job.id, requests: result.usage?.requests ?? 5, usage: result.usage || { sorftimeCalls: result.providerCalls }, stopReason: categories.length ? 'bounded_query' : 'not_indexed', message: result.message || '仅返回来源实际类目；选中路径和国家会随商品保存，未遍历全树。' };
     await (overrides.putDocument || putDocument)('workspace_documents', `resource:category-receipt:${job.id}`, { routeId: q.routeId, market: q.market, categories, collectedAt: result.collectedAt || new Date().toISOString() }, true);
     await io.saveCheckpoint(job, { ...job.checkpoint, requests: response.requests, categoryResult: response, finishedAt: new Date().toISOString() }, 'completed');
     return response;

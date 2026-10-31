@@ -24,16 +24,12 @@ export async function executePersonaStudy(study, io) {
     await io.save(study);
   }
   const blocked = study.journal.some((j) => ['reserved', 'unknown'].includes(j.status));
-  if (!blocked) {
+  if (!blocked && (study.plan.acquire === true || (study.plan.acquire === undefined && study.plan.budget.requests > 0))) {
     for (const q of study.queries) {
       for (const source of study.plan.sources.filter((s) => s !== 'comments')) {
         const key = `${q.id}:${source}`;
         if (study.journal.some((j) => j.key === key)) continue;
         if (await io.cancelled()) { study.status = 'cancelled'; await io.save(study); return io.publish(personaReport(study, study.evidence), study.evidence); }
-        const used = study.journal.length;
-        const credits = study.journal.reduce((sum, j) => sum + (j.credits ?? 1), 0);
-        const reservedForComments = study.plan.sources.includes('comments') ? Math.min(study.plan.budget.commentVideos, study.plan.budget.requests, study.plan.budget.credits) : 0;
-        if (used >= study.plan.budget.requests - reservedForComments || credits + 1 > study.plan.budget.credits - reservedForComments) break;
         const j = { key, stratumId: q.id, query: q.query, source, status: 'reserved', at: new Date().toISOString(), estimatedCredits: 1 };
         study.journal.push(j);
         await io.save(study);
@@ -64,8 +60,6 @@ export async function executePersonaStudy(study, io) {
         const key = `comments:${video.sourceUrl}`;
         if (study.journal.some((j) => j.key === key)) continue;
         if (await io.cancelled()) { study.status = 'cancelled'; break; }
-        const credits = study.journal.reduce((sum, j) => sum + (j.credits ?? 1), 0);
-        if (study.journal.length >= study.plan.budget.requests || credits + 1 > study.plan.budget.credits) break;
         const j = { key, stratumId: q.id, query: q.query, source: 'comments', url: video.sourceUrl, status: 'reserved', at: new Date().toISOString() };
         study.journal.push(j); await io.save(study);
         try {

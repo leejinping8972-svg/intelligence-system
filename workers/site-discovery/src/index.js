@@ -992,8 +992,6 @@ async function suggestionSource(
     }
   };
   const query = async (term) => {
-    if (requestBudget.remaining <= 0) return false;
-    requestBudget.remaining -= 1;
     add(await fetcher(term, market));
     return true;
   };
@@ -1009,10 +1007,6 @@ async function suggestionSource(
     const capped = items.slice(0, limit);
     return {
       items: capped,
-      message:
-        requestBudget.remaining <= 0 && depth === 2
-          ? '已达到免费请求保护上限，保留当前结果'
-          : '',
       source: label,
       status: capped.length > 0 ? 'success' : 'empty',
     };
@@ -1751,14 +1745,8 @@ async function runResearch(input, env) {
   const groups = [];
   const suggestions = [];
   const trends = [];
-  const suggestionRequestBudget = { remaining: 20 };
-  const sorftimeBudget = {
-    remaining: Math.max(
-      0,
-      Math.min(100, Math.floor(Number(input.sorftimeRequestLimit) || 0)),
-    ),
-    used: 0,
-  };
+  const suggestionRequestBudget = {};
+  const sorftimeBudget = { used: 0 };
   const totalCombinations = keywords.length * markets.length;
   let processedCombinations = 0;
   let remainingSuggestions = suggestionLimit;

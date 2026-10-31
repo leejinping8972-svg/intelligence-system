@@ -555,7 +555,6 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
                 `${PREFIX}crawl:${id}:${kind}`,
               ]),
         scan: async (kind, req, remaining) => {
-          if (remaining <= 0) throw new Error('已达到本日请求预算');
           const progress = await db.read(`${PREFIX}crawl:${id}:${kind}`);
           if (kind === 'ads')
             return (providers.scanAdvertiser || scanAdvertiser)(

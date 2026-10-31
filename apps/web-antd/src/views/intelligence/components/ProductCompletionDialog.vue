@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Alert, Button, InputNumber, Modal } from 'ant-design-vue';
+import { Alert, Button, Modal } from 'ant-design-vue';
 
 import {
   cloudRequest,
@@ -22,7 +22,6 @@ const productIds = computed(() => resolvedIds.value || props.productIds);
 const busy = ref(false);
 const error = ref('');
 const open = ref(false);
-const maxRequests = ref(1);
 const router = useRouter();
 let requestId = '';
 const plan = ref<{
@@ -45,7 +44,6 @@ async function submit() {
       {
         requestId,
         productIds: [...productIds.value],
-        maxRequests: maxRequests.value,
       },
     );
     await syncCloudWorkspace();
@@ -71,7 +69,6 @@ async function begin() {
     plan.value = await cloudRequest('server_preview_product_enrichment', {
       productIds: [...productIds.value],
     });
-    maxRequests.value = plan.value!.defaultMaxRequests;
     requestId = '';
     open.value = true;
   } catch (cause) {
@@ -114,22 +111,12 @@ import CollectionEstimate from './CollectionEstimate.vue';
       其中 {{ plan?.sorftime ?? 0 }} 件通过 Sorftime 查询详情、图片/属性及当前
       ASIN 月销量、排名和评论数历史，
       {{ plan?.public ?? 0 }} 件通过精确官网商品链接核验公开上架日期和累计已售。
-      整批预计最多 {{ plan?.estimatedRequests ?? 0 }} 次数据请求；本批默认
-      {{ plan?.defaultMaxRequests ?? 1 }} 次，可调整下方预算。
       已保存的有效结果与缓存优先复用。
     </p>
-    <label for="completion-request-limit">本任务共用请求上限</label>
-    <InputNumber
-      id="completion-request-limit"
-      v-model:value="maxRequests"
-      :min="1"
-      :max="100000"
-      style="display: block; width: 100%; margin: 8px 0 12px"
-    />
     <Alert
       type="info"
       show-icon
-      :message="`官网公开读取、平台详情与历史共用 ${maxRequests} 次请求预算；预算耗尽后保留部分完成状态和未补全原因。可在监控与任务中取消。消耗已配置平台的现有额度，不自动购买额度。`"
+      message="逐件补齐所选商品，保留来源和未补全原因。"
     />
     <p
       v-if="(plan?.unsupported ?? 0) > 0"
@@ -155,7 +142,6 @@ import CollectionEstimate from './CollectionEstimate.vue';
         kind: 'platform_products',
         mode: 'enrich',
         productIds,
-        maxRequests,
       }"
     />
   </Modal>

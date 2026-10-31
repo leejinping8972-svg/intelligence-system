@@ -50,15 +50,12 @@ const numberFields = computed(() =>
   Object.entries({
     limit: '结果上限',
     depth: '扩词深度',
-    maxRequests: '请求上限',
     maxPages: '翻页上限',
     maxProducts: '商品上限',
     maxDetailProducts: '详情上限',
-    maxRequestsPerSite: '每站请求上限',
     maxAds: '每词广告上限',
     maxSites: '每词站点上限',
     maxBrowserPages: '浏览器页数上限',
-    maxPaidRequests: '托管备用上限',
   }).filter(([key]) => typeof form.value[key] === 'number'),
 );
 const identityLists = computed(() =>
@@ -278,7 +275,7 @@ async function submit() {
         >
           确认本次
           {{ form.socialTrends.sources.join(' / ') }} 趋势采集预算（最多
-          {{ form.socialTrends.maxRequests }} 请求）
+          {{ form.socialTrends.maxPages }} 页）
         </Checkbox>
       </Form>
       <div v-if="form.plan" class="hci-evidence">

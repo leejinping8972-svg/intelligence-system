@@ -17,7 +17,6 @@ export interface DiscoveryPlan {
   weekday: number;
   monthDay: number;
   enabled: boolean;
-  maxCalls: number;
   maxProducts: number;
   maxPages: number;
   maxDetails: number;
@@ -68,7 +67,6 @@ export const defaultDiscoveryPlan = (
   weekday: 1,
   monthDay: 1,
   enabled: false,
-  maxCalls: 20,
   maxProducts: 100,
   maxPages: 3,
   maxDetails: 5,

@@ -65,7 +65,6 @@ export function validatePlatformProducts(input) {
     trend: input.trend !== false,
     maxProducts: input.maxProducts ?? 100,
     perKeyword: input.perKeyword ?? 20,
-    maxRequests: input.maxRequests ?? 150,
     maxDetailProducts: input.maxDetailProducts ?? 20,
     maxDomains: input.maxDomains ?? 3,
     semrushUnitLimit: 0,
@@ -73,22 +72,14 @@ export function validatePlatformProducts(input) {
   for (const [key, min, max] of [
     ['maxProducts', 1, 1000],
     ['perKeyword', 1, 100],
-    ['maxRequests', 1, 100_000],
     ['maxDetailProducts', 0, 1000],
     ['maxDomains', 1, 5],
   ])
     if (!Number.isInteger(value[key]) || value[key] < min || value[key] > max)
-      throw new Error('商品数量或请求次数不在允许范围');
+      throw new Error('商品数量不在允许范围');
   if (value.market === 'VN' && value.providers.includes('sorftime'))
     throw new Error(
       '当前 Sorftime 商品来源为 Amazon，不支持越南；可选择 Semrush，不跨国替代',
-    );
-  if (
-    value.maxRequests > 0 &&
-    value.maxRequests < value.seeds.length * value.providers.length
-  )
-    throw new Error(
-      '整批请求上限不足以覆盖每个关键词和所选来源，请提高上限或减少关键词',
     );
   return value;
 }
@@ -413,15 +404,6 @@ export async function submitPlatformProductEnrichment(input) {
       !(await readSorftimeToken(await collectorEnv()))
     )
       throw new Error('请先配置 Sorftime MCP Token');
-    const maxRequests = Number(
-      input.maxRequests ?? enrichmentPlan(products).defaultMaxRequests,
-    );
-    if (
-      !Number.isInteger(maxRequests) ||
-      maxRequests < 1 ||
-      maxRequests > 100_000
-    )
-      throw new Error('商品补全请求上限须为1～100000');
     const at = new Date().toISOString();
     const id = randomUUID();
     const value = {
@@ -447,7 +429,6 @@ export async function submitPlatformProductEnrichment(input) {
       ],
       maxProducts: ids.length,
       perKeyword: 1,
-      maxRequests,
       maxDomains: 1,
       semrushUnitLimit: 0,
       initialWork: [],
@@ -633,16 +614,6 @@ export async function runPlatformProducts(job, overrides = {}) {
     return io.saveCheckpoint(job, cp, status);
   };
   if (await io.isCancelled()) return finish('cancelled');
-  if (
-    !cp.inFlight &&
-    cp.requests >= v.maxRequests &&
-    cp.index < cp.work.length
-  ) {
-    cp.failures++;
-    cp.stopReason = 'request_limit';
-    cp.logs.push('已达到整批调用上限，剩余步骤未执行；已保存商品保留');
-    return finish('partial');
-  }
   if (cp.index >= cp.work.length)
     return finish(cp.failures ? 'partial' : 'completed');
   if (v.discoveryDay) {
@@ -705,7 +676,6 @@ export async function runPlatformProducts(job, overrides = {}) {
     const units =
       w.provider === 'semrush' ? limit * (w.op === 'domains' ? 20 : 30) : 0;
     const isDiscovery = ['domains', 'search', 'shopping'].includes(w.op);
-    const exhausted = cp.requests >= v.maxRequests;
     if (cp.blockedProviders?.[w.provider]) {
       cp.failures++;
       await setCompletion(
@@ -715,12 +685,6 @@ export async function runPlatformProducts(job, overrides = {}) {
       );
       cp.logs.push(
         `${w.provider}：此前鉴权或结构检查失败，本步骤未发起请求，其他来源继续`,
-      );
-    } else if (!cp.inFlight && exhausted) {
-      cp.failures++;
-      await setCompletion(w, 'failed', '达到手动设置的请求预算，本步骤未执行');
-      cp.logs.push(
-        `${w.provider} · ${cp.currentTerm}：达到任务调用预算，未发起请求`,
       );
     } else {
       const product = w.productId
@@ -739,7 +703,7 @@ export async function runPlatformProducts(job, overrides = {}) {
         if (!cp.inFlight) {
           const allowance =
             w.provider === 'public_product'
-              ? Math.min(2, v.maxRequests - cp.requests)
+              ? 2
               : 1;
           cp.requests += allowance;
           if (w.provider === 'public_product') {
@@ -766,9 +730,6 @@ export async function runPlatformProducts(job, overrides = {}) {
           market: product?.market || v.market,
           refreshEmpty: v.mode === 'enrich',
           discoveryDay: v.discoveryDay,
-          ...(w.provider === 'public_product'
-            ? { publicRequestLimit: cp.inFlight.requestAllowance || 1 }
-            : {}),
           limit: needsDiscovery ? limit : undefined,
           product,
         };
@@ -777,10 +738,9 @@ export async function runPlatformProducts(job, overrides = {}) {
           const reserved = cp.inFlight.requestAllowance || 1;
           if (
             !Number.isInteger(result.providerCalls) ||
-            result.providerCalls < 0 ||
-            result.providerCalls > reserved
+            result.providerCalls < 0
           )
-            throw new Error('公开商品返回请求计数异常，未释放预留预算');
+            throw new Error('公开商品返回请求计数异常，保留请求记录');
           cp.requests -= reserved - result.providerCalls;
           const errors = result.patch?.publicDataEvidence?.errors || [];
           if (errors.length) cp.failures++;

@@ -39,7 +39,7 @@ const form = reactive({
   pageId: '',
   enabled: true,
   hour: 8,
-  maxRequests: 10,
+  maxPages: 10,
 });
 const sites = computed(() =>
   state.sites
@@ -188,6 +188,9 @@ function edit(t: WatchConfig) {
           placeholder="选择含Page ID的广告主"
         />
       </Form.Item>
+      <Form.Item label="每渠道页面上限">
+        <InputNumber v-model:value="form.maxPages" :min="1" :max="100" :precision="0" />
+      </Form.Item>
       <Form.Item
         v-if="kind === 'site'"
         label="关联广告主Page ID（可选，用于同时检查新广告）"
@@ -217,14 +220,7 @@ function edit(t: WatchConfig) {
             :precision="0"
           />
         </Form.Item>
-        <Form.Item label="每日请求总上限">
-          <InputNumber
-            v-model:value="form.maxRequests"
-            :min="1"
-            :max="100"
-            :precision="0"
-          />
-        </Form.Item>
+
         <Form.Item label="每日自动检查">
           <Switch
             v-model:checked="form.enabled"
@@ -234,7 +230,7 @@ function edit(t: WatchConfig) {
         </Form.Item>
       </div>
       <p class="hci-subtle">
-        官网请求和广告翻页共用上限；广告接口消耗现有ScrapeCreators额度。目录较大时需提高预算；不完整扫描会标为部分完成。
+        官网和广告分别按页面上限扫描；不完整扫描会标为部分完成。
       </p>
       <Button type="primary" :loading="busy" html-type="submit">
         保存监控
@@ -247,7 +243,7 @@ function edit(t: WatchConfig) {
       <b>{{ target.label }} · {{ target.market }}</b>
       <Tag>{{ target.enabled ? '每日检查' : '已暂停' }}</Tag>
       <p>
-        {{ target.hour }}:00 · 最多{{ target.maxRequests }}次请求 ·
+        {{ target.hour }}:00 · 最多{{ target.maxPages }}页/渠道 ·
         {{ target.siteId ? '新品' : '' }} {{ target.pageId ? '新广告' : '' }}
       </p>
       <template v-if="run(target.id)">

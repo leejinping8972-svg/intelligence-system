@@ -61,16 +61,13 @@ const form = reactive({
   budgets: {
     maxProducts: 1000,
     perKeyword: 50,
-    productRequests: 2000,
     maxAdsPerKeyword: 100,
     adPages: 5,
-    adRequests: 1000,
     maxContentQueries: 10,
     contentPerQuery: 50,
     commentVideos: 20,
     commentPages: 3,
     siteProducts: 500,
-    siteRequests: 1000,
     siteDetailProducts: 100,
   },
 });
@@ -252,13 +249,7 @@ import CollectionEstimate from './CollectionEstimate.vue';
               :max="100"
             />
           </Form.Item>
-          <Form.Item label="商品请求上限">
-            <InputNumber
-              v-model:value="form.budgets.productRequests"
-              :min="1"
-              :max="100000"
-            />
-          </Form.Item>
+
           <Form.Item label="单词广告上限">
             <InputNumber
               v-model:value="form.budgets.maxAdsPerKeyword"
@@ -273,13 +264,7 @@ import CollectionEstimate from './CollectionEstimate.vue';
               :max="10"
             />
           </Form.Item>
-          <Form.Item label="广告请求上限">
-            <InputNumber
-              v-model:value="form.budgets.adRequests"
-              :min="1"
-              :max="1000"
-            />
-          </Form.Item>
+
           <Form.Item label="内容检索词上限">
             <InputNumber
               v-model:value="form.budgets.maxContentQueries"
@@ -315,13 +300,7 @@ import CollectionEstimate from './CollectionEstimate.vue';
               :max="1000"
             />
           </Form.Item>
-          <Form.Item label="独立站请求上限">
-            <InputNumber
-              v-model:value="form.budgets.siteRequests"
-              :min="1"
-              :max="2000"
-            />
-          </Form.Item>
+
         </div>
         <p class="hci-subtle">
           1000是单次任务保存商品的硬上限；广告按关键词限制在100条，避免少数宽泛词吞掉请求；TikTok评论只取互动内容的最多20个视频，作为定性样本。

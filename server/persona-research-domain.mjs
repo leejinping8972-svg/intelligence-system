@@ -72,14 +72,12 @@ export function validatePersonaPlan(input) {
   const researchQuestion = clean(input.researchQuestion, 2000);
   if (!researchQuestion) throw new Error('请填写研究问题');
   const budget = {
-    requests: integer(input.budget?.requests ?? 0, 0, 60, '补采请求'),
-    credits: integer(input.budget?.credits ?? 0, 0, 60, '付费额度'),
     commentVideos: integer(input.budget?.commentVideos ?? 0, 0, 10, '评论视频数'),
     perQuery: integer(input.budget?.perQuery ?? 10, 1, 30, '每层保留数'),
   };
   const sources = [...new Set(input.sources || ['content', 'comments'])];
   if (!sources.length || sources.some((s) => !['content', 'comments', 'products'].includes(s))) throw new Error('请选择支持的补采来源');
-  return { schemaVersion: 1, market: input.market, language: languages[input.market], title: clean(input.title || `${input.market}人群需求研究`, 160), groups, startDate, endDate, researchQuestion, budget, sources };
+  return { schemaVersion: 1, market: input.market, language: languages[input.market], title: clean(input.title || `${input.market}人群需求研究`, 160), groups, startDate, endDate, researchQuestion, budget, sources, acquire: input.acquire === true || (input.acquire === undefined && Number(input.budget?.requests) > 0) };
 }
 export function personaQueries(plan) {
   const focus = questionTerms.filter(([pattern]) => pattern.test(plan.researchQuestion)).map(([, values]) => values[plan.market]).join(' ');

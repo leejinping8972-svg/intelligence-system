@@ -10,7 +10,7 @@ export async function loadCoreRates(refresh = false) {
   try {
     const fx = await cloudRequest<FxRates | null>(
       refresh ? 'server_core_rates_refresh' : 'server_core_rates',
-      refresh ? { maxRequests: 1 } : {},
+      {},
     );
     if (fx) coreListContext.fx = fx;
   } catch (error) {

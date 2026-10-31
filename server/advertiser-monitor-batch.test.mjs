@@ -115,7 +115,7 @@ test('invalid or missing identity cannot create monitors or silently truncate se
   for (const input of [
     { adIds: [] },
     { adIds: ['missing'] },
-    { adIds: ['a'], maxRequests: 0 },
+    { adIds: ['a'], maxPages: 0 },
     { adIds: ['a'], hour: 24 },
   ])
     await assert.rejects(() => saveAdvertiserBatch(input, f.db, f.connection));
