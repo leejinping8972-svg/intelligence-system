@@ -3,9 +3,9 @@
   "includedCommits": [
     "2f9b55e239c5590301f044949a12f52a70bf0f67",
     "113f133d6b35e5b2dc1d68671b2e53f6a347db68",
-    "724808d6a29b2e74e598b7b59c962d8888465406"
+    "736586cbbe368fc9cdb6d9838f62f8699c43822a"
   ],
-  "sourceSha": "724808d6a29b2e74e598b7b59c962d8888465406",
+  "sourceSha": "736586cbbe368fc9cdb6d9838f62f8699c43822a",
   "changes": [
     "增加FBM/常规保健品新品周监控、近7/30/60/90天多渠道抓取和统一新建监控入口。",
     "商品、独立站及广告先由AI核对原始证据再写对应字段；支持历史选中记录重新分析。",
@@ -21,19 +21,24 @@
   ],
   "files": [
     "apps/web-antd/src/views/intelligence/components/CompetitorWatchPanel.vue",
+    "apps/web-antd/src/views/intelligence/components/DailyDiscoveryPlan.vue",
     "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
     "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
+    "apps/web-antd/src/views/intelligence/components/KeywordTrendsControl.vue",
+    "apps/web-antd/src/views/intelligence/components/MarketCollectionDialog.vue",
     "apps/web-antd/src/views/intelligence/components/MonitorConfigPanel.vue",
     "apps/web-antd/src/views/intelligence/components/NewMonitorDialog.vue",
+    "apps/web-antd/src/views/intelligence/components/SemrushHotwordsSidebar.vue",
     "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
+    "apps/web-antd/src/views/intelligence/monitor.vue",
     "server/discovery-monitor-domain.mjs",
     "server/discovery-monitor-store.mjs",
     "server/discovery-monitors.integration.test.mjs",
     "server/discovery-monitors.test.mjs",
     "server/discovery-sorftime.mjs"
   ],
-  "id": "20261031042226-3757dace",
-  "builtAt": "2026-10-31T04:22:26.066Z",
-  "sourceDigest": "3757dace3a5dd7edb7b2ce8d26693805393e5d9753d80e775691b5c431f9759f",
+  "id": "20261031062629-134f8cc9",
+  "builtAt": "2026-10-31T06:26:29.699Z",
+  "sourceDigest": "134f8cc902536da9261f8669729d7f9156f70a9716046a1eda95288b7861dc2a",
   "operator": "Codex"
 }
