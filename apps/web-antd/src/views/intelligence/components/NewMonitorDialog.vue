@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import type { DiscoveryKind } from '../discovery-monitors';
+
 import { computed, ref } from 'vue';
+
 import { createIconifyIcon } from '@vben/icons';
+
 import { Button, Modal, Select } from 'ant-design-vue';
+
 import { state } from '../data';
 import CompetitorWatchPanel from './CompetitorWatchPanel.vue';
 import DailyDiscoveryPlan from './DailyDiscoveryPlan.vue';
@@ -13,11 +17,11 @@ import ProductDrawer from './ProductDrawer.vue';
 import SemrushHotwordsSidebar from './SemrushHotwordsSidebar.vue';
 const emit = defineEmits<{ saved: [] }>();
 const Plus = createIconifyIcon('lucide:plus');
-const open = ref(false),
-  kind = ref('fbm_new'),
-  product = ref<string>();
+const kind = ref('fbm_new');
+  const open = ref(false);
+  const product = ref<string>();
 const discoveryKind = computed(() =>
-  ['fbm_new', 'regular_new', 'ingredients'].includes(kind.value)
+  ['fbm_new', 'ingredients', 'regular_new'].includes(kind.value)
     ? (kind.value as DiscoveryKind)
     : undefined,
 );
@@ -35,9 +39,9 @@ const options = [
 ];
 </script>
 <template>
-  <Button type="primary" @click="open = true"
-    ><template #icon><Plus /></template>新建监控</Button
-  >
+  <Button type="primary" @click="open = true">
+<template #icon><Plus /></template>新建监控
+</Button>
   <Modal
     v-model:open="open"
     title="新建监控"
@@ -66,21 +70,28 @@ const options = [
       v-else-if="kind === 'site' || kind === 'advertiser'"
       :key="kind"
       :kind="kind"
+      embedded
+      @saved="
+        open = false;
+        emit('saved');
+      "
     />
     <DailyDiscoveryPlan v-else-if="kind === 'daily'" />
     <SemrushHotwordsSidebar v-else-if="kind === 'hotwords'" />
     <KeywordTrendsControl v-else-if="kind === 'trends'" :ids="[]" />
     <MarketCollectionDialog v-else-if="kind === 'market'" />
-    <template v-else-if="kind === 'product'"
-      ><Select
+    <template v-else-if="kind === 'product'">
+<Select
         v-model:value="product"
         show-search
         option-filter-prop="label"
         :options="state.products.map((p) => ({ value: p.id, label: p.title }))"
         aria-label="监控商品"
-        style="width: 100%" /><ProductDrawer
+        style="width: 100%"
+/><ProductDrawer
         :id="product"
         @close="product = undefined"
-    /></template>
+    />
+</template>
   </Modal>
 </template>

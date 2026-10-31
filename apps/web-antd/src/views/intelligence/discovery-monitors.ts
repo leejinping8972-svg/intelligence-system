@@ -1,4 +1,4 @@
-export type DiscoveryKind = 'fbm_new' | 'regular_new' | 'ingredients';
+export type DiscoveryKind = 'fbm_new' | 'ingredients' | 'regular_new';
 export const discoveryLabels = {
   fbm_new: 'FBM新品',
   regular_new: '常规新品',
@@ -12,7 +12,7 @@ export interface DiscoveryPlan {
   channels: string[];
   sourceMarkets?: Record<string, string>;
   topics: string | string[];
-  frequency: 'daily' | 'weekly' | 'monthly';
+  frequency: 'daily' | 'monthly' | 'weekly';
   time: string;
   weekday: number;
   monthDay: number;
@@ -61,7 +61,10 @@ export const defaultDiscoveryPlan = (
   days: 7,
   channels: kind === 'ingredients' ? ['reddit', 'quora'] : ['amazon'],
   sourceMarkets: {},
-  topics: 'dietary supplements\nnew supplement ingredients',
+  topics:
+    kind === 'ingredients'
+      ? 'dietary supplements\nnew supplement ingredients'
+      : '',
   frequency: kind === 'ingredients' ? 'daily' : 'weekly',
   time: '09:00',
   weekday: 1,

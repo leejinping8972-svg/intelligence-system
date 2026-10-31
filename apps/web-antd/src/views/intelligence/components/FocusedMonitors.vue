@@ -24,6 +24,7 @@ import { watchStatus } from '../competitor-monitor';
 import {
   competitorWorkspace,
   refreshCompetitorWorkspace,
+  useCompetitorWorkspace,
 } from '../competitor-workspace';
 import { audit, marketName, state } from '../data';
 import { focusedMonitorRows } from '../focused-monitors';
@@ -32,11 +33,12 @@ import { serverMode, session } from '../session';
 import ProductDrawer from './ProductDrawer.vue';
 
 const router = useRouter();
+useCompetitorWorkspace();
 const busy = ref('');
-  const kind = ref('ALL');
-  const page = ref(1);
-  const search = ref('');
-  const status = ref('ALL');
+const kind = ref('ALL');
+const page = ref(1);
+const search = ref('');
+const status = ref('ALL');
 const editor = ref<FocusedMonitorRow>();
 const productId = ref<string>();
 const form = reactive({ hour: 8, maxPages: 10, enabled: false });
@@ -135,6 +137,19 @@ async function retryPublic(row: FocusedMonitorRow) {
     busy.value = '';
   }
 }
+async function check(row: FocusedMonitorRow) {
+  if (!row.target || busy.value) return;
+  busy.value = row.id;
+  try {
+    await cloudRequest('server_competitor_check', { id: row.target.id });
+    await refreshCompetitorWorkspace(true);
+    message.success('已提交本日检查');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '检查提交失败');
+  } finally {
+    busy.value = '';
+  }
+}
 function view(row: FocusedMonitorRow) {
   if (row.legacy) {
     productId.value = row.legacy.productId;
@@ -188,9 +203,9 @@ function view(row: FocusedMonitorRow) {
     <Button
       :loading="competitorWorkspace.loading"
       @click="refreshCompetitorWorkspace()"
-      >
-刷新监控
-</Button>
+    >
+      刷新监控
+    </Button>
     <span class="hci-subtle">{{ rows.length }}个对象 · 时间为北京时间</span>
   </div>
   <Table
@@ -215,11 +230,11 @@ function view(row: FocusedMonitorRow) {
   >
     <template #bodyCell="{ column, record }">
       <template v-if="column.key === 'object'">
-<Tag>{{ labels[record.kind as keyof typeof labels] }}</Tag><b>{{ record.title }}</b>
+        <Tag>{{ labels[record.kind as keyof typeof labels] }}</Tag><b>{{ record.title }}</b>
         <p class="hci-subtle">
           {{ marketName(record.market) }} · {{ record.subtitle }}
         </p>
-</template>
+      </template>
       <template v-else-if="column.key === 'schedule'">
         <Select
           v-if="record.legacy"
@@ -233,41 +248,49 @@ function view(row: FocusedMonitorRow) {
           "
         />
         <template v-else>
-{{ record.schedule }}
-          <p class="hci-subtle">
-            最多{{ record.target.maxPages }}页/渠道
-          </p>
-</template>
+          {{ record.schedule }}
+          <p class="hci-subtle">最多{{ record.target.maxPages }}页/渠道</p>
+        </template>
       </template>
       <template v-else-if="column.key === 'run'">
         <template v-if="record.run">
-<Tag :color="record.run.status === 'failed' ? 'red' : 'blue'">
-{{
-            watchStatus[record.run.status] || record.run.status
-          }}
+          <Tag :color="record.run.status === 'failed' ? 'red' : 'blue'">
+            {{ watchStatus[record.run.status] || record.run.status }}
 </Tag>{{ record.run.day }}
           <p class="hci-subtle">
-            {{ record.run.requests }}页/渠道 · {{ record.run.added || 0 }}项上新
+            {{ record.run.requests }}次请求 · {{ record.run.added || 0 }}项上新
           </p>
           <p v-for="text in record.run.errors" :key="text" class="hci-subtle">
             {{ text }}
           </p>
           <p
-            v-if="record.run.publicRecovery?.eligible && !record.run.publicRecovery?.ready"
+            v-if="
+              record.run.publicRecovery?.eligible &&
+              !record.run.publicRecovery?.ready
+            "
             class="hci-subtle"
           >
-            官网冷却至{{ collectionTimeLabel(new Date(record.run.publicRecovery.nextRunAt).toISOString()) }}
+            官网冷却至{{
+              collectionTimeLabel(
+                new Date(record.run.publicRecovery.nextRunAt).toISOString(),
+              )
+            }}
           </p>
-          <p v-if="record.target?.siteId && record.run.publicRecovery?.reason" class="hci-subtle">
-            {{ record.run.publicRecovery.reason }} · 今日剩余{{ record.run.publicRecovery.remaining }}次
+          <p
+            v-if="record.target?.siteId && record.run.publicRecovery?.reason"
+            class="hci-subtle"
+          >
+            {{ record.run.publicRecovery.reason }} · 今日剩余{{
+              record.run.publicRecovery.remaining
+            }}次
           </p>
-</template>
+        </template>
         <span v-else class="hci-subtle">{{
           record.legacy ? '商品监控配置' : '尚未执行'
         }}</span>
       </template>
       <template v-else-if="column.key === 'status'">
-<Switch
+        <Switch
           :checked="record.enabled"
           :disabled="(!record.legacy && !canEdit) || !!busy"
           :loading="busy === record.id"
@@ -275,38 +298,43 @@ function view(row: FocusedMonitorRow) {
           un-checked-children="暂停"
           :aria-label="`启停监控 ${record.title}`"
           @change="change(record as FocusedMonitorRow, $event === true)"
-      />
-</template>
+        />
+      </template>
       <template v-else-if="column.key === 'actions'">
-<div class="focused-actions">
+        <div class="focused-actions">
           <Button size="small" @click="view(record as FocusedMonitorRow)">
-查看对象
+            查看对象
 </Button><template v-if="record.target && canEdit">
-<Button
-  v-if="record.run?.publicRecovery?.eligible"
-  size="small"
-  :disabled="!!busy || !record.run.publicRecovery.ready"
-  @click="retryPublic(record as FocusedMonitorRow)"
->
-  仅恢复官网
+            <Button
+              size="small"
+              :disabled="!!busy"
+              @click="check(record as FocusedMonitorRow)"
+              >
+本日立即检查
 </Button>
-<Button
+            <Button
+              v-if="record.run?.publicRecovery?.eligible"
+              size="small"
+              :disabled="!!busy || !record.run.publicRecovery.ready"
+              @click="retryPublic(record as FocusedMonitorRow)"
+            >
+              仅恢复官网
+            </Button>
+            <Button
               size="small"
               :disabled="!!busy"
               @click="edit(record as FocusedMonitorRow)"
-              >
-设置
+            >
+              设置
 </Button><Popconfirm
               title="移除此监控？已采集结果和历史记录保留。"
               @confirm="remove(record as FocusedMonitorRow)"
-              >
-<Button size="small" danger :disabled="!!busy">
-移除
-</Button>
-</Popconfirm>
-</template>
+            >
+              <Button size="small" danger :disabled="!!busy"> 移除 </Button>
+            </Popconfirm>
+          </template>
         </div>
-</template>
+      </template>
     </template>
   </Table>
   <Modal
@@ -320,18 +348,25 @@ function view(row: FocusedMonitorRow) {
   >
     <p>{{ editor?.title }} · {{ editor ? marketName(editor.market) : '' }}</p>
     <Form layout="vertical">
-<Form.Item label="每日更新时间（北京时间0～23点）">
-<InputNumber
+      <Form.Item label="每日更新时间（北京时间0～23点）">
+        <InputNumber
           v-model:value="form.hour"
           :min="0"
           :max="23"
           :precision="0"
+        />
+      </Form.Item>
+      <Form.Item label="每渠道页面上限">
+<InputNumber
+          v-model:value="form.maxPages"
+          :min="1"
+          :max="100"
+          :precision="0"
 />
-</Form.Item>
-<Form.Item label="每渠道页面上限"><InputNumber v-model:value="form.maxPages" :min="1" :max="100" :precision="0" /></Form.Item><Form.Item label="启用自动检查">
-<Switch v-model:checked="form.enabled" />
-</Form.Item>
-</Form>
+</Form.Item><Form.Item label="启用自动检查">
+        <Switch v-model:checked="form.enabled" />
+      </Form.Item>
+    </Form>
     <p class="hci-subtle">
       启用后按每日计划执行，消耗已配置数据源额度；本日已尝试的请求不会因切换状态而重放。
     </p>

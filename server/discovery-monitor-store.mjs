@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+
 import { requireAdmin } from './auth.mjs';
 import { lock, pool, putDocument, unlock } from './database.mjs';
 import {
@@ -157,7 +158,7 @@ export async function tickDiscoveryMonitors(now = Date.now()) {
           await c.query('SELECT id FROM research_jobs WHERE request_id=$1', [
             requestId,
           ])
-        ).rows.length
+        ).rows.length > 0
       )
         continue;
       const job = await submitDiscovery(
@@ -203,12 +204,15 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
   };
   cp.asOf ||= io.now();
   cp.work ||= plan.channels.flatMap((channel) =>
-    plan.topics.map((topic) => ({
+    (plan.kind === 'ingredients'
+      ? plan.topics
+      : [channel === 'ali1688' ? '保健品' : 'dietary supplements']
+    ).map((topic) => ({
       channel,
       sourceMarket: plan.sourceMarkets?.[channel],
       topic,
       page: 1,
-      ...(['tiktok', 'tiktok_shop', 'shopee', 'temu', 'ali1688'].includes(
+      ...(['ali1688', 'shopee', 'temu', 'tiktok', 'tiktok_shop'].includes(
         channel,
       ) && plan.kind !== 'ingredients'
         ? { categoryLookup: true }
@@ -221,7 +225,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     io.saveCheckpoint(
       job,
       { ...cp, finishedAt: new Date(io.now()).toISOString() },
-      cp.failures.length ? 'partial' : 'completed',
+      cp.failures.length > 0 ? 'partial' : 'completed',
     );
   const cancelled = async () =>
     (
@@ -231,10 +235,13 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     ).rows[0]?.cancelled;
   try {
     if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
-    const firstPass = cp.work.some(w => !w.detail && w.page === 1 && !cp.covered.includes(w.channel));
+    const firstPass = cp.work.some(
+      (w) => !w.detail && w.page === 1 && !cp.covered.includes(w.channel),
+    );
     if (
-      cp.pending.length &&
-      plan.kind !== 'ingredients' && !firstPass &&
+      cp.pending.length > 0 &&
+      plan.kind !== 'ingredients' &&
+      !firstPass &&
       cp.products < plan.maxProducts
     ) {
       const product = cp.pending.shift();
@@ -268,10 +275,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
       } catch (error) {
         cp.failures.push(String(error.message).slice(0, 500));
       }
-    } else if (
-      cp.work.length &&
-      cp.products < plan.maxProducts
-    ) {
+    } else if (cp.work.length > 0 && cp.products < plan.maxProducts) {
       const work = cp.work.shift();
       cp.calls++;
       try {
@@ -367,12 +371,12 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
         );
       }
     } else {
-      if (cp.work.length || cp.pending.length) {
+      if (cp.work.length > 0 || cp.pending.length > 0) {
         cp.logs.push('达到本次商品或结果数量，保留已完成结果');
       }
       if (
         plan.kind === 'ingredients' &&
-        cp.records.length &&
+        cp.records.length > 0 &&
         !cp.analysisDone
       ) {
         cp.calls++;

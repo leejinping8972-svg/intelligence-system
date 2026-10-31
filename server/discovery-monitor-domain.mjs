@@ -6,7 +6,7 @@ export const discoveryKinds = {
   ingredients: '成分研究',
 };
 export const discoveryDay = (now) =>
-  new Date(now + 8 * 3600_000).toISOString().slice(0, 10);
+  new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
 export const stableId = (value) => {
   const hex = createHash('sha256').update(value).digest('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
@@ -14,7 +14,7 @@ export const stableId = (value) => {
 export function discoveryPlan(input, scheduled = false) {
   if (!Object.hasOwn(discoveryKinds, input.kind))
     throw new Error('请选择监控类型');
-  if (!['US', 'MX', 'VN'].includes(input.market)) throw new Error('请选择市场');
+  if (!['MX', 'US', 'VN'].includes(input.market)) throw new Error('请选择市场');
   const days = input.days ?? 7;
   if (
     !(
@@ -24,7 +24,7 @@ export function discoveryPlan(input, scheduled = false) {
     throw new Error('抓取时间范围无效');
   const channels = [...new Set(input.channels || [])];
   if (
-    !channels.length ||
+    channels.length === 0 ||
     channels.length > 30 ||
     channels.some((c) => !/^[a-z][a-z0-9_]{0,50}$/.test(c))
   )
@@ -33,23 +33,27 @@ export function discoveryPlan(input, scheduled = false) {
     throw new Error('FBM发货方式仅适用于Amazon');
   if (
     input.kind === 'ingredients' &&
-    channels.some((c) => !['reddit', 'quora'].includes(c))
+    channels.some((c) => !['quora', 'reddit'].includes(c))
   )
     throw new Error('成分研究仅支持Reddit和Quora');
-  const topics = [
-    ...new Set(
-      (Array.isArray(input.topics)
-        ? input.topics
-        : String(
-            input.topics || 'dietary supplements\nnew supplement ingredients',
-          ).split(/\r?\n/)
-      )
-        .map((s) => String(s).trim())
-        .filter(Boolean),
-    ),
-  ];
+  const topics =
+    input.kind === 'ingredients'
+      ? [
+          ...new Set(
+            (Array.isArray(input.topics)
+              ? input.topics
+              : String(
+                  input.topics ||
+                    'dietary supplements\nnew supplement ingredients',
+                ).split(/\r?\n/)
+            )
+              .map((s) => String(s).trim())
+              .filter(Boolean),
+          ),
+        ]
+      : [];
   if (
-    !topics.length ||
+    (input.kind === 'ingredients' && topics.length === 0) ||
     topics.length > 10 ||
     topics.some((s) => s.length > 200)
   )
@@ -98,7 +102,7 @@ export function discoveryPlan(input, scheduled = false) {
     const weekday = input.weekday ?? 1;
     const monthDay = input.monthDay ?? 1;
     if (
-      !['daily', 'weekly', 'monthly'].includes(frequency) ||
+      !['daily', 'monthly', 'weekly'].includes(frequency) ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ||
       !Number.isInteger(weekday) ||
       weekday < 0 ||
@@ -121,7 +125,7 @@ export function discoveryPlan(input, scheduled = false) {
   return plan;
 }
 export function scheduleSlot(plan, now = Date.now()) {
-  const d = new Date(now + 8 * 3600_000);
+  const d = new Date(now + 8 * 3_600_000);
   const day = d.toISOString().slice(0, 10);
   if (!plan.enabled || d.toISOString().slice(11, 16) < plan.time) return;
   if (plan.frequency === 'weekly' && d.getUTCDay() !== plan.weekday) return;
@@ -139,7 +143,7 @@ export function dateInWindow(value, days, now = Date.now()) {
   )
     return false;
   const today = Date.parse(discoveryDay(now));
-  return stamp <= today && stamp >= today - (days - 1) * 86400_000;
+  return stamp <= today && stamp >= today - (days - 1) * 86_400_000;
 }
 export function newProductEvidence(product, plan, now = Date.now()) {
   const date = product.decisionData?.listing?.date;

@@ -1,4 +1,9 @@
 import {
+  dateInWindow,
+  discoveryDay,
+  stableId,
+} from './discovery-monitor-domain.mjs';
+import {
   field,
   number,
   payload,
@@ -12,11 +17,6 @@ import {
   safeError,
   schemaValue,
 } from './product-resource-sorftime.mjs';
-import {
-  dateInWindow,
-  discoveryDay,
-  stableId,
-} from './discovery-monitor-domain.mjs';
 
 const aliases = {
   query: [
@@ -71,10 +71,10 @@ const aliases = {
   id: ['reddit_id', 'quora_id', 'post_id', 'question_id', 'id'],
 };
 const socialNames = new Set([
-  'reddit_post_search',
-  'reddit_comment_request',
-  'quora_question_search',
   'quora_answer_request',
+  'quora_question_search',
+  'reddit_comment_request',
+  'reddit_post_search',
 ]);
 function productChannel(tool) {
   if (
@@ -160,7 +160,7 @@ function buildArguments(tool, request) {
         (v) => String(v).toUpperCase() === request.market,
       ),
     );
-    if (!key && !['walmart', 'ali1688'].includes(request.channel))
+    if (!key && !['ali1688', 'walmart'].includes(request.channel))
       throw new Error('来源未明确支持此市场');
     if (request.channel === 'walmart' && request.market !== 'US')
       throw new Error('Walmart工具仅提供美国来源，未替代所选市场');
@@ -172,7 +172,8 @@ function buildArguments(tool, request) {
         ),
       );
   }
-  const queryKey = !request.detail && set(aliases.query, request.topic);
+  const queryKey =
+    !request.detail && !request.nodeId && set(aliases.query, request.topic);
   if (
     !request.detail &&
     !queryKey &&
@@ -201,7 +202,7 @@ function buildArguments(tool, request) {
       throw new Error('来源详情参数尚未适配');
   }
   const now = request.now || Date.now();
-  set(aliases.start, discoveryDay(now - (request.days - 1) * 86400_000));
+  set(aliases.start, discoveryDay(now - (request.days - 1) * 86_400_000));
   set(aliases.end, discoveryDay(now));
   set(aliases.page, request.page || 1);
   set(aliases.limit, 20);
@@ -233,9 +234,11 @@ function buildArguments(tool, request) {
       if (properties[key] && args[key] === undefined) set([key], '');
   for (const key of schema.required || [])
     if (args[key] === undefined) {
-      if (properties[key]?.default !== undefined)
+      if (properties[key]?.default === undefined) {
+        throw new Error(`工具必填参数${key}尚未适配，未调用数据工具`);
+      } else {
         args[key] = schemaValue(properties[key].default, properties[key], key);
-      else throw new Error(`工具必填参数${key}尚未适配，未调用数据工具`);
+      }
     }
   return args;
 }
@@ -279,7 +282,7 @@ export function normalizeDiscoveryProduct(row, request, at) {
   const platform =
     request.channel === 'tiktok' ? 'tiktok_shop' : request.channel;
   let product;
-  if (['amazon', 'tiktok_shop', 'shopee', 'temu'].includes(platform))
+  if (['amazon', 'shopee', 'temu', 'tiktok_shop'].includes(platform))
     product = normalizeSorftimeProduct(
       row,
       { ...request, platform, op: 'search' },
@@ -370,7 +373,7 @@ export function normalizeDiscoveryProduct(row, request, at) {
   const raw = { ...row, ...row.product_info };
   const dateKey = listingKeys.find((key) => raw[key] !== undefined);
   const date = product.decisionData?.listing?.date || sourceDate(raw[dateKey]);
-  if (dateInWindow(date, 36500, Date.parse(at)))
+  if (dateInWindow(date, 36_500, Date.parse(at)))
     product.decisionData = {
       ...product.decisionData,
       listing: {
@@ -496,7 +499,7 @@ export function normalizeSocialRows(value, request, at) {
 function discoveryRows(value, depth = 0) {
   if (depth > 8) return [];
   const rows = records(value);
-  if (rows.length) return rows;
+  if (rows.length > 0) return rows;
   for (const key of [
     'posts',
     'comments',
@@ -510,7 +513,7 @@ function discoveryRows(value, depth = 0) {
     if (value?.[key]) {
       if (Array.isArray(value[key])) return value[key];
       const nested = discoveryRows(value[key], depth + 1);
-      if (nested.length) return nested;
+      if (nested.length > 0) return nested;
     }
   return [];
 }
@@ -530,7 +533,7 @@ export async function discoverySorftime(request, overrides = {}) {
             `${request.channel}_${request.detail ? (request.channel === 'reddit' ? 'comment_request' : 'answer_request') : request.channel === 'reddit' ? 'post_search' : 'question_search'}`
         : productChannel(tool) === request.channel,
   );
-  let chosen, args, failure;
+  let args, chosen, failure;
   const score = (tool) =>
     aliases.start.some((k) => tool.inputSchema?.properties?.[k])
       ? 2
@@ -557,7 +560,7 @@ export async function discoverySorftime(request, overrides = {}) {
       await client.rpc('tools/call', { name: chosen.name, arguments: args }),
     );
   } catch (error) {
-    throw new Error(safeError(error, token));
+    throw new Error(safeError(error, token), { cause: error });
   }
   const usage = {
     sorftimeCalls: 1,

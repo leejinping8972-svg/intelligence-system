@@ -1,32 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+
+import { validateIngredientResearch } from './discovery-ai.mjs';
 import {
-  discoveryPlan,
   dateInWindow,
+  discoveryPlan,
   newProductEvidence,
   scheduleSlot,
   stableId,
 } from './discovery-monitor-domain.mjs';
+import { runDiscoveryMonitor } from './discovery-monitor-store.mjs';
 import {
   discoveryCatalogue,
   discoverySorftime,
   normalizeDiscoveryProduct,
   normalizeSocialRows,
 } from './discovery-sorftime.mjs';
-import {
-  gateSourceFields,
-  pendingSourceFields,
-  sourceFieldSample,
-  validateSourceFields,
-} from './source-field-domain.mjs';
-import { validateIngredientResearch } from './discovery-ai.mjs';
-import { runDiscoveryMonitor } from './discovery-monitor-store.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
 import {
   mergePlatformProduct,
   normalizeAmazon,
   normalizeAmazonContent,
 } from './platform-product-data.mjs';
+import {
+  gateSourceFields,
+  pendingSourceFields,
+  sourceFieldSample,
+  validateSourceFields,
+} from './source-field-domain.mjs';
 
 const now = Date.parse('2026-10-30T01:00:00Z');
 const plan = (patch = {}) =>
@@ -118,7 +119,7 @@ test('Beijing schedules run only on the selected day and time, with deterministi
   );
   assert.equal(scheduleSlot(weekly, now - 1), undefined);
   assert.equal(scheduleSlot(weekly, now), '2026-10-30');
-  assert.equal(scheduleSlot(weekly, now + 86400000), undefined);
+  assert.equal(scheduleSlot(weekly, now + 86_400_000), undefined);
   assert.equal(scheduleSlot({ ...weekly, enabled: false }, now), undefined);
   const monthly = { ...weekly, frequency: 'monthly', monthDay: 1 };
   assert.equal(
@@ -129,6 +130,30 @@ test('Beijing schedules run only on the selected day and time, with deterministi
   assert.equal(plan({ channels: ['amazon'], maxCalls: 0 }).maxCalls, undefined);
   assert.throws(() => plan({ maxPages: 101 }), /页数/);
   assert.throws(() => plan({ kind: 'fbm_new', channels: ['shopee'] }), /FBM/);
+});
+test('product monitors do not require or persist a topic; categories remain the source query', () => {
+  const regular = discoveryPlan({
+    kind: 'regular_new',
+    market: 'US',
+    channels: ['amazon'],
+  });
+  assert.deepEqual(regular.topics, []);
+  const fbm = discoveryPlan({
+    kind: 'fbm_new',
+    market: 'US',
+    channels: ['amazon'],
+    topics: 'this must be ignored',
+  });
+  assert.deepEqual(fbm.topics, []);
+  assert.deepEqual(
+    discoveryPlan({
+      kind: 'ingredients',
+      market: 'US',
+      channels: ['reddit'],
+      topics: 'urolithin A',
+    }).topics,
+    ['urolithin A'],
+  );
 });
 test('verified Sorftime parameter names: Amazon launch range and string shipping_type FBM', async () => {
   const s = client(
@@ -498,7 +523,9 @@ test('multi-channel first pass and AI processing continue beyond the legacy call
   let saved;
   const job = {
     id: 'qa',
-    input: { plan: { ...plan({ channels: ['amazon', 'walmart'] }), maxCalls: 1 } },
+    input: {
+      plan: { ...plan({ channels: ['amazon', 'walmart'] }), maxCalls: 1 },
+    },
     checkpoint: { calls: 0, products: 0 },
   };
   const io = {
@@ -535,10 +562,10 @@ test('multi-channel first pass and AI processing continue beyond the legacy call
   assert.equal(job.checkpoint.products, 2);
 });
 test('runner checkpoints source results, admits only AI-confirmed supplements and honors cancellation', async () => {
-  let saved,
-    writes = 0,
-    calls = 0,
-    cancelled = false;
+  let calls = 0;
+    let cancelled = false;
+    let saved;
+    let writes = 0;
   const job = {
     id: 'qa',
     input: { plan: plan({ maxCalls: 3, maxProducts: 5 }) },

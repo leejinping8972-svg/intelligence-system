@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { registerHooks } from 'node:module';
 import { resolve } from 'node:path';
 import test from 'node:test';
+
 import { PGlite } from '@electric-sql/pglite';
 
 test('discovery SQL workflow: schedules, source evidence, cancellation and paid request recovery', async (t) => {
@@ -13,8 +14,8 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
     'postgres://synthetic:synthetic@127.0.0.1:1/synthetic';
   const db = new PGlite();
   const originalFetch = globalThis.fetch;
-  let externalCalls = 0,
-    modelCalls = 0;
+  let externalCalls = 0;
+    let modelCalls = 0;
   globalThis.fetch = async () => {
     externalCalls++;
     throw new Error('External calls disabled in isolated discovery tests');
@@ -33,14 +34,14 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
     },
   });
   const { pool, putDocument } = await import('./database.mjs');
-  const originalQuery = pool.query,
-    originalConnect = pool.connect;
+  const originalConnect = pool.connect;
+    const originalQuery = pool.query;
   pool.query = async (statement, params = []) => {
     if (statement.startsWith('SELECT pg_try_advisory_lock'))
       return { rows: [{ locked: true }] };
     if (statement.startsWith('SELECT pg_advisory_unlock')) return { rows: [] };
     if (
-      !params.length &&
+      params.length === 0 &&
       statement
         .trim()
         .split(';')
@@ -126,7 +127,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         await tickDiscoveryMonitors(Date.parse('2026-10-30T01:05:00Z'));
         const jobs = (await pool.query('SELECT * FROM research_jobs')).rows;
         assert.equal(jobs.length, 1);
-        assert.deepEqual(jobs[0].input.plan.topics, input.topics);
+        assert.deepEqual(jobs[0].input.plan.topics, []);
         assert.equal(jobs[0].input.plan.sourceMarkets.shopee, 'VN');
         assert.match(jobTasks(jobs[0])[0].title, /常规新品/);
         await discoveryAction(
