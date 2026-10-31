@@ -5,7 +5,7 @@
     "113f133d6b35e5b2dc1d68671b2e53f6a347db68",
     "736586cbbe368fc9cdb6d9838f62f8699c43822a"
   ],
-  "sourceSha": "736586cbbe368fc9cdb6d9838f62f8699c43822a",
+  "sourceSha": "87fdb1673c9738e5d00589ab89e580e58efe733b",
   "changes": [
     "增加FBM/常规保健品新品周监控、近7/30/60/90天多渠道抓取和统一新建监控入口。",
     "商品、独立站及广告先由AI核对原始证据再写对应字段；支持历史选中记录重新分析。",
@@ -37,8 +37,8 @@
     "server/discovery-monitors.test.mjs",
     "server/discovery-sorftime.mjs"
   ],
-  "id": "20261031062629-134f8cc9",
-  "builtAt": "2026-10-31T06:26:29.699Z",
+  "id": "20261031070127-134f8cc9",
+  "builtAt": "2026-10-31T07:01:27.668Z",
   "sourceDigest": "134f8cc902536da9261f8669729d7f9156f70a9716046a1eda95288b7861dc2a",
   "operator": "Codex"
 }
