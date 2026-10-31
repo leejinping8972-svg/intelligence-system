@@ -5,21 +5,34 @@ import { computed, ref } from 'vue';
 
 import { createIconifyIcon } from '@vben/icons';
 
-import { Button, Modal, Select } from 'ant-design-vue';
+import { Button, Form, message, Modal, Select, Switch } from 'ant-design-vue';
 
-import { state } from '../data';
+import { monitorProduct, state } from '../data';
 import CompetitorWatchPanel from './CompetitorWatchPanel.vue';
 import DailyDiscoveryPlan from './DailyDiscoveryPlan.vue';
 import DiscoveryPlanForm from './DiscoveryPlanForm.vue';
 import KeywordTrendsControl from './KeywordTrendsControl.vue';
 import MarketCollectionDialog from './MarketCollectionDialog.vue';
-import ProductDrawer from './ProductDrawer.vue';
 import SemrushHotwordsSidebar from './SemrushHotwordsSidebar.vue';
 const emit = defineEmits<{ saved: [] }>();
 const Plus = createIconifyIcon('lucide:plus');
 const kind = ref('fbm_new');
   const open = ref(false);
   const product = ref<string>();
+const frequency = ref('每周');
+const enabled = ref(true);
+function saved() {
+  open.value = false;
+  emit('saved');
+}
+function saveProduct() {
+  if (!product.value) return;
+  monitorProduct(product.value);
+  const monitor = state.monitors.find((m) => m.productId === product.value);
+  if (monitor) Object.assign(monitor, { frequency: frequency.value, enabled: enabled.value });
+  message.success('商品监控已保存');
+  saved();
+}
 const discoveryKind = computed(() =>
   ['fbm_new', 'ingredients', 'regular_new'].includes(kind.value)
     ? (kind.value as DiscoveryKind)
@@ -47,6 +60,7 @@ const options = [
     title="新建监控"
     :width="720"
     :footer="null"
+    destroy-on-close
     :body-style="{ maxHeight: '72vh', overflowY: 'auto' }"
   >
     <Select
@@ -76,22 +90,23 @@ const options = [
         emit('saved');
       "
     />
-    <DailyDiscoveryPlan v-else-if="kind === 'daily'" />
-    <SemrushHotwordsSidebar v-else-if="kind === 'hotwords'" />
-    <KeywordTrendsControl v-else-if="kind === 'trends'" :ids="[]" />
-    <MarketCollectionDialog v-else-if="kind === 'market'" />
-    <template v-else-if="kind === 'product'">
+    <DailyDiscoveryPlan v-else-if="kind === 'daily'" embedded @saved="saved" />
+    <SemrushHotwordsSidebar v-else-if="kind === 'hotwords'" embedded @saved="saved" />
+    <KeywordTrendsControl v-else-if="kind === 'trends'" :ids="[]" embedded @saved="saved" />
+    <MarketCollectionDialog v-else-if="kind === 'market'" embedded @saved="saved" />
+    <Form v-else-if="kind === 'product'" layout="vertical" @finish="saveProduct">
+      <Form.Item label="监控商品">
 <Select
         v-model:value="product"
         show-search
         option-filter-prop="label"
-        :options="state.products.map((p) => ({ value: p.id, label: p.title }))"
+        :options="state.products.filter((p) => state.market === 'ALL' || p.market === state.market).map((p) => ({ value: p.id, label: p.title }))"
         aria-label="监控商品"
         style="width: 100%"
-/><ProductDrawer
-        :id="product"
-        @close="product = undefined"
-    />
-</template>
+/></Form.Item>
+      <Form.Item label="监控周期"><Select v-model:value="frequency" :options="['每天', '每两天', '每周'].map((value) => ({ value, label: value }))" /></Form.Item>
+      <Form.Item label="启用监控"><Switch v-model:checked="enabled" /></Form.Item>
+      <Button type="primary" html-type="submit" :disabled="!product">保存监控</Button>
+    </Form>
   </Modal>
 </template>

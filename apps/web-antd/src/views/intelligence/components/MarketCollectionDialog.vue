@@ -11,13 +11,13 @@ import {
   Input,
   InputNumber,
   message,
-  Modal,
   Select,
   Tag,
 } from 'ant-design-vue';
 
 import { cloudRequest } from '../cloud-workspace';
 import { marketOptions, state } from '../data';
+import MonitorConfigPanel from './MonitorConfigPanel.vue';
 
 interface RunStage {
   key: string;
@@ -41,8 +41,9 @@ interface Plan {
   budgets: Record<string, number>;
 }
 
-const emit = defineEmits<{ submitted: [] }>();
-const open = ref(false);
+const props = defineProps<{ embedded?: boolean }>();
+const emit = defineEmits<{ submitted: []; saved: [] }>();
+const open = ref(Boolean(props.embedded));
 const busy = ref(false);
 const error = ref('');
 const runs = ref<CollectionRun[]>([]);
@@ -126,7 +127,7 @@ watch(open, (value) => {
   if (timer) clearTimeout(timer);
   if (!value) loadVersion++;
   if (value) void load();
-});
+}, { immediate: true });
 watch(
   () => form.market,
   () => {
@@ -154,6 +155,7 @@ async function save(run = false) {
       emit('submitted');
     } else message.success('采集计划已保存');
     await load();
+    emit('saved');
   } catch (error_) {
     message.error(error_ instanceof Error ? error_.message : '保存失败');
   } finally {
@@ -178,8 +180,9 @@ onUnmounted(() => {
 import CollectionEstimate from './CollectionEstimate.vue';
 </script>
 <template>
-  <Button @click="open = true">国家市场采集计划</Button>
-  <Modal
+  <Button v-if="!embedded" @click="open = true">国家市场采集计划</Button>
+  <MonitorConfigPanel
+    :embedded="embedded"
     v-model:open="open"
     title="国家市场数据采集"
     width="900px"
@@ -349,7 +352,7 @@ import CollectionEstimate from './CollectionEstimate.vue';
       v-if="open"
       :input="{ kind: 'market_collection', ...payload() }"
     />
-  </Modal>
+  </MonitorConfigPanel>
 </template>
 <style scoped>
 .collection-grid {

@@ -20,7 +20,6 @@ import {
   Input,
   InputNumber,
   message,
-  Modal,
   Select,
   Switch,
   Table,
@@ -29,12 +28,14 @@ import {
 import { cloudRequest, cloudWorkspace } from '../cloud-workspace';
 import { loadSocialTrends, socialTrends } from '../keyword-social-trends';
 import { session } from '../session';
+import MonitorConfigPanel from './MonitorConfigPanel.vue';
 
-const props = defineProps<{ ids: string[]; visibleIds?: string[] }>();
+const props = defineProps<{ ids: string[]; visibleIds?: string[]; embedded?: boolean }>();
+const emit = defineEmits<{ saved: [] }>();
 const acknowledged = ref(false);
 const busy = ref(false);
 const loaded = ref(false);
-const open = ref(false);
+const open = ref(Boolean(props.embedded));
 const run = ref<TrendSnapshot['run']>(null);
 const requiresReview = ref(false);
 const plan = reactive<TrendPlan>({
@@ -138,6 +139,7 @@ async function submit(kind: 'collect' | 'save') {
       );
     }
     await refresh();
+    if (kind === 'save') emit('saved');
   } catch (e) {
     message.error(e instanceof Error ? e.message : '趋势操作失败');
   } finally {
@@ -146,10 +148,11 @@ async function submit(kind: 'collect' | 'save') {
 }
 </script>
 <template>
-  <Button :disabled="!cloudWorkspace.ready" @click="show">
+  <Button v-if="!embedded" :disabled="!cloudWorkspace.ready" @click="show">
     趋势采集 / 每日监测
   </Button>
-  <Modal
+  <MonitorConfigPanel
+    :embedded="embedded"
     v-model:open="open"
     title="四平台关键词趋势"
     :width="850"
@@ -296,7 +299,7 @@ async function submit(kind: 'collect' | 'save') {
     <p v-else class="hci-subtle">
       今天尚无趋势采集任务。浏览和刷新只读取已存数据。
     </p>
-  </Modal>
+  </MonitorConfigPanel>
 </template>
 <style scoped>
 .trend-plan-form {

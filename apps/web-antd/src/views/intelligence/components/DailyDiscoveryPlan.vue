@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import {
@@ -10,7 +10,6 @@ import {
   Input,
   InputNumber,
   message,
-  Modal,
   Select,
   Switch,
   Table,
@@ -19,6 +18,10 @@ import {
 
 import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
 import { session } from '../session';
+import MonitorConfigPanel from './MonitorConfigPanel.vue';
+
+const props = defineProps<{ embedded?: boolean }>();
+const emit = defineEmits<{ saved: [] }>();
 
 interface Plan {
   enabled: boolean;
@@ -121,6 +124,11 @@ function close() {
   timer = undefined;
 }
 onUnmounted(() => clearInterval(timer));
+onMounted(() => {
+  if (props.embedded) void begin().catch((cause) => {
+    error.value = cause instanceof Error ? cause.message : '计划读取失败';
+  });
+});
 async function save() {
   if (busy.value) return;
   if (
@@ -146,6 +154,7 @@ async function save() {
         ? '每日计划已保存，结果将同步到广告、商品库和新品雷达'
         : '每日计划已暂停，已经排队的任务继续执行',
     );
+    emit('saved');
   } catch (e) {
     error.value = e instanceof Error ? e.message : '保存失败';
   } finally {
@@ -154,8 +163,9 @@ async function save() {
 }
 </script>
 <template>
-  <Button @click="begin">每日发现计划</Button>
-  <Modal
+  <Button v-if="!embedded" @click="begin">每日发现计划</Button>
+  <MonitorConfigPanel
+    :embedded="embedded"
     :open="open"
     title="每日按入选关键词发现广告与商品"
     :width="900"
@@ -246,7 +256,7 @@ async function save() {
     <p v-if="!canEdit" class="hci-subtle">仅管理员可以修改每日计划。</p>
     <template #footer>
       <div class="daily-actions">
-        <Button @click="close">关闭</Button>
+        <Button v-if="!embedded" @click="close">关闭</Button>
         <Button :loading="loading" @click="load()">刷新执行记录</Button>
         <Button
           v-if="canEdit"
@@ -314,7 +324,7 @@ async function save() {
     <p v-if="!runs.length" class="hci-subtle">
       尚无每日执行记录。计划启用后由服务器运行，关闭页面也会继续。
     </p>
-  </Modal>
+  </MonitorConfigPanel>
 </template>
 <style scoped>
 .daily-fields {

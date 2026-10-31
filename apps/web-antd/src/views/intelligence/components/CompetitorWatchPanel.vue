@@ -92,8 +92,8 @@ async function refresh() {
       'server_competitor_snapshot',
     );
     error.value = '';
-  } catch (error) {
-    error.value = error instanceof Error ? error.message : '监控读取失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '监控读取失败';
   } finally {
     loading.value = false;
   }
@@ -139,8 +139,8 @@ async function action(name: string, input: Record<string, unknown>) {
     message.success('监控设置已保存');
     await refresh();
     return true;
-  } catch (error) {
-    error.value = error instanceof Error ? error.message : '操作失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '操作失败';
   } finally {
     busy.value = false;
   }
@@ -149,8 +149,8 @@ async function save() {
   if (busy.value) return;
   try {
     await syncCloudWorkspace();
-  } catch (error) {
-    error.value = error instanceof Error ? error.message : '业务数据同步失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '业务数据同步失败';
     return;
   }
   if (await action('server_competitor_save', { ...form, kind: props.kind }))

@@ -117,8 +117,8 @@ async function load() {
     if (!props.plan && form.kind === 'regular_new')
       form.channels = capabilities.value.channels.map((c) => c.id);
     error.value = '';
-  } catch (error) {
-    error.value = error instanceof Error ? error.message : '来源渠道读取失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '来源渠道读取失败';
   } finally {
     loading.value = false;
   }
@@ -161,8 +161,8 @@ async function submit(save: boolean) {
         query: { tab: 'tasks', job: result.jobId },
       });
     }
-  } catch (error) {
-    error.value = error instanceof Error ? error.message : '保存失败';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '保存失败';
   } finally {
     busy.value = false;
   }

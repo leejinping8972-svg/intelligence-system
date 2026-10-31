@@ -7,7 +7,6 @@ import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   Alert,
   Button,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -22,12 +21,16 @@ import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
 import { watchStatus } from '../competitor-monitor';
 import { marketName, state } from '../data';
 import { serverMode, session } from '../session';
+import MonitorConfigPanel from './MonitorConfigPanel.vue';
+
+const props = defineProps<{ embedded?: boolean }>();
+const emit = defineEmits<{ saved: [] }>();
 
 const busy = ref(false);
 const error = ref('');
 const loading = ref(false);
-const open = ref(false);
-const settings = ref(false);
+const open = ref(Boolean(props.embedded));
+const settings = ref(Boolean(props.embedded));
 const snapshot = ref<WatchSnapshot>();
 const market = ref<Market>(state.market === 'ALL' ? 'US' : state.market);
 const form = reactive({
@@ -96,7 +99,7 @@ watch(open, async (value, _old, onCleanup) => {
     loadForm();
     timer = setInterval(() => void refresh(), 15000);
   }
-});
+}, { immediate: true });
 watch(market, loadForm);
 watch(
   () => state.market,
@@ -122,6 +125,7 @@ async function action(name: string) {
     );
     await refresh();
     await syncCloudWorkspace();
+    if (name.endsWith('save')) emit('saved');
   } catch (e) {
     error.value = e instanceof Error ? e.message : '操作失败';
   } finally {
@@ -130,8 +134,10 @@ async function action(name: string) {
 }
 </script>
 <template>
-  <Button @click="open = true">Semrush 热词榜</Button>
-  <Drawer
+  <Button v-if="!embedded" @click="open = true">Semrush 热词榜</Button>
+  <MonitorConfigPanel
+    :embedded="embedded"
+    drawer
     v-model:open="open"
     title="保健品热词 TOP 100"
     width="min(440px, 100vw)"
@@ -152,7 +158,7 @@ async function action(name: string) {
     </p>
     <div class="hot-actions">
       <Button size="small" :loading="loading" @click="refresh">刷新状态</Button>
-      <Button v-if="canEdit" size="small" @click="settings = !settings">
+      <Button v-if="canEdit && !embedded" size="small" @click="settings = !settings">
         {{ settings ? '收起设置' : '每日更新设置' }}
       </Button>
     </div>
@@ -244,7 +250,7 @@ async function action(name: string) {
       v-else
       description="暂无榜单；管理员保存种子词并启用每日更新后生成"
     />
-  </Drawer>
+  </MonitorConfigPanel>
 </template>
 <style scoped>
 .hot-actions {
