@@ -66,6 +66,8 @@ export function mergeKeyword(current, incoming, importOnly = false) {
         .filter(Boolean),
     ),
   ].join(' / ');
+  if (incoming.batch && (!merged.batch || timestamp(incoming.updatedAt) >= timestamp(current.updatedAt)))
+    merged.batch = incoming.batch;
   for (const key of ['seedTerm', 'category', 'termZh'])
     if (!merged[key] && incoming[key]) merged[key] = incoming[key];
   for (const key of ['productIds', 'siteIds'])

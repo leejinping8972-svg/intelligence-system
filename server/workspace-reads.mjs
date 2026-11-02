@@ -40,7 +40,7 @@ const listKeys = {
   advertisers:
     'id pageId market name adId adIds adCount active stopped siteIds domains collectedAt dataNature',
   keywords:
-    'id term termZh market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
+    'id term termZh batch market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
     'id title titleZh publicDataEvidence brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications',
   sites:
@@ -155,6 +155,7 @@ export function projectRecord(collection, value) {
     ...(value.domains || []),
     value.term,
     value.termZh,
+    value.batch,
     value.seedTerm,
     value.title,
     collection === 'products' ? productChineseName(value) : '',
@@ -680,6 +681,18 @@ export function createWorkspaceReads({
     };
     equals('market', 'market');
     equals('category', 'category');
+    if (collection === 'keywords' && input.batch?.trim()) {
+      const batchField = sql(
+        "r.payload->>'batch'",
+        "JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.batch'))",
+      );
+      const batch = bind(
+        `%${String(input.batch).normalize('NFKC').trim().toLowerCase().slice(0, 100).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`,
+      );
+      clauses.push(
+        `LOWER(${batchField}) LIKE ${batch} ESCAPE '!'`,
+      );
+    }
     equals('ratingStatus', 'rating_status');
     equals('review', 'review_status');
     equals('platform', 'platform');

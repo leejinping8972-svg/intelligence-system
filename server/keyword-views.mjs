@@ -13,7 +13,7 @@ function option(value, options) {
 }
 function cleanFilters(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('缺少视图筛选');
-  const keys = ['market', 'search', 'category', 'rating', 'ratingStatus', 'score', 'tags', 'timeRange', 'review', 'favorite', 'sort', 'order', 'pageSize', 'period'];
+  const keys = ['market', 'search', 'batch', 'category', 'rating', 'ratingStatus', 'score', 'tags', 'timeRange', 'review', 'favorite', 'sort', 'order', 'pageSize', 'period'];
   if (Object.keys(value).some(key => !keys.includes(key))) fail('不支持的视图字段');
   const market = textValue(value.market, 3);
   if (market !== 'ALL' && !/^[A-Z]{2,3}$/.test(market)) fail('市场无效');
@@ -26,7 +26,7 @@ function cleanFilters(value) {
   if (!Array.isArray(value.tags) || value.tags.length > 30) fail('标签无效');
   if (typeof value.favorite !== 'boolean') fail('收藏筛选无效');
   return {
-    market, search: textValue(value.search, 300), category: textValue(value.category),
+    market, search: textValue(value.search, 300), batch: textValue(value.batch || '', 100), category: textValue(value.category),
     rating: option(value.rating, ['ALL', 'UNRATED', 'A', 'B', 'C', 'D']),
     ratingStatus: textValue(value.ratingStatus, 40),
     score: { min: score.min, max: score.max, status: option(score.status, ['all', 'scored', 'unscored']) },

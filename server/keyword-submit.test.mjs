@@ -89,6 +89,10 @@ test('normalization matches order, whitespace and case, but preserves market and
     researchSignature(input),
     researchSignature({ ...input, markets: ['US'] }),
   );
+  assert.notEqual(
+    researchSignature(input),
+    researchSignature({ ...input, batch: 'another batch' }),
+  );
 });
 test('concurrent deliberate submissions queue independently and release both connections', async () => {
   const f = fixture();

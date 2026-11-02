@@ -87,6 +87,7 @@ const researchError = ref('');
 const checkingSource = ref(false);
 const researchSubmitting = ref(false);
 const search = ref('');
+const batchFilter = ref('');
 const category = ref('ALL');
 const rating = ref('ALL');
 const ratingStatus = ref('ALL');
@@ -125,6 +126,7 @@ const remote = useWorkspaceList<Keyword>(
   computed(() => ({
     market: state.market,
     search: search.value,
+    batch: batchFilter.value,
     category: category.value,
     rating: rating.value,
     ratingStatus: ratingStatus.value,
@@ -140,7 +142,7 @@ const remote = useWorkspaceList<Keyword>(
 const overview = useOverviewSnapshot();
 remote.sort.value = 'score';
 const viewFilters = computed<KeywordViewFilters>(() => ({
-  market: state.market, search: search.value, category: category.value,
+  market: state.market, search: search.value, batch: batchFilter.value, category: category.value,
   rating: rating.value, ratingStatus: ratingStatus.value, score: scoreFilter.value,
   tags: tagFilter.value, timeRange: timeRange.value, review: reviewFilter.value,
   favorite: favoritesOnly.value, sort: remote.sort.value, order: remote.order.value,
@@ -149,7 +151,7 @@ const viewFilters = computed<KeywordViewFilters>(() => ({
 async function applyView(filters: KeywordViewFilters) {
   state.market = filters.market as typeof state.market;
   await nextTick();
-  search.value = filters.search; category.value = filters.category;
+  search.value = filters.search; batchFilter.value = filters.batch || ''; category.value = filters.category;
   rating.value = filters.rating; ratingStatus.value = filters.ratingStatus;
   scoreFilter.value = { ...filters.score }; tagFilter.value = [...filters.tags];
   timeRange.value = filters.timeRange; reviewFilter.value = filters.review;
@@ -165,6 +167,7 @@ const gradeColors: Record<string, string> = {
 };
 const form = reactive({
   seeds: '',
+  batch: '',
   markets: (state.market === 'ALL' ? ['US'] : [state.market]) as Market[],
   sources: ['google_autocomplete', 'amazon_autocomplete', 'semrush'],
   depth: 1,
@@ -232,7 +235,7 @@ const localRows = computed(() =>
       ? (Date.now() - Date.parse(collectedAt)) / 86_400_000
       : Infinity;
     return (
-      `${record.term} ${keywordChineseName(record)} ${record.seedTerm || ''} ${record.assessment.tags.join(
+      `${record.term} ${keywordChineseName(record)} ${record.seedTerm || ''} ${record.batch || ''} ${record.assessment.tags.join(
         ' ',
       )}`
         .toLocaleLowerCase()
@@ -251,7 +254,9 @@ const localRows = computed(() =>
         (age >= 0 && age <= Number(timeRange.value))) &&
       (reviewFilter.value === 'ALL' ||
         (record.reviewStatus || 'pending') === reviewFilter.value) &&
-      (!favoritesOnly.value || record.favorite)
+      (!favoritesOnly.value || record.favorite) &&
+      (!batchFilter.value ||
+        (record.batch || '').toLocaleLowerCase().includes(batchFilter.value.toLocaleLowerCase()))
     );
   }),
 );
@@ -309,6 +314,7 @@ const summary = computed(() =>
 watch(
   [
     search,
+    batchFilter,
     category,
     rating,
     ratingStatus,
@@ -363,6 +369,7 @@ const pagination = computed(() => ({
 }));
 const columns = [
   { title: '关键词 / 种子词', key: 'term', width: 195, fixed: 'left' as const },
+  { title: '采集批次', key: 'batch', width: 130 },
   { title: '市场 / 品类', key: 'market', width: 100 },
   { title: '研究评级', key: 'grade', width: 82 },
   {
@@ -508,6 +515,7 @@ async function createResearch() {
   const config = {
     apiUrl: state.settings.researchApiUrl,
     accessKey: state.settings.researchAccessKey,
+    ...(form.batch.trim() ? { batch: form.batch.trim() } : {}),
     seeds,
     markets: [...form.markets],
     sources: form.sources.filter(
@@ -792,6 +800,12 @@ function saveMetrics() {
           allow-clear
           aria-label="搜索关键词"
         />
+        <Input
+          v-model:value="batchFilter"
+          placeholder="检索采集批次"
+          allow-clear
+          aria-label="按采集批次检索"
+        />
         <Select
           v-model:value="category"
           aria-label="按研究品类筛选"
@@ -859,6 +873,7 @@ function saveMetrics() {
         <Button
           @click="
             search = '';
+            batchFilter = '';
             category = 'ALL';
             rating = 'ALL';
             ratingStatus = 'ALL';
@@ -1012,6 +1027,12 @@ function saveMetrics() {
             <Tag>{{ marketName(record.market) }}</Tag>
             <p class="hci-subtle">{{ record.category }}</p>
           </template>
+          <template v-else-if="column.key === 'batch'">
+            <Tooltip v-if="record.batch" :title="record.batch">
+              <span class="keyword-batch">{{ record.batch }}</span>
+            </Tooltip>
+            <span v-else class="hci-subtle">未标记</span>
+          </template>
           <template v-else-if="column.key === 'grade'">
             <Tag :color="gradeColors[record.assessment.grade] || 'default'">
               {{ record.assessment.grade || '待评级' }}
@@ -1147,6 +1168,14 @@ function saveMetrics() {
             :maxlength="4000"
             placeholder="magnesium glycinate&#10;probiotics for women"
           />
+        </Form.Item>
+        <Form.Item label="采集批次（可选）">
+          <Input
+            v-model:value="form.batch"
+            :maxlength="100"
+            placeholder="例如：2026-11-02 美国益生菌"
+          />
+          <p class="hci-subtle">同一批采集的关键词填写相同名称，提交后可在列表按批次检索。</p>
         </Form.Item>
         <Form.Item label="目标市场" required>
           <Checkbox.Group
@@ -1539,6 +1568,14 @@ function saveMetrics() {
 .keyword-term {
   text-align: left;
   overflow-wrap: anywhere;
+}
+
+.keyword-batch {
+  display: block;
+  max-width: 118px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .keyword-detail-title {

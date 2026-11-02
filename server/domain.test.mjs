@@ -100,6 +100,25 @@ test('accepts 100 keyword jobs and ignores legacy Sorftime call caps at either d
     }),
   );
 });
+test('normalizes an optional research batch into the job input and keyword record', () => {
+  const input = validateJob({
+    batch: '  2026-11-02   US probiotics  ',
+    seeds: ['magnesium'],
+    markets: ['US'],
+    sources: ['google_autocomplete'],
+    limit: 1,
+  });
+  assert.equal(input.batch, '2026-11-02 US probiotics');
+  assert.equal(
+    cleanKeyword({
+      term: 'magnesium',
+      market: 'US',
+      source: 'Google',
+      batch: '  same batch  ',
+    }).batch,
+    'same batch',
+  );
+});
 test('normalizes keyword identity and preserves real historical associations without importing demos or credentials', () => {
   const value = cleanKeyword({
     term: 'magnesium\u202Fglycinate',

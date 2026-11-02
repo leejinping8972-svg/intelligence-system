@@ -17,6 +17,7 @@ const sources = new Set([
 ]);
 export const keywordFields = new Set([
   'adCollection',
+  'batch',
   'category',
   'collectedAt',
   'dataNature',
@@ -69,6 +70,10 @@ export function cleanKeyword(value) {
   if (typeof record.termZh === 'string')
     record.termZh = normalizeTerm(record.termZh).slice(0, 255);
   else delete record.termZh;
+  if (typeof record.batch === 'string') {
+    record.batch = normalizeTerm(record.batch).slice(0, 100);
+    if (!record.batch) delete record.batch;
+  } else delete record.batch;
   if (
     !record.term ||
     record.term.length > 255 ||
@@ -96,6 +101,9 @@ export function cleanKeyword(value) {
 }
 export function validateJob(value) {
   const input = {
+    ...(typeof value.batch === 'string' && normalizeTerm(value.batch)
+      ? { batch: normalizeTerm(value.batch).slice(0, 100) }
+      : {}),
     seeds: [
       ...new Set(
         (Array.isArray(value.seeds) ? value.seeds : [])
