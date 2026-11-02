@@ -46,6 +46,16 @@ export const categories = [
   '运动营养',
 ];
 export interface Keyword {
+  adCollection?: {
+    jobId?: string;
+    status: string;
+    count?: number;
+    target?: number;
+    message?: string;
+    submittedAt?: string;
+    startedAt?: string;
+    finishedAt?: string;
+  };
   id: string;
   term: string;
   market: Market;
@@ -70,15 +80,35 @@ export interface Keyword {
   trendSourceUrl?: string;
   trendCollectedAt?: string;
   trendDailyMessage?: string;
-  trendStatus?: 'collected' | 'failed' | 'pending';
+  trendStatus?: 'collected' | 'empty' | 'failed' | 'pending';
   trendMessage?: string;
   discoveryStatus?: 'collected' | 'failed' | 'pending';
   discoveryMessage?: string;
+  siteCollection?: CollectionState;
+  semrushCollection?: CollectionState;
   favorite: boolean;
   productIds: string[];
   siteIds: string[];
   updatedAt?: string;
   dataNature?: 'collected' | 'demo' | 'imported';
+}
+export interface CollectionState {
+  jobId?: string;
+  status:
+    | 'cancelled'
+    | 'completed'
+    | 'empty'
+    | 'failed'
+    | 'partial'
+    | 'queued'
+    | 'running';
+  target?: number;
+  count?: number;
+  message?: string;
+  submittedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  apiUnits?: number;
 }
 export interface IngredientInsight {
   name: string;
@@ -113,10 +143,49 @@ export interface Product {
   evidenceUrl?: string;
   dataNature?: 'collected' | 'demo' | 'imported';
 }
+export interface SiteAssessment {
+  version: string;
+  score: number | null;
+  coverage: number;
+  status: string;
+  grade: string;
+  assessedAt: string;
+  dimensions: {
+    key: string;
+    label: string;
+    weight: number;
+    value: number | null;
+    evidence: string;
+  }[];
+}
 export interface Site {
+  productCollection?: CollectionState;
   id: string;
   brand: string;
   domain: string;
+  sources?: string[];
+  sourceEvidence?: {
+    source: string;
+    url?: string;
+    landingUrl?: string;
+    keyword?: string;
+    adId?: string;
+    collectedAt?: string;
+  }[];
+  assessment?: SiteAssessment;
+  metrics?: {
+    source: string;
+    market: Market;
+    collectedAt: string;
+    domain: string;
+    organicTraffic?: number;
+    organicKeywords?: number;
+    paidTraffic?: number;
+    paidKeywords?: number;
+  };
+  metricsStatus?: string;
+  metricsMessage?: string;
+  keywordIds?: string[];
   market: Market;
   platform: string;
   type: string;
@@ -135,6 +204,24 @@ export interface Site {
   dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Ad {
+  archiveId?: string;
+  pageId?: string;
+  keywordIds?: string[];
+  query?: string;
+  siteIds?: string[];
+  landingUrls?: string[];
+  imageUrls?: string[];
+  videoUrls?: string[];
+  videoPosterUrls?: string[];
+  lastCollectedAt?: string;
+  startDate?: string;
+  source?: string;
+  verification?: {
+    url: string;
+    status: string;
+    reason?: string;
+    siteId?: string;
+  }[];
   id: string;
   brand: string;
   market: Market;
@@ -160,7 +247,64 @@ export interface Review {
   reason: string;
 }
 export interface Task {
+  researchProgress?: {
+    transcriptSummary?: {
+      collected: number;
+      unavailable: number;
+      limited: number;
+      failed: number;
+      notVideo: number;
+      skipped: number;
+    };
+    waiting?: number;
+    previousRequests?: number;
+    nextRunAt?: string;
+    rows?: Array<{
+      id: string;
+      brand: string;
+      domain: string;
+      status: string;
+      lastHttpStatus?: number;
+      errorKind?: string;
+      requests: number;
+      products: number;
+      nextRunAt: string;
+      message: string;
+    }>;
+    requestLog?: Array<{
+      url: string;
+      at: string;
+      status: string;
+      httpStatus?: number;
+      products?: number;
+      message?: string;
+    }>;
+    kind: string;
+    done: number;
+    total: number;
+    evidence: number;
+    products: number;
+    requests: number;
+    requestLimit: number;
+    credits?: number;
+    unknownCharges: number;
+    reportId: string;
+  };
+  collectionProgress?: {
+    kind?: string;
+    semrushUnits?: number;
+    done: number;
+    total: number;
+    current: string;
+    ads: number;
+    sites: number;
+    requests: number;
+    requestLimit: number;
+    credits?: number;
+    unknownCharges: number;
+  };
   id: string;
+  cloudJobId?: string;
   title: string;
   market: Market;
   mode?: 'demo' | 'live';
@@ -174,6 +318,56 @@ export interface Task {
     | 'running';
   created: string;
   steps: string[];
+  progress?: {
+    asyncRetries?: boolean;
+    succeeded?: number;
+    retryPending?: number;
+    notStarted?: number;
+    needsAttention?: number;
+    retryLimit?: number;
+    phase: string;
+    metricProcessed?: number;
+    semrushUnits?: number;
+    semrushEnabled?: boolean;
+    percent: number;
+    terminal: boolean;
+    target: number;
+    discovered: number;
+    discoveryDone: number;
+    discoveryTotal: number;
+    processed: number;
+    total: number;
+    annualAvailable: number;
+    dailyAvailable: number;
+    failed: number;
+    limited: number;
+    noSignal: number;
+    rated: number;
+    shortfall: number;
+    nextRunAt: string;
+    waitReason: string;
+    retryAttempt: number;
+    currentTerm: string;
+    startedAt: string;
+    finishedAt: string;
+    updatedAt: string;
+    rows: Array<{
+      id: string;
+      term: string;
+      market: Market;
+      annualPoints: number;
+      dailyPoints: number;
+      growth: null | number;
+      assessment: string;
+      status: string;
+      message: string;
+      failed: boolean;
+      nextRetryAt?: string;
+      retryAttempts?: number;
+      annualStatus?: string;
+      dailyStatus?: string;
+    }>;
+  };
 }
 export interface Monitor {
   id: string;
@@ -209,7 +403,7 @@ export const defaultBranding: BrandingSettings = {
   workspaceName: '知衡工作区',
   businessName: '大健康跨境市场情报',
   environmentLabel: '前台演示',
-  logo: '/hci-logo.svg',
+  logo: `${import.meta.env.BASE_URL}hci-logo.svg`,
 };
 export interface DemoState {
   version: number;
@@ -486,6 +680,38 @@ function restore(): DemoState {
   return initial();
 }
 export const state = reactive<DemoState>(normalizeGrowth(restore()));
+const bootBranding = (
+  globalThis as typeof globalThis & {
+    __hciBranding?: Pick<BrandingSettings, 'appName' | 'logo'>;
+  }
+).__hciBranding;
+if (bootBranding) Object.assign(state.branding, bootBranding);
+watch(
+  () => [state.branding.appName, state.branding.logo],
+  () => {
+    try {
+      localStorage.setItem(
+        'intelligence-public-branding-v1',
+        JSON.stringify({
+          appName: state.branding.appName,
+          logo: state.branding.logo,
+        }),
+      );
+    } catch {
+      /* Storage can be disabled. */
+    }
+  },
+);
+if (
+  import.meta.env.VITE_HCI_SERVER === 'true' ||
+  globalThis.location?.hostname === '43.172.66.45'
+) {
+  state.settings.researchApiUrl = `${globalThis.location.origin}/api`;
+  if (state.branding.environmentLabel === '前台演示')
+    state.branding.environmentLabel = '服务器版';
+  if (import.meta.env.VITE_HCI_SERVER === 'true')
+    state.settings.researchAccessKey = 'session';
+}
 
 export function openCapturedTrend(term: string, market: string) {
   const existing = state.keywords.find(

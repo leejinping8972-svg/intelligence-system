@@ -5,7 +5,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "node --test test.mjs sorftime.test.mjs"
+    "test": "node --test test.mjs sorftime.test.mjs server-relay.test.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.45.0"

@@ -1,0 +1,138 @@
+<style data-app-loading="inject-css">
+  .loading {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    background: #f4f7f9;
+    transition:
+      opacity 0.2s,
+      visibility 0.2s;
+  }
+  .loading.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .dark .loading {
+    background: #0d0d10;
+    color: #fff;
+  }
+  .loading-brand-mark {
+    width: 64px;
+    height: 64px;
+    display: grid;
+    place-items: center;
+  }
+  .loading-brand-mark img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .loading-brand-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #40897930;
+    border-top-color: #408979;
+    border-radius: 50%;
+    animation: brand-spin 1s linear infinite;
+  }
+  .loading-brand-title {
+    margin: 0;
+    color: #262626;
+    font:
+      600 28px/1.4 system-ui,
+      sans-serif;
+    text-align: center;
+    padding: 0 24px;
+  }
+  .dark .loading-brand-title {
+    color: #fff;
+  }
+  @keyframes brand-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .loading-brand-spinner {
+      animation: none;
+    }
+  }
+</style>
+<div
+  class="loading"
+  id="__app-loading__"
+  role="status"
+  aria-label="正在加载系统"
+>
+  <div class="loading-brand-mark">
+    <div class="loading-brand-spinner" id="loading-brand-spinner"></div>
+    <img id="loading-brand-logo" hidden alt="系统 Logo" />
+  </div>
+  <p class="loading-brand-title" id="loading-brand-title" hidden></p>
+</div>
+<script data-app-loading="inject-js">
+  (function () {
+    var cacheKey = 'intelligence-public-branding-v1';
+    function apply(value) {
+      if (!value || typeof value.appName !== 'string' || !value.appName.trim())
+        return;
+      var name = value.appName.trim().slice(0, 80);
+      var title = document.getElementById('loading-brand-title');
+      if (title) {
+        title.textContent = name;
+        title.hidden = false;
+      }
+      document.title = name;
+      var logo = typeof value.logo === 'string' ? value.logo : '';
+      var valid =
+        /^data:image\/(png|jpeg|webp);base64,[a-z\d+/=]+$/i.test(logo) ||
+        /^https:\/\//i.test(logo) ||
+        /^\/(?!\/)/.test(logo);
+      var image = document.getElementById('loading-brand-logo');
+      var spinner = document.getElementById('loading-brand-spinner');
+      if (image && valid) {
+        image.onload = function () {
+          image.hidden = false;
+          if (spinner) spinner.hidden = true;
+        };
+        image.onerror = function () {
+          image.hidden = true;
+          if (spinner) spinner.hidden = false;
+        };
+        image.src = logo;
+      }
+      window.__hciBranding = {
+        appName: name,
+        logo: valid ? logo : '%BASE_URL%hci-logo.svg',
+      };
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(window.__hciBranding));
+      } catch (_) {}
+    }
+    try {
+      apply(JSON.parse(localStorage.getItem(cacheKey) || 'null'));
+    } catch (_) {}
+    window.__hciBrandingReady =
+      '%VITE_HCI_SERVER%' === 'true'
+        ? fetch('/api', {
+            method: 'POST',
+            credentials: 'omit',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'public_branding' }),
+            signal: AbortSignal.timeout(3000),
+          })
+            .then(function (response) {
+              if (!response.ok) throw new Error('branding unavailable');
+              return response.json();
+            })
+            .then(apply)
+            .catch(function () {})
+        : Promise.resolve();
+  })();
+</script>

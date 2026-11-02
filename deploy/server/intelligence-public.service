@@ -1,0 +1,9 @@
+[Unit]
+Description=Intelligence zero-cost public source collection
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/intelligence-system/collect-public.sh
+TimeoutStartSec=1200

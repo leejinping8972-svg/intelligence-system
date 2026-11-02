@@ -9,6 +9,9 @@ import {
   Input,
   message,
   Modal,
+  Pagination,
+  Segmented,
+  Table,
   Select,
   Tag,
 } from 'ant-design-vue';
@@ -16,6 +19,7 @@ import {
 import PageHeader from './components/PageHeader.vue';
 import ProductArt from './components/ProductArt.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import type { Product } from './data';
 import {
   categories,
   exportCsv,
@@ -28,6 +32,10 @@ import {
 const route = useRoute();
 const router = useRouter();
 const search = ref('');
+const viewMode = ref<'cards' | 'list'>('cards');
+const page = ref(1),
+  pageSize = ref(20);
+const failedImages = ref(new Set<string>());
 const category = ref('ALL');
 const favorites = ref(false);
 const benefitFilter = ref('ALL');
@@ -141,6 +149,44 @@ const rows = computed(() =>
       (!linkedKeyword.value || linkedKeyword.value.productIds.includes(p.id)),
   ),
 );
+const pagedRows = computed(() =>
+  rows.value.slice(
+    (page.value - 1) * pageSize.value,
+    page.value * pageSize.value,
+  ),
+);
+watch(
+  [
+    search,
+    category,
+    favorites,
+    benefitFilter,
+    ingredientFilter,
+    siteFilter,
+    keywordFilter,
+    () => state.market,
+    () => route.query.keyword,
+  ],
+  () => {
+    page.value = 1;
+  },
+);
+watch(
+  () => rows.value.length,
+  (n) => {
+    page.value = Math.min(
+      page.value,
+      Math.max(1, Math.ceil(n / pageSize.value)),
+    );
+  },
+);
+function changePage(current: number, size: number) {
+  pageSize.value = size;
+  page.value = Math.min(
+    current,
+    Math.max(1, Math.ceil(rows.value.length / size)),
+  );
+}
 const comparison = computed(() =>
   state.products.filter((p) => compareIds.value.includes(p.id)),
 );
@@ -188,8 +234,8 @@ function toggleCompare(id: string) {
           )
         "
       >
-        导出商品
-</Button><Button
+        导出商品 </Button
+      ><Button
         type="primary"
         :disabled="comparison.length < 2"
         @click="compareOpen = true"
@@ -242,14 +288,30 @@ function toggleCompare(id: string) {
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
-        /><Checkbox v-model:checked="favorites">仅看收藏</Checkbox><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个商品 · 关联
-          {{ new Set(rows.map((p) => p.siteId)).size }} 家独立站</span>
+        /><Checkbox v-model:checked="favorites">仅看收藏</Checkbox
+        ><span class="hci-toolbar-end hci-subtle"
+          >{{ rows.length }} 个商品 · 关联
+          {{ new Set(rows.map((p) => p.siteId)).size }} 家独立站</span
+        >
       </div>
     </section>
     <Empty v-if="!rows.length" description="没有符合条件的商品，请调整筛选" />
-    <div class="hci-product-grid">
+    <div class="hci-toolbar product-view-toolbar">
+      <Segmented
+        v-model:value="viewMode"
+        aria-label="商品展示方式"
+        :options="[
+          { label: '卡片视图', value: 'cards' },
+          { label: '列表视图', value: 'list' },
+        ]"
+      />
+      <span class="hci-subtle"
+        >{{ rows.length }} 个商品 · 当前第 {{ page }} 页</span
+      >
+    </div>
+    <div v-if="viewMode === 'cards'" class="hci-product-grid">
       <article
-        v-for="product in rows"
+        v-for="product in pagedRows"
         :key="product.id"
         class="hci-product-card"
       >
@@ -280,7 +342,8 @@ function toggleCompare(id: string) {
           </button>
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
           <div class="hci-product-meta">
-            <Tag>{{ product.category }}</Tag><Tag :color="product.reviewed ? 'green' : 'orange'">
+            <Tag>{{ product.category }}</Tag
+            ><Tag :color="product.reviewed ? 'green' : 'orange'">
               {{
                 product.reviewed
                   ? '已核验示例'
@@ -304,7 +367,9 @@ function toggleCompare(id: string) {
                 >
                   {{ benefit }}
                 </Tag>
-                <span v-if="!product.benefits.length" class="hci-subtle">待提取</span>
+                <span v-if="!product.benefits.length" class="hci-subtle"
+                  >待提取</span
+                >
               </div>
             </div>
             <div>
@@ -332,7 +397,8 @@ function toggleCompare(id: string) {
               product.price > 0
                 ? money(product.price, product.currency)
                 : '价格待获取'
-            }}</span><button
+            }}</span
+            ><button
               class="hci-favorite"
               :class="[{ active: product.favorite }]"
               :aria-label="`${product.favorite ? '取消收藏' : '收藏'}${product.title}`"
@@ -352,8 +418,112 @@ function toggleCompare(id: string) {
         </div>
       </article>
     </div>
+    <Table
+      v-else
+      :data-source="pagedRows"
+      row-key="id"
+      size="middle"
+      :pagination="false"
+      :scroll="{ x: 1400 }"
+      :columns="[
+        { title: '商品', key: 'product', width: 320, fixed: 'left' },
+        { title: '市场 / 品类', key: 'category', width: 150 },
+        { title: '规格 / 剂型', key: 'spec', width: 170 },
+        { title: '配方与成分', key: 'ingredient', width: 240 },
+        { title: '价格', key: 'price', width: 130 },
+        { title: '独立站 / 采集字段', key: 'source', width: 190 },
+        { title: '操作', key: 'actions', width: 210, fixed: 'right' },
+      ]"
+    >
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'product'"
+          ><div class="product-list-name">
+            <button
+              class="product-list-thumb"
+              :aria-label="`查看${record.title}`"
+              @click="selected = record.id"
+            >
+              <img
+                v-if="record.imageUrl && !failedImages.has(record.id)"
+                :src="record.imageUrl"
+                :alt="record.title"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                @error="failedImages.add(record.id)"
+              /><span v-else>暂无图片</span>
+            </button>
+            <div>
+              <Button
+                type="link"
+                class="product-name-link"
+                @click="selected = record.id"
+                >{{ record.title }}</Button
+              >
+              <p class="hci-subtle">{{ record.brand }}</p>
+            </div>
+          </div></template
+        >
+        <template v-else-if="column.key === 'category'"
+          >{{ marketName(record.market) }}
+          <p>
+            <Tag>{{ record.category }}</Tag>
+          </p></template
+        >
+        <template v-else-if="column.key === 'spec'"
+          >{{ record.size }}
+          <p class="hci-subtle">{{ record.form }}</p></template
+        >
+        <template v-else-if="column.key === 'ingredient'"
+          ><p class="product-list-ingredient">{{ record.ingredient }}</p>
+          <Tag :color="record.reviewed ? 'green' : 'orange'">{{
+            record.reviewed ? '已核验' : '待审核'
+          }}</Tag></template
+        >
+        <template v-else-if="column.key === 'price'">{{
+          record.price > 0 ? money(record.price, record.currency) : '价格待获取'
+        }}</template>
+        <template v-else-if="column.key === 'source'"
+          ><Button
+            type="link"
+            @click="
+              router.push({ path: '/sites', query: { site: record.siteId } })
+            "
+            >{{
+              state.sites.find((s) => s.id === record.siteId)?.domain ||
+              '未关联站点'
+            }}</Button
+          >
+          <p class="hci-subtle">
+            已采集 {{ record.collectionFields?.length || 0 }}/7 项
+          </p></template
+        >
+        <template v-else-if="column.key === 'actions'"
+          ><Button size="small" @click="selected = record.id">详情</Button
+          ><Button type="link" @click="toggleFavorite(record as Product)">{{
+            record.favorite ? '取消收藏' : '收藏'
+          }}</Button
+          ><Checkbox
+            :checked="compareIds.includes(record.id)"
+            @change="toggleCompare(record.id)"
+            >对比</Checkbox
+          ></template
+        >
+      </template>
+    </Table>
+    <div v-if="rows.length" class="product-pagination">
+      <Pagination
+        :current="page"
+        :page-size="pageSize"
+        :total="rows.length"
+        show-size-changer
+        :page-size-options="['10', '20', '50', '100']"
+        :show-total="(total) => `共 ${total} 个商品`"
+        @change="changePage"
+      />
+    </div>
     <div class="hci-demo-footer">
-      <span>原币种价格 · 不同包装与币种不直接排名</span><span>官网实采记录保留证据网址，演示记录继续标注为样本</span>
+      <span>原币种价格 · 不同包装与币种不直接排名</span
+      ><span>官网实采记录保留证据网址，演示记录继续标注为样本</span>
     </div>
     <ProductDrawer :id="selected" @close="selected = undefined" /><Modal
       v-model:open="compareOpen"
@@ -381,3 +551,49 @@ function toggleCompare(id: string) {
     </Modal>
   </main>
 </template>
+
+<style scoped>
+.product-view-toolbar {
+  justify-content: space-between;
+  margin: 12px 0;
+}
+.product-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin: 20px 0;
+}
+.product-list-name {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+.product-list-thumb {
+  width: 66px;
+  height: 66px;
+  background: #f5f7fb;
+  flex-shrink: 0;
+  border-radius: 5px;
+  overflow: hidden;
+  font-size: 11px;
+  color: #7b8794;
+}
+.product-list-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.product-name-link {
+  white-space: normal;
+  text-align: left;
+  height: auto;
+  padding: 0;
+}
+.product-list-ingredient {
+  max-width: 240px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+</style>

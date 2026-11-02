@@ -39,7 +39,10 @@ const coreRoutes: RouteRecordRaw[] = [
     children: [],
   },
   {
-    component: AuthPageLayout,
+    component:
+      import.meta.env.VITE_HCI_SERVER === 'true'
+        ? () => import('#/views/intelligence/admin-layout.vue')
+        : AuthPageLayout,
     meta: {
       hideInTab: true,
       title: 'Authentication',
@@ -51,7 +54,10 @@ const coreRoutes: RouteRecordRaw[] = [
       {
         name: 'Login',
         path: 'login',
-        component: () => import('#/views/_core/authentication/login.vue'),
+        component:
+          import.meta.env.VITE_HCI_SERVER === 'true'
+            ? () => import('#/views/intelligence/admin-login.vue')
+            : () => import('#/views/_core/authentication/login.vue'),
         meta: {
           title: $t('page.auth.login'),
         },

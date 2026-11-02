@@ -10,17 +10,16 @@
  */
 @layer properties, theme, base, ant, antd, el, td, components, utilities;
 
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import 'tw-animate-css';
 
 @plugin '@tailwindcss/typography';
 @plugin '@iconify/tailwind4';
 
-/* Monorepo source detection: scan all packages and apps for utility classes */
+/* This deployment builds web-antd and the shared workspace components only. */
 @source '../../../packages/';
-@source '../../../apps/';
-@source '../../../docs/';
-@source '../../../playground/';
+@source '../../../apps/web-antd/src/';
+@source '../../../apps/web-antd/index.html';
 
 /* Dark mode uses .dark class selector, not prefers-color-scheme */
 @custom-variant dark (&:is(.dark *));

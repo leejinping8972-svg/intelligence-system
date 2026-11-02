@@ -7,6 +7,11 @@ import { startProgress, stopProgress } from '@vben/utils';
 
 import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
+import {
+  refreshSession,
+  serverMode,
+  session,
+} from '#/views/intelligence/session';
 
 import { generateAccess } from './access';
 
@@ -45,17 +50,50 @@ function setupCommonGuard(router: Router) {
  * @param router
  */
 function setupAccessGuard(router: Router) {
+  let serverAccessInitialized = false;
   router.beforeEach(async (to, from) => {
     const accessStore = useAccessStore();
     const userStore = useUserStore();
     const authStore = useAuthStore();
 
     // Explicit frontend demo mode; never a substitute for server authorization.
-    if (import.meta.env.VITE_HCI_DEMO === 'true') {
+    if (serverMode) {
+      try {
+        if (!session.checked) await refreshSession();
+      } catch {
+        if (to.path !== LOGIN_PATH) return { path: LOGIN_PATH, replace: true };
+        return true;
+      }
+      if (!session.user) {
+        accessStore.setAccessToken('');
+        return to.path === LOGIN_PATH
+          ? true
+          : { path: LOGIN_PATH, replace: true };
+      }
+      accessStore.setAccessToken('server-cookie-session');
+      if (!serverAccessInitialized) {
+        accessStore.setIsAccessChecked(false);
+        serverAccessInitialized = true;
+      }
+      userStore.setUserInfo({
+        userId: session.user.id,
+        username: session.user.username,
+        realName: session.user.displayName,
+        avatar: `${import.meta.env.BASE_URL}hci-logo.svg`,
+        roles: [session.user.role === 'admin' ? 'super' : 'researcher'],
+        homePath: '/overview',
+      });
+      if (to.path.startsWith('/auth'))
+        return { path: '/overview', replace: true };
+    } else if (import.meta.env.VITE_HCI_DEMO === 'true') {
       accessStore.setAccessToken('hci-local-demo');
       userStore.setUserInfo({
-        userId: 'demo', username: 'demo', realName: '体验工作区',
-        avatar: '/hci-logo.svg', roles: ['super'], homePath: '/overview',
+        userId: 'demo',
+        username: 'demo',
+        realName: '体验工作区',
+        avatar: '/hci-logo.svg',
+        roles: ['super'],
+        homePath: '/overview',
       });
     }
 

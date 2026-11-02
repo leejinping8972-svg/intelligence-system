@@ -1,5 +1,6 @@
 import trendSnapshots from '../data/trends-snapshots.json' with { type: 'json' };
 import { readSorftimeToken, saveSorftimeToken } from './provider-config.js';
+import { SERVER_ACTIONS, serverRelay } from './server-relay.js';
 import { sorftimeStatus, sorftimeSuggestions } from './sorftime.js';
 
 const MARKET_OPTIONS = {
@@ -1249,10 +1250,21 @@ async function fetchGoogleTrendsEndpoint(url, market, cookie) {
     });
     if (response.ok) return response;
     lastStatus = response.status;
+    // Do not hammer a throttled provider. The durable server queue handles cooldowns.
+    if (response.status === 429) return response;
     if (response.status !== 429 && response.status < 500) return response;
     await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
   }
   return new Response('', { status: lastStatus || 503 });
+}
+
+export function googleTrendsHttpError(response, endpoint) {
+  const error = new Error(`Google Trends${endpoint}接口返回HTTP ${response.status}`);
+  error.status = response.status;
+  const retry = response.headers.get('retry-after');
+  const seconds = Number(retry);
+  error.retryAfterSeconds = retry ? (Number.isFinite(seconds) ? Math.max(0, seconds) : Math.max(0, (Date.parse(retry) - Date.now()) / 1000) || 0) : 0;
+  return error;
 }
 
 export async function fetchGoogleTrendsBatch(
@@ -1267,7 +1279,7 @@ export async function fetchGoogleTrendsBatch(
     cookie,
   );
   if (!exploreResponse.ok)
-    throw new Error(`Google Trends探索接口返回HTTP ${exploreResponse.status}`);
+    throw googleTrendsHttpError(exploreResponse, '探索');
   const explore = parseGoogleTrendsPayload(await exploreResponse.text());
   const widget = (explore.widgets || []).find(
     (item) => item.id === 'TIMESERIES',
@@ -1288,9 +1300,7 @@ export async function fetchGoogleTrendsBatch(
     cookie,
   );
   if (!timelineResponse.ok)
-    throw new Error(
-      `Google Trends时间序列接口返回HTTP ${timelineResponse.status}`,
-    );
+    throw googleTrendsHttpError(timelineResponse, '时间序列');
   const timeline = parseGoogleTrendsPayload(await timelineResponse.text());
   const timelineData = timeline.default?.timelineData || [];
   return keywords.map((keyword, keywordIndex) => {
@@ -1342,11 +1352,15 @@ export async function collectGoogleTrendsBatch(keywords, market) {
   for (const keyword of keywords) {
     let annual;
     let annualError = '';
+    let rateLimited = false;
+    let retryAfterSeconds = 0;
     try {
       [annual] = await fetchGoogleTrendsBatch([keyword], market);
     } catch (error) {
       annualError =
         error instanceof Error ? error.message : 'Google Trends采集失败';
+      rateLimited = error?.status === 429;
+      retryAfterSeconds = error?.retryAfterSeconds || 0;
     }
     if (!annual?.series.length) {
       const snapshot = trendSnapshots.find(
@@ -1382,6 +1396,8 @@ export async function collectGoogleTrendsBatch(keywords, market) {
         source: 'Google Trends',
         sourceUrl: trendSourceUrl(keyword, market),
         status: 'error',
+        rateLimited,
+        retryAfterSeconds,
       });
       continue;
     }
@@ -1406,6 +1422,8 @@ export async function collectGoogleTrendsBatch(keywords, market) {
       annual.dailyMessage = `一年曲线已保存；28天日数据查询失败：${
         error instanceof Error ? error.message : '接口异常'
       }`;
+      annual.rateLimited = error?.status === 429;
+      annual.retryAfterSeconds = error?.retryAfterSeconds || 0;
     }
     results.push(annual);
   }
@@ -1524,7 +1542,7 @@ async function runResearch(input, env) {
   const sorftimeBudget = {
     remaining: Math.max(
       0,
-      Math.min(6, Math.floor(Number(input.sorftimeRequestLimit) || 0)),
+      Math.min(100, Math.floor(Number(input.sorftimeRequestLimit) || 0)),
     ),
     used: 0,
   };
@@ -1611,6 +1629,9 @@ async function runResearch(input, env) {
 export default {
   async fetch(request, env) {
     const originState = allowedOrigin(request, env);
+    const internal =
+      Boolean(env.SERVER_BRIDGE_KEY) &&
+      request.headers.get('x-server-key') === env.SERVER_BRIDGE_KEY;
     if (request.method === 'OPTIONS') {
       if (!originState.allowed)
         return json({ error: '来源未授权' }, 403, 'null');
@@ -1622,7 +1643,7 @@ export default {
         405,
         originState.origin || 'null',
       );
-    if (!originState.allowed)
+    if (!originState.allowed && !internal)
       return json({ error: '来源未授权' }, 403, originState.origin || 'null');
     if (!env.RESEARCH_ACCESS_KEY)
       return json(
@@ -1630,10 +1651,27 @@ export default {
         503,
         originState.origin,
       );
-    if (request.headers.get('x-research-key') !== env.RESEARCH_ACCESS_KEY)
+    if (
+      !internal &&
+      request.headers.get('x-research-key') !== env.RESEARCH_ACCESS_KEY
+    )
       return json({ error: '研究访问码无效' }, 401, originState.origin);
     try {
       const input = await request.json();
+      if (internal && input.action === 'server_migrate_credentials') {
+        const key = await crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.SERVER_BRIDGE_KEY)), 'AES-GCM', false, ['encrypt']);
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const credentials = { RESEARCH_ACCESS_KEY: env.RESEARCH_ACCESS_KEY, BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY || '', SORFTIME_MCP_TOKEN: await readSorftimeToken(env) };
+        const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode('intelligence-server-migration-v1') }, key, new TextEncoder().encode(JSON.stringify(credentials)));
+        return json({ iv: btoa(String.fromCodePoint(...iv)), ciphertext: btoa(String.fromCodePoint(...new Uint8Array(encrypted))) }, 200, originState.origin);
+      }
+      if (internal && input.action !== 'server_collect')
+        throw new Error('服务端凭证仅允许关键词采集');
+      if (!internal && input.action === 'server_collect')
+        throw new Error('仅后台任务可执行此操作');
+      if (SERVER_ACTIONS.has(input.action))
+        return json(await serverRelay(input, env), 200, originState.origin);
+      if (input.action === 'server_collect') input.action = input.sources?.includes('site_discovery') ? 'site_research' : 'keyword_research';
       if (input.action === 'keyword_sources_config')
         return json(
           await saveSorftimeToken(input, env),

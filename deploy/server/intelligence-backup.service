@@ -1,0 +1,10 @@
+[Unit]
+Description=Intelligence system database backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/intelligence-system/backup.sh
+User=root
+UMask=0077

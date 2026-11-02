@@ -325,7 +325,19 @@ export function enrichedProductRecord(
 
 export function siteRecord(site: DiscoveredSite): Site {
   const { products: _products, ...record } = site;
-  return { ...record, dataNature: 'collected' };
+  return {
+    ...record,
+    sources: ['Brave Search'],
+    sourceEvidence: [
+      {
+        source: 'Brave Search',
+        keyword: site.keyword,
+        url: site.evidenceUrl,
+        collectedAt: site.lastCollectedAt,
+      },
+    ],
+    dataNature: 'collected',
+  };
 }
 
 export function productRecords(site: DiscoveredSite): Product[] {

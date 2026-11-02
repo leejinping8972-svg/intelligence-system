@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PublicSignal } from './public-sources';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 import {
   Alert,
@@ -16,6 +16,7 @@ import {
 
 import Chart from './components/Chart.vue';
 import PageHeader from './components/PageHeader.vue';
+import { serverMode } from './session';
 import { csvValue, download, marketOptions, state } from './data';
 import {
   kindMeta,
@@ -32,6 +33,15 @@ const sourceFilter = ref('ALL');
 const kindFilter = ref('ALL');
 const search = ref('');
 const selected = ref<PublicSignal>();
+const page = ref(1);
+const pageSize = ref(10);
+watch([search, sourceFilter, kindFilter, () => state.market], () => {
+  page.value = 1;
+});
+function changePage(nextPage: number, size: number) {
+  page.value = size === pageSize.value ? nextPage : 1;
+  pageSize.value = size;
+}
 
 const runs = computed(() => data.value?.sourceRuns || []);
 const sourceOptions = computed(() => [
@@ -254,7 +264,19 @@ function selectSignal(record: Record<string, any>) {
           <div>
             <h3>{{ sourceMeta[run.source]?.label || run.source }}</h3>
             <p>{{ sourceMeta[run.source]?.purpose }}</p>
-            <small>{{ run.note }}</small>
+            <small>{{
+              serverMode &&
+              run.source === 'YOUTUBE' &&
+              run.status === 'needs_key'
+                ? '本次采集尚未使用 YouTube Key；配置或更新后，由下一轮采集刷新状态'
+                : run.note
+            }}</small>
+            <RouterLink
+              v-if="serverMode && run.source === 'YOUTUBE'"
+              class="hci-link"
+              :to="{ path: '/settings', hash: '#youtube-provider' }"
+              >配置 YouTube Key</RouterLink
+            >
           </div>
           <div class="hci-free-source-state">
             <Tag :color="sourceStatus(run).color">{{
@@ -305,7 +327,14 @@ function selectSignal(record: Record<string, any>) {
         :data-source="signals"
         :row-key="(record: PublicSignal) => record.id"
         :scroll="{ x: 1080 }"
-        :pagination="{ pageSize: 10, showSizeChanger: false }"
+        :pagination="{
+          current: page,
+          pageSize,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100'],
+          showTotal: (total: number) => `共 ${total} 条`,
+          onChange: changePage,
+        }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'signal'">

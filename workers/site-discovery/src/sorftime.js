@@ -318,18 +318,25 @@ export async function sorftimeSuggestions(
             : {}),
         },
       });
-      for (const item of parseSorftimeKeywords(response, limit))
-        items.set(item.term.toLocaleLowerCase(), item);
+      for (const item of parseSorftimeKeywords(response, limit + 1)) {
+        const key = item.term.toLocaleLowerCase();
+        if (key === keyword.normalize('NFKC').toLocaleLowerCase()) continue;
+        items.set(key, item);
+        if (items.size >= limit) break;
+      }
     };
     await query(keyword);
     if (depth === 2) {
-      for (const item of [...items.values()].slice(0, 5)) {
+      for (const item of [...items.values()]) {
         if (items.size >= limit || budget.remaining <= 0) break;
+        if (item.term.toLocaleLowerCase() === keyword.normalize('NFKC').toLocaleLowerCase()) continue;
         await query(item.term);
       }
     }
     if (budget.remaining <= 0 && items.size < limit)
       message = '已达到本任务 Sorftime 调用上限，保留已获取关键词';
+    else if (items.size > 0 && items.size < limit)
+      message = `${depth === 2 ? '已完成二级扩词并遍历首轮返回词' : '已完成一级扩词'}；本来源去重后返回${items.size}个词，低于本组目标${limit}个，未继续更深层扩词`;
     return {
       source: SOURCE,
       items: [...items.values()].slice(0, limit),
