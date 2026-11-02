@@ -7,6 +7,12 @@ import { engine, pool, sql } from './database.mjs';
 import { createKeywordSaver } from './keyword-store.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
+import {
+  requestFailed,
+  requestStarted,
+  requestSucceeded,
+  safeRequestUrl,
+} from './request-log.mjs';
 
 export { pool } from './database.mjs';
 
@@ -103,11 +109,23 @@ export async function collect(job, step, request) {
       // will remain unattributed rather than being assigned to a guessed key.
     }
   }
+  const requestState = requestStarted(
+    {
+      method: 'POST',
+      url: process.env.COLLECTOR_URL || '',
+      sourceId: request.sources?.[0] || request.provider || 'collector',
+      requestId: `${job.id}:${step}`,
+    },
+    new Date().toISOString(),
+  );
   const requestUsage = {
-    startedAt: new Date().toISOString(),
+    ...requestState,
     sources: request.sources || [],
     provider: request.provider || null,
     operation: request.op || null,
+    ...(process.env.COLLECTOR_URL
+      ? safeRequestUrl(process.env.COLLECTOR_URL)
+      : {}),
   };
   await pool.query(
     "INSERT INTO research_requests(job_id,step,paid_allowance,status,response) VALUES($1,$2,$3,'started',$4)",
@@ -198,12 +216,23 @@ export async function collect(job, step, request) {
                             ? 'site_research'
                             : 'keyword_research',
                         });
+    const completedUsage = requestSucceeded(requestState, response);
     const result = await response.json();
-    if (!response.ok)
-      throw new Error(result.error || `采集服务HTTP ${response.status}`);
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(result.error || `采集服务HTTP ${response.status}`),
+        {
+          status: response.status,
+          retryAfterSeconds: completedUsage.retryAfterSeconds,
+        },
+      );
+    }
     const persistedResult = {
       ...result,
-      requestUsage,
+      requestUsage: {
+        ...requestUsage,
+        ...completedUsage,
+      },
       ...(result.semrushKeyId || semrushKeyId
         ? { semrushKeyId: result.semrushKeyId || semrushKeyId }
         : {}),
@@ -216,9 +245,13 @@ export async function collect(job, step, request) {
       persistedResult;
     return publicResult;
   } catch (error) {
+    const failedUsage = {
+      ...requestUsage,
+      ...requestFailed(requestState, error),
+    };
     await pool.query(
-      "UPDATE research_requests SET status='failed',error=$3 WHERE job_id=$1 AND step=$2",
-      [job.id, step, String(error.message).slice(0, 1000)],
+      "UPDATE research_requests SET status='failed',error=$3,response=$4 WHERE job_id=$1 AND step=$2",
+      [job.id, step, String(error.message).slice(0, 1000), { requestUsage: failedUsage }],
     );
     throw error;
   }

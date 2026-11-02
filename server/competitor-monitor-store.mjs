@@ -31,6 +31,7 @@ import { tickKeywordTrends } from './keyword-trends-store.mjs';
 import { publicRecoveryPlan } from './monitor-public-recovery.mjs';
 import { withQueueConfig } from './queue-config-lock.mjs';
 import { parallelItems } from './source-scheduler.mjs';
+import { requestFailed, requestStarted, requestSucceeded } from './request-log.mjs';
 import { saveKeyword } from './store.mjs';
 
 import { westmonthChannelKey } from './westmonth-market.mjs';
@@ -459,27 +460,43 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
         return response;
       }
       if (journal) throw new Error('该请求已尝试但结果未确认，本日不重复调用');
-      await db.write(name, { status: 'started', at, step });
+      const requestUsage = requestStarted(
+        { requestId: name, method: 'GET', lane: 'competitor-monitor' },
+        new Date().toISOString(),
+      );
+      await db.write(name, {
+        status: 'started',
+        at,
+        step,
+        response: { requestUsage },
+      });
       try {
         const response = await call();
+        const completedUsage = requestSucceeded(requestUsage, response);
         const { semrushKeyId, ...publicResponse } = response || {};
         await db.write(name, {
           status: 'completed',
           at,
           step,
           response: semrushKeyId
-            ? { ...publicResponse, semrushKeyId }
-            : publicResponse,
+            ? { ...publicResponse, semrushKeyId, requestUsage: completedUsage }
+            : { ...publicResponse, requestUsage: completedUsage },
         });
         return publicResponse;
       } catch (error) {
+        const failedUsage = requestFailed(requestUsage, error);
         await db.write(name, {
           status: 'failed',
           at,
           step,
           ...(error.semrushKeyId
-            ? { response: { semrushKeyId: error.semrushKeyId } }
-            : {}),
+            ? {
+                response: {
+                  semrushKeyId: error.semrushKeyId,
+                  requestUsage: failedUsage,
+                },
+              }
+            : { response: { requestUsage: failedUsage } }),
           error: error.message,
           httpStatus: error.status || null,
           retryAfterSeconds: error.retryAfterSeconds || 0,

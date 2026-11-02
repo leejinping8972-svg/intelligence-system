@@ -121,6 +121,7 @@ export async function fetchPublicPage(
               res.resume();
               resolve({
                 redirect: new URL(res.headers.location, u).toString(),
+                statusCode: res.statusCode,
               });
               return;
             }
@@ -165,6 +166,7 @@ export async function fetchPublicPage(
                 html: Buffer.concat(chunks).toString('utf8'),
                 url: u.toString(),
                 contentType: String(res.headers['content-type'] || ''),
+                statusCode: res.statusCode,
               }),
             );
             res.on('error', reject);

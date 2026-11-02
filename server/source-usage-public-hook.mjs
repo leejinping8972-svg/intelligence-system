@@ -20,7 +20,16 @@ export function publicUsageFetch(fetcher, journal, jobId) {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
     const sourceId = providers.get(url.hostname);
     if (!sourceId) return fetcher(input, options);
-    return journal({ jobId, task: '每日公共情报采集', step: url.pathname, sourceId, market: 'ALL', project: () => ({ requests: 1 }) }, () => fetcher(input, options));
+    return journal({
+      jobId,
+      task: '每日公共情报采集',
+      step: url.pathname,
+      sourceId,
+      market: 'ALL',
+      url: url.toString(),
+      method: options?.method || (typeof input === 'object' ? input.method : 'GET') || 'GET',
+      project: () => ({ requests: 1 }),
+    }, () => fetcher(input, options));
   };
 }
 if (process.env.HCI_SOURCE_USAGE_JOB_ID) {
