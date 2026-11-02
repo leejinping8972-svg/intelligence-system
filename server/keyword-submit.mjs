@@ -5,6 +5,10 @@ export function researchSignature(input) {
   const sorted = (values) =>
     [...new Set(values || [])].toSorted((a, b) => a.localeCompare(b));
   return JSON.stringify({
+    batch: String(input.batch || '')
+      .normalize('NFKC')
+      .replaceAll(/\s+/g, ' ')
+      .trim(),
     seeds: sorted(
       (input.seeds || []).map((s) =>
         s.normalize('NFKC').replaceAll(/\s+/g, ' ').trim().toLowerCase(),

@@ -636,6 +636,7 @@ async function doSubmitCloudResearch(
   const payload = {
     seeds: input.seeds,
     markets: input.markets,
+    ...(input.batch?.trim() ? { batch: input.batch.trim() } : {}),
     sources: input.sources,
     depth: input.depth,
     limit: input.limit,

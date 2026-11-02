@@ -290,6 +290,7 @@ export async function runJob(job, overrides = {}) {
         id: randomUUID(),
         term,
         market,
+        ...(input.batch ? { batch: input.batch } : {}),
         seedTerm: seed,
         source,
         collectedAt,

@@ -24,6 +24,7 @@ test('list truncation preserves complete emoji at JSON and SQL column boundaries
 const keyword = (i) => ({
   id: `k${i}`,
   term: `magnesium gummies ${i}`,
+  batch: i < 17 ? '2026-11-01-US' : 'legacy-batch',
   termZh: '镁软糖',
   market: i % 2 ? 'MX' : 'US',
   category: '运动营养',
@@ -158,6 +159,9 @@ async function exerciseReadModel(
   assert.equal(savedRow.trendCalendarSummary[1].heat, 50);
   assert.equal(savedRow.trendRelatedTop.length, 25);
   assert.equal(savedRow.trendDailyPoints, undefined);
+  const batchPage = await reads.list({ collection: 'keywords', batch: '2026-11-01' });
+  assert.equal(batchPage.total, 17);
+  assert.ok(batchPage.rows.every((row) => row.batch === '2026-11-01-US'));
   await drain();
   const overview = await reads.overview({ market: 'ALL' });
   assert.equal(overview.snapshot.counts.keywords, 34);

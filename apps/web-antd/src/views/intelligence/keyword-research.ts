@@ -6,6 +6,7 @@ import { classifyKeyword, discoverSites } from './site-discovery';
 export interface KeywordResearchInput {
   accessKey: string;
   apiUrl: string;
+  batch?: string;
   seeds: string[];
   markets: Market[];
   sources: Array<
@@ -101,6 +102,9 @@ export async function runKeywordResearch(
       id: crypto.randomUUID(),
       term: term.trim(),
       market,
+      ...(input.batch?.trim()
+        ? { batch: input.batch.normalize('NFKC').replaceAll(/\s+/g, ' ').trim().slice(0, 100) }
+        : {}),
       seedTerm: seed,
       collectedAt,
       updatedAt: collectedAt,

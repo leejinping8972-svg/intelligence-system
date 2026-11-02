@@ -64,6 +64,15 @@ test('reruns refresh partial metrics including zero while retaining manual edits
   assert.deepEqual(next.siteIds, ['s1']);
   assert.equal(next.source, 'Semrush热词 / 用户种子词');
 });
+test('a newer research result updates the batch while later supplementation keeps it', () => {
+  const current = keyword({ batch: 'old-batch', updatedAt: oldAt });
+  const next = mergeKeyword(
+    current,
+    keyword({ batch: 'new-batch', updatedAt: newAt }),
+  );
+  assert.equal(next.batch, 'new-batch');
+  assert.equal(mergeKeyword(next, keyword({ updatedAt: newAt })).batch, 'new-batch');
+});
 
 test('empty, invalid, other-market and older results cannot erase successful metrics', () => {
   const current = keyword({ metrics: metrics({ collectedAt: newAt }) });

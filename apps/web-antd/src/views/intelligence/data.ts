@@ -79,6 +79,7 @@ export interface Keyword {
   market: Market;
   category: string;
   source: string;
+  batch?: string;
   growth: null | number;
   series: number[];
   seedTerm?: string;
