@@ -62,7 +62,7 @@ export function manualSiteProfile(page, input, at = new Date().toISOString()) {
 
 export async function addManualSite(input, overrides = {}) {
   const value = validateManualSite(input);
-  const io = { pool, lock, unlock, putDocument, fetchPage: (...args) => recordSourceCall({ task: '手动添加独立站', step: '官网公开资料', sourceId: 'official_sites', market: value.market, project: () => ({ requests: 1 }) }, () => fetchPublicPage(...args)), now: () => new Date().toISOString(), ...overrides };
+  const io = { pool, lock, unlock, putDocument, fetchPage: (...args) => recordSourceCall({ jobId: value.requestId, task: '手动添加独立站', step: '官网公开资料', sourceId: 'official_sites', market: value.market, url: args[0], method: 'GET', project: () => ({ requests: 1 }) }, () => fetchPublicPage(...args)), now: () => new Date().toISOString(), ...overrides };
   const receiptName = `manual-site:request:${value.requestId}`;
   const readReceipt = async (c) => (await c.query('SELECT value FROM workspace_documents WHERE name=$1', [receiptName])).rows[0]?.value;
   const previous = await readReceipt(io.pool);

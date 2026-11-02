@@ -227,6 +227,49 @@ export function sourceCharge(id, record, status) {
 export function usageEvent(row, sourceId) {
   const record = row.record || {};
   const at = record.requestUsage?.startedAt || row.at || null;
+  const usageRequest = record.requestUsage;
+  const request =
+    row.request ||
+    record.requestLog ||
+    (usageRequest?.startedAt
+      ? {
+          method: usageRequest.method || 'POST',
+          requestId: usageRequest.requestId || '',
+          host: usageRequest.host || '',
+          path: usageRequest.path || '',
+          url: usageRequest.url || '',
+          startedAt: usageRequest.startedAt,
+          finishedAt: usageRequest.finishedAt || '',
+          durationMs: Number.isFinite(Number(usageRequest.durationMs))
+            ? Number(usageRequest.durationMs)
+            : null,
+          outcome:
+            usageRequest.outcome ||
+            (row.status === 'done'
+              ? 'success'
+              : row.status === 'failed'
+                ? 'error'
+                : 'pending'),
+          httpStatus: Number.isInteger(Number(usageRequest.httpStatus))
+            ? Number(usageRequest.httpStatus)
+            : null,
+          retryAfterSeconds: Number.isFinite(
+            Number(usageRequest.retryAfterSeconds),
+          )
+            ? Number(usageRequest.retryAfterSeconds)
+            : null,
+          attempt: Math.max(1, Number(usageRequest.attempt) || 1),
+          retry: usageRequest.retry === true,
+          rateLimited:
+            usageRequest.rateLimited === true ||
+            Number(usageRequest.httpStatus) === 429,
+          lane: usageRequest.lane || sourceId || '',
+          errorKind: usageRequest.errorKind || '',
+          rateLimitLimit: usageRequest.rateLimitLimit || '',
+          rateLimitRemaining: usageRequest.rateLimitRemaining || '',
+          rateLimitReset: usageRequest.rateLimitReset || '',
+        }
+      : null);
   return {
     id: `${row.id}:${sourceId}`,
     sourceId,
@@ -250,6 +293,7 @@ export function usageEvent(row, sourceId) {
     market: String(row.market || 'ALL'),
     status: row.status,
     dateBasis: at ? 'request' : 'undated',
+    ...(request ? { request } : {}),
     ...sourceCharge(sourceId, record, row.status),
   };
 }

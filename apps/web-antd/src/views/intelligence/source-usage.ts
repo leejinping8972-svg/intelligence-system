@@ -62,6 +62,66 @@ export interface SourceUsagePending {
   loading: true;
   retryAfterMs: number;
 }
+export interface RequestLogEntry {
+  id: string;
+  requestId: string;
+  jobId: string;
+  task: string;
+  step: string;
+  sourceId: string;
+  market: string;
+  method: string;
+  host: string;
+  path: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: null | number;
+  status: string;
+  outcome: string;
+  httpStatus: null | number;
+  retryAfterSeconds: null | number;
+  rateLimitLimit: string;
+  rateLimitRemaining: string;
+  rateLimitReset: string;
+  attempt: number;
+  retry: boolean;
+  rateLimited: boolean;
+  lane: string;
+  errorKind: string;
+}
+export interface RequestLogGroup {
+  key: string;
+  count: number;
+  rateLimited: number;
+  failed: number;
+  averageDurationMs: null | number;
+  requestsPerHour: number;
+  firstAt: string;
+  lastAt: string;
+}
+export interface RequestLogSnapshot {
+  entries: RequestLogEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+  start: string;
+  end: string;
+  checkedAt: string;
+  truncated: boolean;
+  summary: {
+    requests: number;
+    rateLimited: number;
+    failed: number;
+    pending: number;
+    averageDurationMs: null | number;
+    maxDurationMs: null | number;
+    requestsPerHour: number;
+  };
+  byTask: RequestLogGroup[];
+  bySource: RequestLogGroup[];
+  byHost: RequestLogGroup[];
+  coverage: string;
+}
 export const billingLabels = {
   cached: '缓存复用',
   confirmed: '已确认',

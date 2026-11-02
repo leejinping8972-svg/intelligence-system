@@ -7,6 +7,7 @@ import { openFetchKey } from './site-fetch-config.mjs';
 import {
   contentEvents,
   researchEvents,
+  requestSources,
   sourceById,
   summarizeUsage,
   usageEvent,
@@ -18,6 +19,14 @@ import {
   createUsageEventCache,
   usageReadWithin,
 } from './source-usage-reader.mjs';
+import {
+  requestFailed,
+  requestLogFromEvent,
+  requestLogRange,
+  requestStarted,
+  requestSucceeded,
+  summarizeRequestLogs,
+} from './request-log.mjs';
 
 export { accountingProjection } from './source-usage-reader.mjs';
 const jsonText = (column, field) =>
@@ -65,15 +74,20 @@ export async function recordSourceCall(
 ) {
   const id = context.id || randomUUID();
   const name = `source-usage:event:${createHash('sha256').update(id).digest('hex')}`;
+  const startedAt = new Date().toISOString();
   const row = {
     id,
     job_id: context.jobId,
     task: context.task,
     step: context.step,
     market: context.market,
-    at: new Date().toISOString(),
+    at: startedAt,
     status: 'started',
     record: {},
+    request: requestStarted(
+      { ...context, requestId: context.requestId || id },
+      startedAt,
+    ),
   };
   await io.write(name, usageEvent(row, context.sourceId));
   cachedSourceEvents.invalidate();
@@ -83,7 +97,14 @@ export async function recordSourceCall(
   } catch (error) {
     await io.write(
       name,
-      usageEvent({ ...row, status: 'failed' }, context.sourceId),
+      usageEvent(
+        {
+          ...row,
+          status: 'failed',
+          request: requestFailed(row.request, error),
+        },
+        context.sourceId,
+      ),
     );
     cachedSourceEvents.invalidate();
     throw error;
@@ -94,6 +115,7 @@ export async function recordSourceCall(
       {
         ...row,
         status: 'done',
+        request: requestSucceeded(row.request, result),
         record: context.project ? context.project(result) : result,
       },
       context.sourceId,
@@ -257,6 +279,13 @@ export async function sourceUsageAction(input, user, overrides = {}) {
       page: 1,
     });
   }
+  if (input.action === 'server_source_request_log') {
+    const result = await readRequestEvents(io.pool, input);
+    return summarizeRequestLogs(result.events, {
+      ...input,
+      truncated: result.truncated,
+    });
+  }
   if (input.action !== 'server_source_usage') throw new Error('未知数据源操作');
   const [eventResult, configsResult] = await Promise.all([
     usageReadWithin(
@@ -302,4 +331,99 @@ export async function sourceUsageAction(input, user, overrides = {}) {
       origin: 'automatic',
     };
   return result;
+}
+
+async function readRequestEvents(connection, input = {}) {
+  const range = requestLogRange(input);
+  const startedAt = sql(
+    "value->'request'->>'startedAt'",
+    "JSON_UNQUOTE(JSON_EXTRACT(value,'$.request.startedAt'))",
+  );
+  const researchStartedAt = sql(
+    "r.response->'requestUsage'->>'startedAt'",
+    "JSON_UNQUOTE(JSON_EXTRACT(r.response,'$.requestUsage.startedAt'))",
+  );
+  const monitorStartedAt = sql(
+    "d.value->'response'->'requestUsage'->>'startedAt'",
+    "JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.response.requestUsage.startedAt'))",
+  );
+  const monitorRecord = sql(
+    accountingProjection("d.value->'response'"),
+    accountingProjection("JSON_EXTRACT(d.value,'$.response')", 'mysql'),
+  );
+  const monitorStep = sql(
+    "d.value->>'step'",
+    "JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.step'))",
+  );
+  const monitorStatus = sql(
+    "d.value->>'status'",
+    "JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.status'))",
+  );
+  const limit = Math.min(20_000, Math.max(100, Number(input.readLimit) || 5000));
+  const [directRows, researchRows, monitorRows] = await Promise.all([
+    connection.query(
+    `SELECT value FROM workspace_documents WHERE name LIKE 'source-usage:event:%' AND ${startedAt} >= $1 AND ${startedAt} < $2 ORDER BY ${startedAt} DESC LIMIT $3`,
+    [range.startAt, range.endAt, limit + 1],
+    ),
+    connection.query(
+      `SELECT r.job_id,r.step,r.status,r.paid_allowance,${sql(accountingProjection('r.response'), accountingProjection('r.response', 'mysql'))} AS record,COALESCE(${jsonText('j.input', 'kind')},'keyword_research') AS task,${jsonText('j.input', 'market')} AS market FROM research_requests r JOIN research_jobs j ON j.id=r.job_id WHERE ${researchStartedAt} >= $1 AND ${researchStartedAt} < $2 ORDER BY ${researchStartedAt} DESC LIMIT $3`,
+      [range.startAt, range.endAt, limit + 1],
+    ),
+    connection.query(
+      `SELECT d.name,${monitorStep} AS step,${monitorStatus} AS status,${monitorRecord} AS record FROM workspace_documents d WHERE d.name LIKE 'competitor:request:%' AND ${monitorStartedAt} >= $1 AND ${monitorStartedAt} < $2 ORDER BY ${monitorStartedAt} DESC LIMIT $3`,
+      [range.startAt, range.endAt, limit + 1],
+    ),
+  ]);
+  const directEvents = directRows.rows
+    .map((row) => {
+      try {
+        return requestLogFromEvent(
+          typeof row.value === 'string' ? JSON.parse(row.value) : row.value,
+        );
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  const researchEventsList = researchEvents(
+    researchRows.rows.map((row) => ({ ...row, id: `${row.job_id}:${row.step}` })),
+  )
+    .map((event) => requestLogFromEvent(event))
+    .filter(Boolean);
+  const monitorEvents = monitorRows.rows
+    .flatMap((row) => {
+      try {
+        const record =
+          typeof row.record === 'string' ? JSON.parse(row.record) : row.record;
+        const sourceId = requestSources(row.step, record)[0];
+        return requestLogFromEvent(
+          usageEvent(
+            {
+              id: row.name,
+              job_id: row.name.split(':').slice(3, -1).join(':'),
+              task: '定时监控',
+              step: row.step,
+              status: row.status,
+              market: 'ALL',
+              record,
+            },
+            sourceId,
+          ),
+        );
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  const events = [...directEvents, ...researchEventsList, ...monitorEvents].sort(
+    (a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id),
+  );
+  return {
+    events: events.slice(0, limit),
+    truncated:
+      directRows.rows.length > limit ||
+      researchRows.rows.length > limit ||
+      monitorRows.rows.length > limit ||
+      events.length > limit,
+  };
 }

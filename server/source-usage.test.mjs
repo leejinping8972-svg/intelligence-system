@@ -71,6 +71,8 @@ test('research collection persists original request timing without exposing inte
     const result = await collect({ id: 'j' }, 'seed:0', request);
     assert.equal(result.requestUsage, undefined);
     assert.equal(saved.requestUsage.operation, 'search');
+    assert.equal(saved.requestUsage.outcome, 'success');
+    assert.equal(saved.requestUsage.method, 'POST');
     assert.equal(JSON.stringify(saved).includes('do-not-store'), false);
     cached = true;
     assert.equal((await collect({ id: 'j' }, 'seed:0', request)).requestUsage, undefined);
@@ -301,6 +303,7 @@ test('public content attribution separates platform API, paid discovery and acad
 test('usage endpoints reject nonadministrators before accessing storage or providers', async () => {
   for (const action of [
     'server_source_usage',
+    'server_source_request_log',
     'server_source_quota_save',
     'server_source_quota_refresh',
     'server_source_credential_save',
@@ -315,9 +318,17 @@ test('direct journal reserves before calling, settles once and retains failed un
     },
   };
   await recordSourceCall(
-    { jobId: 'j', sourceId: 'firecrawl', step: 'hosted' },
+    {
+      jobId: 'j',
+      sourceId: 'firecrawl',
+      step: 'hosted',
+      url: 'https://shop.example/products?token=secret',
+    },
     async () => {
       assert.equal(writes[0].billing, 'unknown');
+      assert.equal(writes[0].request.host, 'shop.example');
+      assert.equal(writes[0].request.path, '/products');
+      assert.equal(JSON.stringify(writes[0]).includes('secret'), false);
       return { creditsCharged: 2 };
     },
     io,
@@ -326,18 +337,65 @@ test('direct journal reserves before calling, settles once and retains failed un
     writes.map((e) => e.billing),
     ['unknown', 'confirmed'],
   );
+  assert.equal(writes[1].request.outcome, 'success');
+  assert.equal(writes[1].request.finishedAt !== '', true);
   assert.equal(writes[0].id, writes[1].id);
   await assert.rejects(
     recordSourceCall(
-      { jobId: 'j', sourceId: 'firecrawl' },
+      { jobId: 'j', sourceId: 'firecrawl', url: 'https://shop.example/products' },
       async () => {
-        throw new Error('network');
+        throw Object.assign(new Error('network'), {
+          status: 429,
+          retryAfterSeconds: 120,
+        });
       },
       io,
     ),
   );
   assert.equal(writes.at(-1).billing, 'unknown');
   assert.equal(writes.at(-1).status, 'failed');
+  assert.equal(writes.at(-1).request.httpStatus, 429);
+  assert.equal(writes.at(-1).request.retryAfterSeconds, 120);
+});
+test('request log action is admin-only and reads only bounded request metadata', async () => {
+  const response = await sourceUsageAction(
+    { action: 'server_source_request_log', days: 7, query: 'job-request' },
+    admin,
+    {
+      pool: {
+        query: async () => ({
+          rows: [
+            {
+              value: {
+                id: 'event-1:official_sites',
+                sourceId: 'official_sites',
+                jobId: 'job-request',
+                task: '独立站商品采集',
+                step: 'catalog',
+                market: 'US',
+                status: 'failed',
+                request: {
+                  host: 'shop.example',
+                  path: '/products',
+                  url: 'https://shop.example/products',
+                  startedAt: new Date().toISOString(),
+                  finishedAt: new Date().toISOString(),
+                  durationMs: 120,
+                  outcome: 'error',
+                  httpStatus: 429,
+                  rateLimited: true,
+                },
+              },
+            },
+          ],
+        }),
+      },
+    },
+  );
+  assert.equal(response.total, 1);
+  assert.equal(response.summary.rateLimited, 1);
+  assert.equal(response.entries[0].host, 'shop.example');
+  assert.equal(JSON.stringify(response).includes('cookie'), false);
 });
 test('quota failures preserve prior snapshots and automatic refresh uses only account action', async () => {
   let saved;
