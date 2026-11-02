@@ -233,6 +233,30 @@ export async function sourceUsageAction(input, user, overrides = {}) {
     });
     return { available: Boolean(automatic), message };
   }
+  if (
+    input.action === 'server_source_connections' ||
+    input.summary === true
+  ) {
+    // The settings page only needs connection/configuration state. Do not make
+    // it scan every historical request journal just to render the source list.
+    const configsResult = await io.pool.query(
+      "SELECT name,value FROM provider_configs WHERE name LIKE 'provider:%' OR name LIKE 'source-usage:quota:%' OR name IN ('credentials','sorftime-mcp')",
+    );
+    const configs = Object.fromEntries(
+      configsResult.rows.map((r) => [r.name, r.value]),
+    );
+    configs.credentialStatus = await io.credentialStatus().catch(() => ({}));
+    const quotas = Object.fromEntries(
+      configsResult.rows
+        .filter((r) => r.name.startsWith(QUOTA_PREFIX))
+        .map((r) => [r.name.slice(QUOTA_PREFIX.length), r.value]),
+    );
+    return summarizeUsage([], configs, quotas, {
+      ...input,
+      days: 7,
+      page: 1,
+    });
+  }
   if (input.action !== 'server_source_usage') throw new Error('未知数据源操作');
   const [eventResult, configsResult] = await Promise.all([
     usageReadWithin(

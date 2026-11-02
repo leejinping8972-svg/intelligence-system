@@ -103,6 +103,34 @@ test('pending API responses contain no fabricated totals and become complete aft
   assert.equal(ready.total, 0);
 });
 
+test('connection status uses the lightweight catalog path without reading request history', async () => {
+  let reads = 0;
+  const io = {
+    pool: {
+      query: async () => ({
+        rows: [{ name: 'provider:semrush:mcp:v1', value: { key: 'sealed' } }],
+      }),
+    },
+    readEvents: async () => {
+      reads++;
+      throw new Error('history must not be read for connection status');
+    },
+    credentialStatus: async () => ({}),
+  };
+  const result = await sourceUsageAction(
+    { action: 'server_source_connections', days: 7 },
+    { role: 'admin' },
+    io,
+  );
+  assert.equal(result.sources.length, 18);
+  assert.equal(
+    result.sources.find((source) => source.id === 'semrush').configured,
+    true,
+  );
+  assert.equal(result.total, 0);
+  assert.equal(reads, 0);
+});
+
 test('persisted compact accounting survives reader restart, updates revisions and removes deleted journals', async () => {
   const db = new PGlite();
   try {

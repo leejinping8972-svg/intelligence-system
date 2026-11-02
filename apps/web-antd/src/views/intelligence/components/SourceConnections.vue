@@ -13,19 +13,16 @@ const search = ref('');
 const selected = ref<UsageSource>();
 const unknownSources = ref<string[]>([]);
 let disposed = false;
-let retryTimer: ReturnType<typeof setTimeout> | undefined;
-onBeforeUnmount(() => { disposed = true; clearTimeout(retryTimer); });
+onBeforeUnmount(() => { disposed = true; });
 const rows = computed(() => sources.value.filter(source => (source.name + source.description + (connectionFields[source.id]?.fields || '')).toLowerCase().includes(search.value.toLowerCase())));
 async function load() {
-  clearTimeout(retryTimer);
   busy.value = true;
   error.value = '';
   try {
     const [snapshot, westmonth] = await Promise.all([
-      adminRequest<SourceUsageSnapshot | { loading: true }>('server_source_usage', { days: 7, page: 1 }),
+      adminRequest<SourceUsageSnapshot>('server_source_connections', { days: 7 }),
       adminRequest<{ configured: boolean }>('server_westmonth_session_status').catch(() => null),
     ]);
-    if ('loading' in snapshot) { error.value = '来源状态正在整理，将自动刷新'; if (!disposed) retryTimer = setTimeout(load, 2000); return; }
     if (disposed) return;
     unknownSources.value = westmonth === null ? ['westmonth'] : [];
     sources.value = [...snapshot.sources, ...(snapshot.sources.some(source => source.id === 'westmonth') ? [] : [{ id: 'westmonth', name: '西之月', description: '商品折后价采集使用的登录会话', configured: westmonth?.configured ?? false, unit: '', records: 0 } as UsageSource])];

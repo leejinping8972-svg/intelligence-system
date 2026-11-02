@@ -53,14 +53,28 @@ export async function adminRequest<T = Record<string, unknown>>(
     body: JSON.stringify({ ...input, action }),
     signal: AbortSignal.timeout(timeout),
   });
-  const result = await response.json();
+  const body = await response.text();
+  let result: Record<string, unknown> | null = null;
+  if (body.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (parsed && typeof parsed === 'object')
+        result = parsed as Record<string, unknown>;
+    } catch {
+      // Gateways and process restarts can return an empty or non-JSON body.
+    }
+  }
   if (!response.ok) {
     if (response.status === 401 && revision === sessionRevision) {
       invalidateSessionRequest();
       session.user = null;
     }
-    throw new Error(result.error || '请求未完成，请稍后重试');
+    const detail = typeof result?.error === 'string' ? result.error : '';
+    if (response.status >= 500)
+      throw new Error(`服务暂时不可用，请稍后重试（HTTP ${response.status}）`);
+    throw new Error(detail || '请求未完成，请稍后重试');
   }
+  if (!result) throw new Error('服务返回无效响应，请稍后重试');
   return result as T;
 }
 export function refreshSession() {

@@ -23,7 +23,7 @@
 
 - `provider_configs/source-usage:quota:<id>` 保存非敏感额度登记；`workspace_documents/source-usage:event:<hash>` 保存独立请求事件。沿用现有双库表及备份/迁移机制，无新业务表或依赖。
 - 所有新查询/写入接口要求管理员。统计查询本身不访问第三方；账户余额更新单独触发。不修改请求重试、队列预算、取消与未知收费停止规则。
-- 接口：`server_source_usage`、`server_source_quota_save`、`server_source_quota_refresh`、`server_source_credential_save`（仅 Brave）。
+- 接口：`server_source_connections`（仅读取来源配置状态，不扫描历史请求）、`server_source_usage`、`server_source_quota_save`、`server_source_quota_refresh`、`server_source_credential_save`（仅 Brave）。
 
 ## 验证与边界
 
@@ -31,6 +31,7 @@
 
 - 监控 journal 采用 JSON 类型保真的单次字段提取，分批读取记账元数据；派生结果压缩保存在 `workspace_documents/read:source-usage:monitor:v1`。后续按原记录 revision 增量更新并移除已删除项，保留原始 journal、来源归属及未知扣费含义。
 - 进程内 15 秒结果缓存合并并发读取；手动刷新绕过已完成结果缓存，已有后台读取仍共享。读取超过 2 秒时 `server_source_usage` 返回 `{loading:true,retryAfterMs:2000}`，前端等待后继续查询，不延长单次请求超时。失败保留短暂错误供轮询显示，手动重试可立即重新读取。
+- `/settings` 的来源连接列表使用 `server_source_connections` 轻量路径，只读取配置与额度登记，不触发历史消耗统计，因此不会因历史请求整理而一直停留在“来源状态正在整理”。
 - 分批中断只保存可重建的已完成缓存，下次继续；不返回部分记录的统计。缓存损坏自动重建，缓存写入失败不阻止完整结果返回。统计请求不调用第三方、不刷新额度，不新增表、结构或业务数据迁移。
 - 首次加载取消无条件二次查询；翻页复用当前结果，手动刷新明确读取最新记录，离开页面停止轮询。初次失败显示“未获取”，已有结果刷新失败保留原结果，不以占位零冒充真实消耗。
 - 正式 MySQL 只读验证：100 条相同原记录的新旧会计投影完全相等；6,773 条监控记录首次整理约 143 秒，模拟持久缓存复用约 1.6 秒、原 journal 投影数为 0。此项只测监控读取，不代表整页时间；验证缓存仅在内存中保存，正式缓存需部署后生成。

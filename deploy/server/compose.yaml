@@ -31,12 +31,15 @@ services:
       IDENTITY_COOKIE_KEYS: ${IDENTITY_COOKIE_KEYS:-[]}
       IDENTITY_SIGNING_JWKS: ${IDENTITY_SIGNING_JWKS:-}
       IDENTITY_AI_ADMIN_USER_IDS: ${IDENTITY_AI_ADMIN_USER_IDS:-[]}
+      # Keep enough native memory for the workspace reader and give V8 room to
+      # finish large responses without repeatedly restarting the API process.
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=512}
     volumes:
       - ./private-config:/data
     depends_on:
       postgres:
         condition: service_healthy
-    mem_limit: 512m
+    mem_limit: 768m
     pids_limit: 128
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api',{method:'POST',headers:{'content-type':'application/json','x-server-key':process.env.SERVER_BRIDGE_KEY},body:JSON.stringify({action:'server_status'})}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
