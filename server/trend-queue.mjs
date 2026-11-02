@@ -5,6 +5,11 @@ import { collect, pool, saveCheckpoint, saveKeyword } from './store.mjs';
 
 export const RETRY_LIMIT = 5;
 export const TREND_WINDOW = 24 * 60 * 60 * 1000;
+// Google Trends is queried one keyword and one period at a time. Keep a
+// durable gap between requests so a slow/aborted response cannot cause the
+// remaining words to fire in a burst from the pending queue.
+export const TREND_PACING_MS = 15_000;
+export const TREND_TRANSIENT_COOLDOWN_MS = 30_000;
 export const finishedPart = (part) =>
   ['done', 'empty', 'failed'].includes(part.status);
 export function retryDelay(
@@ -312,7 +317,10 @@ export async function runTrendJob(job, overrides = {}) {
         });
       record.growth = trendComparisons(record)[0].change;
       gate = {
-        until: io.now() + 15_000 + Math.floor(io.random() * 3000),
+        until:
+          io.now() +
+          TREND_PACING_MS +
+          Math.floor(io.random() * 3000),
         reason: 'pacing',
         consecutive429: 0,
       };
@@ -351,6 +359,24 @@ export async function runTrendJob(job, overrides = {}) {
             retryDelay(consecutive, policy.retryAfterSeconds, io.random, true),
           reason: 'rate_limit',
           consecutive429: consecutive,
+        };
+        updateGate = true;
+      } else if (policy.retry) {
+        // A timeout/network failure has an unknown outcome at the transport
+        // layer. The journal key prevents replaying that same request, while
+        // this shared cooldown keeps pending words from immediately creating
+        // another burst against the same provider.
+        gate = {
+          until: Math.max(
+            Number(gate.until) || 0,
+            io.now() +
+              Math.min(
+                60_000,
+                Math.max(TREND_TRANSIENT_COOLDOWN_MS, delay),
+              ),
+          ),
+          reason: 'pacing',
+          consecutive429: 0,
         };
         updateGate = true;
       }

@@ -9,6 +9,7 @@ import {
   refreshTrendCheckpoint,
   retryDelay,
   runTrendJob,
+  TREND_TRANSIENT_COOLDOWN_MS,
   TREND_WINDOW,
 } from './trend-queue.mjs';
 
@@ -227,7 +228,7 @@ test('429 queues only the failed step; no request during provider cooldown; othe
   assert.equal(p.terminal, false);
   assert.equal(p.retryLimit, 5);
 });
-test('network failure does not pause provider and later words finish while first word waits', async () => {
+test('network failure cools the shared lane while later words stay queued', async () => {
   const h = harness();
   h.io.collect = async (j, key, req) => {
     h.requests.push({ key, req });
@@ -236,7 +237,11 @@ test('network failure does not pause provider and later words finish while first
     return h.result(req);
   };
   await runTrendJob(h.job, h.io);
-  assert.equal(h.gate.until, undefined);
+  assert.equal(h.gate.reason, 'pacing');
+  assert.equal(h.gate.until, h.now + TREND_TRANSIENT_COOLDOWN_MS);
+  assert.equal(h.requests.length, 1);
+  await runTrendJob(h.saved, h.io);
+  assert.equal(h.requests.length, 1);
   for (let i = 0; i < 4; i++) {
     h.advance();
     await runTrendJob(h.saved, h.io);

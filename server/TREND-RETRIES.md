@@ -12,10 +12,12 @@ A restarted running attempt reuses the journal key and cached response. Only fre
 Trends failures can get a new retry attempt; paid request handling is unchanged.
 
 429 honors Retry-After and uses 2/5/15/30/60 minute backoff with positive jitter.
-The shared Trends provider cooldown applies across tasks. Network/5xx failures
-use a per-step 30s/2m/5m/10m/20m delay and let other ready steps continue. Every
-fourth dispatch admits a due retry so pending work cannot starve it. Five retries
-are allowed after the initial attempt, with a 24 hour task supplementation limit.
+The shared Trends provider cooldown applies across tasks. Successful requests
+leave a 15s pacing gap; timeout/network/5xx failures leave a 30–60s cooldown
+before the next pending word is dispatched, while the failed step keeps its
+30s/2m/5m/10m/20m retry delay. Every fourth dispatch admits a due retry so
+pending work cannot starve it. Five retries are allowed after the initial
+attempt, with a 24 hour task supplementation limit.
 Invalid parameters, authentication and malformed responses need manual attention.
 Real zero heat and empty data are terminal outcomes, not network failures.
 
