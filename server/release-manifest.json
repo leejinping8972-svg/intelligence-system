@@ -1,44 +1,30 @@
 {
-  "title": "保健品新品监控、成分研究、来源AI字段与移除调用次数上限",
+  "title": "来源连接加载与 API 空响应修复",
   "includedCommits": [
-    "2f9b55e239c5590301f044949a12f52a70bf0f67",
-    "113f133d6b35e5b2dc1d68671b2e53f6a347db68",
-    "736586cbbe368fc9cdb6d9838f62f8699c43822a"
+    "a048024007f75bf480ed11138341d43e64d1efa9"
   ],
-  "sourceSha": "87fdb1673c9738e5d00589ab89e580e58efe733b",
+  "sourceSha": "a048024007f75bf480ed11138341d43e64d1efa9",
   "changes": [
-    "增加FBM/常规保健品新品周监控、近7/30/60/90天多渠道抓取和统一新建监控入口。",
-    "商品、独立站及广告先由AI核对原始证据再写对应字段；支持历史选中记录重新分析。",
-    "增加Reddit/Quora成分研究，支持话题、时间范围和日/周/月周期。",
-    "移除任务AI调用和请求次数停止条件及输入框，保留商品/结果与页数限制、用量记录、冷却、取消及未知请求不重放。",
-    "不自动启用新监控或未配置来源，不自动批量改写历史字段。"
+    "设置页改用轻量 server_source_connections 接口，仅读取来源配置与额度登记，不扫描历史请求 journal。",
+    "登录及管理请求安全处理空响应和非 JSON 网关响应，5xx 显示服务暂时不可用并保留可重试语义。",
+    "API 默认 Node 堆上限设为512MB、容器内存设为768MB，降低大响应整理时的重复 OOM 重启。"
   ],
   "validation": [
-    "开发核心226通过/3按条件跳过，独立数据库9通过，修正专项55通过，兼容105通过，前端15通过；前一新品交付70项检查通过。",
-    "完整Web类型、独立uiqa构建和diff通过；Edge1440/390px合成工作流通过，页面/API错误0。",
-    "未主动发起真实收费来源/模型调用；真实来源能力与账户覆盖以实际响应为准，证据缺失保留未知。",
-    "发布阶段重复验证构建、测试和CI等待按用户策略跳过；无schema/迁移/依赖变更，完整数据库备份按策略跳过，保留应用回退、21锁、任务/业务数据/public-data保护及上线核对。"
+    "来源用量与来源连接专项共22项 Node/PGlite 测试通过；node --check 与 git diff --check 通过。",
+    "Web 类型检查和提交钩子未形成有效结论：本机工作区依赖链接未完整安装，未将其记为通过。",
+    "无 schema、迁移或依赖变更；未调用真实来源、模型、账号凭据或正式任务。",
+    "发布阶段按用户策略跳过重复测试、类型检查、lint、验证构建和 CI 等待；完整数据库备份按无 schema/迁移策略跳过，保留应用回退、21项锁、任务与业务数据保护及上线核对。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/CompetitorWatchPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/DailyDiscoveryPlan.vue",
-    "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
-    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
-    "apps/web-antd/src/views/intelligence/components/KeywordTrendsControl.vue",
-    "apps/web-antd/src/views/intelligence/components/MarketCollectionDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/MonitorConfigPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/NewMonitorDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/SemrushHotwordsSidebar.vue",
-    "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
-    "apps/web-antd/src/views/intelligence/monitor.vue",
-    "server/discovery-monitor-domain.mjs",
-    "server/discovery-monitor-store.mjs",
-    "server/discovery-monitors.integration.test.mjs",
-    "server/discovery-monitors.test.mjs",
-    "server/discovery-sorftime.mjs"
+    "apps/web-antd/src/views/intelligence/components/SourceConnections.vue",
+    "apps/web-antd/src/views/intelligence/session.ts",
+    "deploy/server/compose.yaml",
+    "server/SOURCE-USAGE.md",
+    "server/source-usage-reader.test.mjs",
+    "server/source-usage.mjs"
   ],
-  "id": "20261031070127-134f8cc9",
-  "builtAt": "2026-10-31T07:01:27.668Z",
-  "sourceDigest": "134f8cc902536da9261f8669729d7f9156f70a9716046a1eda95288b7861dc2a",
-  "operator": "Codex"
+  "operator": "Codex",
+  "id": "20261102053254-413bf0eb",
+  "builtAt": "2026-11-02T05:32:54.095Z",
+  "sourceDigest": "413bf0eb3be27545f0d047816af837c97971b7fd95a212c0a899ac5136324d95"
 }
