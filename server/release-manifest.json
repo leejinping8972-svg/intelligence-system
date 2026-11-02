@@ -1,48 +1,45 @@
 {
-  "title": "来源连接加载与关键词研究批次筛选",
+  "title": "任务请求频率日志与数据补齐重评排队控制",
   "includedCommits": [
-    "a048024007f75bf480ed11138341d43e64d1efa9",
-    "9ca90685f49d00475e18db57d31c7b787d95f54e"
+    "f9f9b54ff2f990dc595f382ca72e087167e49147",
+    "0a403b8c98fa13f3ec4e020d4d515e609d6b1f0f"
   ],
-  "sourceSha": "87cfba82e7ce45ab2c0a7486018eb79cc8591b95",
+  "sourceSha": "85a3fb2e058ef6072365c5d0827ce537c21c9ddf",
   "changes": [
-    "设置页使用轻量来源连接状态接口，避免加载历史请求 journal；登录和管理请求安全处理空响应。",
-    "关键词研究新建弹窗增加可选采集批次，批次随任务和本地结果保存。",
-    "关键词列表显示采集批次，并支持本地、服务端及保存视图按批次检索；读模型支持大小写不敏感的安全包含匹配。",
-    "关键词合并、研究签名和服务端投影均保留批次信息。"
+    "新增管理员请求频率日志，按任务、来源、主机、状态和时间查询，并提供频率汇总；只保存脱敏路径与请求元数据，不保存查询参数、Cookie、Token或响应正文。",
+    "覆盖直接来源调用、研究采集任务和定时竞品监控的请求事件记录，保留429、Retry-After、失败类型、尝试次数和冷却信息。",
+    "数据补齐与重评的趋势请求按词按周期排队，成功请求间隔约15秒，超时/网络/5xx共享冷却30至60秒，失败步骤按持久队列延迟重试，结果未知的请求不自动重放。",
+    "本候选继承当前testing已上线的来源连接轻量加载与关键词研究批次筛选功能。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/components/SourceConnections.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/keyword-research.ts",
-    "apps/web-antd/src/views/intelligence/keyword-views.ts",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/session.ts",
-    "deploy/server/compose.yaml",
-    "server/SOURCE-USAGE.md",
-    "server/domain.mjs",
-    "server/domain.test.mjs",
-    "server/keyword-data.mjs",
-    "server/keyword-refresh.test.mjs",
-    "server/keyword-submit.mjs",
-    "server/keyword-submit.test.mjs",
-    "server/keyword-views.mjs",
-    "server/runner.mjs",
-    "server/source-usage-reader.test.mjs",
+    "apps/web-antd/src/views/intelligence/components/RequestLogDashboard.vue",
+    "apps/web-antd/src/views/intelligence/source-usage.ts",
+    "apps/web-antd/src/views/intelligence/usage.vue",
+    "server/REQUEST-LOG.md",
+    "server/TREND-RETRIES.md",
+    "server/competitor-monitor-store.mjs",
+    "server/manual-site.mjs",
+    "server/product-queue.mjs",
+    "server/request-log.mjs",
+    "server/request-log.test.mjs",
+    "server/safe-web.mjs",
+    "server/source-usage-domain.mjs",
+    "server/source-usage-public-hook.mjs",
     "server/source-usage.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "server/source-usage.test.mjs",
+    "server/store.mjs",
+    "server/trend-queue.mjs",
+    "server/trend-queue.test.mjs"
   ],
   "validation": [
-    "批次功能开发自测：6个服务端模块 node --check、19项关键词相关测试和 git diff --check 通过。",
-    "来源连接修复开发自测：来源用量与来源连接专项22项测试、node --check和git diff --check通过。",
-    "两个功能均未调用真实收费来源、未重放正式采集任务。Web类型检查/提交钩子受本机缺少项目工具影响，未记为通过。",
+    "请求日志功能开发自测：server/request-log.test.mjs 4项通过；改动.mjs语法检查与git diff --check通过。",
+    "数据补齐排队功能开发自测：趋势、关键词、补齐、进度相关42项通过；node --check与git diff --check通过。",
+    "两个功能均未调用真实来源、模型、账号凭据或正式任务；完整来源用量测试、Web类型检查受开发工作树依赖缺失影响，未记为通过。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建和CI等待。",
-    "无schema、迁移或依赖变更；完整数据库备份按无结构变更/迁移策略跳过，保留应用、镜像、前端、配置、任务与业务数据回退保护。"
+    "无schema、迁移或依赖变更；完整数据库备份按无结构变更/迁移策略跳过，保留应用、镜像、前端、配置、任务、检查点、业务数据及public/data回退保护。"
   ],
   "operator": "Codex",
-  "id": "20261102065848-3632e65d",
-  "builtAt": "2026-11-02T06:58:48.480Z",
-  "sourceDigest": "3632e65d897c24586491dcb2568e4218cedf6aab4f096eb7c27e3e943b626720"
+  "id": "20261102153015-de8cd964",
+  "builtAt": "2026-11-02T15:30:15.707Z",
+  "sourceDigest": "de8cd96495589c59e44f669275a253d2c854a339069e48764fe2c04458264ed3"
 }
