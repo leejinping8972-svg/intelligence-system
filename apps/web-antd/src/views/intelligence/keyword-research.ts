@@ -13,7 +13,8 @@ export interface KeywordResearchInput {
     'amazon_autocomplete' | 'google_autocomplete' | 'sorftime' | 'semrush'
   >;
   depth: number;
-  limit: number;
+  /** 0 or omitted = unlimited expansion (cloud path). */
+  limit?: number;
   expectedKeywordCount?: number;
   signal?: AbortSignal;
   sorftimeRequestLimit?: number;
@@ -41,12 +42,10 @@ export async function runKeywordResearch(
     ...new Set(input.seeds.map((seed) => seed.trim()).filter(Boolean)),
   ];
   const markets = [...new Set(input.markets)];
-  if (
-    input.limit < 1 ||
-    input.limit > 100 ||
-    seeds.length * markets.length > input.limit
-  )
-    throw new Error('关键词总数为1～100，且不能少于种子词与市场的组合数');
+  const capped = Number.isInteger(input.limit) && (input.limit as number) > 0;
+  const limit = capped ? (input.limit as number) : 10_000;
+  if (capped && seeds.length * markets.length > limit)
+    throw new Error('结果上限不能少于种子词与市场的组合数');
   if (seeds.length === 0 || markets.length === 0)
     throw new Error('请填写种子词并选择市场');
   if (
@@ -65,19 +64,17 @@ export async function runKeywordResearch(
   const supportedPairs =
     seeds.length *
     markets.filter((market) => market === 'US' || market === 'MX').length;
-  const remainingSlots = input.limit - seeds.length * markets.length;
-  const automaticLimit =
-    supportedPairs > 0 && remainingSlots > 0
+  const automaticLimit = capped
+    ? Math.max(0, Math.min(limit, supportedPairs || limit))
+    : supportedPairs > 0
       ? input.depth === 2
-        ? Math.min(input.limit, supportedPairs + remainingSlots)
+        ? supportedPairs * 2
         : supportedPairs
       : 0;
   const taskSorftimeLimit = input.sorftimeRequestLimit ?? automaticLimit;
   if (
     input.sources.includes('sorftime') &&
-    (!Number.isInteger(taskSorftimeLimit) ||
-      taskSorftimeLimit < 0 ||
-      taskSorftimeLimit > 100)
+    (!Number.isInteger(taskSorftimeLimit) || taskSorftimeLimit < 0)
   )
     throw new Error('Sorftime自动调用额度无效，请检查结果数量');
   const candidates = new Map<string, Keyword>();
@@ -97,7 +94,7 @@ export async function runKeywordResearch(
       callbacks.onKeyword(existing);
       return;
     }
-    if (candidates.size >= input.limit) return;
+    if (capped && candidates.size >= limit) return;
     const keyword: Keyword = {
       id: crypto.randomUUID(),
       term: term.trim(),
@@ -113,7 +110,7 @@ export async function runKeywordResearch(
       growth: null,
       series: [],
       trendStatus: 'pending',
-      trendMessage: '等待采集一年趋势',
+      trendMessage: '待「趋势采集 / 每日监测」补齐谷歌与社媒趋势',
       favorite: false,
       reviewStatus: 'pending',
       productIds: [],
@@ -135,7 +132,7 @@ export async function runKeywordResearch(
   for (const market of markets) {
     for (const seed of seeds) {
       input.signal?.throwIfAborted();
-      const remaining = input.limit - candidates.size;
+      const remaining = capped ? limit - candidates.size : 10_000;
       if (remaining <= 0) break;
       const allowance = Math.ceil(remaining / Math.max(1, combinationsLeft));
       combinationsLeft -= 1;
@@ -163,7 +160,7 @@ export async function runKeywordResearch(
         for (const group of result.suggestions || []) {
           if (group.market !== market) continue;
           for (const item of group.items) {
-            if (candidates.size - startSize >= allowance) break;
+            if (capped && candidates.size - startSize >= allowance) break;
             if (item.term.trim())
               add(item.term, market, seed, item.source, result.generatedAt);
           }
@@ -200,14 +197,9 @@ export async function runKeywordResearch(
       }
     }
   }
-  const trendResult = await runKeywordTrendResearch(
-    [...candidates.values()],
-    input,
-    callbacks,
-    transport,
-  );
+  // Trends (Google / TK / INS / FB) are step 2 via 趋势采集 / 每日监测.
   return {
-    ...trendResult,
+    keywords: [...candidates.values()],
     discoveryFailures,
     sorftimeCalls,
     sorftimeUnconfirmedCalls,

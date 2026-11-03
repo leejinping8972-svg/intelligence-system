@@ -230,7 +230,11 @@ describe('stage one collection boundary', () => {
       transport,
     );
     expect(result.keywords).toHaveLength(100);
-    expect(new Set(trends).size).toBe(100);
+    // Step 1 expansion only — Google / social trends are step 2.
+    expect(trends).toHaveLength(0);
+    expect(
+      requests.some((request) => request.sources?.includes('google_trends')),
+    ).toBe(false);
     expect(
       collected.every(
         (record) =>
@@ -247,11 +251,6 @@ describe('stage one collection boundary', () => {
             ['enrich_products', 'site_discovery'].includes(source),
           ),
       ),
-    ).toBe(true);
-    expect(
-      requests
-        .filter((request) => request.sources?.includes('google_trends'))
-        .every((request) => request.keywords.length <= 3),
     ).toBe(true);
   });
   it('refreshes only exact selected keyword-market pairs', async () => {

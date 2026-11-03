@@ -1717,7 +1717,7 @@ async function runResearch(input, env) {
   const depth = Number(input.depth) === 2 ? 2 : 1;
   const suggestionLimit = Math.max(
     1,
-    Math.min(100, Number(input.limit) || 100),
+    Math.min(10_000, Number(input.limit) > 0 ? Number(input.limit) : 10_000),
   );
   const maxSites = Math.max(1, Math.min(30, Number(input.maxSites) || 6));
   const productsPerSite = Math.max(

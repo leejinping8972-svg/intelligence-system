@@ -11,7 +11,26 @@ import { runJob } from './runner.mjs';
 const now = Date.parse('2026-10-27T04:00:00Z');
 const word = { id: 'canonical', term: 'magnesium', market: 'US', dataNature: 'collected', source: 'seed', siteIds: [], productIds: [] };
 const socialTrends = { sources: ['tiktok', 'instagram', 'facebook'], maxRequests: 100, maxPages: 11, budgetAcknowledged: true };
-const input = (extra = {}) => validateJob({ seeds: ['magnesium'], markets: ['US'], sources: ['google_autocomplete'], limit: 1, socialTrends, ...extra });
+// Social trends validation uses trend-only enrichment jobs; expansion strips socialTrends.
+const input = (extra = {}) =>
+  validateJob({
+    existingRecords: [word],
+    seeds: [],
+    markets: ['US'],
+    sources: [],
+    depth: 1,
+    limit: 1,
+    socialTrends,
+    ...extra,
+  });
+const expansionInput = (extra = {}) =>
+  validateJob({
+    seeds: ['magnesium'],
+    markets: ['US'],
+    sources: ['google_autocomplete', 'semrush'],
+    limit: 0,
+    ...extra,
+  });
 function fixture() {
   const values = new Map();
   const db = {
@@ -69,31 +88,45 @@ test('failed dispatch rolls back both queue and marker; cancellation spends no p
   assert.equal(run.work[0].status, 'skipped');
   assert.equal((await io.db.list('keyword-trends:request:')).length, 0);
 });
-test('research dispatches canonical words before metrics and Google; busy queue resumes without rediscovery', async () => {
-  let busy = true; let cp = {}; let submissions = 0;
+test('expansion research skips social and Google trends; metrics finish awaiting_review', async () => {
+  let cp = {};
+  let submissions = 0;
   const order = [];
-  const job = { id: 'runner-qa', input: input({ sources: ['semrush'] }), checkpoint: cp };
+  const job = {
+    id: 'runner-qa',
+    input: expansionInput({ sources: ['semrush'] }),
+    checkpoint: cp,
+    status: 'running',
+  };
   const io = {
-    now: () => now, checkCancelled: async () => {}, usage: async () => ({ confirmed: 0, reserved: 0 }),
-    saveKeyword: async record => ({ ...record, id: word.id }),
-    saveCheckpoint: async (_job, value) => { cp = structuredClone(value); },
+    now: () => now,
+    checkCancelled: async () => {},
+    usage: async () => ({ confirmed: 0, reserved: 0 }),
+    saveKeyword: async (record) => ({ ...record, id: word.id }),
+    saveCheckpoint: async (_job, value, status) => {
+      cp = structuredClone(value);
+      if (status) job.status = status;
+    },
     patchCollection: async () => {},
-    collect: async () => { order.push('metrics'); return { message: 'synthetic' }; },
-    submitResearchTrends: async (_job, words) => {
-      submissions++; assert.equal(words[0].id, word.id);
-      if (busy) return null;
-      order.push('social'); return { accepted: 3, reused: 0 };
+    collect: async (_job, step) => {
+      order.push(step.startsWith('sem-metric') ? 'metrics' : 'discover');
+      return {
+        message: 'synthetic',
+        generatedAt: '2026-10-27T04:00:00Z',
+        suggestions: [],
+        apiUnits: 0,
+      };
+    },
+    submitResearchTrends: async () => {
+      submissions += 1;
+      return { accepted: 3, reused: 0 };
     },
   };
   await runJob(job, io);
-  assert.equal(cp.waitReason, 'social_queue');
+  assert.equal(job.status, 'awaiting_review');
   assert.equal(cp.discoveryComplete, true);
-  assert.equal(order.length, 0);
-  busy = false;
-  await runJob({ ...job, checkpoint: { ...cp, nextRunAt: 0 } }, io);
-  assert.deepEqual(order, ['social', 'metrics']);
-  assert.equal(cp.trendQueueVersion, 1);
-  assert.equal(submissions, 2);
-  await runJob({ ...job, checkpoint: cp }, io);
-  assert.equal(submissions, 2);
+  assert.equal(cp.trendQueueVersion, undefined);
+  assert.equal(submissions, 0);
+  assert.ok(order.includes('metrics'));
+  assert.match(cp.logs.join('\n'), /趋势采集 \/ 每日监测/);
 });

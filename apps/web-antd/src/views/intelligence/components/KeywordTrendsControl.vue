@@ -168,8 +168,8 @@ async function submit(kind: 'collect' | 'save') {
     <Alert
       type="info"
       show-icon
-      message="统一周期：本周、本月、近3个月、近6个月"
-      description="直接回查前后期历史：本周对上周同期，本月查两个月，近3个月查六个月，近6个月查一年。社媒按真实发布时间统计内容样本，以日均发布量计算环比；历史取全后立即出结果，取不全则说明缺口。Google保留相对搜索热度口径。"
+      message="第二步：趋势分析 / 每日监测（谷歌、TK、INS、FB）"
+      description="关键词拓展完成后在此采集四平台趋势。统一周期：本周、本月、近3个月、近6个月；社媒按真实发布时间统计日均发布量环比；Google 保留相对搜索热度口径。"
     />
     <Alert
       v-if="requiresReview"

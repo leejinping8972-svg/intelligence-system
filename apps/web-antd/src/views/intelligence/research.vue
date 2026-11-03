@@ -47,7 +47,6 @@ const core = useCoreList('keywords');
 const { period: corePeriod } = core;
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
-import ResearchTrendOptions from './components/ResearchTrendOptions.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
 import SocialTrendCell from './components/SocialTrendCell.vue';
@@ -62,7 +61,6 @@ import {
 } from './data';
 import { keywordJob, startKeywordJob, stopKeywordJob } from './keyword-jobs';
 import { keywordChineseName } from './keyword-names';
-import { defaultResearchTrends } from './keyword-research';
 import {
   assessKeyword,
   KEYWORD_MODEL_VERSION,
@@ -82,7 +80,6 @@ const open = ref(false);
 const modelOpen = ref(false);
 const supplementSubmitting = ref(false);
 const supplementOpen = ref(false);
-const supplementTrends = ref(defaultResearchTrends());
 const researchError = ref('');
 const checkingSource = ref(false);
 const researchSubmitting = ref(false);
@@ -171,8 +168,6 @@ const form = reactive({
   markets: (state.market === 'ALL' ? ['US'] : [state.market]) as Market[],
   sources: ['google_autocomplete', 'amazon_autocomplete', 'semrush'],
   depth: 1,
-  limit: 100,
-  socialTrends: defaultResearchTrends(),
 });
 const automaticSorftimeCalls = computed(() => {
   const seedCount = new Set(
@@ -181,14 +176,13 @@ const automaticSorftimeCalls = computed(() => {
       .map((seed) => seed.normalize('NFKC').replaceAll(/\s+/g, ' ').trim())
       .filter(Boolean),
   ).size;
-  const remaining = Number(form.limit) - seedCount * form.markets.length;
   const supported =
     seedCount *
     form.markets.filter((market) => market === 'US' || market === 'MX').length;
-  if (!supported || remaining <= 0) return 0;
-  return form.depth === 2
-    ? Math.min(Number(form.limit), supported + remaining)
-    : supported;
+  if (!supported) return 0;
+  // Unlimited expansion: estimate one Sorftime call per supported seed×market,
+  // plus follow-up depth-2 calls bounded by the same combinations.
+  return form.depth === 2 ? supported * 2 : supported;
 });
 watch(
   () => route.query.new,
@@ -451,13 +445,6 @@ function toggleFavorite(record: Record<string, unknown>) {
 }
 async function createResearch() {
   if (checkingSource.value || researchSubmitting.value) return;
-  if (
-    form.socialTrends.sources.length &&
-    !form.socialTrends.budgetAcknowledged
-  ) {
-    researchError.value = '请确认社媒趋势的来源额度预算';
-    return;
-  }
   const seeds = [
     ...new Set(
       form.seeds
@@ -472,15 +459,6 @@ async function createResearch() {
     form.sources.length === 0
   ) {
     researchError.value = '请填写种子词，至少选择一个市场和找词渠道。';
-    return;
-  }
-  if (
-    !Number.isInteger(form.limit) ||
-    form.limit < 1 ||
-    form.limit > 100 ||
-    seeds.length * form.markets.length > form.limit
-  ) {
-    researchError.value = '结果上限为1～100，不能少于种子词与市场的组合数。';
     return;
   }
   if (!state.settings.researchApiUrl || !state.settings.researchAccessKey) {
@@ -534,10 +512,7 @@ async function createResearch() {
         ].includes(source),
     ),
     depth: form.depth,
-    limit: form.limit,
-    ...(form.socialTrends.sources.length
-      ? { socialTrends: { ...form.socialTrends } }
-      : {}),
+    limit: 0,
   };
   researchSubmitting.value = true;
   try {
@@ -545,7 +520,9 @@ async function createResearch() {
     open.value = false;
     state.market =
       config.markets.length === 1 ? config.markets[0] || 'US' : 'ALL';
-    message.success('已提交腾讯云后台，关闭浏览器后也会继续运行');
+    message.success(
+      '已提交关键词拓展；完成后全部进入候选列表。谷歌/TK/INS/FB 趋势请用「趋势采集 / 每日监测」',
+    );
     await router.push('/monitor?tab=tasks');
   } catch (error) {
     researchError.value =
@@ -556,13 +533,6 @@ async function createResearch() {
 }
 async function supplementSelected() {
   if (supplementSubmitting.value) return;
-  if (
-    supplementTrends.value.sources.length &&
-    !supplementTrends.value.budgetAcknowledged
-  ) {
-    message.warning('请确认社媒趋势的来源额度预算');
-    return;
-  }
   if (selectedIds.value.length === 0 || selectedIds.value.length > 100) {
     message.warning('请勾选1～100个关键词');
     return;
@@ -593,14 +563,11 @@ async function supplementSelected() {
         depth: 1,
         limit: submittedIds.length,
         expectedKeywordCount: submittedIds.length,
-        ...(supplementTrends.value.sources.length
-          ? { socialTrends: { ...supplementTrends.value } }
-          : {}),
       },
       records,
     );
     message.success(
-      `已勾选${submittedIds.length}个词，后台已接收${result.acceptedKeywords ?? records.length}个；指标与趋势补齐后自动重评`,
+      `已勾选${submittedIds.length}个词，后台已接收${result.acceptedKeywords ?? records.length}个；Semrush 指标补齐后可重评。趋势请用「趋势采集 / 每日监测」`,
     );
     supplementOpen.value = false;
     await router.push('/monitor?tab=tasks');
@@ -912,7 +879,7 @@ function saveMetrics() {
           清空选择
         </Button>
         <Tooltip
-          title="依次补充 Semrush 搜索量、自然搜索KD与意图，采集一年趋势及30天变化，再统一重评。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
+          title="补充 Semrush 搜索量、自然搜索KD与意图后重评。谷歌/TK/INS/FB 趋势请用「趋势采集 / 每日监测」。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
         >
           <span>
             <Button
@@ -924,10 +891,7 @@ function saveMetrics() {
                 supplementSubmitting
               "
               :loading="supplementSubmitting"
-              @click="
-                supplementOpen = true;
-                supplementTrends = defaultResearchTrends();
-              "
+              @click="supplementOpen = true"
             >
               一键补齐数据并重评
             </Button>
@@ -1214,11 +1178,11 @@ function saveMetrics() {
           label="Sorftime 按结果数量自动调用"
         >
           <p class="hci-subtle">
-            以你设置的“结果总数上限”为准，按种子词、市场和扩词深度自动安排调用，不再单独填写次数。一次调用可能返回多个词，达到结果数量即停止；不保证来源一定返回足量关键词。账户额度不足或接口失败会保留原因，未知结果不自动重复调用。
+            扩词不限制结果数量，按种子词、市场和扩词深度尽量抓取；一次调用可能返回多个词。账户额度不足或接口失败会保留原因，未知结果不自动重复调用。
           </p>
           <p>
-            按当前配置最多安排 {{ automaticSorftimeCalls }} 次 Sorftime
-            数据调用，实际按需执行；结果数量不等于调用次数。
+            按当前配置大约安排 {{ automaticSorftimeCalls }} 次 Sorftime
+            数据调用，实际按需执行；抓到的词全部进入候选列表。
           </p>
           <Button
             type="link"
@@ -1230,33 +1194,29 @@ function saveMetrics() {
             前往填写或检测 MCP Token
           </Button>
         </Form.Item>
-        <div class="hci-form-grid">
-          <Form.Item label="扩词深度">
-            <Select
-              v-model:value="form.depth"
-              :options="[
-                { label: '一级：从种子词获取联想（推荐）', value: 1 },
-                { label: '二级：对首轮联想继续扩词', value: 2 },
-              ]"
-            />
-          </Form.Item>
-          <Form.Item label="结果总数上限（包含种子词，所有市场合计）">
-            <InputNumber
-              v-model:value="form.limit"
-              :min="1"
-              :max="100"
-              :precision="0"
-            />
-          </Form.Item>
-        </div>
+        <Form.Item label="扩词深度">
+          <Select
+            v-model:value="form.depth"
+            :options="[
+              { label: '一级：从种子词获取联想（推荐）', value: 1 },
+              { label: '二级：对首轮联想继续扩词', value: 2 },
+            ]"
+          />
+        </Form.Item>
+        <Alert
+          type="info"
+          show-icon
+          message="第一步只拓展关键词，不限制数量；抓到的词全部进入候选列表。谷歌 / TK / INS / FB 趋势请到「趋势采集 / 每日监测」完成。"
+          style="margin-bottom: 12px"
+        />
         <CollectionEstimate
           v-if="open"
           :input="{
             ...form,
+            limit: 0,
             seeds: form.seeds.split(/[\n,，]/).filter(Boolean),
           }"
         />
-        <ResearchTrendOptions v-model="form.socialTrends" />
       </Form>
       <Alert
         v-if="researchError"
@@ -1265,9 +1225,9 @@ function saveMetrics() {
         show-icon
       />
       <p class="hci-subtle">
-        Google／Amazon 联想和 Google Trends 为公开接口，可能限流；Sorftime
+        Google／Amazon 联想为公开接口，可能限流；Sorftime
         使用你的账户额度。Semrush
-        勾选后自动补充搜索量与自然搜索KD，也可在评分详情中手动补充，来源与日期会保留。提交成功后由腾讯云后台执行，任务和关键词结果保存到数据库，关闭浏览器后继续运行。
+        勾选后自动补充搜索量与自然搜索KD，也可在评分详情中手动补充，来源与日期会保留。趋势采集与研究任务已分离。提交成功后由腾讯云后台执行，关闭浏览器后继续运行。
       </p>
     </Modal>
 
@@ -1281,16 +1241,16 @@ function saveMetrics() {
     >
       <Form layout="vertical">
         <Form.Item label="关键词">
-          已勾选 {{ selectedIds.length }} 个；补齐 Semrush 指标与所选趋势
+          已勾选 {{ selectedIds.length }} 个；仅补齐 Semrush
+          指标。趋势请用「趋势采集 / 每日监测」。
         </Form.Item>
-        <ResearchTrendOptions v-model="supplementTrends" />
         <CollectionEstimate
           v-if="supplementOpen"
           :input="{
             kind: 'keyword_research',
             existingRecords: selectedIds,
-            sources: [],
-            socialTrends: supplementTrends,
+            sources: ['semrush'],
+            limit: selectedIds.length,
           }"
         />
       </Form>

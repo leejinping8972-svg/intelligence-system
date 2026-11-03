@@ -39,12 +39,12 @@ test('rerunning a seed reuses the persisted ID for metric patches and refreshes 
     assert.equal(checkpoint.keywords[0].id, 'original');
     assert.equal(checkpoint.keywords[0].favorite, true);
     assert.equal(checkpoint.keywords[0].metrics.monthlySearchVolume, 250);
-    assert.equal(checkpoint.trendWork[0].annual.status, existingRecords ? 'done' : 'pending');
-    assert.equal(checkpoint.trendWork[0].daily.status, existingRecords ? 'done' : 'pending');
+    // Expansion / Semrush 补齐不再自动挂 Google 趋势队列。
+    assert.equal(checkpoint.trendWork, undefined);
   }
 });
 
-test('one supplementation job refreshes Semrush and Trends without expansion or repeating metrics after a cooldown', async () => {
+test('one supplementation job refreshes Semrush without expansion or auto trend collection', async () => {
   const at = new Date().toISOString();
   const points = Array.from({ length: 53 }, (_, i) => ({
     date: new Date(Date.now() - (52 - i) * 7 * 86_400_000)
@@ -129,20 +129,13 @@ test('one supplementation job refreshes Semrush and Trends without expansion or 
     ['sem-metric:0'],
   );
   assert.equal(saved.checkpoint.metricIndex, 1);
-  now = gate.until + 1;
-  await runTrendJob(saved, io);
-  now = gate.until + 1;
-  await runTrendJob(saved, io);
-  assert.deepEqual(
-    calls.map((c) => c.step),
-    ['sem-metric:0', 'trend-v2:0:annual:1', 'trend-v2:0:daily:1'],
-  );
+  assert.equal(saved.checkpoint.trendWork, undefined);
   assert.equal(saved.status, 'awaiting_review');
-  assert.equal(assessKeyword(saved.checkpoint.keywords[0]).status, 'rated');
   assert.deepEqual(saved.checkpoint.keywords[0].siteIds, ['saved-site']);
   assert.equal(saved.checkpoint.keywords[0].reviewStatus, 'selected');
   assert.equal(saved.checkpoint.keywords[0].reviewNote, '保留人工决定');
   assert.match(jobTasks(saved)[0].title, /数据补齐与重评/);
+  assert.match(saved.checkpoint.logs.join('\n'), /趋势采集 \/ 每日监测/);
 });
 
 const record = (id = 'a') => ({
