@@ -1,43 +1,34 @@
 {
-  "title": "关键词研究与趋势采集两步拆分",
+  "title": "商品检索响应落盘解析、FBM直抓与新品类型筛选",
   "includedCommits": [
-    "a99113d3f7e10c1526b19fcd80fc24fe161ab508"
+    "b3d057cca04dbd8429a14567281ebaf631ca6061",
+    "222523fa1df316eb3cf769fddbcf22f95f230f0e"
   ],
-  "sourceSha": "a99113d3f7e10c1526b19fcd80fc24fe161ab508",
+  "sourceSha": "222523fa1df316eb3cf769fddbcf22f95f230f0e",
   "changes": [
-    "关键词拓展任务不再限制结果数量，抓到的词全部进入候选列表。",
-    "研究任务与 Semrush 补齐不再自动采集 Google / TK / INS / FB 趋势。",
-    "四平台趋势统一由「趋势采集 / 每日监测」完成；趋势-only Google 补齐路径保留。"
+    "Sorftime 商品检索失败时落盘脱敏 mcpPreview，并增强 JSON/围栏/嵌套信封解析。",
+    "商品库「从平台获取」新增 FBM新品 直抓入口。",
+    "商品库展示新品类型列，并支持按 FBM新品/常规新品/新上架商品筛选。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/components/KeywordTrendsControl.vue",
-    "apps/web-antd/src/views/intelligence/keyword-research.ts",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "server/KEYWORD-MULTICHANNEL-TRENDS.md",
-    "server/KEYWORD-SOCIAL-RADAR.md",
-    "server/collector.js",
-    "server/domain.mjs",
-    "server/domain.test.mjs",
-    "server/enrichment.test.mjs",
-    "server/index.mjs",
-    "server/job-progress.mjs",
-    "server/job-progress.test.mjs",
-    "server/keyword-expansion-split.test.mjs",
-    "server/keyword-research-trends.test.mjs",
-    "server/runner.mjs",
-    "server/task-estimate.mjs",
-    "tests/keyword-research.test.ts",
-    "workers/site-discovery/src/index.js"
+    "apps/web-antd/src/views/intelligence/components/PlatformProductsDialog.vue",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "server/discovery-sorftime.mjs",
+    "server/mcp-payload.test.mjs",
+    "server/platform-product-data.mjs",
+    "server/product-resource-sorftime.mjs",
+    "server/store.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "validation": [
-    "功能开发自测：node --test 相关 32 项通过；vitest tests/keyword-research.test.ts 16 项通过；node --check 改动模块通过。",
+    "功能开发自测：node --test server/mcp-payload.test.mjs 通过；新品类型投影单测通过；node --check 改动模块通过。",
     "提交钩子按项目惯例 LEFTHOOK=0 跳过，不记全仓 lint/typecheck 通过。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建和 CI 等待。",
     "无 schema、迁移或依赖变更；完整数据库备份按无结构变更/迁移策略跳过，保留应用、镜像、前端、配置、任务、检查点、业务数据及 public/data 回退保护。"
   ],
   "operator": "Cursor",
-  "id": "20261103100835-9b56def7",
-  "builtAt": "2026-11-03T10:08:35.454Z",
-  "sourceDigest": "9b56def7bb00a2412e2e516a85902ed7368e89599535527f0a4b19535e5f7718"
+  "id": "20261103104200-77937f69",
+  "builtAt": "2026-11-03T10:42:00.873Z",
+  "sourceDigest": "77937f69110afe3a996a2057a0d5ba928c5c5bc4851234bc3b4aebc770a88d77"
 }
