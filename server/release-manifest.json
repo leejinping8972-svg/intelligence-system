@@ -1,28 +1,43 @@
 {
-  "title": "广告观察隐藏公开来源不可获取指标",
+  "title": "关键词研究与趋势采集两步拆分",
   "includedCommits": [
-    "eee4083b46857077d1e3eca1888ed22496d0a10f"
+    "a99113d3f7e10c1526b19fcd80fc24fe161ab508"
   ],
-  "sourceSha": "eee4083b46857077d1e3eca1888ed22496d0a10f",
+  "sourceSha": "a99113d3f7e10c1526b19fcd80fc24fe161ab508",
   "changes": [
-    "广告列表不再展示花费、曝光、点击、购买、ROAS 列；公开 Meta 广告库不提供这些经营指标。",
-    "广告详情 adMetrics 不再生成上述字段的“不支持”占位行，仅保留可观察素材与投放信息。",
-    "详情说明改为明确公开广告库不含成交类指标；不改抓取逻辑、schema 或收费来源。"
+    "关键词拓展任务不再限制结果数量，抓到的词全部进入候选列表。",
+    "研究任务与 Semrush 补齐不再自动采集 Google / TK / INS / FB 趋势。",
+    "四平台趋势统一由「趋势采集 / 每日监测」完成；趋势-only Google 补齐路径保留。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/ads.vue",
-    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
-    "apps/web-antd/src/views/intelligence/use-core-list.ts",
-    "tests/core-list-metrics.test.ts"
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
+    "apps/web-antd/src/views/intelligence/components/KeywordTrendsControl.vue",
+    "apps/web-antd/src/views/intelligence/keyword-research.ts",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "server/KEYWORD-MULTICHANNEL-TRENDS.md",
+    "server/KEYWORD-SOCIAL-RADAR.md",
+    "server/collector.js",
+    "server/domain.mjs",
+    "server/domain.test.mjs",
+    "server/enrichment.test.mjs",
+    "server/index.mjs",
+    "server/job-progress.mjs",
+    "server/job-progress.test.mjs",
+    "server/keyword-expansion-split.test.mjs",
+    "server/keyword-research-trends.test.mjs",
+    "server/runner.mjs",
+    "server/task-estimate.mjs",
+    "tests/keyword-research.test.ts",
+    "workers/site-discovery/src/index.js"
   ],
   "validation": [
-    "功能开发自测：pnpm test:unit -- tests/core-list-metrics.test.ts 23 项通过。",
-    "提交钩子因既有 ads/core-list 历史 oxlint 与全仓 typecheck 告警失败，使用进程级 LEFTHOOK=0 完成最小 diff 提交，不记全仓 lint/typecheck 通过。",
+    "功能开发自测：node --test 相关 32 项通过；vitest tests/keyword-research.test.ts 16 项通过；node --check 改动模块通过。",
+    "提交钩子按项目惯例 LEFTHOOK=0 跳过，不记全仓 lint/typecheck 通过。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建和 CI 等待。",
     "无 schema、迁移或依赖变更；完整数据库备份按无结构变更/迁移策略跳过，保留应用、镜像、前端、配置、任务、检查点、业务数据及 public/data 回退保护。"
   ],
   "operator": "Cursor",
-  "id": "20261103093704-f0ba73e5",
-  "builtAt": "2026-11-03T09:37:04.473Z",
-  "sourceDigest": "f0ba73e58b1a8c708ef3d496da495a5a81637e09cbb4254e48043b69917472b4"
+  "id": "20261103100835-9b56def7",
+  "builtAt": "2026-11-03T10:08:35.454Z",
+  "sourceDigest": "9b56def7bb00a2412e2e516a85902ed7368e89599535527f0a4b19535e5f7718"
 }
