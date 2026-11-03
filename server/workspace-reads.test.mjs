@@ -21,6 +21,25 @@ test('list truncation preserves complete emoji at JSON and SQL column boundaries
   assert.equal(product.data.benefitEvidence, 'e'.repeat(1199) + emoji);
   assert.ok(JSON.stringify([ad, product]).isWellFormed());
 });
+test('product projection indexes FBM and regular new-product classification types', () => {
+  const product = projectRecord('products', {
+    id: 'new-product',
+    title: 'Creatine',
+    market: 'US',
+    newProductClassifications: [
+      { type: 'fbm_new', label: 'FBM新品', listingDate: '2026-11-01' },
+      { type: 'regular_new', label: '常规新品', listingDate: '2026-11-01' },
+      { type: 'ignored', label: '忽略' },
+    ],
+  });
+  assert.deepEqual(
+    product.links
+      .filter(([relation]) => relation === 'newProduct')
+      .map(([, target]) => target)
+      .sort(),
+    ['fbm_new', 'regular_new'],
+  );
+});
 const keyword = (i) => ({
   id: `k${i}`,
   term: `magnesium gummies ${i}`,

@@ -142,6 +142,15 @@ export function projectRecord(collection, value) {
   );
   add('benefit', value.benefits);
   if (collection === 'products') add('listingDate', [productListingDate(value)]);
+  if (collection === 'products')
+    add(
+      'newProduct',
+      (value.newProductClassifications || [])
+        .map((item) => item?.type)
+        .filter((type) =>
+          ['fbm_new', 'regular_new', 'new_listing'].includes(type),
+        ),
+    );
   add(
     'ingredient',
     value.ingredientInsights?.map((item) => item.name),
@@ -726,6 +735,15 @@ export function createWorkspaceReads({
     if (collection === 'products') {
       const { from, to } = validateListingRange(input.listedFrom, input.listedTo);
       if (from || to) clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='listingDate'${from ? ` AND d.target>=${bind(from)}` : ''}${to ? ` AND d.target<=${bind(to)}` : ''})`);
+      if (input.newProductType && input.newProductType !== 'ALL') {
+        const type = bind(String(input.newProductType).slice(0, 32));
+        clauses.push(
+          `(EXISTS(SELECT 1 FROM workspace_read_links n WHERE n.collection=r.collection AND n.id=r.id AND n.relation='newProduct' AND n.target=${type}) OR ${sql(
+            `EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(r.payload->'newProductClassifications','[]'::jsonb)) e WHERE e->>'type'=${type})`,
+            `JSON_SEARCH(r.payload, 'one', ${type}, NULL, '$.newProductClassifications[*].type') IS NOT NULL`,
+          )})`,
+        );
+      }
     }
     const score = input.score || {};
     if (score.status === 'unscored') clauses.push('r.score IS NULL');

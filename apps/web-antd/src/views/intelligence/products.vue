@@ -88,6 +88,13 @@ const benefitFilter = ref('ALL');
 const ingredientFilter = ref('ALL');
 const decisionFilter = ref('ALL');
 const newness = ref('ALL');
+const newProductType = ref('ALL');
+const newProductTypeOptions = [
+  { label: '全部新品类型', value: 'ALL' },
+  { label: 'FBM新品', value: 'fbm_new' },
+  { label: '常规新品', value: 'regular_new' },
+  { label: '新上架商品', value: 'new_listing' },
+];
 const decisionRulesOpen = ref(false);
 const sourceFilter = ref('ALL');
 const platformFilter = ref('ALL');
@@ -107,7 +114,7 @@ const keywordFilter = ref('');
 const remote = useWorkspaceList<Product>('products', computed(() => ({
   market: state.market, search: search.value, category: category.value, favorite: favorites.value,
   benefit: benefitFilter.value, ingredient: ingredientFilter.value, decision: decisionFilter.value,
-  newness: newness.value, provider: sourceFilter.value, productPlatform: platformFilter.value, siteLinked: siteLinked.value, siteId: siteFilter.value,
+  newness: newness.value, newProductType: newProductType.value, provider: sourceFilter.value, productPlatform: platformFilter.value, siteLinked: siteLinked.value, siteId: siteFilter.value,
   keywordId: keywordFilter.value || route.query.keyword,
   listedFrom: listedRange.value[0], listedTo: listedRange.value[1],
 })), page, pageSize);
@@ -224,6 +231,10 @@ const rows = computed(() => serverMode ? remote.rows.value :
         productDecisions(p).some((tag) => tag.key === decisionFilter.value)) &&
       (newness.value === 'ALL' || (newness.value === 'discovered' ? discoveryDecision(p, 'product').recentDiscovery
         : (discoveryDecision(p, 'product').isNew === null ? 'unknown' : discoveryDecision(p, 'product').isNew ? 'yes' : 'no') === newness.value)) &&
+      (newProductType.value === 'ALL' ||
+        (p.newProductClassifications || []).some(
+          (item) => item.type === newProductType.value,
+        )) &&
       (!siteFilter.value || p.siteId === siteFilter.value) &&
       (!keywordFilter.value ||
         state.keywords
@@ -256,6 +267,7 @@ const tableColumns = computed(() => core.columns([
   { title: '平台', key: 'platform', width: 100 },
   { title: '关联独立站', key: 'source', width: 165 },
   { title: '决策标签', key: 'decisions', width: 160 },
+  { title: '新品类型', key: 'newProduct', width: 150 },
   { title: originalPriceSortable.value ? '原币价格' : '原币价格（分币种）', key: 'core:priceOriginal', width: 110 },
   { title: '美元对比价', key: 'core:priceUsd', width: 116 },
   { title: '展示销量', key: 'core:cumulativeSold', width: 100 },
@@ -285,6 +297,7 @@ watch(
     ingredientFilter,
     decisionFilter,
     newness,
+    newProductType,
     sourceFilter,
     platformFilter,
     siteLinked,
@@ -424,6 +437,14 @@ async function exportProducts() {
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
         /><Select id="product-newness" aria-label="商品新旧标签" v-model:value="newness" show-search option-filter-prop="label" :options="discoveryFilters" style="min-width: 180px" /><Select
+          id="product-new-type"
+          aria-label="新品类型"
+          v-model:value="newProductType"
+          show-search
+          option-filter-prop="label"
+          :options="newProductTypeOptions"
+          style="min-width: 160px"
+        /><Select
           v-model:value="decisionFilter"
           show-search
           option-filter-prop="label"
@@ -636,6 +657,18 @@ async function exportProducts() {
         </template>
         <template v-else-if="column.key === 'decisions'">
           <ProductDecisionTags :product="record as Product" />
+        </template>
+        <template v-else-if="column.key === 'newProduct'">
+          <template v-if="record.newProductClassifications?.length">
+            <Tag
+              v-for="item in record.newProductClassifications"
+              :key="item.type + item.listingDate"
+              :color="item.type === 'fbm_new' ? 'orange' : 'green'"
+              >{{ item.label }}</Tag
+            >
+            <p class="hci-subtle">{{ record.newProductClassifications.map((item) => item.listingDate).filter(Boolean).join(' / ') }}</p>
+          </template>
+          <span v-else class="hci-subtle">—</span>
         </template>
         <template v-else-if="column.key === 'category'"
           >{{ marketName(record.market) }}
