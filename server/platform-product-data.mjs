@@ -19,33 +19,118 @@ export function number(value) {
   const n = Number(String(value).replaceAll(',', ''));
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
-export function payload(result) {
-  if (result?.isError)
-    throw new Error(
-      `平台工具返回错误：${(result.content || [])
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join(' ')
-        .slice(0, 300)}；未自动重复收费请求`,
-    );
-  let value = result?.structuredContent;
-  if (!value) {
-    for (const block of result?.content || []) {
-      if (block.type !== 'text') continue;
-      try {
-        value = JSON.parse(block.text);
-        break;
-      } catch {}
+function decodeJsonText(text) {
+  if (typeof text !== 'string') return;
+  let raw = text.trim();
+  if (!raw) return;
+  const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(raw);
+  if (fence) raw = fence[1].trim();
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    const start = raw.search(/[\[{]/);
+    const end = Math.max(raw.lastIndexOf('}'), raw.lastIndexOf(']'));
+    if (start < 0 || end <= start) return;
+    try {
+      value = JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      return;
     }
   }
+  for (let i = 0; i < 3 && typeof value === 'string'; i += 1) {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      break;
+    }
+  }
+  return value;
+}
+
+export function summarizeMcpResult(result, limit = 2500) {
+  if (result == null) return { kind: 'empty' };
+  if (typeof result !== 'object')
+    return {
+      kind: typeof result,
+      preview: String(result).slice(0, limit),
+    };
+  const content = Array.isArray(result.content)
+    ? result.content.slice(0, 8).map((block) => ({
+        type: block?.type || '',
+        mimeType: block?.mimeType || block?.mime_type || '',
+        text: typeof block?.text === 'string' ? block.text.slice(0, 800) : undefined,
+        keys: block && typeof block === 'object' ? Object.keys(block).slice(0, 12) : [],
+      }))
+    : undefined;
+  return {
+    kind: 'mcp',
+    isError: result.isError === true,
+    keys: Object.keys(result).slice(0, 20),
+    hasStructuredContent: result.structuredContent != null,
+    structuredType: result.structuredContent == null ? null : typeof result.structuredContent,
+    contentLen: Array.isArray(result.content) ? result.content.length : 0,
+    content,
+    preview: JSON.stringify(result).slice(0, limit),
+  };
+}
+
+function attachMcpPreview(error, result) {
+  error.mcpPreview = summarizeMcpResult(result);
+  return error;
+}
+
+export function payload(result) {
+  if (result?.isError)
+    throw attachMcpPreview(
+      new Error(
+        `平台工具返回错误：${(result.content || [])
+          .filter((b) => typeof b?.text === 'string')
+          .map((b) => b.text)
+          .join(' ')
+          .slice(0, 300)}；未自动重复收费请求`,
+      ),
+      result,
+    );
+  let value = result?.structuredContent;
+  if (typeof value === 'string') value = decodeJsonText(value);
+  if (!value || typeof value !== 'object') {
+    for (const block of result?.content || []) {
+      if (
+        block?.type &&
+        block.type !== 'text' &&
+        block.type !== 'output_text' &&
+        block.type !== 'resource'
+      )
+        continue;
+      const candidate =
+        decodeJsonText(block?.text) ||
+        decodeJsonText(block?.resource?.text) ||
+        (block && typeof block === 'object' && !block.type && !block.text
+          ? block
+          : undefined);
+      if (candidate && typeof candidate === 'object') {
+        value = candidate;
+        break;
+      }
+    }
+  }
+  if ((!value || typeof value !== 'object') && typeof result?.text === 'string')
+    value = decodeJsonText(result.text);
   if (!value || typeof value !== 'object')
-    throw new Error('平台返回格式无法识别，未编造商品或指标');
+    throw attachMcpPreview(
+      new Error('平台返回格式无法识别，未编造商品或指标'),
+      result,
+    );
   if (
     value.success === false ||
     value.Success === false ||
     (value.code && ![0, 200, '0', '200'].includes(value.code))
   )
-    throw new Error('平台未返回成功结果，请核对权限、余额及查询条件');
+    throw attachMcpPreview(
+      new Error('平台未返回成功结果，请核对权限、余额及查询条件'),
+      result,
+    );
   return value;
 }
 export function records(value, depth = 0) {

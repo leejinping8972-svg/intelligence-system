@@ -57,6 +57,7 @@ const errorMessage = ref('');
 const open = ref(false);
 const router = useRouter();
 const activeTab = ref('resources');
+const discoveryTabs = new Set(['new-listings', 'fbm-new']);
 const capabilities = ref<ResourceCapabilities>();
 const capabilitiesLoading = ref(false);
 const capabilitiesError = ref('');
@@ -435,18 +436,19 @@ async function submitResource() {
     v-model:open="open"
     title="从平台获取商品"
     :width="900"
-    :footer="activeTab === 'new-listings' ? null : undefined"
+    :footer="discoveryTabs.has(activeTab) ? null : undefined"
     :body-style="{ maxHeight: '70vh', overflowY: 'auto' }"
     :confirm-loading="busy"
     :closable="!busy"
     :mask-closable="!busy"
     :cancel-button-props="{ disabled: busy }"
-    :ok-button-props="{ disabled: activeTab === 'new-listings' || submitDisabled }"
+    :ok-button-props="{ disabled: discoveryTabs.has(activeTab) || submitDisabled }"
     ok-text="提交后台采集"
     @ok="submit"
   >
     <Tabs v-model:active-key="activeTab">
       <Tabs.TabPane key="new-listings" tab="新上架保健品"><DiscoveryPlanForm v-if="activeTab === 'new-listings'" kind="regular_new" @submitted="open=false" /></Tabs.TabPane>
+      <Tabs.TabPane key="fbm-new" tab="FBM新品"><DiscoveryPlanForm v-if="activeTab === 'fbm-new'" kind="fbm_new" @submitted="open=false" /></Tabs.TabPane>
       <Tabs.TabPane key="resources" tab="资源路径">
         <Spin :spinning="capabilitiesLoading">
           <Alert

@@ -249,9 +249,22 @@ export async function collect(job, step, request) {
       ...requestUsage,
       ...requestFailed(requestState, error),
     };
+    const mcpPreview =
+      error?.mcpPreview ||
+      error?.cause?.mcpPreview ||
+      error?.rawPreview ||
+      error?.cause?.rawPreview;
     await pool.query(
       "UPDATE research_requests SET status='failed',error=$3,response=$4 WHERE job_id=$1 AND step=$2",
-      [job.id, step, String(error.message).slice(0, 1000), { requestUsage: failedUsage }],
+      [
+        job.id,
+        step,
+        String(error.message).slice(0, 1000),
+        {
+          requestUsage: failedUsage,
+          ...(mcpPreview ? { mcpPreview } : {}),
+        },
+      ],
     );
     throw error;
   }

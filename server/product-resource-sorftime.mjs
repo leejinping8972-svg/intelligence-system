@@ -4,7 +4,7 @@ import { connectSorftime, readSorftimeToken } from './collector.js';
 import { collectorEnv } from './local-provider.mjs';
 import {
   attributeTable, field, matchesProductTerm, normalizeAmazon, normalizeAmazonContent,
-  normalizeAmazonTrend, number, payload, records, text,
+  normalizeAmazonTrend, number, payload, records, summarizeMcpResult, text,
 } from './platform-product-data.mjs';
 import { normalizeTikTokShopProduct } from './tiktok-shop-provider.mjs';
 
@@ -353,7 +353,18 @@ export async function collectSorftimeResource(request, overrides = {}) {
     }
     if (!selected) throw rejected || new Error('Sorftime 账户未开放已适配的资源工具；此操作不支持，未发起数据调用');
     const at = new Date(overrides.now ? overrides.now() : Date.now()).toISOString();
-    const value = payload(await client.rpc('tools/call', { name: selected.name, arguments: args }));
+    let raw;
+    let value;
+    try {
+      raw = await client.rpc('tools/call', { name: selected.name, arguments: args });
+      value = payload(raw);
+    } catch (error) {
+      const wrapped = new Error(safeError(error, token), { cause: error });
+      wrapped.mcpPreview =
+        error?.mcpPreview ||
+        (raw !== undefined ? summarizeMcpResult(raw) : undefined);
+      throw wrapped;
+    }
     const controlRequests = connected.controlRequests();
     const usage = { requests: controlRequests + 1, providerCalls: 1, sorftimeCalls: 1 };
     const common = { collectedAt: at, providerCalls: 1, usage, controlRequests, dataRequests: 1, sourceTool: selected.name };

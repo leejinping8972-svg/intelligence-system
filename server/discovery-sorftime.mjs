@@ -9,6 +9,7 @@ import {
   payload,
   publicUrl,
   records,
+  summarizeMcpResult,
   text,
 } from './platform-product-data.mjs';
 import {
@@ -555,12 +556,19 @@ export async function discoverySorftime(request, overrides = {}) {
   if (!chosen)
     throw new Error(failure?.message || '账户没有开放可用的此渠道工具');
   let value;
+  let raw;
   try {
-    value = payload(
-      await client.rpc('tools/call', { name: chosen.name, arguments: args }),
-    );
+    raw = await client.rpc('tools/call', {
+      name: chosen.name,
+      arguments: args,
+    });
+    value = payload(raw);
   } catch (error) {
-    throw new Error(safeError(error, token), { cause: error });
+    const wrapped = new Error(safeError(error, token), { cause: error });
+    wrapped.mcpPreview =
+      error?.mcpPreview ||
+      (raw !== undefined ? summarizeMcpResult(raw) : undefined);
+    throw wrapped;
   }
   const usage = {
     sorftimeCalls: 1,
