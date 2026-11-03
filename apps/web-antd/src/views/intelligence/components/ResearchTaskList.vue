@@ -127,6 +127,12 @@ function applySearch() {
   page.value = 1;
   if (serverMode) void loadRemote();
 }
+function resetFilters() {
+  status.value = [];
+  search.value = '';
+  page.value = 1;
+  if (serverMode) void loadRemote();
+}
 watch(
   () => cloudWorkspace.taskRevision,
   () => {
@@ -188,15 +194,7 @@ const columns = [
       aria-label="筛选任务状态"
       allow-clear
     />
-    <Button
-      @click="
-        status = [];
-        search = '';
-        if (!serverMode) return;
-        page = 1;
-        loadRemote();
-      "
-    >
+    <Button @click="resetFilters">
       重置筛选
     </Button>
     <Button
