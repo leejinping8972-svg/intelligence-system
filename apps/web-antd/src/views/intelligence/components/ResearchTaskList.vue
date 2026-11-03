@@ -2,7 +2,7 @@
 import type { Task } from '../data';
 import type { TaskGroup } from '../task-list';
 
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 import {
   Button,
@@ -12,13 +12,22 @@ import {
   Progress,
   Radio,
   Select,
+  Spin,
   Table,
   Tag,
+  message,
 } from 'ant-design-vue';
 
-import { marketName } from '../data';
-import { taskStatus, taskStatuses, taskSummary, taskTitle } from '../task-list';
-const props = defineProps<{ tasks: TaskGroup[]; retrying: string }>();
+import { cloudWorkspace } from '../cloud-workspace';
+import { marketName, state } from '../data';
+import { serverMode } from '../session';
+import { fetchTaskPage } from '../task-page';
+import { groupTasks, taskStatus, taskStatuses, taskSummary, taskTitle } from '../task-list';
+
+const props = defineProps<{
+  tasks: TaskGroup[];
+  retrying: string;
+}>();
 const emit = defineEmits<{
   details: [task: TaskGroup];
   cancel: [task: Task];
@@ -26,6 +35,7 @@ const emit = defineEmits<{
   research: [task: Task];
   retry: [task: Task];
   trends: [task: Task];
+  'update:total': [total: number];
 }>();
 function savedView() {
   try {
@@ -39,7 +49,15 @@ const status = ref<string[]>([]);
 const search = ref('');
 const page = ref(1);
 const size = ref(10);
-const rows = computed(() =>
+const loading = ref(false);
+const error = ref('');
+const remoteRows = ref<TaskGroup[]>([]);
+const remoteTotal = ref(0);
+const statusCounts = ref<Record<string, number>>({});
+const activeJobs = ref<Array<{ id: string; status: string }>>([]);
+let loadSequence = 0;
+
+const localRows = computed(() =>
   props.tasks.filter(
     (t) =>
       (status.value.length === 0 || status.value.includes(taskStatus(t))) &&
@@ -48,22 +66,94 @@ const rows = computed(() =>
         .includes(search.value.toLowerCase().trim()),
   ),
 );
-const visible = computed(() =>
-  rows.value.slice((page.value - 1) * size.value, page.value * size.value),
+
+const rows = computed(() =>
+  serverMode ? remoteRows.value : localRows.value,
 );
-watch([status, search, () => props.tasks.length], () => {
+const total = computed(() =>
+  serverMode ? remoteTotal.value : localRows.value.length,
+);
+
+const visible = computed(() =>
+  serverMode
+    ? rows.value
+    : rows.value.slice((page.value - 1) * size.value, page.value * size.value),
+);
+
+async function loadRemote() {
+  if (!serverMode) return;
+  const sequence = ++loadSequence;
+  loading.value = true;
+  error.value = '';
+  try {
+    const result = await fetchTaskPage({
+      page: page.value,
+      pageSize: size.value,
+      statuses: status.value,
+      search: search.value,
+      market: state.market,
+    });
+    if (sequence !== loadSequence) return;
+    remoteRows.value = groupTasks(result.tasks, state.market);
+    remoteTotal.value = result.total;
+    statusCounts.value = result.statusCounts || {};
+    activeJobs.value = result.activeJobs || [];
+    emit('update:total', result.total);
+  } catch (cause) {
+    if (sequence !== loadSequence) return;
+    error.value = cause instanceof Error ? cause.message : '任务列表读取失败';
+    message.error(error.value);
+  } finally {
+    if (sequence === loadSequence) loading.value = false;
+  }
+}
+
+watch([status, () => state.market], () => {
   page.value = 1;
+  if (!serverMode) return;
+  void loadRemote();
 });
+watch([page, size], () => {
+  if (!serverMode) return;
+  void loadRemote();
+});
+watch(
+  () => props.tasks.length,
+  () => {
+    if (!serverMode) page.value = 1;
+  },
+);
+function applySearch() {
+  page.value = 1;
+  if (serverMode) void loadRemote();
+}
+watch(
+  () => cloudWorkspace.taskRevision,
+  () => {
+    if (serverMode) void loadRemote();
+  },
+);
 watch(view, (value) => {
   try {
     localStorage.setItem('hci-task-view', value);
   } catch {}
 });
+onMounted(() => {
+  if (serverMode) void loadRemote();
+});
+
 const options = computed(() =>
-  Object.entries(taskStatuses).map(([value, item]) => ({
-    value,
-    label: `${item.label}（${props.tasks.filter((t) => taskStatus(t) === value).length}）`,
-  })),
+  Object.entries(taskStatuses).map(([value, item]) => {
+    const count = serverMode
+      ? value === 'waiting'
+        ? statusCounts.value.running || 0
+        : statusCounts.value[value] || 0
+      : props.tasks.filter((t) => taskStatus(t) === value).length;
+    return {
+      value,
+      label: `${item.label}（${count}）`,
+    };
+  }),
 );
 const live = (t: Task) =>
   t.mode === 'live' || !!t.cloudJobId || /真实研究|独立站发现/.test(t.title);
@@ -82,11 +172,12 @@ const columns = [
 </script>
 <template>
   <div class="task-toolbar">
-    <Input
+    <Input.Search
       v-model:value="search"
-      placeholder="搜索任务名称或编号"
+      placeholder="搜索任务编号或内容"
       aria-label="搜索任务"
       allow-clear
+      @search="applySearch"
     />
     <Select
       v-model:value="status"
@@ -101,9 +192,20 @@ const columns = [
       @click="
         status = [];
         search = '';
+        if (!serverMode) return;
+        page = 1;
+        loadRemote();
       "
     >
       重置筛选
+    </Button>
+    <Button
+      v-if="serverMode"
+      :loading="loading"
+      aria-label="刷新任务列表"
+      @click="loadRemote"
+    >
+      刷新本页
     </Button>
     <Radio.Group v-model:value="view" aria-label="任务视图">
       <Radio.Button value="list">列表</Radio.Button>
@@ -111,195 +213,202 @@ const columns = [
     </Radio.Group>
   </div>
   <div class="task-list-note">
-    <span role="status">共 {{ rows.length }} 项任务</span
-    ><span>同一后台任务的多个市场合并展示；进度为整项任务合计。</span>
+    <span role="status">共 {{ total }} 项任务</span>
+    <span v-if="activeJobs.length">
+      进行中 {{ activeJobs.length }} 项；当前优先
+      <code>{{ activeJobs[0]?.id }}</code>
+    </span>
+    <span>同一后台任务的多个市场合并展示；进度为整项任务合计。</span>
   </div>
-  <Table
-    v-if="view === 'list'"
-    :data-source="visible"
-    :columns="columns"
-    row-key="id"
-    :pagination="false"
-    :scroll="{ x: 1220 }"
-    size="middle"
-  >
-    <template #bodyCell="{ column, record }">
-      <template v-for="task in [record as TaskGroup]" :key="task.id">
-        <template v-if="column.key === 'title'">
-          <Button type="link" class="task-name" @click="emit('details', task)">
-            {{ taskTitle(task) }}
-          </Button>
-          <div class="task-id">
-            {{ task.cloudJobId || task.id }}
-          </div>
-        </template>
-        <template v-if="column.key === 'market'">
-          <Tag v-for="market in task.markets" :key="market">
-            {{ market === 'ALL' ? '市场未记录' : marketName(market) }}
-          </Tag>
-        </template>
-        <template v-if="column.key === 'status'">
+  <p v-if="error" class="task-list-error" role="alert">{{ error }}</p>
+  <Spin :spinning="loading">
+    <Table
+      v-if="view === 'list'"
+      :data-source="visible"
+      :columns="columns"
+      row-key="id"
+      :pagination="false"
+      :scroll="{ x: 1220 }"
+      size="middle"
+    >
+      <template #bodyCell="{ column, record }">
+        <template v-for="task in [record as TaskGroup]" :key="task.id">
+          <template v-if="column.key === 'title'">
+            <Button type="link" class="task-name" @click="emit('details', task)">
+              {{ taskTitle(task) }}
+            </Button>
+            <div class="task-id">
+              {{ task.cloudJobId || task.id }}
+            </div>
+          </template>
+          <template v-if="column.key === 'market'">
+            <Tag v-for="market in task.markets" :key="market">
+              {{ market === 'ALL' ? '市场未记录' : marketName(market) }}
+            </Tag>
+          </template>
+          <template v-if="column.key === 'status'">
+            <Tag :color="taskStatuses[taskStatus(task)]?.color">
+              {{ taskStatuses[taskStatus(task)]?.label }}
+            </Tag>
+          </template>
+          <template v-if="column.key === 'progress'">
+            <div>{{ taskSummary(task).label }}</div>
+            <Progress
+              v-if="taskSummary(task).percent !== null"
+              :percent="taskSummary(task).percent!"
+              :stroke-color="taskSummary(task).color"
+              :status="
+                ['partial', 'cancelled', 'failed'].includes(task.status)
+                  ? 'exception'
+                  : 'normal'
+              "
+              size="small"
+            />
+            <div class="task-result">
+              {{ taskSummary(task).result }}
+            </div>
+          </template>
+          <template v-if="column.key === 'created'">
+            {{ date(task.created) }}
+          </template>
+          <template v-if="column.key === 'actions'">
+            <div class="task-actions">
+              <Button size="small" @click="emit('details', task)">查看详情</Button
+              ><Button
+                v-if="
+                  !task.readOnly &&
+                  ['queued', 'running'].includes(task.status) &&
+                  (task.cloudJobId || !live(task))
+                "
+                size="small"
+                @click="emit('cancel', task)"
+              >
+                取消 </Button
+              ><Button
+                v-if="task.status === 'queued' && !live(task)"
+                size="small"
+                @click="emit('run', task)"
+              >
+                模拟执行 </Button
+              ><Button
+                v-if="
+                  !task.readOnly &&
+                  [
+                    'partial',
+                    'failed',
+                    'cancelled',
+                    'completed',
+                    'awaiting_review',
+                  ].includes(task.status)
+                "
+                size="small"
+                @click="live(task) ? emit('research', task) : emit('retry', task)"
+              >
+                {{ live(task) ? '重新研究' : '重试' }} </Button
+              ><Button
+                v-if="
+                  task.cloudJobId &&
+                  task.progress?.terminal &&
+                  task.progress.failed > 0
+                "
+                size="small"
+                :loading="retrying === task.cloudJobId"
+                :disabled="!!retrying && retrying !== task.cloudJobId"
+                @click="emit('trends', task)"
+              >
+                重试未完成趋势
+              </Button>
+            </div>
+          </template>
+        </template> </template
+      ><template #emptyText><Empty description="没有符合条件的任务" /></template>
+    </Table>
+    <div v-else class="task-cards">
+      <Empty v-if="!visible.length" description="没有符合条件的任务" />
+      <article v-for="task in visible" :key="task.id" class="task-card">
+        <div class="task-card-head">
+          <h3>{{ taskTitle(task) }}</h3>
           <Tag :color="taskStatuses[taskStatus(task)]?.color">
             {{ taskStatuses[taskStatus(task)]?.label }}
           </Tag>
-        </template>
-        <template v-if="column.key === 'progress'">
-          <div>{{ taskSummary(task).label }}</div>
-          <Progress
-            v-if="taskSummary(task).percent !== null"
-            :percent="taskSummary(task).percent!"
-            :stroke-color="taskSummary(task).color"
-            :status="
-              ['partial', 'cancelled', 'failed'].includes(task.status)
-                ? 'exception'
-                : 'normal'
+        </div>
+        <div class="task-card-meta">
+          <span>{{
+            task.markets
+              .map((market) =>
+                market === 'ALL' ? '市场未记录' : marketName(market),
+              )
+              .join(' / ')
+          }}</span
+          ><time>{{ date(task.created) }}</time>
+        </div>
+        <div>{{ taskSummary(task).label }}</div>
+        <Progress
+          v-if="taskSummary(task).percent !== null"
+          :percent="taskSummary(task).percent!"
+          :stroke-color="taskSummary(task).color"
+          :status="
+            ['partial', 'cancelled', 'failed'].includes(task.status)
+              ? 'exception'
+              : 'normal'
+          "
+          size="small"
+        />
+        <p class="task-result">{{ taskSummary(task).result }}</p>
+        <div class="task-id">{{ task.cloudJobId || task.id }}</div>
+        <div class="task-actions">
+          <Button size="small" @click="emit('details', task)">查看详情</Button
+          ><Button
+            v-if="
+              !task.readOnly &&
+              ['queued', 'running'].includes(task.status) &&
+              (task.cloudJobId || !live(task))
             "
             size="small"
-          />
-          <div class="task-result">
-            {{ taskSummary(task).result }}
-          </div>
-        </template>
-        <template v-if="column.key === 'created'">
-          {{ date(task.created) }}
-        </template>
-        <template v-if="column.key === 'actions'">
-          <div class="task-actions">
-            <Button size="small" @click="emit('details', task)">查看详情</Button
-            ><Button
-              v-if="
-                !task.readOnly &&
-                ['queued', 'running'].includes(task.status) &&
-                (task.cloudJobId || !live(task))
-              "
-              size="small"
-              @click="emit('cancel', task)"
-            >
-              取消 </Button
-            ><Button
-              v-if="task.status === 'queued' && !live(task)"
-              size="small"
-              @click="emit('run', task)"
-            >
-              模拟执行 </Button
-            ><Button
-              v-if="
-                !task.readOnly &&
-                [
-                  'partial',
-                  'failed',
-                  'cancelled',
-                  'completed',
-                  'awaiting_review',
-                ].includes(task.status)
-              "
-              size="small"
-              @click="live(task) ? emit('research', task) : emit('retry', task)"
-            >
-              {{ live(task) ? '重新研究' : '重试' }} </Button
-            ><Button
-              v-if="
-                task.cloudJobId &&
-                task.progress?.terminal &&
-                task.progress.failed > 0
-              "
-              size="small"
-              :loading="retrying === task.cloudJobId"
-              :disabled="!!retrying && retrying !== task.cloudJobId"
-              @click="emit('trends', task)"
-            >
-              重试未完成趋势
-            </Button>
-          </div>
-        </template>
-      </template> </template
-    ><template #emptyText><Empty description="没有符合条件的任务" /></template>
-  </Table>
-  <div v-else class="task-cards">
-    <Empty v-if="!visible.length" description="没有符合条件的任务" />
-    <article v-for="task in visible" :key="task.id" class="task-card">
-      <div class="task-card-head">
-        <h3>{{ taskTitle(task) }}</h3>
-        <Tag :color="taskStatuses[taskStatus(task)]?.color">
-          {{ taskStatuses[taskStatus(task)]?.label }}
-        </Tag>
-      </div>
-      <div class="task-card-meta">
-        <span>{{
-          task.markets
-            .map((market) =>
-              market === 'ALL' ? '市场未记录' : marketName(market),
-            )
-            .join(' / ')
-        }}</span
-        ><time>{{ date(task.created) }}</time>
-      </div>
-      <div>{{ taskSummary(task).label }}</div>
-      <Progress
-        v-if="taskSummary(task).percent !== null"
-        :percent="taskSummary(task).percent!"
-        :stroke-color="taskSummary(task).color"
-        :status="
-          ['partial', 'cancelled', 'failed'].includes(task.status)
-            ? 'exception'
-            : 'normal'
-        "
-        size="small"
-      />
-      <p class="task-result">{{ taskSummary(task).result }}</p>
-      <div class="task-id">{{ task.cloudJobId || task.id }}</div>
-      <div class="task-actions">
-        <Button size="small" @click="emit('details', task)">查看详情</Button
-        ><Button
-          v-if="
-            !task.readOnly &&
-            ['queued', 'running'].includes(task.status) &&
-            (task.cloudJobId || !live(task))
-          "
-          size="small"
-          @click="emit('cancel', task)"
-        >
-          取消 </Button
-        ><Button
-          v-if="task.status === 'queued' && !live(task)"
-          size="small"
-          @click="emit('run', task)"
-        >
-          模拟执行 </Button
-        ><Button
-          v-if="
-            !task.readOnly &&
-            [
-              'partial',
-              'failed',
-              'cancelled',
-              'completed',
-              'awaiting_review',
-            ].includes(task.status)
-          "
-          size="small"
-          @click="live(task) ? emit('research', task) : emit('retry', task)"
-        >
-          {{ live(task) ? '重新研究' : '重试' }} </Button
-        ><Button
-          v-if="
-            task.cloudJobId &&
-            task.progress?.terminal &&
-            task.progress.failed > 0
-          "
-          size="small"
-          :loading="retrying === task.cloudJobId"
-          @click="emit('trends', task)"
-        >
-          重试未完成趋势
-        </Button>
-      </div>
-    </article>
-  </div>
+            @click="emit('cancel', task)"
+          >
+            取消 </Button
+          ><Button
+            v-if="task.status === 'queued' && !live(task)"
+            size="small"
+            @click="emit('run', task)"
+          >
+            模拟执行 </Button
+          ><Button
+            v-if="
+              !task.readOnly &&
+              [
+                'partial',
+                'failed',
+                'cancelled',
+                'completed',
+                'awaiting_review',
+              ].includes(task.status)
+            "
+            size="small"
+            @click="live(task) ? emit('research', task) : emit('retry', task)"
+          >
+            {{ live(task) ? '重新研究' : '重试' }} </Button
+          ><Button
+            v-if="
+              task.cloudJobId &&
+              task.progress?.terminal &&
+              task.progress.failed > 0
+            "
+            size="small"
+            :loading="retrying === task.cloudJobId"
+            @click="emit('trends', task)"
+          >
+            重试未完成趋势
+          </Button>
+        </div>
+      </article>
+    </div>
+  </Spin>
   <Pagination
     v-model:current="page"
     v-model:page-size="size"
-    :total="rows.length"
+    :total="total"
     :page-size-options="['10', '20', '50', '100']"
     show-size-changer
     class="task-pagination"
@@ -342,6 +451,15 @@ const columns = [
   margin-bottom: 16px;
   font-size: 13px;
   color: #64748b;
+}
+
+.task-list-note code {
+  font-size: 12px;
+}
+
+.task-list-error {
+  margin: 0 0 12px;
+  color: #b42318;
 }
 
 .task-name {

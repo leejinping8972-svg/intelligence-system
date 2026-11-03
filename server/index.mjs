@@ -368,6 +368,15 @@ async function api(input, user) {
         ),
       };
     }
+    case 'server_task_page': {
+      const { listTaskPage } = await import('./task-page.mjs');
+      return listTaskPage(input, {
+        pool,
+        sql,
+        jobTasks,
+        decorateTasks: (tasks, jobs) => decorateSocialTasks(tasks, jobs, pool),
+      });
+    }
     case 'server_workspace_sync': {
       if (!Array.isArray(input.entries) || input.entries.length > 1000)
         throw new Error('每次最多同步1000条业务记录');
@@ -831,6 +840,7 @@ const server = createServer(async (request, response) => {
               'server_status',
               'server_task_detail',
               'server_task_estimate',
+              'server_task_page',
               'server_task_research',
               'server_workspace_bootstrap',
               'server_workspace_delta',

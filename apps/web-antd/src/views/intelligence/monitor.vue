@@ -32,6 +32,7 @@ import TaskProgress from './components/TaskProgress.vue';
 import { audit, marketName, state } from './data';
 import { resourceTaskCanResume } from './product-resources';
 import { refreshCompetitorWorkspace } from './competitor-workspace';
+import { serverMode } from './session';
 import { groupTasks, taskStatus, taskStatuses, taskSummary } from './task-list';
 const route = useRoute();
 const router = useRouter();
@@ -134,12 +135,36 @@ watch(tab, value => {
   if (route.query.tab !== value) void router.replace({ query: { ...route.query, tab: value } });
 });
 const tasks = computed(() => groupTasks(state.tasks, state.market));
+const taskTotal = ref(tasks.value.length);
+watch(
+  tasks,
+  (rows) => {
+    if (!serverMode) taskTotal.value = rows.length;
+  },
+  { immediate: true },
+);
 watch(
   () => [route.query.job, tasks.value] as const,
   ([id, rows]) => {
     if (typeof id !== 'string' || selected.value?.cloudJobId === id) return;
     const task = rows.find((row) => row.cloudJobId === id);
-    if (task) void showDetails(task);
+    if (task) {
+      void showDetails(task);
+      return;
+    }
+    if (!serverMode) return;
+    void showDetails({
+      id,
+      cloudJobId: id,
+      market: 'ALL',
+      markets: ['ALL'],
+      taskIds: [id],
+      title: '云端任务',
+      status: 'running',
+      steps: [],
+      created: '',
+      mode: 'live',
+    });
   },
   { immediate: true },
 );
@@ -222,10 +247,11 @@ const auditRows = computed(() =>
         <Tabs.TabPane key="monitors" tab="重点监控">
           <DiscoveryMonitors ref="discoveryMonitors" />
           <FocusedMonitors /> </Tabs.TabPane
-        ><Tabs.TabPane key="tasks" :tab="`研究任务（${tasks.length}）`">
+        ><Tabs.TabPane key="tasks" :tab="`研究任务（${taskTotal}）`">
           <ResearchTaskList
             :tasks="tasks"
             :retrying="retrying"
+            @update:total="taskTotal = $event"
             @details="showDetails"
             @cancel="cancel"
             @run="run"
