@@ -334,8 +334,7 @@ async function exportAds() {
           >
         </p>
         <p class="hci-subtle">
-          投放状态和持续时间不代表真实销量、利润或
-          ROAS。素材仅保存来源链接，可能过期。
+          公开广告库仅提供素材与投放观察信息，不含花费、曝光、点击或成交指标。素材仅保存来源链接，可能过期。
         </p></template
       >
     </Drawer>

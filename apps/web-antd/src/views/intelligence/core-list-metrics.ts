@@ -877,29 +877,6 @@ export function adMetrics(a: Ad, context: CoreContext = {}): EvidenceMetric[] {
       { ...meta, nature: 'system_observation' },
     ),
   ];
-  for (const [key, label, unit] of [
-    ['spend', '广告花费', '原币'],
-    ['impressions', '曝光', '次'],
-    ['clicks', '点击', '次'],
-    ['purchases', '购买', '订单'],
-    ['roas', 'ROAS', '倍'],
-  ] as const) {
-    const supported = a.coreEvidence?.metrics?.find(
-      (v) =>
-        v.key === key &&
-        v.market === a.market &&
-        v.source &&
-        v.nature !== 'unknown',
-    );
-    result.push(
-      supported ||
-        metric(a, key, label, null, unit, {
-          ...meta,
-          status: 'unsupported',
-          reason: '当前公开来源未提供可核验经营指标',
-        }),
-    );
-  }
   const history = a.coreEvidence?.history || [];
   result.push(
     metric(

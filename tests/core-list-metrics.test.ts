@@ -301,10 +301,9 @@ describe('core list evidence and unit boundaries', () => {
     const metrics = adMetrics(a);
     expect(get(metrics, 'startDate').value).toBe('2025-01-01');
     expect(get(metrics, 'firstObserved').value).toBe('2026-01-01');
-    expect(get(metrics, 'roas')).toMatchObject({
-      value: null,
-      status: 'unsupported',
-    });
+    for (const key of ['spend', 'impressions', 'clicks', 'purchases', 'roas']) {
+      expect(metrics.find((m) => m.key === key)).toBeUndefined();
+    }
   });
   it('separates related queries, autocomplete and AI and deduplicates across types', () => {
     const k = {

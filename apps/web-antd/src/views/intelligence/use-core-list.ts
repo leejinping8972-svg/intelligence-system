@@ -59,11 +59,6 @@ const extra: Record<CoreKind, Array<[string, string]>> = {
   ads: [
     ['creative', '素材'],
     ['landingPages', '落地页'],
-    ['spend', '花费'],
-    ['impressions', '曝光'],
-    ['clicks', '点击'],
-    ['purchases', '购买'],
-    ['roas', 'ROAS'],
   ],
   keywords: [
     ['autocomplete', '搜索联想词数'],
