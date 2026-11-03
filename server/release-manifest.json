@@ -1,9 +1,10 @@
 {
   "title": "研究任务列表全量服务端分页",
   "includedCommits": [
-    "966ef3bf3f4f8f5a029e142155249e9c9c902b2b"
+    "966ef3bf3f4f8f5a029e142155249e9c9c902b2b",
+    "b2652d4194c27994bc9dd6e750276239aa90495d"
   ],
-  "sourceSha": "966ef3bf3f4f8f5a029e142155249e9c9c902b2b",
+  "sourceSha": "b2652d4194c27994bc9dd6e750276239aa90495d",
   "changes": [
     "新增只读 server_task_page，按页返回全部 research_jobs，支持状态/搜索/市场筛选，进行中任务优先排序，并返回总数与 activeJobs。",
     "监控页研究任务列表改为服务端分页，页签显示全库任务总数，不再受 workspace delta 最近 200 条限制。",
@@ -18,13 +19,13 @@
     "server/task-page.test.mjs"
   ],
   "validation": [
-    "功能开发自测：server/task-page.test.mjs 3项通过；node --check 与改动范围核对通过。",
+    "功能开发自测：server/task-page.test.mjs 3项通过；node --check 与改动范围核对通过；正式前端构建修正模板内联 return 后重跑。",
     "未调用真实来源、模型或正式任务重放；本功能树提交钩子因缺依赖跳过，不记为通过。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建和CI等待。",
     "无schema、迁移或依赖变更；完整数据库备份按无结构变更/迁移策略跳过，保留应用、镜像、前端、配置、任务、检查点、业务数据及public/data回退保护。"
   ],
   "operator": "Cursor",
-  "id": "20261103075548-b587a3f7",
-  "builtAt": "2026-11-03T07:55:48.997Z",
-  "sourceDigest": "b587a3f763ec02cc2e39fe2a57696dccd6c19b025d6204a94796dc6363e0eba5"
+  "id": "20261103081623-785ffd4f",
+  "builtAt": "2026-11-03T08:16:23.736Z",
+  "sourceDigest": "785ffd4fe12810dd9e6de19fb3504e859ef30bed5495c48054dd4c8c635c31b1"
 }
