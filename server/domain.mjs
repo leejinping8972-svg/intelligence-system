@@ -99,7 +99,12 @@ export function cleanKeyword(value) {
     dataNature: record.dataNature === 'collected' ? 'collected' : 'imported',
   };
 }
+/** Per discovery collect call: take as many suggestions as sources return. */
+export const KEYWORD_EXPANSION_FETCH_CAP = 10_000;
+
 export function validateJob(value) {
+  const existingRecords = value.existingRecords?.map(cleanKeyword);
+  const rawLimit = value.limit;
   const input = {
     ...(typeof value.batch === 'string' && normalizeTerm(value.batch)
       ? { batch: normalizeTerm(value.batch).slice(0, 100) }
@@ -114,19 +119,22 @@ export function validateJob(value) {
     markets: [...new Set(Array.isArray(value.markets) ? value.markets : [])],
     sources: [...new Set(Array.isArray(value.sources) ? value.sources : [])],
     depth: value.depth === 2 ? 2 : 1,
-    limit: value.limit,
-    existingRecords: value.existingRecords?.map(cleanKeyword),
+    limit: rawLimit,
+    existingRecords,
     trendComparisonVersion: 2,
   };
   if (
-    !Number.isInteger(input.limit) ||
-    input.limit < 1 ||
-    input.limit > 100 ||
     input.markets.length === 0 ||
     input.markets.some((market) => !markets.has(market))
   )
-    throw new Error('请选择市场，关键词上限为1～100');
+    throw new Error('请选择市场');
   if (input.existingRecords) {
+    if (
+      !Number.isInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > 100
+    )
+      throw new Error('请选择市场，关键词上限为1～100');
     input.expectedKeywordCount = value.expectedKeywordCount ?? input.limit;
     if (
       input.existingRecords.length === 0 ||
@@ -144,15 +152,32 @@ export function validateJob(value) {
       throw new Error(
         '补齐任务的勾选数量、名单和结果上限必须一致，且为所选市场的1～100个不同关键词；未提交部分名单',
       );
-  } else if (
-    input.seeds.length === 0 ||
-    input.seeds.some((seed) => seed.length > 255) ||
-    input.seeds.length * input.markets.length > input.limit ||
-    input.sources.length === 0 ||
-    input.sources.some((source) => !sources.has(source))
-  )
-    throw new Error('请检查种子词、结果上限与关键词渠道');
-  if (value.socialTrends !== undefined)
+  } else {
+    // Expansion research: no keyword-count ceiling; 0 / omitted means unlimited.
+    if (rawLimit === undefined || rawLimit === null || rawLimit === 0) {
+      input.limit = 0;
+    } else if (
+      !Number.isInteger(rawLimit) ||
+      rawLimit < 1 ||
+      rawLimit > KEYWORD_EXPANSION_FETCH_CAP
+    ) {
+      throw new Error(
+        `扩词任务可不设上限；若填写结果上限须为1～${KEYWORD_EXPANSION_FETCH_CAP}`,
+      );
+    }
+    if (
+      input.seeds.length === 0 ||
+      input.seeds.some((seed) => seed.length > 255) ||
+      (input.limit > 0 &&
+        input.seeds.length * input.markets.length > input.limit) ||
+      input.sources.length === 0 ||
+      input.sources.some((source) => !sources.has(source))
+    )
+      throw new Error('请检查种子词与关键词渠道');
+    input.expansionOnly = true;
+  }
+  // Google / TK / INS / FB trends run via 趋势采集 / 每日监测, not keyword expansion.
+  if (value.socialTrends !== undefined && !input.expansionOnly)
     input.socialTrends = validateResearchTrends(value.socialTrends, input.markets);
   return input;
 }

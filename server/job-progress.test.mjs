@@ -216,14 +216,16 @@ function harness() {
     },
   };
 }
-test('discovery hands trends to the independent queue without collecting them inline', async () => {
+test('discovery finishes expansion without inline or queued Google trends', async () => {
   const h = harness();
-  await runJob(fixture(), h.io);
-  assert.equal(h.saved.status, 'running');
-  assert.equal(h.saved.checkpoint.trendQueueVersion, 1);
+  const job = fixture();
+  job.input = { ...job.input, expansionOnly: true, limit: 0 };
+  await runJob(job, h.io);
+  assert.equal(h.saved.status, 'awaiting_review');
+  assert.equal(h.saved.checkpoint.trendQueueVersion, undefined);
   assert.equal(h.saved.checkpoint.discoveryComplete, true);
   assert.equal(h.saved.checkpoint.keywords.length, 2);
   assert.equal(h.requests.length, 1);
   assert.ok(h.requests[0].step.startsWith('discover'));
-  assert.equal(h.saved.checkpoint.trendWork.length, 2);
+  assert.match(h.saved.checkpoint.logs.join('\n'), /趋势采集 \/ 每日监测/);
 });

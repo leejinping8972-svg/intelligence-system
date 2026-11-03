@@ -567,7 +567,9 @@ async function api(input, user) {
         jobId: job.id,
         tasks: jobTasks(job),
         reused,
-        acceptedKeywords: value.existingRecords?.length ?? value.limit,
+        acceptedKeywords:
+          value.existingRecords?.length ??
+          (value.limit > 0 ? value.limit : value.seeds.length * value.markets.length),
       };
     }
     case 'server_snapshot': {

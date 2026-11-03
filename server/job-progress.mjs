@@ -105,32 +105,59 @@ export function jobProgress(
       failed,
     };
   });
+  const expansionOnly = Boolean(job.input.expansionOnly);
+  const expansionFinished =
+    expansionOnly && terminal && !job.cancelled;
   const percent =
-    terminal && !job.cancelled && processed === records.length
+    (expansionFinished ||
+      (terminal && !job.cancelled && processed === records.length))
       ? 100
       : phase === 'queued'
         ? 0
         : discoveryDone < discoveryTotal
           ? Math.floor((20 * discoveryDone) / discoveryTotal)
-          : 20 +
-            (job.input.sources.includes('semrush')
-              ? Math.floor(
-                  (20 * Math.min(cp.metricIndex || 0, records.length)) /
-                    Math.max(1, records.length),
-                ) + Math.floor((60 * processed) / Math.max(1, records.length))
-              : Math.floor((80 * processed) / Math.max(1, records.length)));
+          : expansionOnly
+            ? 20 +
+              (job.input.sources.includes('semrush')
+                ? Math.floor(
+                    (80 * Math.min(cp.metricIndex || 0, records.length)) /
+                      Math.max(1, records.length),
+                  )
+                : discoveryDone >= discoveryTotal
+                  ? 80
+                  : 40)
+            : 20 +
+              (job.input.sources.includes('semrush')
+                ? Math.floor(
+                    (20 * Math.min(cp.metricIndex || 0, records.length)) /
+                      Math.max(1, records.length),
+                  ) + Math.floor((60 * processed) / Math.max(1, records.length))
+                : Math.floor((80 * processed) / Math.max(1, records.length)));
+  const target =
+    Number.isInteger(job.input.limit) && job.input.limit > 0
+      ? job.input.limit
+      : Math.max(records.length, discoveryTotal);
+  const resolvedPhase =
+    expansionOnly && !terminal && discoveryDone >= discoveryTotal
+      ? job.input.sources.includes('semrush') &&
+        (cp.metricIndex || 0) < records.length
+        ? 'metrics'
+        : phase === 'waiting'
+          ? 'waiting'
+          : 'discovery'
+      : phase;
   return {
-    phase,
+    phase: resolvedPhase,
     semrushUnits: cp.semUnits || 0,
     metricProcessed: Math.min(cp.metricIndex || 0, records.length),
     semrushEnabled: job.input.sources.includes('semrush'),
     percent,
     terminal,
-    target: job.input.limit,
+    target,
     discovered: records.length,
     discoveryDone,
     discoveryTotal,
-    processed,
+    processed: expansionFinished ? records.length : processed,
     total: records.length,
     annualAvailable: rows.filter((row) => row.annual).length,
     dailyAvailable: rows.filter((row) => row.daily).length,
@@ -138,7 +165,10 @@ export function jobProgress(
     limited: rows.filter((row) => row.limited).length,
     noSignal: rows.filter((row) => row.status === 'no_signal').length,
     rated: rows.filter((row) => row.assessment !== 'pending').length,
-    shortfall: Math.max(0, job.input.limit - records.length),
+    shortfall:
+      Number.isInteger(job.input.limit) && job.input.limit > 0
+        ? Math.max(0, job.input.limit - records.length)
+        : 0,
     nextRunAt: waiting ? new Date(cp.nextRunAt).toISOString() : '',
     waitReason: waiting ? cp.waitReason : '',
     retryAttempt: cp.rateLimitRetries || 0,

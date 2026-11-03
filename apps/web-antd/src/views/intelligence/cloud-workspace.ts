@@ -639,7 +639,7 @@ async function doSubmitCloudResearch(
     ...(input.batch?.trim() ? { batch: input.batch.trim() } : {}),
     sources: input.sources,
     depth: input.depth,
-    limit: input.limit,
+    limit: input.limit ?? 0,
     ...(existingRecords
       ? {
           expectedKeywordCount:

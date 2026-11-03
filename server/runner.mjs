@@ -6,7 +6,11 @@ import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { discoveryKinds, runDiscoveryMonitor, tickDiscoveryMonitors } from './discovery-monitor-store.mjs';
 import { runSourceFields } from './source-field-store.mjs';
 import { lock, sql, unlock } from './database.mjs';
-import { naturalKey, normalizeTerm } from './domain.mjs';
+import {
+  KEYWORD_EXPANSION_FETCH_CAP,
+  naturalKey,
+  normalizeTerm,
+} from './domain.mjs';
 import { patchCollection, runEnrichment } from './enrichment-jobs.mjs';
 import { runInsightJob } from './insight-jobs.mjs';
 import { jobProgress, runnableJob } from './job-progress.mjs';
@@ -230,7 +234,7 @@ function projectKnownJob(job) {
     market,
     mode: 'live',
     stage: 'keywords',
-    title: `${job.input.existingRecords ? (job.input.sources.includes('semrush') ? '云端 · 数据补齐与重评' : '云端 · 趋势补齐与重评') : '云端 · 关键词与趋势研究'} · ${label[market]}`,
+    title: `${job.input.existingRecords ? (job.input.sources.includes('semrush') ? '云端 · 数据补齐与重评' : '云端 · 趋势补齐与重评') : '云端 · 关键词研究'} · ${label[market]}`,
     status: job.cancelled ? 'cancelled' : job.status,
     created:
       job.checkpoint.submittedAt ||
@@ -263,12 +267,18 @@ export async function runJob(job, overrides = {}) {
     ...overrides,
   };
   const input = job.input;
+  const expansionOnly = Boolean(input.expansionOnly) || !input.existingRecords;
+  const capped = Number.isInteger(input.limit) && input.limit > 0;
   const cp = {
     discoveryIndex: 0,
     trendIndex: 0,
     metricIndex: 0,
     keywords: [],
-    logs: ['任务在腾讯云后台执行；本阶段只研究关键词、趋势与评分'],
+    logs: [
+      expansionOnly
+        ? '任务在腾讯云后台执行；本阶段只拓展关键词并写入候选列表，趋势请用「趋势采集 / 每日监测」'
+        : '任务在腾讯云后台执行；本阶段只研究关键词、趋势与评分',
+    ],
     failures: 0,
     ...job.checkpoint,
   };
@@ -285,7 +295,7 @@ export async function runJob(job, overrides = {}) {
         ...new Set([...record.source.split(' / '), ...source.split(' / ')]),
       ].join(' / ');
     else {
-      if (cp.keywords.length >= input.limit) return;
+      if (capped && cp.keywords.length >= input.limit) return;
       record = {
         id: randomUUID(),
         term,
@@ -299,7 +309,9 @@ export async function runJob(job, overrides = {}) {
         growth: null,
         series: [],
         trendStatus: 'pending',
-        trendMessage: '等待后台采集一年趋势',
+        trendMessage: expansionOnly
+          ? '待「趋势采集 / 每日监测」补齐谷歌与社媒趋势'
+          : '等待后台采集一年趋势',
         favorite: false,
         reviewStatus: 'pending',
         productIds: [],
@@ -341,9 +353,15 @@ export async function runJob(job, overrides = {}) {
       for (; cp.discoveryIndex < combinations.length; cp.discoveryIndex += 1) {
         await io.checkCancelled(job.id);
         const { seed, market } = combinations[cp.discoveryIndex];
-        const remaining = input.limit - cp.keywords.length;
+        const remaining = capped
+          ? input.limit - cp.keywords.length
+          : KEYWORD_EXPANSION_FETCH_CAP;
         if (remaining <= 0) break;
         const requestSources = input.sources.filter((source) => source !== 'semrush');
+        const combinationsLeft = combinations.length - cp.discoveryIndex;
+        const perCallLimit = capped
+          ? Math.ceil(remaining / combinationsLeft)
+          : KEYWORD_EXPANSION_FETCH_CAP;
         if (input.sources.includes('semrush')) {
           try {
             const sem = await io.collect(
@@ -354,11 +372,13 @@ export async function runJob(job, overrides = {}) {
                 markets: [market],
                 sources: ['semrush'],
                 semExpansion: true,
-                limit: Math.ceil(
-                  remaining /
-                    (combinations.length - cp.discoveryIndex) /
-                    (requestSources.length ? 2 : 1),
-                ),
+                limit: capped
+                  ? Math.ceil(
+                      remaining /
+                        combinationsLeft /
+                        (requestSources.length ? 2 : 1),
+                    )
+                  : KEYWORD_EXPANSION_FETCH_CAP,
               },
             );
             cp.semUnits = (cp.semUnits || 0) + (sem.apiUnits || 0);
@@ -383,7 +403,10 @@ export async function runJob(job, overrides = {}) {
             cp.failures++;
           }
         }
-        if (requestSources.length && cp.keywords.length < input.limit)
+        if (
+          requestSources.length &&
+          (!capped || cp.keywords.length < input.limit)
+        )
           try {
             cp.currentTerm = seed;
             await io.saveCheckpoint(job, cp);
@@ -395,9 +418,7 @@ export async function runJob(job, overrides = {}) {
                 markets: [market],
                 sources: requestSources,
                 depth: input.depth,
-                limit: Math.ceil(
-                  remaining / (combinations.length - cp.discoveryIndex),
-                ),
+                limit: perCallLimit,
               },
             );
             for (const group of result.suggestions || []) {
@@ -428,7 +449,13 @@ export async function runJob(job, overrides = {}) {
         });
       }
     cp.discoveryComplete = true;
-    if (input.socialTrends && !cp.socialTrendDispatch) {
+    // Expansion / Semrush 补齐不再派发社媒趋势；四平台趋势走「趋势采集 / 每日监测」。
+    if (
+      input.socialTrends &&
+      !expansionOnly &&
+      input.sources.length === 0 &&
+      !cp.socialTrendDispatch
+    ) {
       await io.checkCancelled(job.id);
       const dispatched = await io.submitResearchTrends(
         job,
@@ -512,6 +539,20 @@ export async function runJob(job, overrides = {}) {
 
     await io.checkCancelled(job.id);
     const consumed = await io.usage(job.id);
+    const trendOnlyEnrichment =
+      Boolean(input.existingRecords) && !input.sources.includes('semrush');
+    if (expansionOnly || (input.existingRecords && !trendOnlyEnrichment)) {
+      cp.logs.push(
+        expansionOnly
+          ? `已拓展${cp.keywords.length}个关键词并写入候选列表；谷歌/TK/INS/FB 趋势请在「趋势采集 / 每日监测」完成`
+          : `已处理${cp.keywords.length}个关键词指标；谷歌/TK/INS/FB 趋势请在「趋势采集 / 每日监测」完成`,
+        `Sorftime已确认${consumed.confirmed}次；结果未知并预留${consumed.reserved}次，未自动重复付费请求`,
+      );
+      cp.upstreamFailures = cp.failures;
+      cp.finishedAt = new Date(io.now()).toISOString();
+      await io.saveCheckpoint(job, cp, 'awaiting_review');
+      return;
+    }
     cp.logs.push(
       `已输出${cp.keywords.length}个关键词，趋势已交由独立队列逐项补齐；其他业务可继续执行`,
       `Sorftime已确认${consumed.confirmed}次；结果未知并预留${consumed.reserved}次，未自动重复付费请求`,

@@ -9,7 +9,14 @@ export function estimateTask(input = {}, history = [], active = []) {
       budget: input.plan.budget,
     };
   const kind = input.kind || 'keyword_research';
-  const keywords = input.existingRecords?.length || positive(input.limit, 30);
+  const keywords =
+    input.existingRecords?.length ||
+    (Number(input.limit) > 0
+      ? Number(input.limit)
+      : Math.max(
+          30,
+          (input.seeds?.length || 1) * (input.markets?.length || 1) * 20,
+        ));
   const objects =
     input.siteIds?.length ||
     input.keywordIds?.length ||

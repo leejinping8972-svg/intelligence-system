@@ -1,12 +1,11 @@
 # Unified keyword trends and saved radar candidates
 
-## Keyword research
+## Keyword research (step 1) vs trends (step 2)
 
-- New research and selected-word supplementation accept optional `socialTrends` with TK/INS/FB sources, daily shared request cap, page cap and explicit configured-credit acknowledgment. Google continues through its existing queue. Legacy submissions without this field do not initiate social collection.
-- The server validates the plan and requires an administrator and an existing ScrapeCreators configuration. Social names never enter the keyword discovery collector. Submission deduplication includes the selected social sources and budgets.
-- After discovery saves canonical keyword IDs, the runner dispatches social work under `competitor-runner`. Work and a durable `keyword-trends:research:<jobId>` marker commit together. A busy lock defers the research with its checkpoint; a restart after dispatch reuses the marker, including across midnight.
-- Existing same-day source/page keys, request journals, unknown-charge gate and shared budgets remain in force. A cancelled parent cannot start another request; shared work proceeds while another requesting parent is active. A deliberate manual resubmission can own shared pending work independently.
-- Lists show queued work immediately and successful saved periods when available. Google/research completion does not establish social historical coverage; missing pages and partial samples remain explicit. This change does not enable a daily social plan or submit old keywords automatically.
+- Keyword expansion research only discovers terms (no result-count ceiling; all saved keywords enter the candidate list with `reviewStatus=pending`). It does **not** auto-collect Google Trends or TK/INS/FB. Optional research `socialTrends` on expansion jobs is ignored.
+- Semrush metric supplementation similarly finishes without Google/social trend queues. Google / TK / INS / FB collection is step 2 via **趋势采集 / 每日监测** (`KeywordTrendsControl` → `server_keyword_trends_*`).
+- Trend-only enrichment jobs (empty sources + `existingRecords`, used by the Google path of step 2) still initialize the existing Google trend queue. Legacy in-flight jobs that already have `trendQueueVersion` continue on the trend-runner lane.
+- Manual/daily social work still requires an administrator and ScrapeCreators configuration. Same-day source/page keys, request journals, unknown-charge gate and shared budgets remain in force.
 
 ## Radar storage and refresh
 

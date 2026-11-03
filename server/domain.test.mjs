@@ -48,7 +48,7 @@ test('supplementation requires the selected count, received list and target to a
   }), /数量、名单/);
 });
 
-test('accepts 100 keyword jobs and ignores legacy Sorftime call caps at either depth', () => {
+test('accepts unlimited expansion jobs and ignores legacy Sorftime call caps at either depth', () => {
   const input = {
     seeds: ['magnesium'],
     markets: ['US'],
@@ -58,6 +58,10 @@ test('accepts 100 keyword jobs and ignores legacy Sorftime call caps at either d
     sorftimeRequestLimit: 3,
   };
   assert.equal(validateJob(input).limit, 100);
+  assert.equal(validateJob(input).expansionOnly, true);
+  assert.equal(validateJob({ ...input, limit: 0 }).limit, 0);
+  assert.equal(validateJob({ ...input, limit: undefined }).limit, 0);
+  assert.equal(validateJob({ ...input, limit: 500 }).limit, 500);
   assert.equal(validateJob(input).sorftimeRequestLimit, undefined);
   assert.equal(
     validateJob({ ...input, depth: 2, sorftimeRequestLimit: 3 })
@@ -84,7 +88,7 @@ test('accepts 100 keyword jobs and ignores legacy Sorftime call caps at either d
     undefined,
   );
   for (const change of [
-    { limit: 101 },
+    { limit: 10_001 },
     { markets: ['CN'] },
     { sources: ['site_discovery'] },
     { seeds: [] },
