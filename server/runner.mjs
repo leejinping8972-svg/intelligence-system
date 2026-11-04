@@ -477,6 +477,12 @@ export async function runJob(job, overrides = {}) {
     }
     if (input.sources.includes('semrush')) {
       for (; cp.metricIndex < cp.keywords.length; cp.metricIndex++) {
+        if (cp.semBlocked) {
+          cp.logs.push(
+            `Semrush 已阻断，跳过剩余 ${cp.keywords.length - cp.metricIndex} 个词的指标查询`,
+          );
+          break;
+        }
         await io.checkCancelled(job.id);
         const r = cp.keywords[cp.metricIndex];
         cp.currentTerm = r.term;
@@ -487,7 +493,6 @@ export async function runJob(job, overrides = {}) {
           message: '等待 Semrush 指标查询',
         });
         try {
-          if (cp.semBlocked) throw new Error(cp.semBlocked);
           const result = await io.collect(job, `sem-metric:${cp.metricIndex}`, {
             keywords: [r.term],
             markets: [r.market],
@@ -529,6 +534,14 @@ export async function runJob(job, overrides = {}) {
             r.semrushCollection,
           );
           cp.logs.push(`${r.term} · Semrush：${e.message}`);
+          const remaining = cp.keywords.length - cp.metricIndex - 1;
+          cp.metricIndex += 1;
+          if (remaining > 0)
+            cp.logs.push(
+              `Semrush 已阻断，跳过剩余 ${remaining} 个词的指标查询`,
+            );
+          await io.saveCheckpoint(job, cp);
+          break;
         }
         await io.saveCheckpoint(job, {
           ...cp,

@@ -108,6 +108,84 @@ export function jobProgress(
   const expansionOnly = Boolean(job.input.expansionOnly);
   const expansionFinished =
     expansionOnly && terminal && !job.cancelled;
+  const semrushEnabled = job.input.sources.includes('semrush');
+  const metricProcessed = Math.min(cp.metricIndex || 0, records.length);
+  const expansionMetricsDone =
+    !semrushEnabled ||
+    Boolean(cp.semBlocked) ||
+    metricProcessed >= records.length;
+  const expansionPhase =
+    expansionOnly && !terminal
+      ? waiting
+        ? 'waiting'
+        : discoveryDone < discoveryTotal
+          ? 'discovery'
+          : semrushEnabled && !expansionMetricsDone
+            ? 'metrics'
+            : 'discovery'
+      : phase;
+  const expansionRows = expansionOnly
+    ? records.map((record, index) => {
+        const metric = record.semrushCollection;
+        const metricFailed = metric?.status === 'failed';
+        const metricDone = ['completed', 'partial', 'empty'].includes(
+          metric?.status,
+        );
+        const skipped =
+          Boolean(cp.semBlocked) &&
+          index >= metricProcessed &&
+          !metricFailed &&
+          !metricDone;
+        const running =
+          !terminal &&
+          expansionPhase === 'metrics' &&
+          index === metricProcessed &&
+          !cp.semBlocked;
+        let status = 'pending';
+        if (metricFailed) status = 'failed';
+        else if (skipped) status = 'not_started';
+        else if (running) status = 'running';
+        else if (semrushEnabled && discoveryDone >= discoveryTotal) {
+          if (metricDone) status = 'collected';
+          else if (expansionFinished || Boolean(cp.semBlocked))
+            status = 'not_started';
+          else status = 'pending';
+        } else if (discoveryDone >= discoveryTotal || terminal)
+          status = 'collected';
+        return {
+          id: record.id,
+          term: record.term,
+          market: record.market,
+          annualPoints: record.series?.length || 0,
+          dailyPoints: record.trendDailyPoints?.length || 0,
+          growth: trendComparisons(record)[0].change,
+          assessment: assess(record).status,
+          status,
+          message:
+            metric?.message ||
+            (skipped
+              ? 'Semrush 已阻断，本词指标未查询'
+              : record.trendMessage || ''),
+          annual: Boolean(record.series?.length),
+          daily: Boolean(record.trendDailyPoints?.length),
+          limited: false,
+          failed: metricFailed,
+        };
+      })
+    : rows;
+  const expansionSucceeded = expansionRows.filter((row) =>
+    ['collected', 'no_signal'].includes(row.status),
+  ).length;
+  const expansionFailed = expansionRows.filter((row) => row.failed).length;
+  const expansionProcessed = expansionFinished
+    ? records.length
+    : discoveryDone < discoveryTotal
+      ? records.length
+      : semrushEnabled
+        ? Boolean(cp.semBlocked)
+          ? records.length
+          : metricProcessed
+        : records.length;
   const percent =
     (expansionFinished ||
       (terminal && !job.cancelled && processed === records.length))
@@ -118,53 +196,47 @@ export function jobProgress(
           ? Math.floor((20 * discoveryDone) / discoveryTotal)
           : expansionOnly
             ? 20 +
-              (job.input.sources.includes('semrush')
+              (semrushEnabled
                 ? Math.floor(
-                    (80 * Math.min(cp.metricIndex || 0, records.length)) /
+                    (80 *
+                      (Boolean(cp.semBlocked)
+                        ? records.length
+                        : metricProcessed)) /
                       Math.max(1, records.length),
                   )
-                : discoveryDone >= discoveryTotal
-                  ? 80
-                  : 40)
+                : 80)
             : 20 +
-              (job.input.sources.includes('semrush')
+              (semrushEnabled
                 ? Math.floor(
-                    (20 * Math.min(cp.metricIndex || 0, records.length)) /
-                      Math.max(1, records.length),
+                    (20 * metricProcessed) / Math.max(1, records.length),
                   ) + Math.floor((60 * processed) / Math.max(1, records.length))
                 : Math.floor((80 * processed) / Math.max(1, records.length)));
   const target =
     Number.isInteger(job.input.limit) && job.input.limit > 0
       ? job.input.limit
       : Math.max(records.length, discoveryTotal);
-  const resolvedPhase =
-    expansionOnly && !terminal && discoveryDone >= discoveryTotal
-      ? job.input.sources.includes('semrush') &&
-        (cp.metricIndex || 0) < records.length
-        ? 'metrics'
-        : phase === 'waiting'
-          ? 'waiting'
-          : 'discovery'
-      : phase;
   return {
-    phase: resolvedPhase,
+    phase: expansionOnly ? expansionPhase : phase,
     semrushUnits: cp.semUnits || 0,
-    metricProcessed: Math.min(cp.metricIndex || 0, records.length),
-    semrushEnabled: job.input.sources.includes('semrush'),
+    metricProcessed,
+    semrushEnabled,
     percent,
     terminal,
     target,
     discovered: records.length,
     discoveryDone,
     discoveryTotal,
-    processed: expansionFinished ? records.length : processed,
+    processed: expansionOnly ? expansionProcessed : processed,
     total: records.length,
-    annualAvailable: rows.filter((row) => row.annual).length,
-    dailyAvailable: rows.filter((row) => row.daily).length,
-    failed: rows.filter((row) => row.failed).length,
-    limited: rows.filter((row) => row.limited).length,
-    noSignal: rows.filter((row) => row.status === 'no_signal').length,
-    rated: rows.filter((row) => row.assessment !== 'pending').length,
+    succeeded: expansionOnly ? expansionSucceeded : undefined,
+    annualAvailable: expansionRows.filter((row) => row.annual).length,
+    dailyAvailable: expansionRows.filter((row) => row.daily).length,
+    failed: expansionOnly
+      ? expansionFailed
+      : rows.filter((row) => row.failed).length,
+    limited: expansionRows.filter((row) => row.limited).length,
+    noSignal: expansionRows.filter((row) => row.status === 'no_signal').length,
+    rated: expansionRows.filter((row) => row.assessment !== 'pending').length,
     shortfall:
       Number.isInteger(job.input.limit) && job.input.limit > 0
         ? Math.max(0, job.input.limit - records.length)
@@ -178,7 +250,7 @@ export function jobProgress(
     // from a database DATETIME whose session timezone may differ after migration.
     finishedAt: cp.finishedAt || '',
     updatedAt: cp.updatedAt || '',
-    rows,
+    rows: expansionOnly ? expansionRows : rows,
   };
 }
 
