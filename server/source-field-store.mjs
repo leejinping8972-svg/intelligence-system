@@ -8,6 +8,15 @@ import {
 } from './source-field-domain.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 
+function preserveAdTranslations(old, next) {
+  const result = { ...next };
+  for (const key of ['brandZh', 'headlineZh', 'copyZh', 'sellingPointZh']) {
+    if (!String(result[key] || '').trim() && String(old?.[key] || '').trim())
+      result[key] = old[key];
+  }
+  return result;
+}
+
 export async function queueSourceFields(
   kind,
   value,
@@ -88,9 +97,12 @@ export async function runSourceFields(job, overrides = {}) {
         )
       ).rows[0]?.value;
       if (value?.fieldAnalysis?.fingerprint === job.input.sample.fingerprint) {
+        const patch = job.input.targetKind === 'ads'
+          ? preserveAdTranslations(value, result.patch)
+          : result.patch;
         let updated = {
           ...value,
-          ...result.patch,
+          ...patch,
           fieldAnalysis: {
             ...result.analysis,
             model: result.model,
@@ -155,7 +167,10 @@ export async function sourceFieldsAction(input, user) {
         )
       ).rows[0]?.value;
       if (!old) continue;
-      const value = pendingSourceFields(input.kind, old);
+      const pending = pendingSourceFields(input.kind, old);
+      const value = input.kind === 'ads'
+        ? preserveAdTranslations(old, pending)
+        : pending;
       const jobId = await queueSourceFields(
         input.kind,
         value,

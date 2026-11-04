@@ -289,10 +289,15 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
             },
             { description: 'Dietary supplement company' },
           );
+          const saved = kind === 'ads'
+            ? { ...value, brand: 'Health Shop', brandZh: '健康商店',
+                headline: 'Better sleep', headlineZh: '睡得更好',
+                copyZh: '菊粉补充剂', sellingPointZh: '每日补充菊粉' }
+            : value;
           await putDocument(
             'workspace_documents',
             `business:${kind}:${value.id}`,
-            value,
+            saved,
           );
           const input = {
             action: 'server_source_fields_submit',
@@ -310,6 +315,25 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
               .rawDescription,
             'Dietary supplement company',
           );
+          if (kind === 'ads') {
+            const pendingAd = await read(`business:ads:${value.id}`);
+            assert.deepEqual(
+              ['brandZh', 'headlineZh', 'copyZh', 'sellingPointZh'].map((key) => pendingAd[key]),
+              ['健康商店', '睡得更好', '菊粉补充剂', '每日补充菊粉'],
+            );
+            await runSourceFields(await getJob(first.jobIds[0]), {
+              collect: async () => ({
+                patch: { brandZh: '', headlineZh: '', copyZh: '', sellingPointZh: '' },
+                analysis: { status: 'analyzed', fingerprint: pendingAd.fieldAnalysis.fingerprint },
+                model: 'test',
+              }),
+            });
+            const analyzedAd = await read(`business:ads:${value.id}`);
+            assert.deepEqual(
+              ['brandZh', 'headlineZh', 'copyZh', 'sellingPointZh'].map((key) => analyzedAd[key]),
+              ['健康商店', '睡得更好', '菊粉补充剂', '每日补充菊粉'],
+            );
+          }
         }
         const job = await submitDiscovery({
           requestId: randomUUID(),
