@@ -1,34 +1,41 @@
 {
-  "title": "商品检索响应落盘解析、FBM直抓与新品类型筛选",
+  "title": "扩词进度修复、任务状态操作与站点AI取样对齐",
   "includedCommits": [
-    "b3d057cca04dbd8429a14567281ebaf631ca6061",
-    "222523fa1df316eb3cf769fddbcf22f95f230f0e"
+    "bbe35d976bc5bbe970362e9a4778ee46e54c3377",
+    "ef8028dcbf3ea6b6aefcd6e5cd59268a4287781e",
+    "70fc660ffea69b78595ed471c24409add31d657b"
   ],
-  "sourceSha": "222523fa1df316eb3cf769fddbcf22f95f230f0e",
+  "sourceSha": "70fc660ffea69b78595ed471c24409add31d657b",
   "changes": [
-    "Sorftime 商品检索失败时落盘脱敏 mcpPreview，并增强 JSON/围栏/嵌套信封解析。",
-    "商品库「从平台获取」新增 FBM新品 直抓入口。",
-    "商品库展示新品类型列，并支持按 FBM新品/常规新品/新上架商品筛选。"
+    "扩词任务在 Semrush 阻断后立即结束指标循环，并按扩词/Semrush 计数进度。",
+    "任务列表去掉待人工筛选展示，已停止未采集完支持继续采集或取消。",
+    "独立站 AI 取样接上 brand、mainProducts、sourceEvidence；无文案来源则跳过。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/PlatformProductsDialog.vue",
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
+    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
+    "apps/web-antd/src/views/intelligence/components/TaskProgress.vue",
+    "apps/web-antd/src/views/intelligence/monitor.vue",
     "apps/web-antd/src/views/intelligence/products.vue",
-    "server/discovery-sorftime.mjs",
-    "server/mcp-payload.test.mjs",
-    "server/platform-product-data.mjs",
-    "server/product-resource-sorftime.mjs",
-    "server/store.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "apps/web-antd/src/views/intelligence/task-list.ts",
+    "apps/web-antd/src/views/intelligence/task-page.ts",
+    "server/index.mjs",
+    "server/job-progress.mjs",
+    "server/keyword-expand-progress.test.mjs",
+    "server/runner.mjs",
+    "server/source-field-domain.mjs",
+    "server/source-field-no-source.test.mjs",
+    "server/task-overview.mjs",
+    "server/task-page.mjs",
+    "tests/task-list.test.ts"
   ],
   "validation": [
-    "功能开发自测：node --test server/mcp-payload.test.mjs 通过；新品类型投影单测通过；node --check 改动模块通过。",
-    "提交钩子按项目惯例 LEFTHOOK=0 跳过，不记全仓 lint/typecheck 通过。",
+    "功能开发自测：keyword-expand-progress 相关 node --test 通过；task-list.test.ts 通过；source-field-no-source.test.mjs 通过；提交钩子 oxlint/oxfmt/eslint/typecheck 通过。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建和 CI 等待。",
     "无 schema、迁移或依赖变更；完整数据库备份按无结构变更/迁移策略跳过，保留应用、镜像、前端、配置、任务、检查点、业务数据及 public/data 回退保护。"
   ],
   "operator": "Cursor",
-  "id": "20261103104200-77937f69",
-  "builtAt": "2026-11-03T10:42:00.873Z",
-  "sourceDigest": "77937f69110afe3a996a2057a0d5ba928c5c5bc4851234bc3b4aebc770a88d77"
+  "id": "20261104050924-21317759",
+  "builtAt": "2026-11-04T05:09:24.586Z",
+  "sourceDigest": "2131775990c706ff57591f6f635c194cb1dfba2bdf037e30dd42c552240afde9"
 }
