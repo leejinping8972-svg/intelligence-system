@@ -1,29 +1,49 @@
 {
-  "title": "登录闲置退出改为2小时",
+  "title": "关键词列表与广告中文优先",
   "includedCommits": [
-    "608edae7d9b0107f18b05a611e20898e35591d0c"
+    "882c801bd82e45807d9b06d5b12006a199c3fe30",
+    "6f8a40dfa50a3a3a0a23cc5e4a35442f08cdce28"
   ],
-  "sourceSha": "608edae7d9b0107f18b05a611e20898e35591d0c",
+  "sourceSha": "1e119e845ee114e1de61390dbee38bab8cb12a94",
   "changes": [
-    "登录页将闲置自动退出提示改为2小时，登录最长有效期仍为12小时。",
-    "普通管理员会话、管理员单点登录和OIDC身份会话统一使用2小时闲置期限，过期会话清理同步调整。"
+    "关键词筛选、周期和视图操作合并为紧凑布局，表格收紧行列并将搜索量与两类相关查询前置、四个平台趋势后置。",
+    "关键词、种子词及热门和上升相关查询中文优先、原文浅色次级展示；缺失译名使用现有模型自动补齐，持久缓存并记录 token 用量。",
+    "广告支持直接输入多个关键词采集及抓取批次筛选，默认列表展示；新采集广告随来源分析生成广告主、标题和文案的中文译文，历史广告补译仍需明确付费操作。"
   ],
   "files": [
-    "apps/web-antd/src/login-screen.vue",
-    "server/admin-sso-store.mjs",
-    "server/auth-performance.test.mjs",
-    "server/auth.integration.test.mjs",
-    "server/auth.mjs",
-    "server/identity-store.mjs",
-    "server/session-policy.mjs"
+    "apps/web-antd/src/views/intelligence/ads.vue",
+    "apps/web-antd/src/views/intelligence/advertisers.ts",
+    "apps/web-antd/src/views/intelligence/components/AdvertiserList.vue",
+    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
+    "apps/web-antd/src/views/intelligence/components/KeywordRelatedQueries.vue",
+    "apps/web-antd/src/views/intelligence/components/KeywordTrendComparison.vue",
+    "apps/web-antd/src/views/intelligence/components/SocialTrendCell.vue",
+    "apps/web-antd/src/views/intelligence/components/SourceFieldsButton.vue",
+    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "server/AD-MEDIA.md",
+    "server/ad-translation.test.mjs",
+    "server/ads-provider.mjs",
+    "server/database.mjs",
+    "server/index.mjs",
+    "server/keyword-names.mjs",
+    "server/keyword-names.test.mjs",
+    "server/market-jobs.mjs",
+    "server/market-jobs.test.mjs",
+    "server/model.js",
+    "server/source-field-domain.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "validation": [
-    "功能开发自测：36项可运行认证/SSO测试、6个改动模块语法检查及diff检查通过。QA容器专用集成测试在本机不可运行；OIDC集成测试缺少本机依赖，未记为通过。",
+    "关键词功能开发自测：5项译名专项测试、前端类型检查、生产构建、提交钩子及合成数据桌面/手机界面检查通过；未调用真实付费模型或用正式数据验收译名。",
+    "广告功能开发自测：22项服务端专项/读模型测试、前端类型检查、生产构建及本地列表与多词/批次弹窗检查通过；本地无云端历史广告，未在浏览器验收历史译文。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建和CI等待。",
-    "无schema、数据迁移、依赖或采集队列行为变更；完整数据库备份按用户策略跳过，保留源码、镜像、前端、配置、任务、检查点及public/data保护。"
+    "无schema、数据迁移或依赖变更；历史广告不自动付费回填，完整数据库备份按用户策略跳过，保留源码、镜像、前端、配置、任务、检查点和public/data保护。"
   ],
   "operator": "Codex",
-  "id": "20261104075033-31a06ba7",
-  "builtAt": "2026-11-04T07:50:33.509Z",
-  "sourceDigest": "31a06ba7110f5ec452d584b596762e56efac956b0c365c2ef546362d7a7851f6"
+  "id": "20261104090145-9509b5e2",
+  "builtAt": "2026-11-04T09:01:45.018Z",
+  "sourceDigest": "9509b5e2f5f30763cb8f1450554687c75f8bc18b3dfffc430cde3ca585447d9b"
 }
