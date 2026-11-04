@@ -828,10 +828,10 @@ export function adMetrics(a: Ad, context: CoreContext = {}): EvidenceMetric[] {
     metric(
       a,
       'sellingPoints',
-      '素材卖点原文',
-      a.headline || a.copy || null,
-      '原文',
-      { ...meta, nature: 'brand_claim' },
+      '素材卖点中文',
+      a.sellingPointZh || null,
+      '中文译文',
+      { ...meta, nature: 'brand_claim', reason: a.sellingPointZh ? '广告主原文的中文译文，不代表疗效已验证；原文见广告详情' : '尚无经来源核对的中文译文，可选中广告使用AI整理字段' },
     ),
     metric(
       a,

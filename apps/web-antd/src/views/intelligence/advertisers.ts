@@ -5,6 +5,7 @@ export interface AdvertiserRow {
   pageId: string;
   market: Market;
   name: string;
+  nameZh?: string;
   adId: string;
   adIds: string[];
   active: number;
@@ -28,6 +29,7 @@ export function groupAdvertisers(ads: Ad[], sites: Site[]): AdvertiserRow[] {
       pageId: String(ad.pageId),
       market: ad.market,
       name: ad.brand || `广告主 ${ad.pageId}`,
+      nameZh: ad.brandZh,
       adId: ad.id,
       adIds: [],
       active: 0,
@@ -42,7 +44,9 @@ export function groupAdvertisers(ads: Ad[], sites: Site[]): AdvertiserRow[] {
       row.adId = ad.id;
       row.dataNature = ad.dataNature;
       row.name = ad.brand || row.name;
+      row.nameZh = ad.brandZh || row.nameZh;
     }
+    if (!row.nameZh && ad.brandZh) row.nameZh = ad.brandZh;
     row.adIds.push(ad.id);
     if (ad.status === '投放中') row.active++;
     if (ad.status === '已停止') row.stopped++;

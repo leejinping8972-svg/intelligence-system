@@ -357,6 +357,11 @@ export interface Site {
   dataNature?: 'collected' | 'demo' | 'imported';
 }
 export interface Ad {
+  brandZh?: string;
+  headlineZh?: string;
+  copyZh?: string;
+  sellingPointZh?: string;
+  collectionBatches?: string[];
   coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   coreEvidence?: CoreEvidence;
   discovery?: DiscoveryObservation;

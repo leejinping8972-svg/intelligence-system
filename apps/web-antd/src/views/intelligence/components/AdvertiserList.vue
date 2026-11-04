@@ -43,7 +43,7 @@ watch(
 const grouped = computed(() => groupAdvertisers(props.ads, state.sites));
 const rows = computed(() => serverMode ? remote.rows.value :
   grouped.value.filter((a) =>
-    `${a.name} ${a.pageId} ${a.domains.join(' ')}`
+    `${a.name} ${a.nameZh || ''} ${a.pageId} ${a.domains.join(' ')}`
       .toLowerCase()
       .includes(search.value.toLowerCase()),
   ),
@@ -68,6 +68,9 @@ const known = computed(
 function site(id: string) {
   void router.push({ path: '/sites', query: { site: id } });
 }
+const chineseName = (row: AdvertiserRow) =>
+  row.nameZh || (/\p{Script=Han}/u.test(row.name) ? row.name : '中文待翻译');
+const showOriginalName = (row: AdvertiserRow) => row.name !== chineseName(row);
 </script>
 <template>
   <section class="hci-panel">
@@ -115,7 +118,8 @@ function site(id: string) {
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'name'">
-<b>{{ record.name }}</b>
+<b>{{ chineseName(record as AdvertiserRow) }}</b>
+          <p v-if="showOriginalName(record as AdvertiserRow)" class="hci-subtle">{{ record.name }}</p>
           <p class="hci-subtle">Page ID {{ record.pageId }}</p>
           <Tag v-if="known.has(record.id)" color="blue">
 已加入监控

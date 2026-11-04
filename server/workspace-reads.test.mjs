@@ -149,7 +149,10 @@ async function exerciseReadModel(
       pageId: '123456',
       market: 'US',
       brand: 'Test advertiser',
+      brandZh: '测试广告主',
       headline: 'Test',
+      headlineZh: '测试素材',
+      collectionBatches: i < 3 ? ['October', 'November'] : ['October'],
       copy: 'x'.repeat(1499) + '\uD83D\uDC8A' + 'x'.repeat(8500),
       keywordIds: ['k0'],
       siteIds: ['s1'],
@@ -167,6 +170,10 @@ async function exerciseReadModel(
   assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'p1', linkedSite: 's1' })).total, 2);
   assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'p1', linkedSite: 'missing' })).total, 0);
   assert.equal((await reads.list({ collection: 'ads', linkedProduct: 'missing' })).total, 0);
+  const adBatch = await reads.list({ collection: 'ads', batch: 'novem' });
+  assert.equal(adBatch.total, 3);
+  assert.equal(adBatch.rows[0].brandZh, '测试广告主');
+  assert.deepEqual(adBatch.rows[0].collectionBatches, ['October', 'November']);
   const saved = { ...keyword(0), series: dates.map((p) => p.value), trendPoints: dates, trendResolution: 'day', trendCollectedAt: '2026-10-26T00:00:00Z', trendDailyPoints: dates.slice(-60), trendDailyCollectedAt: '2026-10-26T00:00:00Z', trendRelatedTop: Array.from({ length: 25 }, (_, i) => ({ query: `saved query ${i}`, value: i, formattedValue: String(i) })) };
   await pool.query('UPDATE research_keywords SET data=$1 WHERE natural_key=$2', [saved, 'key0']);
   // Simulate a v6 projection that predates calendar summaries; no rebuild is needed.
@@ -270,6 +277,8 @@ async function exerciseReadModel(
   assert.equal(advertisers.total, 1);
   assert.equal(advertisers.rows[0].adCount, 31);
   assert.equal(advertisers.rows[0].active, 31);
+  assert.equal(advertisers.rows[0].nameZh, '测试广告主');
+  assert.equal((await reads.list({ collection: 'advertisers', search: '测试广告主' })).total, 1);
   assert.deepEqual(advertisers.rows[0].domains, ['synthetic.example']);
   const facets = (await reads.facets({ collection: 'products', market: 'US' }))
     .facets;

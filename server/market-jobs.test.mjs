@@ -36,6 +36,7 @@ test('normalizes nested Meta snapshots, deduplicates IDs and rejects platform de
   assert.equal(data.ads[0].copy, 'Gummies');
   assert.equal(data.ads[0].status, '投放中');
   assert.equal(normalizeAds({ searchResults: [] }, r).creditsCharged, null);
+  assert.deepEqual(normalizeAds({ searchResults: [raw] }, { ...r, direct: true }).ads[0].keywordIds, []);
   assert.throws(() => normalizeAds({}, r), /searchResults/);
 });
 test('public landing requests reject local and mapped addresses; non-http links are discarded', () => {
@@ -147,6 +148,11 @@ test('ad landing evidence must pass storefront validation', async () => {
   assert.equal(site.sources[0], 'Meta 广告库 / ScrapeCreators');
   assert.equal(site.sourceEvidence[0].adId, '123');
   assert.equal(site.id, 'US-example.com');
+  const directSite = await verifyAdSite('https://example.com/', { ...r, direct: true }, ad, async () => ({
+    html: '<title>Brand</title><script type="application/ld+json">{"@type":"Product","name":"Creatine Gummies"}</script><button>Add to cart</button>',
+    url: 'https://example.com/',
+  }));
+  assert.deepEqual(directSite.keywordIds, []);
 });
 test('validates task bounds and rejects duplicate selected IDs', () => {
   assert.equal(
@@ -161,6 +167,20 @@ test('validates task bounds and rejects duplicate selected IDs', () => {
     { kind: 'ads', keywordIds: ['a'], siteSearchPages: 4 },
   ])
     assert.throws(() => validateMarketJob(input));
+});
+test('accepts direct multi-term ad collection with a normalized batch', () => {
+  const input = validateMarketJob({
+    kind: 'ads', market: 'VN', terms: ['  kem  chống nắng ', 'vitamin C'],
+    batch: '  十一月   越南 ',
+  });
+  assert.deepEqual(input.terms, ['kem chống nắng', 'vitamin C']);
+  assert.equal(input.batch, '十一月 越南');
+  for (const invalid of [
+    { kind: 'ads', market: 'VN', terms: ['Vitamin C', 'vitamin c'] },
+    { kind: 'ads', market: 'ALL', terms: ['vitamin'] },
+    { kind: 'ads', market: 'US', terms: ['vitamin'], includeSearchSites: true },
+    { kind: 'ads', market: 'US', terms: ['vitamin'], batch: 'x'.repeat(101) },
+  ]) assert.throws(() => validateMarketJob(invalid));
 });
 function harness(maxRequests = 1) {
   const docs = new Map(),
@@ -225,6 +245,16 @@ test('cancellation ends the job without issuing requests', async () => {
   await runMarketJob(h.job, h.io);
   assert.deepEqual(h.calls, []);
   assert.equal(h.states.at(-1).status, 'cancelled');
+});
+test('direct terms collect ads without patching selected keyword state', async () => {
+  const h = harness();
+  h.job.input.records = [{ id: 'direct:US:test', term: 'creatine gummies', market: 'US', direct: true }];
+  h.job.input.batch = 'November watch';
+  h.io.readKeyword = async () => { throw new Error('direct term read as selected keyword'); };
+  h.io.patchCollection = async () => { throw new Error('direct term patched selected keyword'); };
+  await runMarketJob(h.job, h.io);
+  assert.equal(h.states.at(-1).status, 'completed');
+  assert.deepEqual(h.docs.get('ads:a').collectionBatches, ['November watch']);
 });
 
 test('terminal partial and cancelled jobs clear only their own active keyword states', async () => {
