@@ -1,49 +1,35 @@
 {
-  "title": "关键词列表与广告中文优先",
+  "title": "列表静默刷新与表头倒序优先",
   "includedCommits": [
-    "882c801bd82e45807d9b06d5b12006a199c3fe30",
-    "6f8a40dfa50a3a3a0a23cc5e4a35442f08cdce28"
+    "87c06722d0c3e80d910f83327899291ab5af0bf1"
   ],
-  "sourceSha": "1e119e845ee114e1de61390dbee38bab8cb12a94",
+  "sourceSha": "87c06722d0c3e80d910f83327899291ab5af0bf1",
   "changes": [
-    "关键词筛选、周期和视图操作合并为紧凑布局，表格收紧行列并将搜索量与两类相关查询前置、四个平台趋势后置。",
-    "关键词、种子词及热门和上升相关查询中文优先、原文浅色次级展示；缺失译名使用现有模型自动补齐，持久缓存并记录 token 用量。",
-    "广告支持直接输入多个关键词采集及抓取批次筛选，默认列表展示；新采集广告随来源分析生成广告主、标题和文案的中文译文，历史广告补译仍需明确付费操作。"
+    "已加载的分页与统计列表后台刷新不再使用整表 loading 遮罩，首次加载或切换到新筛选条件时仍保留加载反馈。",
+    "消费者洞察列表自动轮询静默更新，监控进度按钮不因后台同步反复显示 loading。",
+    "可排序表头在未排序状态下首次点击使用倒序，已处于倒序的字段继续按正常顺序切换。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/ads.vue",
-    "apps/web-antd/src/views/intelligence/advertisers.ts",
-    "apps/web-antd/src/views/intelligence/components/AdvertiserList.vue",
-    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/KeywordRelatedQueries.vue",
-    "apps/web-antd/src/views/intelligence/components/KeywordTrendComparison.vue",
-    "apps/web-antd/src/views/intelligence/components/SocialTrendCell.vue",
-    "apps/web-antd/src/views/intelligence/components/SourceFieldsButton.vue",
-    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
-    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/components/FormulaInsights.vue",
+    "apps/web-antd/src/views/intelligence/consumer-insights.vue",
+    "apps/web-antd/src/views/intelligence/monitor.vue",
+    "apps/web-antd/src/views/intelligence/products.vue",
     "apps/web-antd/src/views/intelligence/research.vue",
-    "server/AD-MEDIA.md",
-    "server/ad-translation.test.mjs",
-    "server/ads-provider.mjs",
-    "server/database.mjs",
-    "server/index.mjs",
-    "server/keyword-names.mjs",
-    "server/keyword-names.test.mjs",
-    "server/market-jobs.mjs",
-    "server/market-jobs.test.mjs",
-    "server/model.js",
-    "server/source-field-domain.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+    "apps/web-antd/src/views/intelligence/workspace-queries.ts",
+    "tests/statistics-queries.test.ts",
+    "tests/workspace-queries.test.ts"
   ],
   "validation": [
-    "关键词功能开发自测：5项译名专项测试、前端类型检查、生产构建、提交钩子及合成数据桌面/手机界面检查通过；未调用真实付费模型或用正式数据验收译名。",
-    "广告功能开发自测：22项服务端专项/读模型测试、前端类型检查、生产构建及本地列表与多词/批次弹窗检查通过；本地无云端历史广告，未在浏览器验收历史译文。",
-    "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建和CI等待。",
-    "无schema、数据迁移或依赖变更；历史广告不自动付费回填，完整数据库备份按用户策略跳过，保留源码、镜像、前端、配置、任务、检查点和public/data保护。"
+    "功能开发自测：分页与统计列表专项测试 10/10、Web 类型检查、正式模式前端构建及差异检查通过；本地关键词页未排序字段首次点击验证为 descending。",
+    "本地无正式业务数据，后台刷新视觉尚未以登录账号验收；提交钩子全文件 oxlint 受既有告警阻断，自动修复差异已撤回后重跑专项检查并跳过钩子提交。",
+    "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建及 CI 等待。",
+    "无后端、schema、迁移、依赖或队列逻辑变更；完整数据库备份按用户策略跳过，保留源码、镜像、前端、配置、任务、检查点与 public/data 保护。"
   ],
   "operator": "Codex",
-  "id": "20261104090145-9509b5e2",
-  "builtAt": "2026-11-04T09:01:45.018Z",
-  "sourceDigest": "9509b5e2f5f30763cb8f1450554687c75f8bc18b3dfffc430cde3ca585447d9b"
+  "id": "20261104102442-bf2d2cee",
+  "builtAt": "2026-11-04T10:24:42.641Z",
+  "sourceDigest": "bf2d2cee1f0b71b2c247362a67f5a5a8b04dfaa18d23c5cac63fc95e5d285210"
 }
