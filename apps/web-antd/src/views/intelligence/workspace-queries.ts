@@ -89,7 +89,8 @@ export function useWorkspaceList<T extends { id: string }>(
     sequence = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let facetScope = '',
-    displayedKey = '';
+    displayedKey = '',
+    loadedKey = '';
   const input = computed(() => ({
     ...query.value,
     collection,
@@ -118,13 +119,15 @@ export function useWorkspaceList<T extends { id: string }>(
     if (cached) {
       rows.value = hydrate(cached.value.rows as T[]);
       total.value = cached.value.total;
+      loadedKey = requestedKey;
     }
-    loading.value = true;
+    loading.value = !cached && loadedKey !== requestedKey;
     try {
       const result = await requestPage<T>(requested, force);
       if (ticket !== sequence || !active) return;
       rows.value = hydrate(result.rows);
       total.value = result.total;
+      loadedKey = requestedKey;
       page.value = result.page;
       error.value = result.error || '';
       const scope = JSON.stringify([

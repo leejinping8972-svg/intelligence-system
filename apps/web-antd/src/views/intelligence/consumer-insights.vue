@@ -62,11 +62,11 @@ function stop() {
   if (timer) clearTimeout(timer);
   timer = undefined;
 }
-async function load() {
+async function load(background = false) {
   if (!serverMode) return;
   stop();
   const t = ++token;
-  busy.value = true;
+  busy.value = !background;
   try {
     const r = await cloudRequest<{
       reports: ResearchReport[];
@@ -96,7 +96,7 @@ async function load() {
       active &&
       r.reports.some((r) => ['queued', 'running'].includes(r.status))
     )
-      timer = setTimeout(() => void load(), 10000);
+      timer = setTimeout(() => void load(true), 10000);
   } catch (e) {
     if (t === token) error.value = e instanceof Error ? e.message : '读取失败';
   } finally {
@@ -213,7 +213,7 @@ function reset() {
           ]"
           aria-label="审阅状态筛选"
         />
-        <Button @click="reset">重置筛选</Button><Button :loading="busy" @click="load">刷新</Button>
+        <Button @click="reset">重置筛选</Button><Button :loading="busy" @click="load()">刷新</Button>
       </div>
       <p class="hci-subtle">
         {{ marketName(state.market) }} · {{ total }} 份报告 ·

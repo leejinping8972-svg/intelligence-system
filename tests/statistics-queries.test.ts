@@ -68,6 +68,17 @@ it('retains the last successful snapshot on a refresh failure', async () => {
   expect(data.rows.value[0]?.id).toBe('US');
   expect(data.error.value).toBe('offline');
 });
+it('keeps statistics visible without a loading overlay during polling', async () => {
+  const { data } = setup(); await settle();
+  let finish!: (value: unknown) => void;
+  mock.request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const refreshing = data.reload(true);
+  expect(data.rows.value[0]?.id).toBe('US');
+  expect(data.loading.value).toBe(false);
+  finish(response('updated'));
+  await refreshing;
+  expect(data.rows.value[0]?.id).toBe('updated');
+});
 it('keeps scope totals during pagination and debounces data-change notifications', async () => {
   const { page, data } = setup(); await settle();
   let finish!: (value: unknown) => void;

@@ -463,6 +463,7 @@ const columns = [
     title: '研究评分',
     key: 'score',
     width: 78,
+    sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
     sorter: serverMode
       ? true
       : (a: Keyword, b: Keyword) =>
@@ -477,6 +478,7 @@ const columns = [
     title: '抓取时间',
     key: 'collectedAt',
     width: 118,
+    sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
     sorter: serverMode
       ? true
       : (a: Keyword, b: Keyword) =>

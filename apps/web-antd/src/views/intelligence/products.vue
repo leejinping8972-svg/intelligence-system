@@ -387,6 +387,7 @@ const tableColumns = computed(() =>
         ? {
             ...column,
             sorter: true,
+            sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
             showSorterTooltip:
               column.key === 'core:priceOriginal'
                 ? { title: '按当前市场单一币种排序' }

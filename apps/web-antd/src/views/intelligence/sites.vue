@@ -220,12 +220,13 @@ watch([search, platform, category, ownership, keywordFilter, source, scoreFilter
 const columns = [
   { title: '品牌 / 独立站', key: 'brand', width: 220 },
   { title: '市场', key: 'market', width: 90 },
-  { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sorter: serverMode ? true : (a: Site, b: Site) => collectionTimeOrder(siteCollectedAt(a)) - collectionTimeOrder(siteCollectedAt(b)) },
+  { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[], sorter: serverMode ? true : (a: Site, b: Site) => collectionTimeOrder(siteCollectedAt(a)) - collectionTimeOrder(siteCollectedAt(b)) },
   {
     title: '站点评分',
     key: 'assessment',
     width: 120,
     defaultSortOrder: 'descend' as const,
+    sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
     sorter: serverMode ? true : (a: Site, b: Site) =>
       (a.assessment?.score ?? -1) - (b.assessment?.score ?? -1),
   },

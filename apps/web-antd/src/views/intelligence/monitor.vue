@@ -260,7 +260,7 @@ const auditRows = computed(() =>
       关键词研究、趋势补齐、平台商品与站点采集由服务器后台执行并保存。关闭浏览器后继续，回来后可查看进度与结果；历史本机任务保留原记录。
       <Button
         size="small"
-        :loading="cloudWorkspace.syncing"
+        :loading="cloudWorkspace.syncing && !cloudWorkspace.ready"
         @click="
           syncCloudWorkspace().catch((error) => message.error(error.message))
         "

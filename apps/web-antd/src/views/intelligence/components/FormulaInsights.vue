@@ -32,6 +32,7 @@ const columns = [
     title: '证据热度',
     dataIndex: 'score',
     width: 100,
+    sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
     sorter: serverMode ? undefined : (a: any, b: any) => a.score - b.score,
   },
 ];

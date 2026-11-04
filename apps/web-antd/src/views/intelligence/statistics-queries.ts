@@ -32,6 +32,7 @@ export function useStatistics<T>(query: ComputedRef<Record<string, unknown>>) {
   let active = true;
   let sequence = 0;
   let displayed = '';
+  let loaded = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   async function reload(force = false) {
     if (!serverMode || !active || query.value.enabled === false || !session.user) return;
@@ -46,8 +47,9 @@ export function useStatistics<T>(query: ComputedRef<Record<string, unknown>>) {
       total.value = previous?.result.total ?? summaries.get(scopeKey)?.total ?? 0;
       snapshot.value = previous?.result.snapshot ?? summaries.get(scopeKey)?.snapshot ?? null;
     }
+    if (previous) loaded = key;
     displayed = key;
-    loading.value = true;
+    loading.value = !previous && loaded !== key;
     try {
       let result = previous?.result;
       if (force || !previous || Date.now() - previous.at >= 30_000) {
@@ -67,6 +69,7 @@ export function useStatistics<T>(query: ComputedRef<Record<string, unknown>>) {
       if (!result!.snapshot && snapshot.value) return;
       rows.value = result!.rows as T[];
       total.value = result!.total;
+      loaded = key;
       pagination.value = { page: result!.page, pageSize: result!.pageSize };
       snapshot.value = result!.snapshot;
       if (result!.snapshot) {

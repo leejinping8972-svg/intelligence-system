@@ -192,6 +192,7 @@ const columns = [
     key: 'score',
     width: 88,
     defaultSortOrder: 'descend' as const,
+    sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
     sorter: serverMode ? true : (a: { score: null | number }, b: { score: null | number }) =>
       (a.score ?? -1) - (b.score ?? -1),
   },

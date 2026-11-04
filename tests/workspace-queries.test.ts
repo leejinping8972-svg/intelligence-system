@@ -109,6 +109,29 @@ describe('paged workspace queries', () => {
     expect(list.rows.value).toEqual([]);
     expect(list.total.value).toBe(0);
   });
+  it('keeps a loaded page interactive during a background refresh', async () => {
+    const { list, filter } = setup();
+    await settle();
+    let finish!: (value: unknown) => void;
+    mock.request.mockImplementation((action) =>
+      action === 'server_workspace_list'
+        ? new Promise((resolve) => { finish = resolve; })
+        : Promise.resolve({ facets: {} }),
+    );
+    mock.cloud.publishedRevision = `refresh-${user}`;
+    await nextTick();
+    expect(list.rows.value[0]?.id).toBe('page1');
+    expect(list.loading.value).toBe(false);
+    finish(result('updated'));
+    await settle();
+    expect(list.rows.value[0]?.id).toBe('updated');
+    filter.value = 'new filter';
+    await settle();
+    expect(list.loading.value).toBe(true);
+    expect(list.rows.value).toEqual([]);
+    finish(result('filtered'));
+    await settle();
+  });
   it('ignores late responses after filters change and separates users', async () => {
     const { list, filter } = setup();
     await settle();
