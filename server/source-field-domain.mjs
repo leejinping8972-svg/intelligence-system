@@ -24,28 +24,37 @@ export function sourceFieldSample(kind, value) {
     const text = clean(raw, 6000);
     if (text) sources.push({ id, text, role });
   };
-  add('title', value.title || value.headline, 'title');
+  add('title', value.title || value.headline || value.brand, 'title');
   add('description', value.sourceContent?.rawDescription ?? value.description);
   if (kind === 'ads') add('ad-copy', value.copy, 'claim');
   const content = value.sourceContent || {};
-  if (kind === 'sites')
-    for (const [i, name] of (content.rawMainProducts || []).entries())
+  if (kind === 'sites') {
+    const products = content.rawMainProducts?.length
+      ? content.rawMainProducts
+      : value.mainProducts || [];
+    for (const [i, name] of products.entries())
       add(`site-product-${i}`, name, 'attribute');
+    // Discovery/verification often stores page snippets here instead of sourceContent.
+    for (const [i, evidence] of (value.sourceEvidence || []).entries()) {
+      add(
+        `site-evidence-${i}`,
+        evidence?.keyword || evidence?.text || evidence?.quote || '',
+        'description',
+      );
+    }
+  }
   for (const [index, raw] of (content.descriptions || []).entries())
     add(`description-${index}`, raw);
   for (const [key, raw] of Object.entries({
     ...content.productInfo,
     ...content.attributes,
-  }))
-    add(
-      `attribute:${key}`,
-      `${key}: ${raw}`,
-      /^(ingredients|supplement facts|成分表|配料表)$/i.test(key)
-        ? 'formula'
-        : /amount per serving|剂量|每份含量/i.test(key)
-          ? 'dose'
-          : 'attribute',
-    );
+  })) {
+    let role = 'attribute';
+    if (/^(ingredients|supplement facts|成分表|配料表)$/i.test(key))
+      role = 'formula';
+    else if (/amount per serving|剂量|每份含量/i.test(key)) role = 'dose';
+    add(`attribute:${key}`, `${key}: ${raw}`, role);
+  }
   for (const [key, raw] of Object.entries(content.rawFields || {}))
     add(
       `raw:${key}`,
@@ -93,8 +102,8 @@ function proof(entry, sample) {
 export function validateSourceFields(result, sample) {
   if (!Array.isArray(result?.fields) || result.fields.length > 30)
     throw new Error('AI字段结果格式无效');
-  const patch = {},
-    evidence = {};
+  const evidence = {};
+  const patch = {};
   for (const item of result.fields) {
     const p = proof(item, sample);
     if (
@@ -107,7 +116,7 @@ export function validateSourceFields(result, sample) {
       (v) => clean(v, 2000),
     );
     if (
-      !values.length ||
+      values.length === 0 ||
       values.some((v) => !v || !p.quote.toLowerCase().includes(v.toLowerCase()))
     )
       continue;
@@ -159,7 +168,21 @@ export function validateSourceFields(result, sample) {
 }
 export function pendingSourceFields(kind, value) {
   const sample = sourceFieldSample(kind, value);
-  if (!fields[kind] || !sample.sources.length) return value;
+  if (!fields[kind]) return value;
+  if (sample.sources.length === 0) {
+    return {
+      ...value,
+      fieldAnalysis: {
+        version: 1,
+        fingerprint: sample.fingerprint,
+        status: 'analyzed',
+        sources: [],
+        fields: {},
+        skipReason: 'no_extractable_sources',
+        analyzedAt: new Date().toISOString(),
+      },
+    };
+  }
   const result = {
     ...value,
     fieldAnalysis: {
@@ -169,14 +192,13 @@ export function pendingSourceFields(kind, value) {
       sources: sample.sources,
     },
   };
-  for (const key of fields[kind])
-    result[key] = arrayFields.has(key)
-      ? []
-      : key === 'ingredient'
-        ? '平台未返回可核验配方（待AI分析）'
-        : key === 'dose'
-          ? '平台未返回每份剂量（待AI分析）'
-          : '';
+  for (const key of fields[kind]) {
+    if (arrayFields.has(key)) result[key] = [];
+    else if (key === 'ingredient')
+      result[key] = '平台未返回可核验配方（待AI分析）';
+    else if (key === 'dose') result[key] = '平台未返回每份剂量（待AI分析）';
+    else result[key] = '';
+  }
   if (kind === 'products') {
     result.ingredientInsights = [];
     delete result.formula;
