@@ -1,24 +1,47 @@
 {
-  "title": "重新分析素材时保留既有中文",
+  "title": "Sorftime新品、成分研究与立即运行修复",
   "includedCommits": [
-    "be858c562179ff1377392cf8eb7956d3e94250bb"
+    "79cd2ff3acfb54b1ba29c6c4831acf3f3eba678b",
+    "ef91e247432ea85c1d82f86178452a13424f6c67"
   ],
-  "sourceSha": "be858c562179ff1377392cf8eb7956d3e94250bb",
+  "sourceSha": "95e9738bc18a539eb46f4c0a7ea14d7ab849b04d",
   "changes": [
-    "广告重新分析入口不再先清空已保存的广告主、标题、文案与卖点中文。",
-    "模型只返回部分新译文时保留其余原有中文，新译文成功返回的字段仍优先更新。"
+    "新品默认Sorftime真实类目查询，窗口内上架且来源月销量大于0，商品上限1000，保留Amazon/TikTok/Shopee不同站点和日期证据语义。",
+    "成分研究通过Sorftime，修复published_time及大小写字段、Reddit原文补取、无数据文本语义、过滤原因；讨论上限5000和分批分析。",
+    "修复编辑监控后立即运行的提交、反馈、跳转与幂等；保留历史任务和显式官方榜兼容路径。"
   ],
   "files": [
+    "apps/web-antd/src/views/intelligence/components/DiscoveryMonitors.vue",
+    "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "server/OFFICIAL-NEW-RELEASES.md",
+    "server/SORFTIME-DISCOVERY.md",
+    "server/discovery-monitor-domain.mjs",
+    "server/discovery-monitor-form.browser.test.mjs",
+    "server/discovery-monitor-store.mjs",
     "server/discovery-monitors.integration.test.mjs",
-    "server/source-field-store.mjs"
+    "server/discovery-monitors.test.mjs",
+    "server/discovery-sorftime-v2.test.mjs",
+    "server/discovery-sorftime.mjs",
+    "server/official-new-release-domain.mjs",
+    "server/official-new-release-runner.mjs",
+    "server/official-new-releases.mjs",
+    "server/official-new-releases.test.mjs",
+    "server/platform-product-data.mjs",
+    "server/source-usage-domain.mjs",
+    "server/store.mjs"
   ],
   "validation": [
-    "功能开发自测：相关 Node 测试 10/10、PGlite 集成测试 5/5、脚本语法与差异检查通过。",
-    "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建及 CI 等待。",
-    "本批无 schema、迁移或依赖变更；完整数据库备份按用户策略跳过，保留部署锁、队列、检查点、源码、镜像、前端、配置与 public/data 保护。"
+    "功能自测41/41、完整前端类型检查、独立开发构建及差异检查通过；立即运行此前Vue/Ant合成浏览器验收通过。",
+    "实际Sorftime MCP元数据及有界数据探针验证，原始真实数据/凭据不提交源码；生产任务未重放。",
+    "发布阶段按用户策略跳过重复测试、类型、lint、隔离数据库、界面验收、验证构建及CI等待。",
+    "无schema/迁移或新增依赖，完整数据库备份按用户策略跳过，保留队列/账本/数据保护和应用回退。"
   ],
   "operator": "Codex",
-  "id": "20261104150348-38b6d6fa",
-  "builtAt": "2026-11-04T15:03:48.052Z",
-  "sourceDigest": "38b6d6fa2234ef182c424003f4cc5bab14932f8392a914adcd4e745908befa80"
+  "id": "20261104221152-adfd07f5",
+  "builtAt": "2026-11-04T22:11:52.296Z",
+  "sourceDigest": "adfd07f5aa02a7f83d5f89dc305739d98c1c125870e1a9d72f9520a400f64583"
 }
