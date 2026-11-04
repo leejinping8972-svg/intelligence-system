@@ -177,7 +177,7 @@ async function submit() {
         使用全球电商AI经营平台登录
       </button>
       <div class="admin-login-foot">
-        HTTPS 安全连接 · 登录有效期最长12小时 · 闲置30分钟自动退出
+        HTTPS 安全连接 · 登录有效期最长12小时 · 闲置2小时自动退出
       </div>
     </section>
   </main>

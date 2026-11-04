@@ -258,7 +258,7 @@ try {
   );
   await pool.query(
     'UPDATE admin_sessions SET last_seen_at=$1 WHERE user_id=$2',
-    [Date.now() - 31 * 60_000, setup.data.user.id],
+    [Date.now() - 121 * 60_000, setup.data.user.id],
   );
   assert.equal((await call('server_snapshot', {}, owner)).status, 401);
   const newLogin = await call('auth_login', {

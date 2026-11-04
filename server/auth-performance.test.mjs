@@ -328,7 +328,12 @@ test('authentication keeps security checks while removing serial login work', as
         ]);
         await db.query(
           'UPDATE admin_sessions SET last_seen_at=$1 WHERE user_id=$2',
-          [Date.now() - 31 * 60_000, owner.id],
+          [Date.now() - 119 * 60_000, owner.id],
+        );
+        assert.ok(await sessionUser(signedRequest));
+        await db.query(
+          'UPDATE admin_sessions SET last_seen_at=$1 WHERE user_id=$2',
+          [Date.now() - 121 * 60_000, owner.id],
         );
         assert.equal(await sessionUser(signedRequest), null);
         await db.query(
@@ -463,7 +468,7 @@ test('authentication keeps security checks while removing serial login work', as
           owner.id,
           now - 60 * 60_000,
           now - 1,
-          now - 31 * 60_000,
+          now - 121 * 60_000,
         ]);
         failCleanup = true;
         queries.length = 0;

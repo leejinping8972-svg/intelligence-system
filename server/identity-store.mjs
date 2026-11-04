@@ -7,6 +7,8 @@ import {
   randomBytes,
 } from 'node:crypto';
 
+import { SESSION_IDLE_MS } from './session-policy.mjs';
+
 export const identitySchema = [
   'CREATE TABLE IF NOT EXISTS identity_artifacts (id_hash varchar(64) PRIMARY KEY, model varchar(64) NOT NULL, payload text NOT NULL, grant_hash varchar(64), uid_hash varchar(64), account_id varchar(36), local_session_hash varchar(64), expires_at bigint NOT NULL, consumed_at bigint)',
 ];
@@ -61,7 +63,7 @@ export function createIdentityStore(
         if (!row.local_session_hash) return undefined;
         const active = await pool.query(
           'SELECT user_id FROM admin_sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>$3 AND last_seen_at>$4',
-          [row.local_session_hash, row.account_id, now(), now() - 30 * 60_000],
+          [row.local_session_hash, row.account_id, now(), now() - SESSION_IDLE_MS],
         );
         if (active.rows.length === 0) return undefined;
       }
