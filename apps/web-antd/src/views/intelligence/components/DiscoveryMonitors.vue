@@ -94,7 +94,19 @@ defineExpose({ refresh: load });
       }}</template>
       <template v-else-if="column.key === 'scope'"
         >{{ record.channels.join(' / ') }}
-        <p class="hci-subtle">近{{ record.days }}天 · 保健品</p></template
+        <p class="hci-subtle">
+          {{
+            record.kind === 'ingredients'
+              ? `近${record.days}天讨论`
+              : record.sourceMode === 'official_new_releases'
+                ? '官方新品榜'
+                : `近${record.days}天上架 · 有销量`
+          }}
+          · 保健品
+        </p>
+        <p v-if="record.lastScheduleError" class="text-red-600">
+          {{ record.lastScheduleError }}
+        </p></template
       >
       <template v-else-if="column.key === 'schedule'"
         >{{
@@ -155,6 +167,10 @@ defineExpose({ refresh: load });
       :kind="editor.kind"
       :plan="editor"
       scheduled
+      @submitted="
+        editor = undefined;
+        load();
+      "
       @saved="
         editor = undefined;
         load();

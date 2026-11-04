@@ -4,7 +4,7 @@ import {
   stableId,
 } from './discovery-monitor-domain.mjs';
 import {
-  field,
+  field as directField,
   number,
   payload,
   publicUrl,
@@ -19,6 +19,15 @@ import {
   schemaValue,
 } from './product-resource-sorftime.mjs';
 
+function field(row, ...names) {
+  const direct = directField(row, ...names);
+  if (direct !== undefined) return direct;
+  const keys = new Set(names.map((n) => n.replaceAll('_', '').toLowerCase()));
+  const key = Object.keys(row || {}).find((k) =>
+    keys.has(k.replaceAll('_', '').toLowerCase()),
+  );
+  return key ? directField(row, key) : undefined;
+}
 const aliases = {
   query: [
     'search_name',
@@ -71,12 +80,6 @@ const aliases = {
   url: ['url', 'post_url', 'question_url', 'permalink', 'link'],
   id: ['reddit_id', 'quora_id', 'post_id', 'question_id', 'id'],
 };
-const socialNames = new Set([
-  'quora_answer_request',
-  'quora_question_search',
-  'reddit_comment_request',
-  'reddit_post_search',
-]);
 function productChannel(tool) {
   if (
     !/product/i.test(tool.name) ||
@@ -174,9 +177,13 @@ function buildArguments(tool, request) {
       );
   }
   const queryKey =
-    !request.detail && !request.nodeId && set(aliases.query, request.topic);
+    !request.detail &&
+    !request.postDetail &&
+    !request.nodeId &&
+    set(aliases.query, request.topic);
   if (
     !request.detail &&
+    !request.postDetail &&
     !queryKey &&
     !request.categoryLookup &&
     !request.nodeId &&
@@ -185,7 +192,7 @@ function buildArguments(tool, request) {
   )
     throw new Error('来源不支持话题或新品查询');
   set(['node_id', 'category_id'], request.nodeId);
-  if (request.detail) {
+  if (request.detail || request.postDetail) {
     if (
       request.channel === 'reddit' &&
       !/^t3_[a-z\d]+$/i.test(request.record?.sourceId || '')
@@ -205,6 +212,10 @@ function buildArguments(tool, request) {
   const now = request.now || Date.now();
   set(aliases.start, discoveryDay(now - (request.days - 1) * 86_400_000));
   set(aliases.end, discoveryDay(now));
+  if (request.requireSales && !request.categoryLookup) {
+    if (!set(['month_sale_volume_range_min', 'month_sale_count_min'], 1))
+      throw new Error('来源缺少已适配的销量筛选参数，未调用数据工具');
+  }
   set(aliases.page, request.page || 1);
   set(aliases.limit, 20);
   const sort = ['sort', 'sort_by', 'sortBy', 'order'].find(
@@ -372,8 +383,49 @@ export function normalizeDiscoveryProduct(row, request, at) {
     },
   };
   const raw = { ...row, ...row.product_info };
-  const dateKey = listingKeys.find((key) => raw[key] !== undefined);
-  const date = product.decisionData?.listing?.date || sourceDate(raw[dateKey]);
+  const monthlySales = number(
+    field(
+      raw,
+      'monthly_sales_volume',
+      'monthly_sale_volume',
+      'month_sale_count',
+      'monthly_sale_count',
+      'monthlySales',
+      'month_sale_volume',
+    ),
+  );
+  if (monthlySales !== undefined) {
+    product.sourceMetrics ||= {};
+    product.sourceMetrics.monthlySales = monthlySales;
+    product.resourceRaw = {
+      ...product.resourceRaw,
+      salesEvidence: {
+        value: monthlySales,
+        metric: 'monthly_sales_volume',
+        basis:
+          'Sorftime来源报告月销量；Amazon为估算销量，不代表指定30天真实订单',
+        sourceField: Object.keys(raw).find((k) =>
+          [
+            'monthly_sales_volume',
+            'monthly_sale_volume',
+            'month_sale_count',
+            'monthly_sale_count',
+            'monthlySales',
+            'month_sale_volume',
+          ].includes(k),
+        ),
+        provider: 'Sorftime',
+        collectedAt: at,
+      },
+    };
+  }
+  const dateKey = listingKeys.find((key) => field(raw, key) !== undefined);
+  const date =
+    product.decisionData?.listing?.date ||
+    sourceDate(field(raw, dateKey || ''));
+  const exposureDate = sourceDate(field(raw, 'exposure_time'));
+  if (exposureDate)
+    product.resourceRaw = { ...product.resourceRaw, exposureDate };
   if (dateInWindow(date, 36_500, Date.parse(at)))
     product.decisionData = {
       ...product.decisionData,
@@ -411,11 +463,15 @@ export function normalizeDiscoveryProduct(row, request, at) {
   };
   return product;
 }
-export function normalizeSocialRows(value, request, at) {
+export function normalizeSocialRows(value, request, at, stats = {}) {
+  const reject = (reason) => {
+    stats[reason] = (stats[reason] || 0) + 1;
+    return [];
+  };
   return discoveryRows(value)
     .slice(0, 100)
     .flatMap((row) => {
-      const url = publicUrl(
+      let url = publicUrl(
         field(row, 'url', 'permalink', 'link', 'post_url', 'question_url') ||
           request.record?.url,
         false,
@@ -430,8 +486,18 @@ export function normalizeSocialRows(value, request, at) {
           'question_id',
           'comment_id',
           'answer_id',
-        ) || '',
+        ) ||
+          request.record?.sourceId ||
+          '',
       );
+      if (
+        !url &&
+        request.channel === 'reddit' &&
+        /^t3_[a-z0-9]+$/i.test(sourceId)
+      )
+        url = `https://www.reddit.com/comments/${sourceId.slice(3)}/`;
+      if (request.postDetail && sourceId !== request.record?.sourceId)
+        return reject('sourceIdMismatch');
       const body = text(
         field(
           row,
@@ -459,6 +525,7 @@ export function normalizeSocialRows(value, request, at) {
       const publishedAt = sourceDate(
         field(
           row,
+          'published_time',
           'published_at',
           'created_at',
           'created_utc',
@@ -467,23 +534,32 @@ export function normalizeSocialRows(value, request, at) {
           'created_time',
           'date',
           'time',
-        ),
+        ) || (request.postDetail ? request.record?.publishedAt : ''),
       );
-      if (
-        !url ||
-        (!body && !title) ||
-        !dateInWindow(publishedAt, request.days, request.now)
-      )
-        return [];
+      if (!publishedAt) return reject('missingDate');
+      if (!dateInWindow(publishedAt, request.days, request.now))
+        return reject('outsideWindow');
+      if (!url) return reject('missingUrl');
       const host = new URL(url).hostname;
       if (
         !host.endsWith(`.${request.channel}.com`) &&
         host !== `${request.channel}.com`
       )
-        return [];
+        return reject('wrongHost');
+      const requiresContent =
+        !body &&
+        !title &&
+        !request.detail &&
+        !request.postDetail &&
+        /^t3_[a-z0-9]+$/i.test(sourceId);
+      if (!body && !title && !requiresContent)
+        return reject('missingOriginalContent');
+      stats.accepted = (stats.accepted || 0) + 1;
       return [
         {
-          id: stableId(`${request.channel}|${sourceId}|${url}|${body}`),
+          id: stableId(
+            `${request.channel}|${sourceId}|${url}|${title}|${body}`,
+          ),
           sourceId,
           platform: request.channel,
           url,
@@ -493,6 +569,7 @@ export function normalizeSocialRows(value, request, at) {
           collectedAt: at,
           topic: request.topic,
           detail: request.detail === true,
+          ...(requiresContent ? { requiresContent: true } : {}),
         },
       ];
     });
@@ -501,6 +578,12 @@ function discoveryRows(value, depth = 0) {
   if (depth > 8) return [];
   const rows = records(value);
   if (rows.length > 0) return rows;
+  if (
+    value &&
+    typeof value === 'object' &&
+    field(value, 'reddit_id', 'quora_id', 'comment_id', 'answer_id')
+  )
+    return [value];
   for (const key of [
     'posts',
     'comments',
@@ -529,10 +612,14 @@ export async function discoverySorftime(request, overrides = {}) {
     request.categoryLookup
       ? tool.name === categoryName
       : request.social
-        ? socialNames.has(tool.name) &&
-          tool.name ===
-            `${request.channel}_${request.detail ? (request.channel === 'reddit' ? 'comment_request' : 'answer_request') : request.channel === 'reddit' ? 'post_search' : 'question_search'}`
-        : productChannel(tool) === request.channel,
+        ? tool.name ===
+          `${request.channel}_${request.postDetail ? (request.channel === 'reddit' ? 'post_request' : 'question_request') : request.detail ? (request.channel === 'reddit' ? 'comment_request' : 'answer_request') : request.channel === 'reddit' ? 'post_search' : 'question_search'}`
+        : productChannel(tool) === request.channel &&
+          (request.sourceMode !== 'sorftime' ||
+            tool.name ===
+              (request.channel === 'amazon'
+                ? 'product_search'
+                : `${request.channel}_product_search`)),
   );
   let args, chosen, failure;
   const score = (tool) =>
@@ -562,7 +649,15 @@ export async function discoverySorftime(request, overrides = {}) {
       name: chosen.name,
       arguments: args,
     });
-    value = payload(raw);
+    const blocks = raw?.content || [];
+    const empty =
+      !raw?.isError &&
+      raw?.structuredContent == null &&
+      blocks.length === 1 &&
+      /^No (?:data available|relevant data)\.?$/i.test(
+        String(blocks[0]?.text || '').trim(),
+      );
+    value = empty ? { data: [] } : payload(raw);
   } catch (error) {
     const wrapped = new Error(safeError(error, token), { cause: error });
     wrapped.mcpPreview =
@@ -577,7 +672,7 @@ export async function discoverySorftime(request, overrides = {}) {
   };
   const at = new Date(request.now || Date.now()).toISOString();
   const rows = discoveryRows(value);
-  const inner = value.data || value;
+  const inner = Array.isArray(value.data) ? value : value.data || value;
   if (request.categoryLookup) {
     const categories = [];
     let visited = 0;
@@ -601,8 +696,9 @@ export async function discoverySorftime(request, overrides = {}) {
         field(node, 'node_name', 'nodeName', 'Name', 'name', 'category_name'),
       );
       if (
-        id &&
-        /supplement|nutrition|vitamin|health|膳食|营养|保健|维生素/i.test(name)
+        /^\d+$/.test(String(id || '')) &&
+        name &&
+        !/^(Sales & Deals)$/i.test(name)
       )
         categories.push({ id: String(id), name });
       for (const child of Object.values(node))
@@ -610,28 +706,60 @@ export async function discoverySorftime(request, overrides = {}) {
     };
     walk(value);
     return {
-      categories: categories.slice(0, 3),
+      categories: [...new Map(categories.map((c) => [c.id, c])).values()].slice(
+        0,
+        100,
+      ),
       sourceRows: categories.length,
       sourceTool: chosen.name,
       usage,
       collectedAt: at,
     };
   }
+  const filterStats = {};
+  const socialRecords = request.social
+    ? normalizeSocialRows(value, request, at, filterStats)
+    : undefined;
+  const products = request.social
+    ? undefined
+    : rows
+        .slice(0, 100)
+        .map((row) => normalizeDiscoveryProduct(row, request, at))
+        .filter(Boolean);
+  if (request.kind === 'fbm_new' && args.shipping_type === 'FBM')
+    for (const product of products || []) {
+      product.resourceRaw ||= {};
+      if (!product.resourceRaw.fulfillment)
+        Object.assign(product.resourceRaw, {
+          fulfillment: 'FBM',
+          fulfillmentRaw: 'Sorftime shipping_type=FBM',
+          fulfillmentEvidence: {
+            basis: 'source_query_filter',
+            sourceTool: chosen.name,
+            sourceMarket: request.sourceMarket || request.market,
+            field: 'shipping_type',
+            value: 'FBM',
+            collectedAt: at,
+          },
+        });
+    }
   return {
+    filterStats,
     ...(request.social
-      ? { records: normalizeSocialRows(value, request, at) }
+      ? { records: socialRecords }
       : {
-          products: rows
-            .slice(0, 100)
-            .map((row) => normalizeDiscoveryProduct(row, request, at))
-            .filter(Boolean),
+          products,
         }),
     sourceRows: rows.length,
+    pageFingerprint: stableId(JSON.stringify(rows)),
     sourceTool: chosen.name,
     hasMore:
+      (Number.isInteger(inner.page_count) &&
+        (request.page || 1) < inner.page_count) ||
       inner.has_more === true ||
       inner.hasMore === true ||
-      (rows.length === 20 &&
+      (inner.page_count === undefined &&
+        rows.length === 20 &&
         Object.keys(args).some((key) => aliases.page.includes(key))),
     usage,
     collectedAt: at,

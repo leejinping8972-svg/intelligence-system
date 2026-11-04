@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  officialBoards,
+  officialBoardUrl,
+} from './official-new-release-domain.mjs';
 
 export const discoveryKinds = {
   fbm_new: 'FBM新品',
@@ -64,8 +68,8 @@ export function discoveryPlan(input, scheduled = false) {
     maxDetails: input.maxDetails ?? 5,
   };
   for (const [key, max] of Object.entries({
-    maxProducts: 500,
-    maxPages: 10,
+    maxProducts: input.kind === 'ingredients' ? 5000 : 1000,
+    maxPages: input.sourceMode === 'official_new_releases' ? 10 : 100,
     maxDetails: 20,
   }))
     if (
@@ -85,6 +89,20 @@ export function discoveryPlan(input, scheduled = false) {
     )
   )
     throw new Error('来源站点无效');
+  if (
+    input.sourceMode === 'official_new_releases' &&
+    input.kind !== 'ingredients' &&
+    channels.some((c) => c !== 'amazon')
+  )
+    throw new Error(
+      '当前仅接入Amazon官方新品榜；其他平台未提供已验证的官方新品榜',
+    );
+  if (input.kind !== 'ingredients') {
+    if (channels.some((c) => !['amazon', 'tiktok', 'shopee'].includes(c)))
+      throw new Error('新品支持Amazon、TikTok Shop和Shopee');
+    for (const channel of channels)
+      sourceMarkets[channel] ||= channel === 'shopee' ? 'VN' : input.market;
+  }
   const plan = {
     kind: input.kind,
     market: input.market,
@@ -94,6 +112,22 @@ export function discoveryPlan(input, scheduled = false) {
     topics,
     ...limits,
     supplementOnly: true,
+    ...(input.sourceMode === 'official_new_releases' &&
+    input.kind !== 'ingredients'
+      ? {
+          sourceMode: 'official_new_releases',
+          ...(input.requireListingDate === true
+            ? { requireListingDate: true }
+            : {}),
+          officialBoardUrls: officialBoards(
+            input.officialBoardUrls,
+            sourceMarkets.amazon,
+          ),
+        }
+      : {
+          sourceMode: 'sorftime',
+          ...(input.kind !== 'ingredients' ? { requireSales: true } : {}),
+        }),
   };
   if (scheduled) {
     const frequency =
@@ -146,18 +180,64 @@ export function dateInWindow(value, days, now = Date.now()) {
   return stamp <= today && stamp >= today - (days - 1) * 86_400_000;
 }
 export function newProductEvidence(product, plan, now = Date.now()) {
+  if (plan.sourceMode === 'official_new_releases') {
+    const ranking = product.resourceRaw?.officialNewRelease;
+    if (
+      ranking?.source !== 'amazon_official_new_releases' ||
+      !Number.isInteger(ranking.rank) ||
+      ranking.rank < 1 ||
+      !Number.isFinite(Date.parse(ranking.observedAt))
+    )
+      return;
+    try {
+      officialBoardUrl(ranking.boardUrl, plan.sourceMarkets.amazon);
+    } catch {
+      return;
+    }
+    const fulfillment = product.resourceRaw?.fulfillment || 'unknown';
+    const listingDate = product.decisionData?.listing?.date;
+    if (plan.requireListingDate && !dateInWindow(listingDate, plan.days, now))
+      return;
+    if (plan.kind === 'fbm_new' && fulfillment !== 'FBM') return;
+    return {
+      type: plan.kind,
+      label: plan.kind === 'fbm_new' ? '官方新品榜 · FBM' : '官方新品榜',
+      source: 'Amazon Official',
+      evidenceUrl: ranking.boardUrl,
+      rank: ranking.rank,
+      fulfillment,
+      observedAt: ranking.observedAt,
+      ...(plan.requireListingDate ? { listingDate, days: plan.days } : {}),
+      ...(plan.kind === 'fbm_new'
+        ? { fulfillmentEvidenceUrl: product.resourceRaw.fulfillmentEvidenceUrl }
+        : {}),
+    };
+  }
   const date = product.decisionData?.listing?.date;
   if (!dateInWindow(date, plan.days, now)) return;
+  if (plan.requireSales && !(product.resourceRaw?.salesEvidence?.value > 0))
+    return;
   const fulfillment = product.resourceRaw?.fulfillment;
   if (plan.kind === 'fbm_new' && fulfillment !== 'FBM') return;
   return {
-    type: plan.days === 7 ? plan.kind : 'new_listing',
-    label: plan.days === 7 ? discoveryKinds[plan.kind] : '新上架商品',
+    type:
+      plan.sourceMode === 'sorftime' || plan.days === 7
+        ? plan.kind
+        : 'new_listing',
+    label:
+      plan.sourceMode === 'sorftime'
+        ? `近${plan.days}天 · ${discoveryKinds[plan.kind]}`
+        : plan.days === 7
+          ? discoveryKinds[plan.kind]
+          : '新上架商品',
     listingDate: date,
     fulfillment: fulfillment || 'unknown',
     observedAt: new Date(now).toISOString(),
     evidenceUrl: product.sourceUrl || product.evidenceUrl,
     source: 'Sorftime',
     days: plan.days,
+    ...(product.resourceRaw?.salesEvidence
+      ? { salesEvidence: product.resourceRaw.salesEvidence }
+      : {}),
   };
 }

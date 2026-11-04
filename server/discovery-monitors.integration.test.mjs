@@ -15,13 +15,21 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
   const db = new PGlite();
   const originalFetch = globalThis.fetch;
   let externalCalls = 0;
-    let modelCalls = 0;
+  let modelCalls = 0;
   globalThis.fetch = async () => {
     externalCalls++;
     throw new Error('External calls disabled in isolated discovery tests');
   };
   const hook = registerHooks({
     resolve(specifier, context, next) {
+      if (
+        context.parentURL?.endsWith('/store.mjs') &&
+        specifier === './official-new-releases.mjs'
+      )
+        return {
+          shortCircuit: true,
+          url: `data:text/javascript,${encodeURIComponent('export const officialNewReleases = request => globalThis.__officialTestProvider(request);')}`,
+        };
       if (
         context.parentURL?.endsWith('/store.mjs') &&
         specifier === './discovery-ai.mjs'
@@ -35,7 +43,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
   });
   const { pool, putDocument } = await import('./database.mjs');
   const originalConnect = pool.connect;
-    const originalQuery = pool.query;
+  const originalQuery = pool.query;
   pool.query = async (statement, params = []) => {
     if (statement.startsWith('SELECT pg_try_advisory_lock'))
       return { rows: [{ locked: true }] };
@@ -63,8 +71,12 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
   });
   try {
     const { migrate, collect } = await import('./store.mjs');
-    const { discoveryAction, tickDiscoveryMonitors, submitDiscovery } =
-      await import('./discovery-monitor-store.mjs');
+    const {
+      discoveryAction,
+      tickDiscoveryMonitors,
+      submitDiscovery,
+      runDiscoveryMonitor,
+    } = await import('./discovery-monitor-store.mjs');
     const { queueSourceFields, runSourceFields, sourceFieldsAction } =
       await import('./source-field-store.mjs');
     const { gateSourceFields } = await import('./source-field-domain.mjs');
@@ -109,8 +121,8 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         const input = {
           kind: 'regular_new',
           market: 'US',
-          channels: ['amazon', 'shopee'],
-          sourceMarkets: { amazon: 'US', shopee: 'VN' },
+          channels: ['amazon'],
+          sourceMarkets: { amazon: 'US' },
           topics: ['dietary supplements', 'vitamins'],
           frequency: 'weekly',
           weekday: 5,
@@ -128,7 +140,8 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         const jobs = (await pool.query('SELECT * FROM research_jobs')).rows;
         assert.equal(jobs.length, 1);
         assert.deepEqual(jobs[0].input.plan.topics, []);
-        assert.equal(jobs[0].input.plan.sourceMarkets.shopee, 'VN');
+        assert.equal(jobs[0].input.plan.sourceMarkets.amazon, 'US');
+        assert.equal(jobs[0].input.plan.sourceMode, 'sorftime');
         assert.match(jobTasks(jobs[0])[0].title, /常规新品/);
         await discoveryAction(
           {
@@ -158,6 +171,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           (
             await submitDiscovery({
               requestId: storedJob.request_id,
+              monitorId: storedJob.input.monitorId,
               plan: storedJob.input.plan,
             })
           ).id,
@@ -289,11 +303,18 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
             },
             { description: 'Dietary supplement company' },
           );
-          const saved = kind === 'ads'
-            ? { ...value, brand: 'Health Shop', brandZh: '健康商店',
-                headline: 'Better sleep', headlineZh: '睡得更好',
-                copyZh: '菊粉补充剂', sellingPointZh: '每日补充菊粉' }
-            : value;
+          const saved =
+            kind === 'ads'
+              ? {
+                  ...value,
+                  brand: 'Health Shop',
+                  brandZh: '健康商店',
+                  headline: 'Better sleep',
+                  headlineZh: '睡得更好',
+                  copyZh: '菊粉补充剂',
+                  sellingPointZh: '每日补充菊粉',
+                }
+              : value;
           await putDocument(
             'workspace_documents',
             `business:${kind}:${value.id}`,
@@ -318,19 +339,31 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           if (kind === 'ads') {
             const pendingAd = await read(`business:ads:${value.id}`);
             assert.deepEqual(
-              ['brandZh', 'headlineZh', 'copyZh', 'sellingPointZh'].map((key) => pendingAd[key]),
+              ['brandZh', 'headlineZh', 'copyZh', 'sellingPointZh'].map(
+                (key) => pendingAd[key],
+              ),
               ['健康商店', '睡得更好', '菊粉补充剂', '每日补充菊粉'],
             );
             await runSourceFields(await getJob(first.jobIds[0]), {
               collect: async () => ({
-                patch: { brandZh: '', headlineZh: '', copyZh: '', sellingPointZh: '' },
-                analysis: { status: 'analyzed', fingerprint: pendingAd.fieldAnalysis.fingerprint },
+                patch: {
+                  brandZh: '',
+                  headlineZh: '',
+                  copyZh: '',
+                  sellingPointZh: '',
+                },
+                analysis: {
+                  status: 'analyzed',
+                  fingerprint: pendingAd.fieldAnalysis.fingerprint,
+                },
                 model: 'test',
               }),
             });
             const analyzedAd = await read(`business:ads:${value.id}`);
             assert.deepEqual(
-              ['brandZh', 'headlineZh', 'copyZh', 'sellingPointZh'].map((key) => analyzedAd[key]),
+              ['brandZh', 'headlineZh', 'copyZh', 'sellingPointZh'].map(
+                (key) => analyzedAd[key],
+              ),
               ['健康商店', '睡得更好', '菊粉补充剂', '每日补充菊粉'],
             );
           }
@@ -351,10 +384,166 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         assert.equal(externalCalls, 0);
       },
     );
+    await t.test(
+      'manual monitor runs retain edited 5000-post settings and task linkage with idempotent retries',
+      async () => {
+        const plan = (
+          await discoveryAction(
+            {
+              action: 'server_discovery_save',
+              plan: {
+                kind: 'ingredients',
+                market: 'US',
+                channels: ['reddit'],
+                topics: 'Synthetic ingredient',
+                maxProducts: 5000,
+                frequency: 'daily',
+                time: '09:00',
+                enabled: false,
+              },
+            },
+            admin,
+          )
+        ).plan;
+        const input = {
+          action: 'server_discovery_submit',
+          monitorId: plan.id,
+          requestId: randomUUID(),
+          plan: { ...plan, maxPages: 25 },
+        };
+        const first = await discoveryAction(input, admin);
+        const second = await discoveryAction(input, admin);
+        assert.equal(first.jobId, second.jobId);
+        const job = await getJob(first.jobId);
+        assert.equal(job.input.plan.maxProducts, 5000);
+        assert.equal(job.input.plan.maxPages, 25);
+        assert.equal(job.input.monitorId, plan.id);
+        assert.equal(
+          (await read(`discovery:monitor:${plan.id}`)).lastJobId,
+          job.id,
+        );
+        assert.equal((await read(`discovery:monitor:${plan.id}`)).maxPages, 3);
+        const next = await discoveryAction(
+          { ...input, requestId: randomUUID() },
+          admin,
+        );
+        assert.notEqual(next.jobId, first.jobId);
+      },
+    );
+    await t.test(
+      'an unsupported old product monitor does not block the daily ingredient schedule',
+      async () => {
+        const bad = {
+          id: randomUUID(),
+          kind: 'regular_new',
+          market: 'US',
+          channels: ['unsupported_platform'],
+          enabled: true,
+          frequency: 'daily',
+          time: '09:00',
+          days: 7,
+          maxProducts: 100,
+        };
+        const good = {
+          ...bad,
+          id: randomUUID(),
+          kind: 'ingredients',
+          channels: ['reddit'],
+          topics: ['Synthetic supplement'],
+        };
+        await putDocument(
+          'workspace_documents',
+          `discovery:monitor:${bad.id}`,
+          bad,
+        );
+        await putDocument(
+          'workspace_documents',
+          `discovery:monitor:${good.id}`,
+          good,
+        );
+        await tickDiscoveryMonitors(Date.parse('2026-11-05T01:00:00Z'));
+        assert.match(
+          (await read(`discovery:monitor:${bad.id}`)).lastScheduleError,
+          /新品支持/,
+        );
+        assert.ok((await read(`discovery:monitor:${good.id}`)).lastJobId);
+      },
+    );
+    await t.test(
+      'official runner uses persistent request journal and resumes a cached board without refetching',
+      async () => {
+        let publicCalls = 0;
+        globalThis.__officialTestProvider = async (request) => {
+          publicCalls++;
+          const { parseOfficialBoard } =
+            await import('./official-new-releases.mjs');
+          return parseOfficialBoard(
+            '<title>Amazon.com New Releases</title><div id="gridItemRoot"><span class="zg-bdg-text">#1</span><div data-asin="B000000009"><div class="p13n-sc-css-line-clamp-3">Synthetic dietary supplement</div></div></div>',
+            request,
+          );
+        };
+        const job = await submitDiscovery({
+          requestId: randomUUID(),
+          plan: {
+            kind: 'regular_new',
+            sourceMode: 'official_new_releases',
+            market: 'US',
+            channels: ['amazon'],
+            maxProducts: 1000,
+          },
+        });
+        await runDiscoveryMonitor(job);
+        // Simulate loss of the checkpoint after the request journal was committed.
+        await runDiscoveryMonitor(job);
+        assert.equal(publicCalls, 1);
+        let saved = await getJob(job.id);
+        for (
+          let i = 0;
+          i < 5 && !['completed', 'partial'].includes(saved.status);
+          i++
+        ) {
+          await runDiscoveryMonitor(saved);
+          saved = await getJob(job.id);
+        }
+        assert.equal(saved.status, 'completed');
+        assert.equal(saved.checkpoint.products, 1);
+        const journal = (
+          await pool.query('SELECT * FROM research_requests WHERE job_id=$1', [
+            job.id,
+          ])
+        ).rows;
+        assert.equal(journal.length, 2);
+        const board = journal.find((row) =>
+          row.step.startsWith('official-board:'),
+        );
+        assert.equal(board.status, 'done');
+        assert.equal(board.paid_allowance, 0);
+        assert.equal(board.response.items[0].ranking.rank, 1);
+        assert.equal(externalCalls, 0);
+        globalThis.__officialTestProvider = async () => {
+          publicCalls++;
+          throw Error('synthetic source failure');
+        };
+        await assert.rejects(
+          collect(job, 'official-failed', {
+            sources: ['official_new_releases'],
+          }),
+          /synthetic source failure/,
+        );
+        await assert.rejects(
+          collect(job, 'official-failed', {
+            sources: ['official_new_releases'],
+          }),
+          /synthetic source failure/,
+        );
+        assert.equal(publicCalls, 2);
+      },
+    );
   } finally {
     hook.deregister();
     globalThis.fetch = originalFetch;
     delete globalThis.__discoveryTestModel;
+    delete globalThis.__officialTestProvider;
     pool.query = originalQuery;
     pool.connect = originalConnect;
     await pool.end();

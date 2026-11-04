@@ -4,12 +4,14 @@ import { isDeepStrictEqual } from 'node:util';
 import { requireAdmin } from './auth.mjs';
 import { lock, pool, putDocument, unlock } from './database.mjs';
 import {
+  dateInWindow,
   discoveryKinds,
   discoveryPlan,
   newProductEvidence,
   scheduleSlot,
   stableId,
 } from './discovery-monitor-domain.mjs';
+import { runOfficialNewReleases } from './official-new-release-runner.mjs';
 import { discoverySorftime } from './discovery-sorftime.mjs';
 import { upsertProduct } from './platform-products-jobs.mjs';
 import {
@@ -39,7 +41,10 @@ export async function submitDiscovery(input, connection = pool) {
     ])
   ).rows[0];
   if (old) {
-    if (!isDeepStrictEqual(old.input.plan, plan))
+    if (
+      !isDeepStrictEqual(old.input.plan, plan) ||
+      (old.input.monitorId || '') !== (input.monitorId || '')
+    )
       throw new Error('此编号已用于不同任务');
     return old;
   }
@@ -85,7 +90,22 @@ export async function discoveryAction(input, user) {
     held = await lock(c, 'monitor-config');
     if (!held) throw new Error('监控配置正在保存，请稍后重试');
     if (input.action === 'server_discovery_submit') {
+      if (input.monitorId) {
+        const monitor = await read(`discovery:monitor:${input.monitorId}`, c);
+        if (!monitor) throw new Error('监控已不存在，请刷新后重试');
+      }
       const job = await submitDiscovery(input, c);
+      if (input.monitorId) {
+        const name = `discovery:monitor:${input.monitorId}`;
+        const old = await read(name, c);
+        await putDocument(
+          'workspace_documents',
+          name,
+          { ...old, lastJobId: job.id },
+          false,
+          c,
+        );
+      }
       return { jobId: job.id };
     }
     if (input.action === 'server_discovery_save') {
@@ -100,6 +120,8 @@ export async function discoveryAction(input, user) {
         ...plan,
         id,
         updatedAt: new Date().toISOString(),
+        lastScheduleError: '',
+        lastScheduleErrorSlot: '',
       };
       await putDocument(
         'workspace_documents',
@@ -152,6 +174,23 @@ export async function tickDiscoveryMonitors(now = Date.now()) {
     for (const plan of await list('discovery:monitor:', c)) {
       const slot = scheduleSlot(plan, now);
       if (!slot) continue;
+      if (plan.lastScheduleErrorSlot === slot) continue;
+      try {
+        discoveryPlan(plan);
+      } catch (error) {
+        await putDocument(
+          'workspace_documents',
+          `discovery:monitor:${plan.id}`,
+          {
+            ...plan,
+            lastScheduleError: String(error.message).slice(0, 500),
+            lastScheduleErrorSlot: slot,
+          },
+          false,
+          c,
+        );
+        continue;
+      }
       const requestId = stableId(`discovery:${plan.id}:${slot}`);
       if (
         (
@@ -195,6 +234,8 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     ...overrides,
   };
   const plan = job.input.plan;
+  if (plan.sourceMode === 'official_new_releases')
+    return runOfficialNewReleases(job, io);
   const cp = {
     ...job.checkpoint,
     logs: [...(job.checkpoint.logs || [])],
@@ -206,21 +247,43 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
   cp.work ||= plan.channels.flatMap((channel) =>
     (plan.kind === 'ingredients'
       ? plan.topics
-      : [channel === 'ali1688' ? '保健品' : 'dietary supplements']
+      : [
+          plan.sourceMode === 'sorftime'
+            ? {
+                amazon: 'Supplements',
+                tiktok: 'Dietary Supplements',
+                shopee: 'Food Supplement',
+              }[channel]
+            : channel === 'ali1688'
+              ? '保健品'
+              : 'dietary supplements',
+        ]
     ).map((topic) => ({
       channel,
       sourceMarket: plan.sourceMarkets?.[channel],
       topic,
       page: 1,
-      ...(['ali1688', 'shopee', 'temu', 'tiktok', 'tiktok_shop'].includes(
-        channel,
-      ) && plan.kind !== 'ingredients'
+      ...((plan.sourceMode === 'sorftime' ||
+        ['ali1688', 'shopee', 'temu', 'tiktok', 'tiktok_shop'].includes(
+          channel,
+        )) &&
+      plan.kind !== 'ingredients'
         ? { categoryLookup: true }
         : {}),
     })),
   );
   cp.pending ||= [];
   cp.covered ||= [];
+  if (
+    plan.kind === 'ingredients' &&
+    cp.records.length + cp.work.filter((w) => w.postDetail).length >=
+      plan.maxProducts
+  ) {
+    cp.work = cp.work.filter((w) => w.postDetail);
+    if (!cp.sourceLimitReached)
+      cp.logs.push('达到本次帖子数量上限，停止继续请求');
+    cp.sourceLimitReached = true;
+  }
   const finished = () =>
     io.saveCheckpoint(
       job,
@@ -291,7 +354,26 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
             now: cp.asOf,
           },
         );
+        cp.sourceRows = (cp.sourceRows || 0) + (result.sourceRows || 0);
+        cp.filterStats ||= {};
+        for (const [reason, count] of Object.entries(result.filterStats || {}))
+          cp.filterStats[reason] = (cp.filterStats[reason] || 0) + count;
+        if (result.filterStats)
+          cp.logs.push(
+            `${work.channel}筛选：${JSON.stringify(result.filterStats)}`,
+          );
+        if (
+          result.sourceRows > 0 &&
+          plan.kind === 'ingredients' &&
+          !result.records?.length &&
+          (result.filterStats?.missingDate ||
+            result.filterStats?.missingOriginalContent ||
+            result.filterStats?.missingUrl)
+        )
+          cp.failures.push(`${work.channel}来源字段不足，详见筛选统计`);
+        let acceptedRows = 0;
         if (work.categoryLookup) {
+          acceptedRows = result.categories?.length || 0;
           for (const category of result.categories || [])
             cp.work.push({
               channel: work.channel,
@@ -311,13 +393,26 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
           for (const record of result.records || []) {
             if (
               cp.seen.includes(record.id) ||
-              cp.records.length >= plan.maxProducts
+              cp.records.length + cp.work.filter((w) => w.postDetail).length >=
+                plan.maxProducts
             )
               continue;
+            acceptedRows++;
             cp.seen.push(record.id);
+            if (record.requiresContent) {
+              cp.work.push({
+                channel: work.channel,
+                topic: work.topic,
+                record,
+                postDetail: true,
+                page: 1,
+              });
+              continue;
+            }
             cp.records.push(record);
             if (
               !work.detail &&
+              !work.postDetail &&
               cp.work.filter((w) => w.detail).length + (cp.details || 0) <
                 plan.maxDetails
             )
@@ -343,10 +438,26 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
                   (p) => !p.resourceRaw?.fulfillment,
                 ).length
               : 0;
+          cp.filterStats.missingListingDate =
+            (cp.filterStats.missingListingDate || 0) + missingDate;
+          cp.filterStats.outsideListingWindow =
+            (cp.filterStats.outsideListingWindow || 0) +
+            (result.products || []).filter(
+              (p) =>
+                p.decisionData?.listing?.date &&
+                !dateInWindow(p.decisionData.listing.date, plan.days, cp.asOf),
+            ).length;
           if (missingDate || missingDelivery)
             cp.failures.push(
               `${work.channel}跳过证据不足的商品：${missingDate}条缺上架日期，${missingDelivery}条缺发货方式`,
             );
+          if (plan.requireSales) {
+            const noSales = (result.products || []).filter(
+              (p) => !(p.resourceRaw?.salesEvidence?.value > 0),
+            ).length;
+            cp.filterStats.noPositiveSales =
+              (cp.filterStats.noPositiveSales || 0) + noSales;
+          }
           for (const product of result.products || []) {
             if (
               cp.seen.includes(product.id) ||
@@ -356,13 +467,35 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
               continue;
             cp.seen.push(product.id);
             cp.pending.push(product);
+            acceptedRows++;
           }
         }
-        if (result.hasMore && !work.detail && work.page < plan.maxPages)
+        const pageKey = JSON.stringify([
+          work.channel,
+          work.topic,
+          work.nodeId || '',
+          work.detail || false,
+        ]);
+        cp.pageFingerprints ||= {};
+        const repeatedPage =
+          result.pageFingerprint &&
+          cp.pageFingerprints[pageKey]?.includes(result.pageFingerprint);
+        if (result.pageFingerprint)
+          (cp.pageFingerprints[pageKey] ||= []).push(result.pageFingerprint);
+        if (repeatedPage) cp.logs.push(`${work.channel}重复页面，停止继续翻页`);
+        if (
+          result.hasMore &&
+          !repeatedPage &&
+          !work.detail &&
+          !work.postDetail &&
+          work.page < plan.maxPages
+        )
           cp.work.push({ ...work, page: work.page + 1 });
+        else if (result.hasMore && work.page >= plan.maxPages)
+          cp.logs.push(`${work.channel}达到每类目/话题${plan.maxPages}页上限`);
         if (!work.categoryLookup) cp.covered.push(work.channel);
         cp.logs.push(
-          `${work.channel} · ${work.topic}：来源${result.sourceRows ?? 0}条`,
+          `${work.channel} · ${work.categoryName || work.topic}：来源${result.sourceRows ?? 0}条，接纳${acceptedRows}条`,
         );
       } catch (error) {
         cp.covered.push(work.channel);
@@ -380,12 +513,30 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
         !cp.analysisDone
       ) {
         cp.calls++;
-        const result = await io.collect(job, 'ingredient-analysis', {
-          sources: ['ingredient_analysis'],
-          records: cp.records,
-        });
+        const offset = cp.analysisOffset || 0;
+        const batch = [];
+        let chars = 0;
+        for (const record of cp.records.slice(offset, offset + 40)) {
+          const size =
+            String(record.title || '').length +
+            String(record.text || '').slice(0, 3500).length;
+          if (batch.length && chars + size > 40000) break;
+          batch.push(record);
+          chars += size;
+        }
+        const result = await io.collect(
+          job,
+          offset === 0
+            ? 'ingredient-analysis'
+            : `ingredient-analysis:${offset}`,
+          {
+            sources: ['ingredient_analysis'],
+            records: batch,
+          },
+        );
         if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
-        cp.ingredients = 0;
+        cp.ingredientKeys ||= [];
+        cp.ingredients = cp.ingredientKeys.length;
         for (const ingredient of result.ingredients) {
           const name = `discovery:ingredient:${stableId(`${plan.market}|${ingredient.key}`)}`;
           const old = await io.read(name);
@@ -419,14 +570,18 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
             },
             false,
           );
-          cp.ingredients++;
+          if (!cp.ingredientKeys.includes(ingredient.key))
+            cp.ingredientKeys.push(ingredient.key);
+          cp.ingredients = cp.ingredientKeys.length;
         }
-        cp.analysisDone = true;
+        cp.analysisOffset = offset + batch.length;
+        cp.analysisDone = cp.analysisOffset >= cp.records.length;
         cp.logs.push(
-          `分析${cp.records.length}条讨论，发现${cp.ingredients}种有原文支持的成分`,
+          `已分析${cp.analysisOffset}/${cp.records.length}条讨论，本批发现${result.ingredients.length}种有原文支持的成分`,
         );
       }
-      return finished();
+      if (plan.kind !== 'ingredients' || !cp.records.length || cp.analysisDone)
+        return finished();
     }
     cp.logs = cp.logs.slice(-200);
     cp.nextRunAt = io.now() + 1000;
