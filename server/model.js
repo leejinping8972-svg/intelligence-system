@@ -2354,6 +2354,7 @@ function groupAdvertisers(ads, sites) {
       pageId: String(ad.pageId),
       market: ad.market,
       name: ad.brand || `\u5E7F\u544A\u4E3B ${ad.pageId}`,
+      nameZh: ad.brandZh,
       adId: ad.id,
       adIds: [],
       active: 0,
@@ -2368,7 +2369,9 @@ function groupAdvertisers(ads, sites) {
       row.adId = ad.id;
       row.dataNature = ad.dataNature;
       row.name = ad.brand || row.name;
+      row.nameZh = ad.brandZh || row.nameZh;
     }
+    if (!row.nameZh && ad.brandZh) row.nameZh = ad.brandZh;
     row.adIds.push(ad.id);
     if (ad.status === "\u6295\u653E\u4E2D") row.active++;
     if (ad.status === "\u5DF2\u505C\u6B62") row.stopped++;

@@ -11,8 +11,8 @@ const busy = ref(false);
 function begin() {
   const requestId = crypto.randomUUID();
   Modal.confirm({
-    title: `AI重新分析所选资料（${props.ids.length}）`,
-    content: '依据已保存的来源原文重新整理字段。费用由已配置的AI服务商计收。',
+    title: `${props.kind === 'ads' ? '翻译并整理所选广告' : 'AI重新分析所选资料'}（${props.ids.length}）`,
+    content: props.kind === 'ads' ? '依据已保存的广告原文生成中文名称、标题和文案，并整理字段。费用由已配置的AI服务商计收。' : '依据已保存的来源原文重新整理字段。费用由已配置的AI服务商计收。',
     okText: '提交分析',
     onOk: async () => {
       busy.value = true;
@@ -42,6 +42,6 @@ function begin() {
       ids.length > 100
     "
     @click="begin"
-    >AI整理字段</Button
+    >{{ kind === 'ads' ? '翻译/整理素材' : 'AI整理字段' }}</Button
   >
 </template>

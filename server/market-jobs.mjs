@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { pool, lock, unlock, putDocument, sql } from './database.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 import { readKeyword, patchCollection } from './enrichment-jobs.mjs';
@@ -43,7 +43,7 @@ export async function mergeBusiness(key, patch, options = {}) {
       value = gateSourceFields(kind, old, value, patch);
       await queueSourceFields(kind, value, c);
     }
-    for (const field of ['sources', 'sourceEvidence', 'keywordIds', 'siteIds'])
+    for (const field of ['sources', 'sourceEvidence', 'keywordIds', 'siteIds', 'collectionBatches'])
       if (old[field] || patch[field])
         value[field] = [
           ...new Map(
@@ -92,15 +92,32 @@ export async function mergeBusiness(key, patch, options = {}) {
 export function validateMarketJob(input) {
   if (!['ads', 'site_metrics'].includes(input.kind))
     throw new Error('不支持的研究任务');
-  const ids = input.kind === 'ads' ? input.keywordIds : input.siteIds;
+  const ids = (input.kind === 'ads' ? input.keywordIds : input.siteIds) || [];
+  const terms = input.kind === 'ads' && Array.isArray(input.terms)
+    ? input.terms.map((term) => typeof term === 'string' ? term.normalize('NFKC').replaceAll(/\s+/g, ' ').trim() : '')
+    : [];
+  const hasControlChars = (value) => [...value].some((character) => character.codePointAt(0) < 32);
   if (
     !Array.isArray(ids) ||
-    !ids.length ||
-    ids.length > 100 ||
+    (!ids.length && !terms.length) ||
+    ids.length + terms.length > 100 ||
     ids.some((id) => typeof id !== 'string' || id.length > 120) ||
     new Set(ids).size !== ids.length
   )
     throw new Error('请选择1～100个有效且不重复的对象');
+  if (input.kind === 'ads' && (
+    (input.terms !== undefined && !Array.isArray(input.terms)) ||
+    terms.some((term) => !term || term.length > 120 || hasControlChars(term)) ||
+    new Set(terms.map((term) => term.toLocaleLowerCase())).size !== terms.length ||
+    (terms.length && !['US', 'MX', 'VN'].includes(input.market))
+  )) throw new Error('直接检索词需为1～100个不重复词组，并选择市场');
+  if (input.kind === 'site_metrics' && !ids.length)
+    throw new Error('请选择站点');
+  const batch = typeof input.batch === 'string'
+    ? input.batch.normalize('NFKC').replaceAll(/\s+/g, ' ').trim()
+    : '';
+  if (input.batch !== undefined && (typeof input.batch !== 'string' || batch.length > 100 || hasControlChars(batch)))
+    throw new Error('抓取批次最多100字');
   const limits = {
     maxPages: input.maxPages ?? 3,
     maxAds: input.maxAds ?? 100,
@@ -130,13 +147,16 @@ export function validateMarketJob(input) {
     throw new Error('双渠道采集参数不正确');
   if (
     input.includeSearchSites &&
-    (input.kind !== 'ads' || limits.maxSites > 10)
+    (input.kind !== 'ads' || limits.maxSites > 10 || terms.length)
   )
-    throw new Error('双渠道仅支持广告任务，每路每词站点上限1～10');
+    throw new Error('双渠道仅支持已入选关键词广告任务，每路每词站点上限1～10');
   return {
     includeSearchSites: input.includeSearchSites === true,
     kind: input.kind,
     ids,
+    terms,
+    market: terms.length ? input.market : undefined,
+    batch,
     ...limits,
     adStatus: input.adStatus || 'ACTIVE',
     adId: typeof input.adId === 'string' ? input.adId : undefined,
@@ -196,10 +216,17 @@ export async function submitMarketJob(input, context = {}) {
           : { id: r.id, domain: r.domain, market: r.market, term: r.brand },
       );
     }
+    for (const term of v.terms) {
+      const id = `direct:${v.market}:${createHash('sha256').update(term.toLocaleLowerCase()).digest('hex').slice(0, 24)}`;
+      if (active.some((j) => j.input.kind === 'ads' && j.input.records?.some((record) => record.id === id)))
+        throw new Error(`检索词「${term}」已有后台任务，请勿重复提交`);
+      records.push({ id, term, market: v.market, direct: true });
+    }
     let pageId;
     if (v.adId) {
       const ad = await readDoc(`ads:${v.adId}`);
-      if (!ad?.pageId || !ad.keywordIds?.some((id) => v.ids.includes(id)))
+      if (!ad?.pageId || !records.every((record) => record.market === ad.market) ||
+        (v.ids.length && !ad.keywordIds?.some((id) => v.ids.includes(id))))
         throw new Error('未找到已关联广告主，请从广告详情发起');
       pageId = ad.pageId;
     }
@@ -235,19 +262,20 @@ export async function submitMarketJob(input, context = {}) {
     );
     if (v.kind === 'ads')
       for (const r of records)
-        await patchCollection(
-          r.id,
-          'adCollection',
-          {
-            jobId,
-            status: 'queued',
-            count: 0,
-            target: v.maxAds,
-            submittedAt: new Date().toISOString(),
-          },
-          {},
-          c,
-        );
+        if (!r.direct)
+          await patchCollection(
+            r.id,
+            'adCollection',
+            {
+              jobId,
+              status: 'queued',
+              count: 0,
+              target: v.maxAds,
+              submittedAt: new Date().toISOString(),
+            },
+            {},
+            c,
+          );
     if (v.includeSearchSites)
       for (const r of records)
         await patchCollection(
@@ -318,7 +346,7 @@ export async function verifyAdSite(url, r, ad, fetchPage = fetchPublicPage) {
     lastCollectedAt: new Date().toISOString(),
     dataNature: 'collected',
     sources: ['Meta 广告库 / ScrapeCreators'],
-    keywordIds: [r.id],
+    keywordIds: r.direct ? [] : [r.id],
     sourceEvidence: [
       {
         source: 'Meta 广告库 / ScrapeCreators',
@@ -370,6 +398,7 @@ export async function runMarketJob(job, overrides = {}) {
   io.saveCheckpoint = async (savedJob, checkpoint, status) => {
     if (v.kind === 'ads' && ['partial', 'cancelled'].includes(status)) {
       for (const record of v.records) {
+        if (record.direct) continue;
         const current = await io.readKeyword(record.id);
         if (
           current?.adCollection?.jobId === job.id &&
@@ -428,17 +457,17 @@ export async function runMarketJob(job, overrides = {}) {
         let seenAds = new Set(cp.recordAdIds || []);
         let count = cp.recordAds || 0,
           siteIds = new Set(cp.recordSiteIds || []);
-        const current = await io.readKeyword(r.id);
-        if (!current || current.reviewStatus !== 'selected') {
+        const current = r.direct ? null : await io.readKeyword(r.id);
+        if (!r.direct && (!current || current.reviewStatus !== 'selected')) {
           cp.logs.push(`${r.term}：已移出入选列表，跳过`);
           cp.failures++;
           continue;
         }
-        if (current.adCollection?.jobId && current.adCollection.jobId !== job.id) {
+        if (current?.adCollection?.jobId && current.adCollection.jobId !== job.id) {
           cp.logs.push(`${r.term}：已关联其他采集任务，跳过`);
           continue;
         }
-        await io.patchCollection(r.id, 'adCollection', {
+        if (!r.direct) await io.patchCollection(r.id, 'adCollection', {
           jobId: job.id,
           status: 'running',
           count,
@@ -462,6 +491,7 @@ export async function runMarketJob(job, overrides = {}) {
             if (await io.isCancelled())
               return io.saveCheckpoint(job, cp, 'cancelled');
             const old = await io.readDoc(`ads:${ad.id}`);
+            if (v.batch) ad.collectionBatches = [v.batch];
             ad.siteIds = old?.siteIds || [];
             ad.verification = v.discoveryOnly ? old?.verification || [] : [];
             for (const url of v.discoveryOnly ? [] : ad.landingUrls) {
@@ -483,7 +513,7 @@ export async function runMarketJob(job, overrides = {}) {
                             keyword: r.term,
                           },
                         ],
-                        keywordIds: [r.id],
+                        keywordIds: r.direct ? [] : [r.id],
                       }
                     : await io.verifyAdSite(url, r, ad);
                 await io.mergeBusiness(`sites:${site.id}`, site);
@@ -545,7 +575,7 @@ export async function runMarketJob(job, overrides = {}) {
           cp.logs.push(
             `${r.term}：第${cp.page + 1}页，本词累计${count}条广告，${siteIds.size}家官网；已请求${cp.requests}次`,
           );
-          await io.patchCollection(
+          if (!r.direct) await io.patchCollection(
             r.id,
             'adCollection',
             {
@@ -561,7 +591,7 @@ export async function runMarketJob(job, overrides = {}) {
           if (!data.cursor) break;
         }
         cp.sites += siteIds.size;
-        await io.patchCollection(
+        if (!r.direct) await io.patchCollection(
           r.id,
           'adCollection',
           {

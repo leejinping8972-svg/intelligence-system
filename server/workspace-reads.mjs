@@ -38,14 +38,14 @@ const pick = (value, keys) =>
   );
 const listKeys = {
   advertisers:
-    'id pageId market name adId adIds adCount active stopped siteIds domains collectedAt dataNature',
+    'id pageId market name nameZh adId adIds adCount active stopped siteIds domains collectedAt dataNature',
   keywords:
     'id term termZh batch market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
     'id title titleZh publicDataEvidence brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications',
   sites:
     'id brand domain market platform type keyword keywordIds category mainProducts ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
-  ads: 'id brand market platform headline copy format productId status color archiveId pageId keywordIds query siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
+  ads: 'id brand brandZh market platform headline headlineZh copy copyZh sellingPointZh format productId status color archiveId pageId keywordIds query collectionBatches siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
 };
 export function projectRecord(collection, value) {
   if (!value.id) throw new Error('记录缺少编号');
@@ -127,6 +127,7 @@ export function projectRecord(collection, value) {
   add('products', value.productIds);
   add('sites', value.siteIds);
   add('keyword', value.keywordIds);
+  if (collection === 'ads') add('batch', value.collectionBatches);
   if (collection === 'keywords' && value.seedTerm) add('seed', [normalizeTerm(value.seedTerm)]);
   add(
     'source',
@@ -161,6 +162,7 @@ export function projectRecord(collection, value) {
   );
   const text = [
     value.name,
+    value.nameZh,
     ...(value.domains || []),
     value.term,
     value.termZh,
@@ -169,10 +171,14 @@ export function projectRecord(collection, value) {
     value.title,
     collection === 'products' ? productChineseName(value) : '',
     value.brand,
+    value.brandZh,
     value.domain,
     value.keyword,
     value.headline,
+    value.headlineZh,
     value.copy,
+    value.copyZh,
+    ...(value.collectionBatches || []),
     value.query,
     value.pageId,
     value.category,
@@ -782,6 +788,10 @@ export function createWorkspaceReads({
     }
     if (collection === 'ads' && input.linkedSite)
       relation('sites', [input.linkedSite]);
+    if (collection === 'ads' && input.batch?.trim()) {
+      const batch = bind(`%${String(input.batch).normalize('NFKC').trim().toLowerCase().slice(0, 100).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`);
+      clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links b WHERE b.collection=r.collection AND b.id=r.id AND b.relation='batch' AND LOWER(b.target) LIKE ${batch} ESCAPE '!')`);
+    }
     if (collection === 'ads' && input.linkedProduct) {
       const product = bind(input.linkedProduct);
       clauses.push(`(${sql("r.payload->>'productId'", "JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.productId'))")}=${product} OR EXISTS(SELECT 1 FROM workspace_read_links l WHERE l.collection=r.collection AND l.id=r.id AND l.relation='products' AND l.target=${product}))`);
