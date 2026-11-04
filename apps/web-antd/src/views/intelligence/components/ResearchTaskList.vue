@@ -8,6 +8,7 @@ import {
   Button,
   Empty,
   Input,
+  message,
   Pagination,
   Progress,
   Radio,
@@ -15,18 +16,26 @@ import {
   Spin,
   Table,
   Tag,
-  message,
 } from 'ant-design-vue';
 
 import { cloudWorkspace } from '../cloud-workspace';
 import { marketName, state } from '../data';
 import { serverMode } from '../session';
+import {
+  groupTasks,
+  mergeTaskStatusCounts,
+  partialTaskCanContinue,
+  taskStatus,
+  taskStatuses,
+  taskSummary,
+  taskTitle,
+} from '../task-list';
 import { fetchTaskPage } from '../task-page';
-import { groupTasks, taskStatus, taskStatuses, taskSummary, taskTitle } from '../task-list';
 
 const props = defineProps<{
   tasks: TaskGroup[];
   retrying: string;
+  resuming?: string;
 }>();
 const emit = defineEmits<{
   details: [task: TaskGroup];
@@ -35,6 +44,7 @@ const emit = defineEmits<{
   research: [task: Task];
   retry: [task: Task];
   trends: [task: Task];
+  continue: [task: Task];
   'update:total': [total: number];
 }>();
 function savedView() {
@@ -50,7 +60,7 @@ const search = ref('');
 const page = ref(1);
 const size = ref(10);
 const loading = ref(false);
-const error = ref('');
+const listError = ref('');
 const remoteRows = ref<TaskGroup[]>([]);
 const remoteTotal = ref(0);
 const statusCounts = ref<Record<string, number>>({});
@@ -60,16 +70,17 @@ let loadSequence = 0;
 const localRows = computed(() =>
   props.tasks.filter(
     (t) =>
-      (status.value.length === 0 || status.value.includes(taskStatus(t))) &&
+      (status.value.length === 0 ||
+        status.value.includes(taskStatus(t)) ||
+        (status.value.includes('completed') &&
+          t.status === 'awaiting_review')) &&
       `${taskTitle(t)} ${t.cloudJobId || t.id}`
         .toLowerCase()
         .includes(search.value.toLowerCase().trim()),
   ),
 );
 
-const rows = computed(() =>
-  serverMode ? remoteRows.value : localRows.value,
-);
+const rows = computed(() => (serverMode ? remoteRows.value : localRows.value));
 const total = computed(() =>
   serverMode ? remoteTotal.value : localRows.value.length,
 );
@@ -84,7 +95,7 @@ async function loadRemote() {
   if (!serverMode) return;
   const sequence = ++loadSequence;
   loading.value = true;
-  error.value = '';
+  listError.value = '';
   try {
     const result = await fetchTaskPage({
       page: page.value,
@@ -96,13 +107,14 @@ async function loadRemote() {
     if (sequence !== loadSequence) return;
     remoteRows.value = groupTasks(result.tasks, state.market);
     remoteTotal.value = result.total;
-    statusCounts.value = result.statusCounts || {};
+    statusCounts.value = mergeTaskStatusCounts(result.statusCounts || {});
     activeJobs.value = result.activeJobs || [];
     emit('update:total', result.total);
-  } catch (cause) {
+  } catch (error) {
     if (sequence !== loadSequence) return;
-    error.value = cause instanceof Error ? cause.message : '任务列表读取失败';
-    message.error(error.value);
+    listError.value =
+      error instanceof Error ? error.message : '任务列表读取失败';
+    message.error(listError.value);
   } finally {
     if (sequence === loadSequence) loading.value = false;
   }
@@ -150,11 +162,13 @@ onMounted(() => {
 
 const options = computed(() =>
   Object.entries(taskStatuses).map(([value, item]) => {
-    const count = serverMode
-      ? value === 'waiting'
-        ? statusCounts.value.running || 0
-        : statusCounts.value[value] || 0
-      : props.tasks.filter((t) => taskStatus(t) === value).length;
+    let count = props.tasks.filter((t) => taskStatus(t) === value).length;
+    if (serverMode) {
+      count =
+        value === 'waiting'
+          ? statusCounts.value.running || 0
+          : statusCounts.value[value] || 0;
+    }
     return {
       value,
       label: `${item.label}（${count}）`,
@@ -194,9 +208,7 @@ const columns = [
       aria-label="筛选任务状态"
       allow-clear
     />
-    <Button @click="resetFilters">
-      重置筛选
-    </Button>
+    <Button @click="resetFilters"> 重置筛选 </Button>
     <Button
       v-if="serverMode"
       :loading="loading"
@@ -218,7 +230,7 @@ const columns = [
     </span>
     <span>同一后台任务的多个市场合并展示；进度为整项任务合计。</span>
   </div>
-  <p v-if="error" class="task-list-error" role="alert">{{ error }}</p>
+  <p v-if="listError" class="task-list-error" role="alert">{{ listError }}</p>
   <Spin :spinning="loading">
     <Table
       v-if="view === 'list'"
@@ -232,7 +244,11 @@ const columns = [
       <template #bodyCell="{ column, record }">
         <template v-for="task in [record as TaskGroup]" :key="task.id">
           <template v-if="column.key === 'title'">
-            <Button type="link" class="task-name" @click="emit('details', task)">
+            <Button
+              type="link"
+              class="task-name"
+              @click="emit('details', task)"
+            >
               {{ taskTitle(task) }}
             </Button>
             <div class="task-id">
@@ -271,28 +287,40 @@ const columns = [
           </template>
           <template v-if="column.key === 'actions'">
             <div class="task-actions">
-              <Button size="small" @click="emit('details', task)">查看详情</Button
-              ><Button
+              <Button size="small" @click="emit('details', task)">
+                查看详情
+</Button><Button
                 v-if="
                   !task.readOnly &&
-                  ['queued', 'running'].includes(task.status) &&
+                  ['queued', 'running', 'partial'].includes(task.status) &&
                   (task.cloudJobId || !live(task))
                 "
                 size="small"
                 @click="emit('cancel', task)"
               >
-                取消 </Button
-              ><Button
+                取消
+</Button><Button
+                v-if="
+                  !task.readOnly &&
+                  task.cloudJobId &&
+                  partialTaskCanContinue(task)
+                "
+                size="small"
+                :loading="resuming === task.cloudJobId"
+                :disabled="!!resuming && resuming !== task.cloudJobId"
+                @click="emit('continue', task)"
+              >
+                继续采集
+</Button><Button
                 v-if="task.status === 'queued' && !live(task)"
                 size="small"
                 @click="emit('run', task)"
               >
-                模拟执行 </Button
-              ><Button
+                模拟执行
+</Button><Button
                 v-if="
                   !task.readOnly &&
                   [
-                    'partial',
                     'failed',
                     'cancelled',
                     'completed',
@@ -300,10 +328,12 @@ const columns = [
                   ].includes(task.status)
                 "
                 size="small"
-                @click="live(task) ? emit('research', task) : emit('retry', task)"
+                @click="
+                  live(task) ? emit('research', task) : emit('retry', task)
+                "
               >
-                {{ live(task) ? '重新研究' : '重试' }} </Button
-              ><Button
+                {{ live(task) ? '重新研究' : '重试' }}
+</Button><Button
                 v-if="
                   task.cloudJobId &&
                   task.progress?.terminal &&
@@ -318,8 +348,10 @@ const columns = [
               </Button>
             </div>
           </template>
-        </template> </template
-      ><template #emptyText><Empty description="没有符合条件的任务" /></template>
+        </template>
+</template><template #emptyText>
+        <Empty description="没有符合条件的任务" />
+      </template>
     </Table>
     <div v-else class="task-cards">
       <Empty v-if="!visible.length" description="没有符合条件的任务" />
@@ -337,8 +369,7 @@ const columns = [
                 market === 'ALL' ? '市场未记录' : marketName(market),
               )
               .join(' / ')
-          }}</span
-          ><time>{{ date(task.created) }}</time>
+          }}</span><time>{{ date(task.created) }}</time>
         </div>
         <div>{{ taskSummary(task).label }}</div>
         <Progress
@@ -355,39 +386,44 @@ const columns = [
         <p class="task-result">{{ taskSummary(task).result }}</p>
         <div class="task-id">{{ task.cloudJobId || task.id }}</div>
         <div class="task-actions">
-          <Button size="small" @click="emit('details', task)">查看详情</Button
-          ><Button
+          <Button size="small" @click="emit('details', task)">查看详情</Button><Button
             v-if="
               !task.readOnly &&
-              ['queued', 'running'].includes(task.status) &&
+              ['queued', 'running', 'partial'].includes(task.status) &&
               (task.cloudJobId || !live(task))
             "
             size="small"
             @click="emit('cancel', task)"
           >
-            取消 </Button
-          ><Button
+            取消
+</Button><Button
+            v-if="
+              !task.readOnly && task.cloudJobId && partialTaskCanContinue(task)
+            "
+            size="small"
+            :loading="resuming === task.cloudJobId"
+            :disabled="!!resuming && resuming !== task.cloudJobId"
+            @click="emit('continue', task)"
+          >
+            继续采集
+</Button><Button
             v-if="task.status === 'queued' && !live(task)"
             size="small"
             @click="emit('run', task)"
           >
-            模拟执行 </Button
-          ><Button
+            模拟执行
+</Button><Button
             v-if="
               !task.readOnly &&
-              [
-                'partial',
-                'failed',
-                'cancelled',
-                'completed',
-                'awaiting_review',
-              ].includes(task.status)
+              ['failed', 'cancelled', 'completed', 'awaiting_review'].includes(
+                task.status,
+              )
             "
             size="small"
             @click="live(task) ? emit('research', task) : emit('retry', task)"
           >
-            {{ live(task) ? '重新研究' : '重试' }} </Button
-          ><Button
+            {{ live(task) ? '重新研究' : '重试' }}
+</Button><Button
             v-if="
               task.cloudJobId &&
               task.progress?.terminal &&

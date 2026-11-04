@@ -73,13 +73,13 @@ function changedFields(previous: string | undefined, value: unknown) {
           'assessment',
           'coreSummary',
           'decisionTags',
-          'listSummary',
           'linkedSite',
+          'listSummary',
           'productCount',
           'score',
-          'trendSummary',
-          'trendRollingSummary',
           'trendCalendarSummary',
+          'trendRollingSummary',
+          'trendSummary',
         ].includes(key) && JSON.stringify(old[key]) !== JSON.stringify(next),
     ),
   );
@@ -228,11 +228,12 @@ watch(
         const patch =
           serverMode && readMode.value !== 'legacy'
             ? {
-                ...((businessPending.get(key) as object) || {}),
+                ...(businessPending.get(key) as object),
                 ...(changedFields(businessKnown.get(key), next) as object),
               }
             : next;
-        if (patch && Object.keys(patch).length) businessPending.set(key, patch);
+        if (patch && Object.keys(patch).length > 0)
+          businessPending.set(key, patch);
         else businessKnown.set(key, value);
       }
     for (const key of businessKnown.keys())
@@ -261,16 +262,12 @@ export async function cloudRequest<T>(
   // A first workspace sync can contain years of products and evidence. The
   // gateway compresses the response, but a slower connection may still need
   // longer than the default interactive request timeout.
-  if (serverMode)
-    return adminRequest<T>(
-      action,
-      input,
-      action === 'server_workspace_delta'
-        ? 90_000
-        : action === 'server_product_resource_categories'
-          ? 120_000
-          : 30_000,
-    );
+  if (serverMode) {
+    let timeout = 30_000;
+    if (action === 'server_workspace_delta') timeout = 90_000;
+    else if (action === 'server_product_resource_categories') timeout = 120_000;
+    return adminRequest<T>(action, input, timeout);
+  }
   const { researchApiUrl, researchAccessKey } = state.settings;
   if (!researchApiUrl || !researchAccessKey)
     throw new Error('请先配置研究服务地址和访问码');
@@ -534,7 +531,7 @@ async function runPagedSync() {
       businessPending.clear();
       pagedScope = scope;
     }
-    if (pending.size) {
+    if (pending.size > 0) {
       const updates = [...pending]
         .slice(0, 100)
         .map(([id, patch]) => ({ id, patch }));
@@ -545,7 +542,7 @@ async function runPagedSync() {
         known.set(id, JSON.stringify(patch));
       }
     }
-    if (businessPending.size) {
+    if (businessPending.size > 0) {
       const entries = [...businessPending]
         .slice(0, 1000)
         .map(([key, value]) => ({ key, value }));
@@ -690,6 +687,10 @@ async function doSubmitCloudResearch(
 }
 export async function cancelCloudJob(jobId: string) {
   await cloudRequest('server_cancel', { jobId });
+  await syncCloudWorkspace();
+}
+export async function resumePartialCloudJob(jobId: string) {
+  await cloudRequest('server_resume_partial', { jobId });
   await syncCloudWorkspace();
 }
 let enrichmentRequest: undefined | { signature: string; requestId: string };

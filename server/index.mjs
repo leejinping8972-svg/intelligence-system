@@ -1,3 +1,4 @@
+/* oxlint-disable unicorn/no-await-expression-member, eslint/no-nested-ternary -- Existing HTTP/SQL adapters keep request handling compact. */
 import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -24,8 +25,6 @@ import {
 } from './competitor-monitor-store.mjs';
 import { coreListAction } from './core-list-service.mjs';
 import { dailyDiscoveryAction } from './daily-discovery.mjs';
-import { discoveryAction } from './discovery-monitor-store.mjs';
-import { sourceFieldsAction } from './source-field-store.mjs';
 import { databaseAction, maintenance } from './database-admin.mjs';
 import {
   currentDatabase,
@@ -34,6 +33,7 @@ import {
   sql,
   unlock,
 } from './database.mjs';
+import { discoveryAction } from './discovery-monitor-store.mjs';
 import { protectDiscoveryEdit } from './discovery-newness.mjs';
 import { cleanKeyword, editableKeywordPatch, validateJob } from './domain.mjs';
 import { cancelEnrichment, submitEnrichment } from './enrichment-jobs.mjs';
@@ -87,6 +87,7 @@ import { semrushAction } from './semrush-config.mjs';
 import { submitSemrushSites } from './semrush-sites-store.mjs';
 import { siteFetchConfig } from './site-fetch-config.mjs';
 import { scoreSite } from './site-scoring.mjs';
+import { sourceFieldsAction } from './source-field-store.mjs';
 import { sourceUsageAction } from './source-usage.mjs';
 import { migrate, pool, saveKeyword } from './store.mjs';
 import { decorateSocialTasks } from './task-social-progress.mjs';
@@ -154,8 +155,10 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
-  if (input.action?.startsWith('server_source_fields_')) return sourceFieldsAction(input, user);
-  if (input.action?.startsWith('server_discovery_')) return discoveryAction(input, user);
+  if (input.action?.startsWith('server_source_fields_'))
+    return sourceFieldsAction(input, user);
+  if (input.action?.startsWith('server_discovery_'))
+    return discoveryAction(input, user);
   if (input.action?.startsWith('server_keyword_views_'))
     return keywordViewsAction(input, user);
   if (input.action?.startsWith('server_source_'))
@@ -177,24 +180,33 @@ async function api(input, user) {
   if (input.action?.startsWith('server_market_collection_'))
     return marketResearchAction(input, user);
   switch (input.action) {
-    case 'server_manual_site_add':
+    case 'server_manual_site_add': {
       return addManualSite(input);
-    case 'server_workspace_bootstrap':
+    }
+    case 'server_workspace_bootstrap': {
       return workspaceReads.bootstrap();
-    case 'server_workspace_overview':
+    }
+    case 'server_workspace_overview': {
       return workspaceReads.overview(input);
-    case 'server_workspace_statistics':
+    }
+    case 'server_workspace_statistics': {
       return workspaceReads.statistics(input);
-    case 'server_workspace_list':
+    }
+    case 'server_workspace_list': {
       return workspaceReads.list(input);
-    case 'server_workspace_facets':
+    }
+    case 'server_workspace_facets': {
       return workspaceReads.facets(input);
-    case 'server_workspace_selection':
+    }
+    case 'server_workspace_selection': {
       return workspaceReads.selection(input);
-    case 'server_workspace_detail':
+    }
+    case 'server_workspace_detail': {
       return workspaceReads.details(input);
-    case 'server_workspace_export':
+    }
+    case 'server_workspace_export': {
       return workspaceReads.exportRecords(input);
+    }
     case 'server_ai_prompts':
     case 'server_ai_prompt_save': {
       return aiPromptAction(input, user);
@@ -204,8 +216,9 @@ async function api(input, user) {
     }
     case 'server_westmonth_session_status':
     case 'server_westmonth_session_save':
-    case 'server_westmonth_session_check':
+    case 'server_westmonth_session_check': {
       return westmonthSessionAction(input, user);
+    }
     case 'server_site_fetch_status':
     case 'server_site_fetch_config': {
       return siteFetchConfig(input, user);
@@ -319,7 +332,7 @@ async function api(input, user) {
         const study = (
           await pool.query(
             'SELECT value FROM workspace_documents WHERE name=$1',
-            ['persona:study:' + input.jobId],
+            [`persona:study:${input.jobId}`],
           )
         ).rows[0]?.value;
         if (!study?.plan)
@@ -438,8 +451,9 @@ async function api(input, user) {
       }
     }
     case 'server_core_rates':
-    case 'server_core_rates_refresh':
+    case 'server_core_rates_refresh': {
       return coreListAction(input);
+    }
     case 'server_status': {
       const { rows } = await pool.query(
         "SELECT input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false",
@@ -529,7 +543,7 @@ async function api(input, user) {
           'SELECT name FROM provider_configs WHERE name=$1',
           ['provider:scrapecreators:v1'],
         );
-        if (!configured.rows.length)
+        if (configured.rows.length === 0)
           throw new Error('请先在数据源与设置配置 ScrapeCreators');
       }
       if (value.existingRecords) {
@@ -569,7 +583,9 @@ async function api(input, user) {
         reused,
         acceptedKeywords:
           value.existingRecords?.length ??
-          (value.limit > 0 ? value.limit : value.seeds.length * value.markets.length),
+          (value.limit > 0
+            ? value.limit
+            : value.seeds.length * value.markets.length),
       };
     }
     case 'server_snapshot': {
@@ -641,7 +657,7 @@ async function api(input, user) {
     case 'server_cancel': {
       if (!uuid.test(input.jobId)) throw new Error('任务编号无效');
       await pool.query(
-        "UPDATE research_jobs SET cancelled=true,status='cancelled',updated_at=now() WHERE id=$1 AND status IN ('queued','running')",
+        "UPDATE research_jobs SET cancelled=true,status='cancelled',updated_at=now() WHERE id=$1 AND status IN ('queued','running','partial')",
         [input.jobId],
       );
       const { rows } = await pool.query(
@@ -651,6 +667,22 @@ async function api(input, user) {
       await cancelEnrichment(rows[0]);
       await cancelPlatformCompletion(rows[0]);
       return { cancelled: true };
+    }
+    case 'server_resume_partial': {
+      if (!uuid.test(input.jobId)) throw new Error('任务编号无效');
+      const { rows } = await pool.query(
+        'SELECT * FROM research_jobs WHERE id=$1',
+        [input.jobId],
+      );
+      const job = rows[0];
+      if (!job) throw new Error('任务不存在');
+      if (job.status !== 'partial')
+        throw new Error('仅未采集完的已停止任务可以继续');
+      await pool.query(
+        "UPDATE research_jobs SET cancelled=false,status='queued',updated_at=now() WHERE id=$1 AND status='partial'",
+        [input.jobId],
+      );
+      return { resumed: true, jobId: input.jobId };
     }
     case 'server_clear_keywords': {
       requireAdmin(user);
@@ -774,11 +806,13 @@ const server = createServer(async (request, response) => {
         index,
       );
     } catch (error) {
-      if (!response.headersSent)
+      if (response.headersSent) {
+        response.destroy();
+      } else {
         response
           .writeHead(error.status || 502)
           .end(JSON.stringify({ error: error.message }));
-      else response.destroy();
+      }
     } finally {
       activeRequests--;
     }
@@ -831,11 +865,11 @@ const server = createServer(async (request, response) => {
             ![
               'auth_status',
               'server_core_rates',
-              'server_discovery_snapshot',
               'server_discovery_capabilities',
+              'server_discovery_snapshot',
+              'server_keyword_views_delete',
               'server_keyword_views_list',
               'server_keyword_views_save',
-              'server_keyword_views_delete',
               'server_product_resource_capabilities',
               'server_product_resource_observations',
               'server_snapshot',

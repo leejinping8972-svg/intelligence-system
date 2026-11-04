@@ -19,21 +19,28 @@ import {
   cancelCloudJob,
   cloudRequest,
   cloudWorkspace,
+  resumePartialCloudJob,
   retryCloudTrends,
   syncCloudWorkspace,
 } from './cloud-workspace';
+import { refreshCompetitorWorkspace } from './competitor-workspace';
+import DiscoveryMonitors from './components/DiscoveryMonitors.vue';
 import FocusedMonitors from './components/FocusedMonitors.vue';
 import NewMonitorDialog from './components/NewMonitorDialog.vue';
-import DiscoveryMonitors from './components/DiscoveryMonitors.vue';
 import PageHeader from './components/PageHeader.vue';
 import ResearchTaskList from './components/ResearchTaskList.vue';
 import TaskCollections from './components/TaskCollections.vue';
 import TaskProgress from './components/TaskProgress.vue';
 import { audit, marketName, state } from './data';
 import { resourceTaskCanResume } from './product-resources';
-import { refreshCompetitorWorkspace } from './competitor-workspace';
 import { serverMode } from './session';
-import { groupTasks, taskStatus, taskStatuses, taskSummary } from './task-list';
+import {
+  groupTasks,
+  partialTaskCanContinue,
+  taskStatus,
+  taskStatuses,
+  taskSummary,
+} from './task-list';
 const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
@@ -89,8 +96,23 @@ async function resumeResource(task: Task) {
     if (selected.value?.cloudJobId === task.cloudJobId)
       await showDetails(selected.value);
     message.success('已恢复同一任务，仅继续尚未执行步骤');
-  } catch (cause) {
-    message.error(cause instanceof Error ? cause.message : '恢复任务失败');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '恢复任务失败');
+  } finally {
+    resuming.value = '';
+  }
+}
+async function continuePartial(task: Task) {
+  if (!task.cloudJobId || !partialTaskCanContinue(task) || resuming.value)
+    return;
+  resuming.value = task.cloudJobId;
+  try {
+    await resumePartialCloudJob(task.cloudJobId);
+    if (selected.value?.cloudJobId === task.cloudJobId)
+      await showDetails(selected.value);
+    message.success('已重新入队，将从未完成部分继续采集');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '继续采集失败');
   } finally {
     resuming.value = '';
   }
@@ -131,8 +153,9 @@ watch(
   },
   { immediate: true },
 );
-watch(tab, value => {
-  if (route.query.tab !== value) void router.replace({ query: { ...route.query, tab: value } });
+watch(tab, (value) => {
+  if (route.query.tab !== value)
+    void router.replace({ query: { ...route.query, tab: value } });
 });
 const tasks = computed(() => groupTasks(state.tasks, state.market));
 const taskTotal = ref(tasks.value.length);
@@ -219,7 +242,13 @@ const auditRows = computed(() =>
   <main class="hci-page">
     <PageHeader
       :mode="tab === 'tasks' ? 'tasks' : 'legacy'"
-      :title="tab === 'monitors' ? '跟踪计划' : tab === 'audit' ? '操作记录' : '采集任务'"
+      :title="
+        tab === 'monitors'
+          ? '跟踪计划'
+          : tab === 'audit'
+            ? '操作记录'
+            : '采集任务'
+      "
       description="让重点对象持续可见，让每个研究步骤都有明确状态。"
     >
       <NewMonitorDialog @saved="monitorSaved" />
@@ -246,14 +275,16 @@ const auditRows = computed(() =>
       <Tabs v-model:active-key="tab">
         <Tabs.TabPane key="monitors" tab="重点监控">
           <DiscoveryMonitors ref="discoveryMonitors" />
-          <FocusedMonitors /> </Tabs.TabPane
-        ><Tabs.TabPane key="tasks" :tab="`研究任务（${taskTotal}）`">
+          <FocusedMonitors />
+</Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${taskTotal}）`">
           <ResearchTaskList
             :tasks="tasks"
             :retrying="retrying"
+            :resuming="resuming"
             @update:total="taskTotal = $event"
             @details="showDetails"
             @cancel="cancel"
+            @continue="continuePartial"
             @run="run"
             @trends="retryTrends"
             @research="reResearch"
@@ -265,8 +296,8 @@ const auditRows = computed(() =>
                 audit('重试演示任务', task.title, task.market);
               }
             "
-          /> </Tabs.TabPane
-        ><Tabs.TabPane key="audit" :tab="`操作记录（${auditRows.length}）`">
+          />
+</Tabs.TabPane><Tabs.TabPane key="audit" :tab="`操作记录（${auditRows.length}）`">
           <Empty
             v-if="!auditRows.length"
             description="收藏、审核或修改监控后，会在这里留下记录"
@@ -346,6 +377,27 @@ const auditRows = computed(() =>
         >
           继续未执行资源步骤
         </Button>
+        <Button
+          v-if="
+            !selected.readOnly &&
+            selected.cloudJobId &&
+            partialTaskCanContinue(selected)
+          "
+          :loading="resuming === selected.cloudJobId"
+          @click="continuePartial(selected)"
+        >
+          继续采集
+        </Button>
+        <Button
+          v-if="
+            !selected.readOnly &&
+            selected.cloudJobId &&
+            ['queued', 'running', 'partial'].includes(selected.status)
+          "
+          @click="cancel(selected)"
+        >
+          取消
+        </Button>
         <p
           v-if="
             selected.researchProgress?.resource &&
@@ -375,8 +427,7 @@ const auditRows = computed(() =>
             :key="i"
             class="hci-market-row"
           >
-            <span class="hci-market-code">{{ i + 1 }}</span
-            ><span style="flex: 1">{{ step }}</span>
+            <span class="hci-market-code">{{ i + 1 }}</span><span style="flex: 1">{{ step }}</span>
           </div>
         </details>
         <div v-if="selected.readOnly" class="hci-evidence">

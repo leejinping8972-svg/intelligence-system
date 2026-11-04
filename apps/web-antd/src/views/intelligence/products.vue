@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/* oxlint-disable import/first, eslint/no-nested-ternary, unicorn/no-array-sort -- Existing product list structure. */
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -12,46 +13,49 @@ import {
   Modal,
   Pagination,
   Segmented,
-  Table,
   Select,
+  Table,
   Tag,
 } from 'ant-design-vue';
 
-import { productProvider, productPlatform, productSiteLabel } from './product-source';
-import PageHeader from './components/PageHeader.vue';
-import SourceFieldsButton from './components/SourceFieldsButton.vue';
+import {
+  compareProductValues,
+  productSortKeys,
+  productSortValue,
+} from '../../../../../server/product-list-sort.mjs';
+import {
+  matchesListingRange,
+  recentListingRange,
+} from '../../../../../server/product-listing.mjs';
+import { productChineseName } from '../../../../../server/product-names.mjs';
 import CollectionTime from './components/CollectionTime.vue';
-import { productCollectedAt } from './resource-metadata';
-import { compareProductValues, productSortKeys, productSortValue } from '../../../../../server/product-list-sort.mjs';
 import CompactTags from './components/CompactTags.vue';
-import SelectionBar from './components/SelectionBar.vue';
-import { useFilteredSelection } from './resource-list';
-import ProductArt from './components/ProductArt.vue';
-import ProductDrawer from './components/ProductDrawer.vue';
-import ProductChineseName from './components/ProductChineseName.vue';
-import ProductResourceEvidence from './components/ProductResourceEvidence.vue';
-import { resourceExportRecord } from './product-resources';
 import CoreListControls from './components/CoreListControls.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
+import PageHeader from './components/PageHeader.vue';
+import ProductArt from './components/ProductArt.vue';
+import ProductChineseName from './components/ProductChineseName.vue';
+import ProductDrawer from './components/ProductDrawer.vue';
+import ProductResourceEvidence from './components/ProductResourceEvidence.vue';
+import SelectionBar from './components/SelectionBar.vue';
+import SourceFieldsButton from './components/SourceFieldsButton.vue';
+import { resourceExportRecord } from './product-resources';
+import {
+  productPlatform,
+  productProvider,
+  productSiteLabel,
+} from './product-source';
+import { useFilteredSelection } from './resource-list';
+import { productCollectedAt } from './resource-metadata';
 import { useCoreList } from './use-core-list';
-import { matchesListingRange, recentListingRange } from '../../../../../server/product-listing.mjs';
-import { productChineseName } from '../../../../../server/product-names.mjs';
 const core = useCoreList('products');
 const { period: corePeriod } = core;
-import ProductDecisionTags from './components/ProductDecisionTags.vue';
-import { discoveryDecision, discoveryFilters } from './discovery';
+import type { Product } from './data';
+
+import FormulaInsights from './components/FormulaInsights.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
 import ProductCompletionDialog from './components/ProductCompletionDialog.vue';
-import FormulaInsights from './components/FormulaInsights.vue';
-import {
-  productDecisions,
-  productDecisionFilters,
-  PRODUCT_DECISION_RULES,
-  productDataSource,
-} from './product-decisions';
-import type { Product } from './data';
-import { serverMode } from './session';
-import { useWorkspaceList } from './workspace-queries';
+import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 import {
   categories,
@@ -62,22 +66,35 @@ import {
   state,
   toggleFavorite,
 } from './data';
+import { discoveryDecision, discoveryFilters } from './discovery';
+import {
+  PRODUCT_DECISION_RULES,
+  productDataSource,
+  productDecisionFilters,
+  productDecisions,
+} from './product-decisions';
+import { serverMode } from './session';
+import { useWorkspaceList } from './workspace-queries';
 const route = useRoute();
 const router = useRouter();
 const search = ref('');
-const listedRange = ref<[string, string] | []>([]);
+const listedRange = ref<[] | [string, string]>([]);
 const listedQuick = ref(0);
 function setListedQuick(days: number) {
   listedQuick.value = days;
   listedRange.value = days ? recentListingRange(days) : [];
 }
 const viewMode = ref<'cards' | 'list'>('list');
-const page = ref(1),
-  pageSize = ref(20);
-const tableSort = ref<{ key: string; order?: 'ascend' | 'descend' }>({ key: '' });
+const page = ref(1);
+const pageSize = ref(20);
+const tableSort = ref<{ key: string; order?: 'ascend' | 'descend' }>({
+  key: '',
+});
 function tableChange(pagination: unknown, filters: unknown, sorter: any) {
   const value = Array.isArray(sorter) ? sorter[0] || {} : sorter;
-  tableSort.value = value.order ? { key: String(value.columnKey), order: value.order } : { key: '' };
+  tableSort.value = value.order
+    ? { key: String(value.columnKey), order: value.order }
+    : { key: '' };
   page.value = 1;
   remote.tableChange(pagination, filters, value.order ? value : {});
 }
@@ -99,25 +116,48 @@ const decisionRulesOpen = ref(false);
 const sourceFilter = ref('ALL');
 const platformFilter = ref('ALL');
 const siteLinked = ref('ALL');
-const platformOptions = computed(() => [{ label: '全部平台', value: 'ALL' }, ...(serverMode ? remote.facets.value.productPlatform || [] : [...new Set(filteredProducts.value.map(productPlatform))]).map(value => ({ label: value, value }))]);
+const platformOptions = computed(() => [
+  { label: '全部平台', value: 'ALL' },
+  ...(serverMode
+    ? remote.facets.value.productPlatform || []
+    : [...new Set(filteredProducts.value.map(productPlatform))]
+  ).map((value) => ({ label: value, value })),
+]);
 const sourceOptions = computed(() => [
   { label: '全部数据来源', value: 'ALL' },
-  ...(serverMode ? remote.facets.value.provider || [] : [...new Set(filteredProducts.value.map(productProvider))]).map(
-    (value) => ({ label: value, value }),
-  ),
+  ...(serverMode
+    ? remote.facets.value.provider || []
+    : [...new Set(filteredProducts.value.map(productProvider))]
+  ).map((value) => ({ label: value, value })),
 ]);
 const selected = ref<string>();
 const compareIds = ref<string[]>([]);
 const compareOpen = ref(false);
 const siteFilter = ref('');
 const keywordFilter = ref('');
-const remote = useWorkspaceList<Product>('products', computed(() => ({
-  market: state.market, search: search.value, category: category.value, favorite: favorites.value,
-  benefit: benefitFilter.value, ingredient: ingredientFilter.value, decision: decisionFilter.value,
-  newness: newness.value, newProductType: newProductType.value, provider: sourceFilter.value, productPlatform: platformFilter.value, siteLinked: siteLinked.value, siteId: siteFilter.value,
-  keywordId: keywordFilter.value || route.query.keyword,
-  listedFrom: listedRange.value[0], listedTo: listedRange.value[1],
-})), page, pageSize);
+const remote = useWorkspaceList<Product>(
+  'products',
+  computed(() => ({
+    market: state.market,
+    search: search.value,
+    category: category.value,
+    favorite: favorites.value,
+    benefit: benefitFilter.value,
+    ingredient: ingredientFilter.value,
+    decision: decisionFilter.value,
+    newness: newness.value,
+    newProductType: newProductType.value,
+    provider: sourceFilter.value,
+    productPlatform: platformFilter.value,
+    siteLinked: siteLinked.value,
+    siteId: siteFilter.value,
+    keywordId: keywordFilter.value || route.query.keyword,
+    listedFrom: listedRange.value[0],
+    listedTo: listedRange.value[1],
+  })),
+  page,
+  pageSize,
+);
 const availableSites = computed(() =>
   state.sites.filter(
     (site) => state.market === 'ALL' || site.market === state.market,
@@ -125,42 +165,54 @@ const availableSites = computed(() =>
 );
 const siteOptions = computed(() => [
   { label: '全部独立站', value: '' },
-  ...(serverMode ? remote.facets.value.sites || [] : availableSites.value.map((site) => ({
-    label: `${site.brand} · ${site.domain}`,
-    value: site.id,
-  }))),
+  ...(serverMode
+    ? remote.facets.value.sites || []
+    : availableSites.value.map((site) => ({
+        label: `${site.brand} · ${site.domain}`,
+        value: site.id,
+      }))),
 ]);
 const keywordOptions = computed(() => [
   { label: '全部关联关键词', value: '' },
-  ...(serverMode ? remote.facets.value.keywords || [] : state.keywords
-    .filter(
-      (keyword) =>
-        keyword.productIds.length > 0 &&
-        (state.market === 'ALL' || keyword.market === state.market),
-    )
-    .map((keyword) => ({
-      label: `${keyword.term} · ${keyword.market}`,
-      value: keyword.id,
-    }))),
+  ...(serverMode
+    ? remote.facets.value.keywords || []
+    : state.keywords
+        .filter(
+          (keyword) =>
+            keyword.productIds.length > 0 &&
+            (state.market === 'ALL' || keyword.market === state.market),
+        )
+        .map((keyword) => ({
+          label: `${keyword.term} · ${keyword.market}`,
+          value: keyword.id,
+        }))),
 ]);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keyword),
 );
 const benefitOptions = computed(() => [
   { label: '全部功效卖点', value: 'ALL' },
-  ...(serverMode ? remote.facets.value.benefit || [] : [
-    ...new Set(filteredProducts.value.flatMap((product) => product.benefits)),
-  ]).map((value) => ({ label: value, value })),
+  ...(serverMode
+    ? remote.facets.value.benefit || []
+    : [
+        ...new Set(
+          filteredProducts.value.flatMap((product) => product.benefits),
+        ),
+      ]
+  ).map((value) => ({ label: value, value })),
 ]);
 const ingredientOptions = computed(() => [
   { label: '全部成分', value: 'ALL' },
-  ...(serverMode ? remote.facets.value.ingredient || [] : [
-    ...new Set(
-      filteredProducts.value.flatMap((product) =>
-        product.ingredientInsights.map((item) => item.name),
-      ),
-    ),
-  ]).map((value) => ({ label: value, value })),
+  ...(serverMode
+    ? remote.facets.value.ingredient || []
+    : [
+        ...new Set(
+          filteredProducts.value.flatMap((product) =>
+            product.ingredientInsights.map((item) => item.name),
+          ),
+        ),
+      ]
+  ).map((value) => ({ label: value, value })),
 ]);
 watch(
   () => route.query.site,
@@ -186,7 +238,8 @@ watch(
     search.value = '';
     setListedQuick(0);
     if (
-      !serverMode && siteFilter.value &&
+      !serverMode &&
+      siteFilter.value &&
       !state.sites.some(
         (s) =>
           s.id === siteFilter.value &&
@@ -195,7 +248,8 @@ watch(
     )
       siteFilter.value = '';
     if (
-      !serverMode && keywordFilter.value &&
+      !serverMode &&
+      keywordFilter.value &&
       !state.keywords.some(
         (keyword) =>
           keyword.id === keywordFilter.value &&
@@ -205,88 +259,144 @@ watch(
       keywordFilter.value = '';
   },
 );
-const rows = computed(() => serverMode ? remote.rows.value :
-  filteredProducts.value.filter(
-    (p) =>
-      `${p.title} ${productChineseName(p)} ${p.brand} ${p.size} ${p.form} ${p.claim} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')} ${state.sites.find((site) => site.id === p.siteId)?.domain || ''} ${state.keywords
-        .filter((keyword) => keyword.productIds.includes(p.id))
-        .map((keyword) => `${keyword.term} ${keyword.termZh || ''}`)
-        .join(' ')}`
-        .toLowerCase()
-        .includes(search.value.toLowerCase()) &&
-      matchesListingRange(p, listedRange.value[0], listedRange.value[1]) &&
-      (category.value === 'ALL' || p.category === category.value) &&
-      (benefitFilter.value === 'ALL' ||
-        p.benefits.includes(benefitFilter.value)) &&
-      (ingredientFilter.value === 'ALL' ||
-        p.ingredientInsights.some(
-          (item) => item.name === ingredientFilter.value,
-        )) &&
-      (!favorites.value || p.favorite) &&
-      (sourceFilter.value === 'ALL' ||
-        productProvider(p) === sourceFilter.value) &&
-      (platformFilter.value === 'ALL' || productPlatform(p) === platformFilter.value) &&
-      (siteLinked.value === 'ALL' || !!p.siteId === (siteLinked.value === 'linked')) &&
-      (decisionFilter.value === 'ALL' ||
-        productDecisions(p).some((tag) => tag.key === decisionFilter.value)) &&
-      (newness.value === 'ALL' || (newness.value === 'discovered' ? discoveryDecision(p, 'product').recentDiscovery
-        : (discoveryDecision(p, 'product').isNew === null ? 'unknown' : discoveryDecision(p, 'product').isNew ? 'yes' : 'no') === newness.value)) &&
-      (newProductType.value === 'ALL' ||
-        (p.newProductClassifications || []).some(
-          (item) => item.type === newProductType.value,
-        )) &&
-      (!siteFilter.value || p.siteId === siteFilter.value) &&
-      (!keywordFilter.value ||
-        state.keywords
-          .find((keyword) => keyword.id === keywordFilter.value)
-          ?.productIds.includes(p.id)) &&
-      (!linkedKeyword.value || linkedKeyword.value.productIds.includes(p.id)),
-  ),
+const rows = computed(() =>
+  serverMode
+    ? remote.rows.value
+    : filteredProducts.value.filter(
+        (p) =>
+          `${p.title} ${productChineseName(p)} ${p.brand} ${p.size} ${p.form} ${p.claim} ${p.ingredient} ${p.benefits.join(' ')} ${p.ingredientInsights.map((item) => `${item.name} ${item.role}`).join(' ')} ${state.sites.find((site) => site.id === p.siteId)?.domain || ''} ${state.keywords
+            .filter((keyword) => keyword.productIds.includes(p.id))
+            .map((keyword) => `${keyword.term} ${keyword.termZh || ''}`)
+            .join(' ')}`
+            .toLowerCase()
+            .includes(search.value.toLowerCase()) &&
+          matchesListingRange(p, listedRange.value[0], listedRange.value[1]) &&
+          (category.value === 'ALL' || p.category === category.value) &&
+          (benefitFilter.value === 'ALL' ||
+            p.benefits.includes(benefitFilter.value)) &&
+          (ingredientFilter.value === 'ALL' ||
+            p.ingredientInsights.some(
+              (item) => item.name === ingredientFilter.value,
+            )) &&
+          (!favorites.value || p.favorite) &&
+          (sourceFilter.value === 'ALL' ||
+            productProvider(p) === sourceFilter.value) &&
+          (platformFilter.value === 'ALL' ||
+            productPlatform(p) === platformFilter.value) &&
+          (siteLinked.value === 'ALL' ||
+            !!p.siteId === (siteLinked.value === 'linked')) &&
+          (decisionFilter.value === 'ALL' ||
+            productDecisions(p).some(
+              (tag) => tag.key === decisionFilter.value,
+            )) &&
+          (newness.value === 'ALL' ||
+            (newness.value === 'discovered'
+              ? discoveryDecision(p, 'product').recentDiscovery
+              : (discoveryDecision(p, 'product').isNew === null
+                  ? 'unknown'
+                  : discoveryDecision(p, 'product').isNew
+                    ? 'yes'
+                    : 'no') === newness.value)) &&
+          (newProductType.value === 'ALL' ||
+            (p.newProductClassifications || []).some(
+              (item) => item.type === newProductType.value,
+            )) &&
+          (!siteFilter.value || p.siteId === siteFilter.value) &&
+          (!keywordFilter.value ||
+            state.keywords
+              .find((keyword) => keyword.id === keywordFilter.value)
+              ?.productIds.includes(p.id)) &&
+          (!linkedKeyword.value ||
+            linkedKeyword.value.productIds.includes(p.id)),
+      ),
 );
-const { ids: bulkIds, selected: bulkSelected, selectable, selectAll, clear, rowSelection } = useFilteredSelection(rows, undefined, serverMode ? remote.selectAll : undefined);
+const {
+  ids: bulkIds,
+  selected: bulkSelected,
+  selectable,
+  selectAll,
+  clear,
+  rowSelection,
+} = useFilteredSelection(
+  rows,
+  undefined,
+  serverMode ? remote.selectAll : undefined,
+);
 const pagedRows = computed(() =>
-  serverMode ? rows.value : sortedRows.value.slice(
-    (page.value - 1) * pageSize.value,
-    page.value * pageSize.value,
-  ),
+  serverMode
+    ? rows.value
+    : sortedRows.value.slice(
+        (page.value - 1) * pageSize.value,
+        page.value * pageSize.value,
+      ),
 );
 const sortedRows = computed(() => {
   const { key, order } = tableSort.value;
   if (!order || !productSortKeys.includes(key)) return rows.value;
-  return [...rows.value].sort((a, b) => compareProductValues(productSortValue(a, key), productSortValue(b, key), order) || a.id.localeCompare(b.id));
+  return [...rows.value].sort(
+    (a, b) =>
+      compareProductValues(
+        productSortValue(a, key),
+        productSortValue(b, key),
+        order,
+      ) || a.id.localeCompare(b.id),
+  );
 });
 const originalPriceSortable = computed(() => {
-  const currencies = serverMode ? remote.facets.value.currency || [] : [...new Set(filteredProducts.value.map(p => p.currency || '未记录'))];
+  const currencies = serverMode
+    ? remote.facets.value.currency || []
+    : [...new Set(filteredProducts.value.map((p) => p.currency || '未记录'))];
   return currencies.length === 1 && currencies[0] !== '未记录';
 });
-watch(originalPriceSortable, allowed => {
-  if (!allowed && tableSort.value.key === 'core:priceOriginal') tableChange({}, {}, {});
+watch(originalPriceSortable, (allowed) => {
+  if (!allowed && tableSort.value.key === 'core:priceOriginal')
+    tableChange({}, {}, {});
 });
-const tableColumns = computed(() => core.columns([
-  { title: '商品', key: 'product', width: 240, fixed: 'left' as const },
-  { title: '平台', key: 'platform', width: 100 },
-  { title: '关联独立站', key: 'source', width: 165 },
-  { title: '决策标签', key: 'decisions', width: 160 },
-  { title: '新品类型', key: 'newProduct', width: 150 },
-  { title: originalPriceSortable.value ? '原币价格' : '原币价格（分币种）', key: 'core:priceOriginal', width: 110 },
-  { title: '美元对比价', key: 'core:priceUsd', width: 116 },
-  { title: '展示销量', key: 'core:cumulativeSold', width: 100 },
-  { title: '所选周期销量', key: 'core:sales', width: 110 },
-  { title: '日均件数', key: 'core:dailySales', width: 100 },
-  { title: '上架时间', key: 'core:listingDate', width: 112 },
-  { title: '规格 / 剂型', key: 'spec', width: 125 },
-  { title: '配方与成分', key: 'ingredient', width: 190 },
-  { title: '成分与剂量', key: 'core:ingredients', width: 180 },
-  { title: '品牌宣称', key: 'core:claim', width: 150 },
-  { title: '卖点', key: 'core:sellingPoints', width: 160 },
-  { title: '资源口径 / 覆盖', key: 'resourceEvidence', width: 220 },
-  { title: '市场 / 品类', key: 'category', width: 90 },
-  { title: '采集时间（北京时间）', key: 'collectedAt', width: 150 },
-  { title: '数据来源', key: 'provider', width: 110 },
-  { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
-]).map((column) => productSortKeys.includes(column.key || '') && (column.key !== 'core:priceOriginal' || originalPriceSortable.value) ? {
-  ...column, sorter: true, showSorterTooltip: column.key === 'core:priceOriginal' ? { title: '按当前市场单一币种排序' } : true, sortOrder: tableSort.value.key === column.key ? tableSort.value.order : null,
-} : column));
+const tableColumns = computed(() =>
+  core
+    .columns([
+      { title: '商品', key: 'product', width: 240, fixed: 'left' as const },
+      { title: '平台', key: 'platform', width: 100 },
+      { title: '关联独立站', key: 'source', width: 165 },
+      { title: '决策标签', key: 'decisions', width: 160 },
+      { title: '新品类型', key: 'newProduct', width: 150 },
+      {
+        title: originalPriceSortable.value ? '原币价格' : '原币价格（分币种）',
+        key: 'core:priceOriginal',
+        width: 110,
+      },
+      { title: '美元对比价', key: 'core:priceUsd', width: 116 },
+      { title: '展示销量', key: 'core:cumulativeSold', width: 100 },
+      { title: '所选周期销量', key: 'core:sales', width: 110 },
+      { title: '日均件数', key: 'core:dailySales', width: 100 },
+      { title: '上架时间', key: 'core:listingDate', width: 112 },
+      { title: '规格 / 剂型', key: 'spec', width: 125 },
+      { title: '配方与成分', key: 'ingredient', width: 190 },
+      { title: '成分与剂量', key: 'core:ingredients', width: 180 },
+      { title: '品牌宣称', key: 'core:claim', width: 150 },
+      { title: '卖点', key: 'core:sellingPoints', width: 160 },
+      { title: '资源口径 / 覆盖', key: 'resourceEvidence', width: 220 },
+      { title: '市场 / 品类', key: 'category', width: 90 },
+      { title: '采集时间（北京时间）', key: 'collectedAt', width: 150 },
+      { title: '数据来源', key: 'provider', width: 110 },
+      { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
+    ])
+    .map((column) =>
+      productSortKeys.includes(column.key || '') &&
+      (column.key !== 'core:priceOriginal' || originalPriceSortable.value)
+        ? {
+            ...column,
+            sorter: true,
+            showSorterTooltip:
+              column.key === 'core:priceOriginal'
+                ? { title: '按当前市场单一币种排序' }
+                : true,
+            sortOrder:
+              tableSort.value.key === column.key ? tableSort.value.order : null,
+          }
+        : column,
+    ),
+);
 watch(
   [
     search,
@@ -325,7 +435,10 @@ function changePage(current: number, size: number) {
   pageSize.value = size;
   page.value = Math.min(
     current,
-    Math.max(1, Math.ceil((serverMode ? remote.total.value : rows.value.length) / size)),
+    Math.max(
+      1,
+      Math.ceil((serverMode ? remote.total.value : rows.value.length) / size),
+    ),
   );
 }
 const comparison = computed(() =>
@@ -338,25 +451,65 @@ function toggleCompare(id: string) {
   else message.info('最多同时对比3个商品');
 }
 function siteField(product: Product, field: 'brand' | 'domain') {
-  if (product.linkedSite !== undefined) return product.linkedSite?.[field] || '';
-  return state.sites.find((row) => row.id === product.siteId)?.[field] || remote.facets.value.sites?.find((row) => row.value === product.siteId)?.[field] || '';
+  if (product.linkedSite !== undefined)
+    return product.linkedSite?.[field] || '';
+  return (
+    state.sites.find((row) => row.id === product.siteId)?.[field] ||
+    remote.facets.value.sites?.find((row) => row.value === product.siteId)?.[
+      field
+    ] ||
+    ''
+  );
 }
 async function exportProducts() {
   try {
-    const records = serverMode ? await remote.exportRows(bulkIds.value) : bulkIds.value.length ? bulkSelected.value : rows.value;
-    exportCsv('商品库.csv', records.map((p) => ({
-      ...core.exportRecord(p),
-      ...resourceExportRecord(p),
-      商品: p.title, 中文参考: productChineseName(p) || '中文参考待补充', 品牌: p.brand, 国家: p.market, 规格: p.size, 价格: p.price, 币种: p.currency,
-      成分: p.ingredient, 剂量: p.dose, 功效卖点: p.benefits.join('、'), 卖点依据: p.benefitEvidence,
-      成分分析: p.ingredientInsights.map((item) => `${item.name}｜${item.amount}｜${item.role}`).join('；'),
-      商品图片: p.imageUrl || '', 平台: productPlatform(p), 数据来源: productProvider(p),
-      采集时间: productCollectedAt(p) || '', 决策标签: productDecisions(p).map((item) => item.label).join('、'),
-      决策依据: productDecisions(p).map((item) => `${item.label}：${item.reason} 来源：${item.source} 日期：${item.date}`).join('；'),
-      已采集字段: p.collectionFields?.join('、') || '', 独立站品牌: siteField(p, 'brand'),
-      独立站域名: siteField(p, 'domain'), 证据网址: p.evidenceUrl || '', 性质: productDataSource(p),
-    })));
-  } catch (cause) { message.error((cause as Error).message); }
+    const records = serverMode
+      ? await remote.exportRows(bulkIds.value)
+      : bulkIds.value.length > 0
+        ? bulkSelected.value
+        : rows.value;
+    exportCsv(
+      '商品库.csv',
+      records.map((p) => ({
+        ...core.exportRecord(p),
+        ...resourceExportRecord(p),
+        商品: p.title,
+        中文参考: productChineseName(p) || '中文参考待补充',
+        品牌: p.brand,
+        国家: p.market,
+        规格: p.size,
+        价格: p.price,
+        币种: p.currency,
+        成分: p.ingredient,
+        剂量: p.dose,
+        功效卖点: p.benefits.join('、'),
+        卖点依据: p.benefitEvidence,
+        成分分析: p.ingredientInsights
+          .map((item) => `${item.name}｜${item.amount}｜${item.role}`)
+          .join('；'),
+        商品图片: p.imageUrl || '',
+        平台: productPlatform(p),
+        数据来源: productProvider(p),
+        采集时间: productCollectedAt(p) || '',
+        决策标签: productDecisions(p)
+          .map((item) => item.label)
+          .join('、'),
+        决策依据: productDecisions(p)
+          .map(
+            (item) =>
+              `${item.label}：${item.reason} 来源：${item.source} 日期：${item.date}`,
+          )
+          .join('；'),
+        已采集字段: p.collectionFields?.join('、') || '',
+        独立站品牌: siteField(p, 'brand'),
+        独立站域名: siteField(p, 'domain'),
+        证据网址: p.evidenceUrl || '',
+        性质: productDataSource(p),
+      })),
+    );
+  } catch (error) {
+    message.error((error as Error).message);
+  }
 }
 </script>
 <template>
@@ -368,13 +521,20 @@ async function exportProducts() {
       <FormulaInsights />
       <PlatformProductsDialog />
       <SourceFieldsButton kind="products" :ids="bulkIds" />
-      <ProductCompletionDialog :product-ids="rows.map((p) => p.id)" :total="serverMode ? remote.total.value : undefined" :resolve-product-ids="serverMode ? async () => (await remote.selectAll()).map((p) => p.id) : undefined" />
-      <Button
-        :disabled="!rows.length"
-        @click="exportProducts"
-      >
-        {{ bulkIds.length ? `导出所选（${bulkIds.length}）` : '导出商品' }} </Button
-      ><Button
+      <ProductCompletionDialog
+        :product-ids="rows.map((p) => p.id)"
+        :total="serverMode ? remote.total.value : undefined"
+        :resolve-product-ids="
+          serverMode
+            ? async () => (await remote.selectAll()).map((p) => p.id)
+            : undefined
+        "
+      />
+      <Button :disabled="!rows.length" @click="exportProducts">
+        {{
+          bulkIds.length ? `导出所选（${bulkIds.length}）` : '导出商品'
+        }}
+</Button><Button
         type="primary"
         :disabled="comparison.length < 2"
         @click="compareOpen = true"
@@ -436,7 +596,15 @@ async function exportProducts() {
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
-        /><Select id="product-newness" aria-label="商品新旧标签" v-model:value="newness" show-search option-filter-prop="label" :options="discoveryFilters" style="min-width: 180px" /><Select
+        /><Select
+          id="product-newness"
+          aria-label="商品新旧标签"
+          v-model:value="newness"
+          show-search
+          option-filter-prop="label"
+          :options="discoveryFilters"
+          style="min-width: 180px"
+        /><Select
           id="product-new-type"
           aria-label="新品类型"
           v-model:value="newProductType"
@@ -458,45 +626,105 @@ async function exportProducts() {
           :options="sourceOptions"
           aria-label="按商品数据来源筛选"
           style="min-width: 210px"
-        /><Select v-model:value="platformFilter" show-search option-filter-prop="label" :options="platformOptions" aria-label="按商品平台筛选" style="min-width: 150px" /><Select v-model:value="siteLinked" :options="[{ label: '全部关联状态', value: 'ALL' }, { label: '已关联独立站', value: 'linked' }, { label: '未关联独立站', value: 'unlinked' }]" aria-label="独立站关联状态" style="min-width: 160px" /><Checkbox v-model:checked="favorites">仅看收藏</Checkbox
-        ><span class="hci-toolbar-end hci-subtle"
-          >{{ rows.length }} 个商品 · 关联
+        /><Select
+          v-model:value="platformFilter"
+          show-search
+          option-filter-prop="label"
+          :options="platformOptions"
+          aria-label="按商品平台筛选"
+          style="min-width: 150px"
+        /><Select
+          v-model:value="siteLinked"
+          :options="[
+            { label: '全部关联状态', value: 'ALL' },
+            { label: '已关联独立站', value: 'linked' },
+            { label: '未关联独立站', value: 'unlinked' },
+          ]"
+          aria-label="独立站关联状态"
+          style="min-width: 160px"
+        /><Checkbox v-model:checked="favorites">仅看收藏</Checkbox><span class="hci-toolbar-end hci-subtle">{{ rows.length }} 个商品 · 关联
           {{ new Set(rows.map((p) => p.siteId).filter(Boolean)).size }}
-          家独立站</span
-        >
+          家独立站</span>
       </div>
     </section>
     <div class="product-controls-row">
-    <div class="hci-toolbar product-listing-filter">
-      <span>上架时间</span>
-      <DatePicker.RangePicker :value="listedRange.length === 2 ? listedRange : undefined" value-format="YYYY-MM-DD" :placeholder="['开始日期', '结束日期']" @change="(_dates, values) => { listedRange = values?.[0] && values?.[1] ? [values[0], values[1]] : []; listedQuick = 0; }" />
-      <Segmented :value="listedQuick" aria-label="上架时间快捷筛选" :options="[{ value: 0, label: '全部' }, ...[7, 30, 90, 180].map((value) => ({ value, label: `近${value}天` }))]" @change="(value) => setListedQuick(Number(value))" />
+      <div class="hci-toolbar product-listing-filter">
+        <span>上架时间</span>
+        <DatePicker.RangePicker
+          :value="listedRange.length === 2 ? listedRange : undefined"
+          value-format="YYYY-MM-DD"
+          :placeholder="['开始日期', '结束日期']"
+          @change="
+            (_dates, values) => {
+              listedRange =
+                values?.[0] && values?.[1] ? [values[0], values[1]] : [];
+              listedQuick = 0;
+            }
+          "
+        />
+        <Segmented
+          :value="listedQuick"
+          aria-label="上架时间快捷筛选"
+          :options="[
+            { value: 0, label: '全部' },
+            ...[7, 30, 90, 180].map((value) => ({
+              value,
+              label: `近${value}天`,
+            })),
+          ]"
+          @change="(value) => setListedQuick(Number(value))"
+        />
+      </div>
+      <Empty v-if="!rows.length" description="没有符合条件的商品，请调整筛选" />
+      <div class="hci-toolbar product-view-toolbar">
+        <Segmented
+          v-model:value="viewMode"
+          aria-label="商品展示方式"
+          :options="[
+            { label: '卡片视图', value: 'cards' },
+            { label: '列表视图', value: 'list' },
+          ]"
+        />
+        <span class="hci-subtle">{{ serverMode ? remote.total.value : rows.length }} 个商品 · 当前第
+          {{ page }} 页</span>
+        <Button @click="decisionRulesOpen = true">决策标签规则</Button>
+      </div>
     </div>
-    <Empty v-if="!rows.length" description="没有符合条件的商品，请调整筛选" />
-    <div class="hci-toolbar product-view-toolbar">
-      <Segmented
-        v-model:value="viewMode"
-        aria-label="商品展示方式"
-        :options="[
-          { label: '卡片视图', value: 'cards' },
-          { label: '列表视图', value: 'list' },
-        ]"
+    <WorkspaceReadStatus
+      :error="remote.error.value"
+      :loading="remote.loading.value"
+      @retry="remote.reload(true)"
+    />
+    <SelectionBar
+      :count="bulkIds.length"
+      :total="serverMode ? remote.total.value : selectable.length"
+      @all="selectAll"
+      @clear="clear"
+    >
+      <ProductCompletionDialog
+        v-if="bulkIds.length"
+        :product-ids="bulkIds"
+        :compact="bulkIds.length === 1"
       />
-      <span class="hci-subtle"
-        >{{ serverMode ? remote.total.value : rows.length }} 个商品 · 当前第 {{ page }} 页</span
-      >
-      <Button @click="decisionRulesOpen = true">决策标签规则</Button>
-    </div>
-    </div>
-    <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
-    <SelectionBar :count="bulkIds.length" :total="serverMode ? remote.total.value : selectable.length" @all="selectAll" @clear="clear"><ProductCompletionDialog v-if="bulkIds.length" :product-ids="bulkIds" :compact="bulkIds.length === 1" /></SelectionBar>
+    </SelectionBar>
     <div v-if="viewMode === 'cards'" class="hci-product-grid">
       <article
         v-for="product in pagedRows"
         :key="product.id"
         class="hci-product-card"
       >
-        <div class="hci-card-select"><Checkbox :checked="bulkIds.includes(product.id)" :disabled="product.dataNature === 'demo'" :aria-label="`选择商品 ${product.title}`" @change="bulkIds = $event.target.checked ? [...bulkIds, product.id] : bulkIds.filter((id) => id !== product.id)" /></div>
+        <div class="hci-card-select">
+          <Checkbox
+            :checked="bulkIds.includes(product.id)"
+            :disabled="product.dataNature === 'demo'"
+            :aria-label="`选择商品 ${product.title}`"
+            @change="
+              bulkIds = $event.target.checked
+                ? [...bulkIds, product.id]
+                : bulkIds.filter((id) => id !== product.id)
+            "
+          />
+        </div>
         <button
           style="width: 100%"
           @click="selected = product.id"
@@ -520,17 +748,25 @@ async function exportProducts() {
           <div class="hci-product-brand">
             {{ product.brand }} · {{ product.market }}
           </div>
-          <button class="hci-product-title hci-clamp-2" @click="selected = product.id">
+          <button
+            class="hci-product-title hci-clamp-2"
+            @click="selected = product.id"
+          >
             {{ product.title }}
           </button>
           <ProductChineseName :product="product" />
           <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
-          <p class="hci-subtle">采集：<CollectionTime :at="productCollectedAt(product)" /></p>
+          <p class="hci-subtle">
+            采集：<CollectionTime :at="productCollectedAt(product)" />
+          </p>
           <ProductDecisionTags :product="product" />
-          <ProductResourceEvidence v-if="product.resourceEvidence" :evidence="product.resourceEvidence" compact />
+          <ProductResourceEvidence
+            v-if="product.resourceEvidence"
+            :evidence="product.resourceEvidence"
+            compact
+          />
           <div class="hci-product-meta">
-            <Tag>{{ product.category }}</Tag
-            ><Tag :color="product.reviewed ? 'green' : 'orange'">
+            <Tag>{{ product.category }}</Tag><Tag :color="product.reviewed ? 'green' : 'orange'">
               {{
                 product.reviewed
                   ? '已核验示例'
@@ -544,11 +780,23 @@ async function exportProducts() {
             </Tag>
           </div>
           <div class="hci-product-insights">
-            <div><span>展示销量</span><EvidenceMetric :metric="core.metric(product, 'core:cumulativeSold')" /></div>
-            <div><span>上架时间</span><EvidenceMetric :metric="core.metric(product, 'core:listingDate')" /></div>
+            <div>
+              <span>展示销量</span><EvidenceMetric
+                :metric="core.metric(product, 'core:cumulativeSold')"
+              />
+            </div>
+            <div>
+              <span>上架时间</span><EvidenceMetric
+                :metric="core.metric(product, 'core:listingDate')"
+              />
+            </div>
             <div>
               <span>功效卖点</span>
-              <CompactTags :items="product.benefits" label="商品功效卖点" color="green" />
+              <CompactTags
+                :items="product.benefits"
+                label="商品功效卖点"
+                color="green"
+              />
             </div>
             <div>
               <span>成分分析</span>
@@ -566,9 +814,7 @@ async function exportProducts() {
             "
           >
             <span>关联独立站</span>
-            <b>{{
-              productSiteLabel(product, siteField(product, 'domain'))
-            }}</b>
+            <b>{{ productSiteLabel(product, siteField(product, 'domain')) }}</b>
             <span>查看档案 →</span>
           </button>
           <a
@@ -577,16 +823,13 @@ async function exportProducts() {
             :href="product.sourceUrl"
             target="_blank"
             rel="noreferrer"
-            ><span>商品来源</span><b>{{ productDataSource(product) }}</b
-            ><span>原始商品 ↗</span></a
-          >
+            ><span>商品来源</span><b>{{ productDataSource(product) }}</b><span>原始商品 ↗</span></a>
           <div class="hci-product-bottom">
             <span class="hci-price">{{
               product.price > 0
                 ? money(product.price, product.currency)
                 : '价格待获取'
-            }}</span
-            ><button
+            }}</span><button
               class="hci-favorite"
               :class="[{ active: product.favorite }]"
               :aria-label="`${product.favorite ? '取消收藏' : '收藏'}${product.title}`"
@@ -618,13 +861,21 @@ async function exportProducts() {
       size="small"
       table-layout="fixed"
       :pagination="false"
-      :scroll="{ x: tableColumns.reduce((total, column) => total + (column.width || 0), 32) }"
+      :scroll="{
+        x: tableColumns.reduce(
+          (total, column) => total + (column.width || 0),
+          32,
+        ),
+      }"
       :columns="tableColumns"
     >
       <template #bodyCell="{ column, record }">
-        <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Product, column.key)" />
-        <template v-else-if="column.key === 'product'"
-          ><div class="product-list-name">
+        <EvidenceMetric
+          v-if="String(column.key).startsWith('core:')"
+          :metric="core.metric(record as Product, column.key)"
+        />
+        <template v-else-if="column.key === 'product'">
+          <div class="product-list-name">
             <button
               class="product-list-thumb"
               :aria-label="`查看${record.title}`"
@@ -644,14 +895,21 @@ async function exportProducts() {
                 type="link"
                 class="product-name-link"
                 @click="selected = record.id"
-                >{{ record.title }}</Button
               >
+                {{ record.title }}
+              </Button>
               <ProductChineseName :product="record as Product" />
               <p class="hci-subtle">{{ record.brand }}</p>
-              <Tag v-for="item in record.newProductClassifications" :key="item.type + item.listingDate" color="green">{{item.label}} · {{item.listingDate}}</Tag>
+              <Tag
+                v-for="item in record.newProductClassifications"
+                :key="item.type + item.listingDate"
+                color="green"
+              >
+                {{ item.label }} · {{ item.listingDate }}
+              </Tag>
             </div>
-          </div></template
-        >
+          </div>
+        </template>
         <template v-else-if="column.key === 'collectedAt'">
           <CollectionTime :at="productCollectedAt(record)" />
         </template>
@@ -664,61 +922,82 @@ async function exportProducts() {
               v-for="item in record.newProductClassifications"
               :key="item.type + item.listingDate"
               :color="item.type === 'fbm_new' ? 'orange' : 'green'"
-              >{{ item.label }}</Tag
             >
-            <p class="hci-subtle">{{ record.newProductClassifications.map((item) => item.listingDate).filter(Boolean).join(' / ') }}</p>
+              {{ item.label }}
+            </Tag>
+            <p class="hci-subtle">
+              {{
+                record.newProductClassifications
+                  .map((item: { listingDate?: string }) => item.listingDate)
+                  .filter(Boolean)
+                  .join(' / ')
+              }}
+            </p>
           </template>
           <span v-else class="hci-subtle">—</span>
         </template>
-        <template v-else-if="column.key === 'category'"
-          >{{ marketName(record.market) }}
+        <template v-else-if="column.key === 'category'">
+          {{ marketName(record.market) }}
           <p>
             <Tag>{{ record.category }}</Tag>
-          </p></template
-        >
-        <template v-else-if="column.key === 'spec'"
-          >{{ record.size }}
-          <p class="hci-subtle">{{ record.form }}</p></template
-        >
-        <template v-else-if="column.key === 'ingredient'"
-          ><p class="product-list-ingredient">{{ record.ingredient }}</p>
-          <Tag :color="record.reviewed ? 'green' : 'orange'">{{
-            record.reviewed ? '已核验' : '待审核'
-          }}</Tag></template
-        >
-        <template v-else-if="column.key === 'platform'">{{ productPlatform(record as Product) }}</template>
-        <template v-else-if="column.key === 'provider'">{{ productProvider(record as Product) }}</template>
-        <template v-else-if="column.key === 'source'"
-          ><Button
+          </p>
+        </template>
+        <template v-else-if="column.key === 'spec'">
+          {{ record.size }}
+          <p class="hci-subtle">{{ record.form }}</p>
+        </template>
+        <template v-else-if="column.key === 'ingredient'">
+          <p class="product-list-ingredient">{{ record.ingredient }}</p>
+          <Tag :color="record.reviewed ? 'green' : 'orange'">
+            {{ record.reviewed ? '已核验' : '待审核' }}
+          </Tag>
+        </template>
+        <template v-else-if="column.key === 'platform'">
+          {{ productPlatform(record as Product) }}
+        </template>
+        <template v-else-if="column.key === 'provider'">
+          {{ productProvider(record as Product) }}
+        </template>
+        <template v-else-if="column.key === 'source'">
+          <Button
             v-if="record.siteId"
             type="link"
             @click="
               router.push({ path: '/sites', query: { site: record.siteId } })
             "
-            >{{
-              productSiteLabel(record as Product, siteField(record as Product, 'domain'))
-            }}</Button
           >
+            {{
+              productSiteLabel(
+                record as Product,
+                siteField(record as Product, 'domain'),
+              )
+            }}
+          </Button>
           <span v-if="!record.siteId" class="hci-subtle">未关联</span>
           <p class="hci-subtle">
             已采集 {{ record.collectionFields?.length || 0 }}/7 项
-          </p></template
-        >
+          </p>
+        </template>
         <template v-else-if="column.key === 'resourceEvidence'">
-          <ProductResourceEvidence v-if="record.resourceEvidence" :evidence="record.resourceEvidence" compact />
+          <ProductResourceEvidence
+            v-if="record.resourceEvidence"
+            :evidence="record.resourceEvidence"
+            compact
+          />
           <span v-else class="hci-subtle">未记录资源排名证据</span>
         </template>
-        <template v-else-if="column.key === 'actions'"
-          ><div class="product-row-actions"><Button size="small" @click="selected = record.id">详情</Button
-          ><Button type="link" @click="toggleFavorite(record as Product)">{{
-            record.favorite ? '取消收藏' : '收藏'
-          }}</Button
-          ><Checkbox
-            :checked="compareIds.includes(record.id)"
-            @change="toggleCompare(record.id)"
-            >对比</Checkbox
-          ></div></template
-        >
+        <template v-else-if="column.key === 'actions'">
+          <div class="product-row-actions">
+            <Button size="small" @click="selected = record.id">详情</Button><Button type="link" @click="toggleFavorite(record as Product)">
+              {{ record.favorite ? '取消收藏' : '收藏' }}
+</Button><Checkbox
+              :checked="compareIds.includes(record.id)"
+              @change="toggleCompare(record.id)"
+            >
+              对比
+            </Checkbox>
+          </div>
+        </template>
       </template>
     </Table>
     <div v-if="rows.length" class="product-pagination">
@@ -733,10 +1012,7 @@ async function exportProducts() {
       />
     </div>
     <div class="hci-demo-footer">
-      <span>原币种价格 · 不同包装与币种不直接排名</span
-      ><span
-        >平台与官网数据分别保留来源；首次发现不等于新品，缺历史不推测增长</span
-      >
+      <span>原币种价格 · 不同包装与币种不直接排名</span><span>平台与官网数据分别保留来源；首次发现不等于新品，缺历史不推测增长</span>
     </div>
     <Modal
       v-model:open="decisionRulesOpen"
@@ -784,59 +1060,70 @@ async function exportProducts() {
   justify-content: space-between;
   margin: 12px 0;
 }
+
 .product-pagination {
   display: flex;
   justify-content: flex-end;
   margin: 20px 0;
 }
+
 .product-list-name {
   display: flex;
   gap: 8px;
   align-items: center;
   min-width: 0;
 }
+
 .product-list-name > div {
-  min-width: 0;
   flex: 1;
+  min-width: 0;
 }
+
 .product-list-thumb {
+  flex-shrink: 0;
   width: 48px;
   height: 48px;
-  background: #f5f7fb;
-  flex-shrink: 0;
-  border-radius: 5px;
   overflow: hidden;
   font-size: 11px;
   color: #7b8794;
+  background: #f5f7fb;
+  border-radius: 5px;
 }
+
 .product-list-thumb img {
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
+
 .product-name-link {
-  white-space: normal;
-  text-align: left;
   height: auto;
   padding: 0;
+  text-align: left;
+  white-space: normal;
 }
+
 .product-list-ingredient {
-  max-width: 240px;
   display: -webkit-box;
+  max-width: 240px;
+  overflow: hidden;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  overflow: hidden;
 }
+
 .product-compact-table :deep(.ant-table-cell) {
   padding: 8px 6px;
   overflow-wrap: anywhere;
 }
+
 .product-compact-table :deep(.ant-table-selection-column) {
   width: 32px;
 }
+
 .product-compact-table :deep(.ant-btn-link) {
   padding-inline: 6px;
 }
+
 .product-compact-table :deep(.product-name-link) {
   padding: 0;
 }

@@ -8,7 +8,6 @@ export const taskStatuses: Record<string, { label: string; color: string }> = {
   queued: { label: '待执行', color: 'default' },
   running: { label: '执行中', color: 'blue' },
   waiting: { label: '等待重试', color: 'orange' },
-  awaiting_review: { label: '待人工筛选', color: 'cyan' },
   completed: { label: '已完成', color: 'green' },
   failed: { label: '执行失败', color: 'red' },
   partial: { label: '已停止 · 未采集完', color: 'orange' },
@@ -18,13 +17,54 @@ export const taskStatuses: Record<string, { label: string; color: string }> = {
   bulk_blocked: { label: '批处理受阻', color: 'red' },
   unavailable: { label: '资料待检查', color: 'orange' },
 };
+
+/** Display status: awaiting_review is treated as completed. */
 export function taskStatus(task: Task) {
+  if (task.status === 'awaiting_review') return 'completed';
   return task.status === 'running' &&
     (task.progress?.phase === 'waiting' ||
       (task.researchProgress?.waiting || 0) > 0)
     ? 'waiting'
     : task.status;
 }
+
+export function mergeTaskStatusCounts(counts: Record<string, number> = {}) {
+  const next = { ...counts };
+  const review = Number(next.awaiting_review) || 0;
+  if (review) {
+    next.completed = (Number(next.completed) || 0) + review;
+    delete next.awaiting_review;
+  }
+  return next;
+}
+
+/** Expand UI filters so "completed" also matches awaiting_review jobs. */
+export function expandTaskStatusFilters(statuses: string[]) {
+  if (!statuses.includes('completed')) return [...statuses];
+  return [...new Set([...statuses, 'awaiting_review'])];
+}
+
+export function partialTaskCanContinue(task: Task) {
+  if (task.status !== 'partial' || task.readOnly) return false;
+  if ((task.overview?.remaining ?? 0) > 0) return true;
+  const collection = task.researchProgress || task.collectionProgress;
+  if (
+    collection &&
+    Number(collection.total) > 0 &&
+    Number(collection.done) < Number(collection.total)
+  )
+    return true;
+  const progress = task.progress;
+  if (
+    progress &&
+    !progress.terminal &&
+    Number(progress.total) > 0 &&
+    Number(progress.processed) < Number(progress.total)
+  )
+    return true;
+  return task.researchProgress?.resource?.resumable === true;
+}
+
 export function taskTitle(task: Task) {
   return task.title
     .replace(/^云端\s*·\s*/, '')
@@ -62,32 +102,27 @@ export function taskSummary(task: Task): {
   color?: string;
 } {
   const o = task.overview;
-  if (o)
+  if (o) {
+    let color = '#408979';
+    if (['cancelled', 'failed', 'partial'].includes(o.status))
+      color = '#c48532';
+    else if (o.status === 'running') color = '#1677ff';
+    const succeeded = o.succeeded === null ? '' : `采集成功 ${o.succeeded} · `;
     return {
       percent: o.percent,
-      label: '总进度 ' + o.processed + '/' + o.total + ' · ' + o.outcome,
+      label: `总进度 ${o.processed}/${o.total} · ${o.outcome}`,
       result: [
         o.reason,
-        (o.succeeded === null ? '' : '采集成功 ' + o.succeeded + ' · ') +
-          '失败/受限 ' +
-          o.failed +
-          ' · 待完成 ' +
-          o.remaining,
+        `${succeeded}失败/受限 ${o.failed} · 待完成 ${o.remaining}`,
         task.researchProgress
-          ? '商品 ' +
-            task.researchProgress.products +
-            ' · 证据 ' +
-            task.researchProgress.evidence
+          ? `商品 ${task.researchProgress.products} · 证据 ${task.researchProgress.evidence}`
           : '',
       ]
         .filter(Boolean)
         .join('；'),
-      color: ['cancelled', 'failed', 'partial'].includes(o.status)
-        ? '#c48532'
-        : o.status === 'running'
-          ? '#1677ff'
-          : '#408979',
+      color,
     };
+  }
   const p = task.progress;
   const phases: Record<string, string> = {
     waiting: '限流冷却 / 延迟重试',
@@ -118,7 +153,7 @@ export function taskSummary(task: Task): {
     };
   return {
     percent: null,
-    label: taskStatuses[task.status]?.label || task.status,
+    label: taskStatuses[taskStatus(task)]?.label || task.status,
     result: task.steps.at(-1) || '等待后台更新',
   };
 }

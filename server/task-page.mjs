@@ -1,22 +1,39 @@
-import { compactTask } from './workspace-snapshot.mjs';
 import { projectJobTasks } from './task-projection.mjs';
+import { compactTask } from './workspace-snapshot.mjs';
 
 const PAGE_SIZES = new Set([10, 20, 50, 100]);
 const STATUS_FILTERS = new Set([
-  'queued',
-  'running',
-  'waiting',
   'awaiting_review',
+  'bulk_blocked',
+  'bulk_paused',
+  'bulk_running',
+  'cancelled',
   'completed',
   'failed',
   'partial',
-  'cancelled',
-  'bulk_running',
-  'bulk_paused',
-  'bulk_blocked',
+  'queued',
+  'running',
   'unavailable',
+  'waiting',
 ]);
 const ACTIVE_STATUSES = new Set(['queued', 'running']);
+
+function expandStatuses(statuses) {
+  if (!statuses.includes('completed')) return statuses;
+  return [...new Set([...statuses, 'awaiting_review'])];
+}
+
+function mergeStatusCounts(rows) {
+  const counts = Object.fromEntries(
+    rows.map((row) => [row.status, Number(row.n) || 0]),
+  );
+  const review = Number(counts.awaiting_review) || 0;
+  if (review) {
+    counts.completed = (Number(counts.completed) || 0) + review;
+    delete counts.awaiting_review;
+  }
+  return counts;
+}
 
 function pageSizeOf(value) {
   const size = Number(value);
@@ -29,11 +46,9 @@ function pageOf(value) {
 }
 
 function statusesOf(value) {
-  const list = Array.isArray(value)
-    ? value
-    : typeof value === 'string' && value
-      ? [value]
-      : [];
+  let list = [];
+  if (Array.isArray(value)) list = value;
+  else if (typeof value === 'string' && value) list = [value];
   return [
     ...new Set(
       list
@@ -51,24 +66,24 @@ function searchOf(value) {
 }
 
 function marketOf(value) {
-  const market = String(value || '').trim().toUpperCase();
-  return ['US', 'MX', 'VN'].includes(market) ? market : '';
+  const market = String(value || '')
+    .trim()
+    .toUpperCase();
+  return ['MX', 'US', 'VN'].includes(market) ? market : '';
 }
 
 function sqlStatus(statuses) {
-  if (!statuses.length) return { clause: '', params: [] };
+  if (statuses.length === 0) return { clause: '', params: [] };
   const mapped = [
     ...new Set(
-      statuses.flatMap((status) =>
-        status === 'waiting'
-          ? ['running']
-          : status === 'unavailable'
-            ? []
-            : [status],
-      ),
+      statuses.flatMap((status) => {
+        if (status === 'waiting') return ['running'];
+        if (status === 'unavailable') return [];
+        return [status];
+      }),
     ),
   ];
-  if (!mapped.length) return { clause: ' AND 1=0', params: [] };
+  if (mapped.length === 0) return { clause: ' AND 1=0', params: [] };
   return {
     clause: ` AND status IN (${mapped.map((_, i) => `$${i + 1}`).join(',')})`,
     params: mapped,
@@ -137,7 +152,7 @@ export async function listTaskPage(
   },
 ) {
   const query = normalizeTaskPageInput(input);
-  const status = sqlStatus(query.statuses);
+  const status = sqlStatus(expandStatuses(query.statuses));
   const search = sqlSearch(query.search, status.params.length, sql);
   const market = sqlMarket(
     query.market,
@@ -170,10 +185,8 @@ export async function listTaskPage(
   const projected = list.rows.flatMap((job) => project(job, jobTasks));
   const tasks = (
     decorateTasks ? await decorateTasks(projected, list.rows) : projected
-  ).map(compact);
-  const statusCounts = Object.fromEntries(
-    counts.rows.map((row) => [row.status, Number(row.n) || 0]),
-  );
+  ).map((task) => compact(task));
+  const statusCounts = mergeStatusCounts(counts.rows);
   return {
     ...query,
     total: Number(totalResult.rows[0]?.n) || 0,

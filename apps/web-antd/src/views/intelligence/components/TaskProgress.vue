@@ -6,13 +6,25 @@ import { computed, onUnmounted, ref } from 'vue';
 import { Alert, Progress, Table, Tag } from 'ant-design-vue';
 
 import { marketName } from '../data';
-import { resourceBudgetRows, resourceHasUnknownCharge, resourceModeLabels, resourceRankingLabels } from '../product-resources';
+import {
+  resourceBudgetRows,
+  resourceHasUnknownCharge,
+  resourceModeLabels,
+  resourceRankingLabels,
+} from '../product-resources';
 
 const props = defineProps<{ task: Task; detail?: boolean }>();
 const p = computed(() => props.task.progress);
 const resource = computed(() => props.task.researchProgress?.resource);
-const resourceBudgets = computed(() => resource.value ? resourceBudgetRows(resource.value) : []);
-const resourceUnknownCharge = computed(() => !!resource.value && (resourceHasUnknownCharge(resource.value) || Number(props.task.researchProgress?.unknownCharges) > 0));
+const resourceBudgets = computed(() =>
+  resource.value ? resourceBudgetRows(resource.value) : [],
+);
+const resourceUnknownCharge = computed(
+  () =>
+    !!resource.value &&
+    (resourceHasUnknownCharge(resource.value) ||
+      Number(props.task.researchProgress?.unknownCharges) > 0),
+);
 const now = ref(Date.now());
 const timer = setInterval(() => (now.value = Date.now()), 1000);
 onUnmounted(() => clearInterval(timer));
@@ -29,23 +41,22 @@ const phaseLabel = computed(() => {
   const value = p.value;
   if (!value) return '';
   if (props.task.status === 'cancelled') return '任务已取消，已获取结果保留';
-  if (value.terminal)
-    return value.failed || props.task.status === 'partial'
-      ? '任务已结束 · 部分完成'
-      : '采集已完成 · 等待人工筛选';
-  if (value.phase === 'waiting')
-    return value.waitReason === 'rate_limit'
-      ? 'Google Trends 限流冷却 · 其他业务继续执行'
-      : value.waitReason === 'retry_queue'
-        ? '首轮处理已结束 · 等待补齐失败步骤'
-        : '控制请求频率 · 等待继续';
-  return value.phase === 'queued'
-    ? '已入队 · 等待后台执行'
-    : value.phase === 'discovery'
-      ? '正在发现关键词'
-      : value.phase === 'metrics'
-        ? '正在补充 Semrush 搜索量、KD 与意图'
-        : '正在采集趋势并计算评分';
+  if (value.terminal) {
+    if (value.failed || props.task.status === 'partial')
+      return '任务已结束 · 部分完成';
+    return '采集已完成';
+  }
+  if (value.phase === 'waiting') {
+    if (value.waitReason === 'rate_limit')
+      return 'Google Trends 限流冷却 · 其他业务继续执行';
+    if (value.waitReason === 'retry_queue')
+      return '首轮处理已结束 · 等待补齐失败步骤';
+    return '控制请求频率 · 等待继续';
+  }
+  if (value.phase === 'queued') return '已入队 · 等待后台执行';
+  if (value.phase === 'discovery') return '正在发现关键词';
+  if (value.phase === 'metrics') return '正在补充 Semrush 搜索量、KD 与意图';
+  return '正在采集趋势并计算评分';
 });
 const channelLabels: Record<string, string> = {
   queued: '等待执行',
@@ -100,7 +111,7 @@ const visibleRows = computed(() =>
     (row) =>
       rowFilter.value === 'all' ||
       row.failed ||
-      ['pending', 'retrying', 'running', 'in_progress'].includes(row.status),
+      ['in_progress', 'pending', 'retrying', 'running'].includes(row.status),
   ),
 );
 </script>
@@ -119,20 +130,13 @@ const visibleRows = computed(() =>
               : '已完成，等待人工审阅'
     }}</strong>
     <div class="hci-toolbar">
-      <span
-        >对象 {{ task.researchProgress.done }} /
-        {{ task.researchProgress.total }}</span
-      ><span
+      <span>对象 {{ task.researchProgress.done }} /
+        {{ task.researchProgress.total }}</span><span
         v-if="
           ['products', 'platform_products'].includes(task.researchProgress.kind)
         "
-        >商品 {{ task.researchProgress.products }} 件</span
-      ><span v-else>原文 {{ task.researchProgress.evidence }} 条</span
-      ><span
-        >{{ resource ? '物理HTTP请求' : '请求' }} {{ task.researchProgress.requests }} 次</span
-      ><span v-if="!resource && task.researchProgress.credits !== undefined"
-        >确认扣除 {{ task.researchProgress.credits }} credits</span
-      >
+        >商品 {{ task.researchProgress.products }} 件</span><span v-else>原文 {{ task.researchProgress.evidence }} 条</span><span>{{ resource ? '物理HTTP请求' : '请求' }}
+        {{ task.researchProgress.requests }} 次</span><span v-if="!resource && task.researchProgress.credits !== undefined">确认扣除 {{ task.researchProgress.credits }} credits</span>
     </div>
     <p v-if="task.researchProgress.completion" class="hci-subtle">
       商品补全：已处理 {{ task.researchProgress.completion.done }}/{{
@@ -157,36 +161,106 @@ const visibleRows = computed(() =>
     </p>
     <template v-if="resource">
       <p class="hci-subtle">
-        {{ resource.routeId || '资源路径未记录' }} · {{ resource.mode ? resourceModeLabels[resource.mode] : '方式未记录' }} ·
-        {{ resource.requestedWindowDays ? `请求近${resource.requestedWindowDays}天销量统计` : '销量窗口未记录' }} ·
-        目标 {{ resource.requestedQuantity ?? '未记录' }} 件 · {{ resource.ranking ? resourceRankingLabels[resource.ranking] : '排名口径未记录' }}。
-        当前仅覆盖已采集样本，不能声称全平台或全类目前100。
+        {{ resource.routeId || '资源路径未记录' }} ·
+        {{ resource.mode ? resourceModeLabels[resource.mode] : '方式未记录' }} ·
+        {{
+          resource.requestedWindowDays
+            ? `请求近${resource.requestedWindowDays}天销量统计`
+            : '销量窗口未记录'
+        }}
+        · 目标 {{ resource.requestedQuantity ?? '未记录' }} 件 ·
+        {{
+          resource.ranking
+            ? resourceRankingLabels[resource.ranking]
+            : '排名口径未记录'
+        }}。 当前仅覆盖已采集样本，不能声称全平台或全类目前100。
       </p>
       <p v-if="resource.completedSteps !== undefined" class="hci-subtle">
-        已处理步骤 {{ resource.completedSteps }} / {{ resource.plannedSteps ?? '未记录' }}；接口发现页 {{ resource.discoveryPages ?? '未记录' }} / {{ resource.budget?.maxPages ?? '未记录' }}；公开落地页 {{ resource.publicPages ?? '未记录' }}（每个入口最多 {{ resource.budget?.maxPages ?? '未记录' }} 页）。
+        已处理步骤 {{ resource.completedSteps }} /
+        {{ resource.plannedSteps ?? '未记录' }}；接口发现页
+        {{ resource.discoveryPages ?? '未记录' }} /
+        {{ resource.budget?.maxPages ?? '未记录' }}；公开落地页
+        {{ resource.publicPages ?? '未记录' }}（每个入口最多
+        {{ resource.budget?.maxPages ?? '未记录' }} 页）。
       </p>
-      <p v-if="resource.contents" class="hci-subtle">已保存公开内容线索 {{ resource.contents }} 条；内容线索不计为已验证商品。</p>
-      <p v-if="resource.rankingSummary?.message" class="hci-subtle">{{ resource.rankingSummary.message }}</p>
-      <Alert v-if="resourceUnknownCharge" type="warning" show-icon message="来源扣费或请求结果未知，已停止该来源；需人工查账，不能自动重放。" style="margin: 12px 0" />
+      <p v-if="resource.contents" class="hci-subtle">
+        已保存公开内容线索
+        {{ resource.contents }} 条；内容线索不计为已验证商品。
+      </p>
+      <p v-if="resource.rankingSummary?.message" class="hci-subtle">
+        {{ resource.rankingSummary.message }}
+      </p>
+      <Alert
+        v-if="resourceUnknownCharge"
+        type="warning"
+        show-icon
+        message="来源扣费或请求结果未知，已停止该来源；需人工查账，不能自动重放。"
+        style="margin: 12px 0"
+      />
       <Table
-        :data-source="resourceBudgets" row-key="key" size="small" :pagination="false" :scroll="{ x: 520 }"
+        :data-source="resourceBudgets"
+        row-key="key"
+        size="small"
+        :pagination="false"
+        :scroll="{ x: 520 }"
         :columns="[
           { title: '用量单位', dataIndex: 'label', width: 200 },
           { title: '已确认使用', key: 'confirmed', width: 110 },
           { title: '累计预留', key: 'reserved', width: 110 },
         ]"
-      ><template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'confirmed'">{{ record.confirmed ?? '未确认' }}</template>
-        <template v-else-if="column.key === 'reserved'">{{ record.reserved ?? '未记录' }}</template>
-        <template v-else-if="column.key === 'limit'">{{ record.limit === 0 ? '关闭' : record.limit ?? '未记录' }}</template>
-      </template></Table>
-      <p class="hci-subtle">累计预留包含已确认部分，不是额外扣费；缺回执不按0处理。不同单位不能相加作为费用。</p>
-      <div v-for="(stop, index) in resource.stopReasons || []" :key="stop.key || `${stop.reason}:${index}`" class="resource-stop-reason">
-        <Tag :color="stop.status === 'unknown' ? 'orange' : 'default'">{{ stop.status === 'budget_truncated' ? '预算截断' : stop.status === 'unknown' ? '结果未知' : stop.status === 'quantity_reached' ? '目标数量达到' : stop.status === 'not_found' ? '未收录' : stop.status === 'unsupported' ? '不支持' : stop.status === 'failed' ? '失败' : stop.status === 'not_executed' ? '未执行' : stop.status }}</Tag>
-        <span>{{ [stop.provider, stop.op, stop.message].filter(Boolean).join(' · ') }}</span>
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'confirmed'">
+            {{ record.confirmed ?? '未确认' }}
+          </template>
+          <template v-else-if="column.key === 'reserved'">
+            {{ record.reserved ?? '未记录' }}
+          </template>
+          <template v-else-if="column.key === 'limit'">
+            {{ record.limit === 0 ? '关闭' : (record.limit ?? '未记录') }}
+          </template>
+        </template>
+      </Table>
+      <p class="hci-subtle">
+        累计预留包含已确认部分，不是额外扣费；缺回执不按0处理。不同单位不能相加作为费用。
+      </p>
+      <div
+        v-for="(stop, index) in resource.stopReasons || []"
+        :key="stop.key || `${stop.reason}:${index}`"
+        class="resource-stop-reason"
+      >
+        <Tag :color="stop.status === 'unknown' ? 'orange' : 'default'">
+          {{
+            stop.status === 'budget_truncated'
+              ? '预算截断'
+              : stop.status === 'unknown'
+                ? '结果未知'
+                : stop.status === 'quantity_reached'
+                  ? '目标数量达到'
+                  : stop.status === 'not_found'
+                    ? '未收录'
+                    : stop.status === 'unsupported'
+                      ? '不支持'
+                      : stop.status === 'failed'
+                        ? '失败'
+                        : stop.status === 'not_executed'
+                          ? '未执行'
+                          : stop.status
+          }}
+        </Tag>
+        <span>{{
+          [stop.provider, stop.op, stop.message].filter(Boolean).join(' · ')
+        }}</span>
       </div>
-      <p v-for="(source, key) in resource.sourceStates || {}" :key="key" class="hci-subtle">
-        {{ key }}：{{ source.blocked ? '来源已停止' : '按来源独立限速' }}<span v-if="source.reason"> · {{ source.reason }}</span><span v-if="source.nextAllowedAt && !source.blocked"> · 下次可请求 {{ time(new Date(source.nextAllowedAt).toISOString()) }}</span>
+      <p
+        v-for="(source, key) in resource.sourceStates || {}"
+        :key="key"
+        class="hci-subtle"
+      >
+        {{ key }}：{{ source.blocked ? '来源已停止' : '按来源独立限速'
+        }}<span v-if="source.reason"> · {{ source.reason }}</span><span v-if="source.nextAllowedAt && !source.blocked">
+          · 下次可请求
+          {{ time(new Date(source.nextAllowedAt).toISOString()) }}</span>
       </p>
     </template>
     <p v-if="task.researchProgress.transcriptSummary" class="hci-subtle">
@@ -204,8 +278,13 @@ const visibleRows = computed(() =>
       "
     >
       <div class="hci-toolbar">
-        <span>模式 {{ task.researchProgress.profile === 'deep' ? '深度采集' : '探索采集' }}</span>
-        <span>详情 {{ task.researchProgress.detailCompleted || 0 }}/{{ task.researchProgress.detailTarget || 0 }}</span>
+        <span>模式
+          {{
+            task.researchProgress.profile === 'deep' ? '深度采集' : '探索采集'
+          }}</span>
+        <span>详情 {{ task.researchProgress.detailCompleted || 0 }}/{{
+            task.researchProgress.detailTarget || 0
+          }}</span>
         <span>有成分 {{ task.researchProgress.ingredientProducts || 0 }} 件</span>
         <span>有剂量 {{ task.researchProgress.doseProducts || 0 }} 件</span>
       </div>
@@ -222,11 +301,18 @@ const visibleRows = computed(() =>
         {{ task.researchProgress.waiting || 0 }} 家<span
           v-if="task.researchProgress.nextRunAt"
         >
-          · 下次调度 {{ time(task.researchProgress.nextRunAt) }}</span
-        >。
+          · 下次调度 {{ time(task.researchProgress.nextRunAt) }}</span>。
       </p>
-      <p v-if="task.researchProgress.browserPageLimit !== undefined" class="hci-subtle">
-        浏览器渲染 {{ task.researchProgress.browserPages || 0 }}/{{ task.researchProgress.browserPageLimit }} 页；托管备用尝试 {{ task.researchProgress.paidRequests || 0 }} 次（含结果未知的已预留次数，非积分账单）。
+      <p
+        v-if="task.researchProgress.browserPageLimit !== undefined"
+        class="hci-subtle"
+      >
+        浏览器渲染 {{ task.researchProgress.browserPages || 0 }}/{{
+          task.researchProgress.browserPageLimit
+        }}
+        页；托管备用尝试
+        {{ task.researchProgress.paidRequests || 0 }}
+        次（含结果未知的已预留次数，非积分账单）。
       </p>
       <p v-if="task.researchProgress.previousRequests" class="hci-subtle">
         修复前历史网页请求
@@ -248,12 +334,12 @@ const visibleRows = computed(() =>
         ]"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'site'"
-            ><b>{{ record.brand }}</b>
-            <p class="hci-subtle">{{ record.domain }}</p></template
-          >
-          <template v-else-if="column.key === 'state'"
-            ><Tag
+          <template v-if="column.key === 'site'">
+            <b>{{ record.brand }}</b>
+            <p class="hci-subtle">{{ record.domain }}</p>
+          </template>
+          <template v-else-if="column.key === 'state'">
+            <Tag
               :color="
                 record.status === 'completed'
                   ? 'green'
@@ -261,16 +347,20 @@ const visibleRows = computed(() =>
                     ? 'orange'
                     : 'default'
               "
-              >{{ productRowLabel(record) }}</Tag
-            ></template
-          >
-          <template v-else-if="column.key === 'counts'"
-            >{{ record.products }}件 / {{ record.detailCompleted || 0 }} of {{ record.detailTarget || 0 }}详情 / {{ record.requests }}次
-            <p class="hci-subtle">成分 {{ record.ingredients || 0 }} · 剂量 {{ record.doses || 0 }}</p></template
-          >
-          <template v-else-if="column.key === 'next'">{{
-            time(record.nextRunAt)
-          }}</template>
+            >
+              {{ productRowLabel(record) }}
+            </Tag>
+          </template>
+          <template v-else-if="column.key === 'counts'">
+            {{ record.products }}件 / {{ record.detailCompleted || 0 }} of
+            {{ record.detailTarget || 0 }}详情 / {{ record.requests }}次
+            <p class="hci-subtle">
+              成分 {{ record.ingredients || 0 }} · 剂量 {{ record.doses || 0 }}
+            </p>
+          </template>
+          <template v-else-if="column.key === 'next'">
+            {{ time(record.nextRunAt) }}
+          </template>
         </template>
       </Table>
       <template v-if="detail && task.researchProgress.requestLog?.length">
@@ -288,20 +378,22 @@ const visibleRows = computed(() =>
             { title: '新增商品', dataIndex: 'products', width: 90 },
             { title: '原因', dataIndex: 'message', width: 220 },
           ]"
-          ><template #bodyCell="{ column, record }"
-            ><template v-if="column.key === 'time'">{{
-              time(record.at)
-            }}</template
-            ><template v-else-if="column.key === 'result'">{{
-              record.httpStatus ||
-              (record.status === 'success'
-                ? '成功'
-                : record.status === 'unknown'
-                  ? '结果未知'
-                  : '失败')
-            }}</template></template
-          ></Table
         >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'time'">
+              {{ time(record.at) }}
+</template><template v-else-if="column.key === 'result'">
+              {{
+                record.httpStatus ||
+                (record.status === 'success'
+                  ? '成功'
+                  : record.status === 'unknown'
+                    ? '结果未知'
+                    : '失败')
+              }}
+            </template>
+          </template>
+        </Table>
       </template>
     </template>
     <p v-if="task.researchProgress.reportId" class="hci-subtle">
@@ -335,16 +427,19 @@ const visibleRows = computed(() =>
       :status="task.status === 'running' ? 'active' : 'normal'"
     />
     <div class="hci-toolbar">
-      <span
-        >对象 {{ task.collectionProgress.done }} /
-        {{ task.collectionProgress.total }}</span
-      ><span v-if="!['site_metrics', 'semrush_sites'].includes(task.collectionProgress.kind || '')"
-        >广告 {{ task.collectionProgress.ads }} 条</span
-      ><span v-if="task.collectionProgress.kind !== 'site_metrics'"
-        >官网 {{ task.collectionProgress.sites }} 家</span
-      ><span v-if="task.collectionProgress.kind !== 'site_metrics'"
-        >{{ task.collectionProgress.kind === 'semrush_sites' ? 'Semrush报告' : '广告请求' }} {{ task.collectionProgress.requests }} 次</span
-      >
+      <span>对象 {{ task.collectionProgress.done }} /
+        {{ task.collectionProgress.total }}</span><span
+        v-if="
+          !['site_metrics', 'semrush_sites'].includes(
+            task.collectionProgress.kind || '',
+          )
+        "
+        >广告 {{ task.collectionProgress.ads }} 条</span><span v-if="task.collectionProgress.kind !== 'site_metrics'">官网 {{ task.collectionProgress.sites }} 家</span><span v-if="task.collectionProgress.kind !== 'site_metrics'">{{
+          task.collectionProgress.kind === 'semrush_sites'
+            ? 'Semrush报告'
+            : '广告请求'
+        }}
+        {{ task.collectionProgress.requests }} 次</span>
     </div>
     <div v-if="task.collectionProgress.channels" class="hci-toolbar">
       <span
@@ -367,17 +462,20 @@ const visibleRows = computed(() =>
     </div>
     <p class="hci-subtle">
       {{ task.collectionProgress.current
-      }}<span v-if="['site_metrics', 'semrush_sites'].includes(task.collectionProgress.kind || '')">
-        · Semrush 已确认 {{ task.collectionProgress.semrushUnits || 0 }} API
-        units</span
+      }}<span
+        v-if="
+          ['site_metrics', 'semrush_sites'].includes(
+            task.collectionProgress.kind || '',
+          )
+        "
       >
+        · Semrush 已确认 {{ task.collectionProgress.semrushUnits || 0 }} API
+        units</span>
       <span v-if="task.collectionProgress.credits !== undefined">
-        · 已确认扣除 {{ task.collectionProgress.credits }} credits</span
-      ><span v-if="task.collectionProgress.unknownCharges">
+        · 已确认扣除 {{ task.collectionProgress.credits }} credits</span><span v-if="task.collectionProgress.unknownCharges">
         ·
         {{ task.collectionProgress.unknownCharges }}
-        次扣费未知，以服务商账单为准</span
-      >
+        次扣费未知，以服务商账单为准</span>
     </p>
   </div>
   <div v-if="p" class="task-progress">
@@ -409,45 +507,26 @@ const visibleRows = computed(() =>
       <div>
         <span>{{
           p.discoveryTotal === 0 ? '本次补齐关键词' : '关键词发现'
-        }}</span
-        ><b>{{ p.discovered }} / {{ p.target }}</b
-        ><small v-if="p.discoveryTotal > 0"
-          >{{ p.discoveryDone }} /
-          {{ p.discoveryTotal }} 组种子词与市场已处理</small
-        ><small v-else>后台已接收 {{ p.target }} 个词，逐项补齐数据</small>
+        }}</span><b>{{ p.discovered }} / {{ p.target }}</b><small v-if="p.discoveryTotal > 0">{{ p.discoveryDone }} /
+          {{ p.discoveryTotal }} 组种子词与市场已处理</small><small v-else>后台已接收 {{ p.target }} 个词，逐项补齐数据</small>
       </div>
       <div>
-        <span>趋势处理</span><b>{{ p.processed }} / {{ p.total }}</b
-        ><small
-          >一年趋势 {{ p.annualAvailable }} · 日趋势
-          {{ p.dailyAvailable }}</small
-        >
+        <span>趋势处理</span><b>{{ p.processed }} / {{ p.total }}</b><small>一年趋势 {{ p.annualAvailable }} · 日趋势
+          {{ p.dailyAvailable }}</small>
       </div>
       <div>
-        <span>研究评级（含暂评）</span><b>{{ p.rated }} / {{ p.total }}</b
-        ><small>其余 {{ p.total - p.rated }} 个证据不足，待评级</small>
+        <span>研究评级（含暂评）</span><b>{{ p.rated }} / {{ p.total }}</b><small>其余 {{ p.total - p.rated }} 个证据不足，待评级</small>
       </div>
       <div>
-        <span>未完成采集</span><b>{{ p.failed }}</b
-        ><small>其中限流 {{ p.limited }} · 零热度 {{ p.noSignal }}</small>
+        <span>未完成采集</span><b>{{ p.failed }}</b><small>其中限流 {{ p.limited }} · 零热度 {{ p.noSignal }}</small>
       </div>
     </div>
     <div v-if="p.asyncRetries" class="retry-summary" aria-label="趋势补齐状态">
-      <span
-        >已完成 <b>{{ p.succeeded || 0 }}</b></span
-      >
-      <span
-        >等待重试 <b>{{ p.retryPending || 0 }}</b></span
-      >
-      <span
-        >尚未开始 <b>{{ p.notStarted || 0 }}</b></span
-      >
-      <span
-        >需人工处理 <b>{{ p.needsAttention || 0 }}</b></span
-      >
-      <small
-        >一年与日趋势分步保存，仅重试失败步骤；最多自动重试5次，最长补齐24小时。</small
-      >
+      <span>已完成 <b>{{ p.succeeded || 0 }}</b></span>
+      <span>等待重试 <b>{{ p.retryPending || 0 }}</b></span>
+      <span>尚未开始 <b>{{ p.notStarted || 0 }}</b></span>
+      <span>需人工处理 <b>{{ p.needsAttention || 0 }}</b></span>
+      <small>一年与日趋势分步保存，仅重试失败步骤；最多自动重试5次，最长补齐24小时。</small>
     </div>
     <p v-if="!p.terminal && p.currentTerm" class="hci-subtle">
       当前关键词：{{ p.currentTerm }}
@@ -484,29 +563,22 @@ const visibleRows = computed(() =>
           ? `${p.failed} 个词的采集仍有缺项，可仅重试未完成趋势。`
           : '各关键词已处理完毕；零热度、零基数或证据不足仍会如实保留。'
       }}
-      <span v-if="p.shortfall"
-        >目标为最多 {{ p.target }} 个词，来源实际返回
-        {{ p.discovered }} 个；未补造不足数量。</span
-      >
+      <span v-if="p.shortfall">目标为最多 {{ p.target }} 个词，来源实际返回
+        {{ p.discovered }} 个；未补造不足数量。</span>
     </p>
     <div class="time-row hci-subtle">
-      <span>开始：{{ time(p.startedAt) }}</span
-      ><span v-if="p.terminal">结束：{{ time(p.finishedAt) }}</span
-      ><span>更新：{{ time(p.updatedAt) }}</span>
+      <span>开始：{{ time(p.startedAt) }}</span><span v-if="p.terminal">结束：{{ time(p.finishedAt) }}</span><span>更新：{{ time(p.updatedAt) }}</span>
     </div>
     <template v-if="detail">
       <p class="hci-subtle">
         以上为整项任务、所有市场合计。流程进度表示处理进度，不等于数据完整率；评级允许暂评，不代表已有全部第三方指标。
       </p>
       <div class="row-controls">
-        <strong>逐词进度与结果</strong
-        ><label
-          >显示
+        <strong>逐词进度与结果</strong><label>显示
           <select v-model="rowFilter" aria-label="筛选逐词采集状态">
             <option value="all">全部关键词</option>
             <option value="incomplete">仅未完成</option>
-          </select></label
-        >
+          </select></label>
       </div>
       <Table
         :data-source="visibleRows"
@@ -580,14 +652,16 @@ const visibleRows = computed(() =>
   min-width: 0;
   margin-top: 16px;
 }
+
 .progress-heading,
 .row-controls {
   display: flex;
   flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
 }
+
 .resource-stop-reason {
   display: flex;
   flex-wrap: wrap;
@@ -596,37 +670,44 @@ const visibleRows = computed(() =>
   margin: 8px 0;
   overflow-wrap: anywhere;
 }
+
 .stage-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin: 12px 0 16px;
 }
+
 .stage-grid > div {
   padding: 12px;
   border: 1px solid var(--border, #e5e7eb);
   border-radius: 8px;
 }
+
 .stage-grid span,
 .stage-grid b,
 .stage-grid small {
   display: block;
 }
+
 .stage-grid b {
-  font-size: 22px;
   margin: 6px 0;
+  font-size: 22px;
 }
+
 .stage-grid small {
-  color: #667085;
   font-size: 12px;
+  color: #667085;
 }
+
 .time-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
-  font-size: 12px;
   margin: 12px 0;
+  font-size: 12px;
 }
+
 .retry-summary {
   display: flex;
   flex-wrap: wrap;
@@ -636,28 +717,34 @@ const visibleRows = computed(() =>
   background: var(--background, #f6f8fc);
   border-radius: 8px;
 }
+
 .retry-summary small {
   flex-basis: 100%;
   color: #667085;
 }
+
 .completion-note {
   padding: 12px;
+  line-height: 1.8;
   background: #4089790c;
   border-left: 3px solid #408979;
-  line-height: 1.8;
 }
+
 .completion-note span {
   display: block;
 }
+
 .row-controls {
   margin: 24px 0 12px;
 }
+
 select {
   padding: 4px 8px;
+  background: transparent;
   border: 1px solid #d0d5dd;
   border-radius: 6px;
-  background: transparent;
 }
+
 @media (max-width: 800px) {
   .stage-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

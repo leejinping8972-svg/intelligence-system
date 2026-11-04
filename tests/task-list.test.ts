@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 import { RequestFlight } from '../apps/web-antd/src/views/intelligence/request-flight';
 import {
+  expandTaskStatusFilters,
   groupTasks,
+  mergeTaskStatusCounts,
+  partialTaskCanContinue,
   taskStatus,
   taskStatuses,
   taskSummary,
@@ -73,6 +76,84 @@ describe('monitor task grouping', () => {
     expect(taskStatus(waiting)).toBe('waiting');
     expect(taskStatus({ ...waiting, status: 'cancelled' })).toBe('cancelled');
     expect(taskStatus(task('normal'))).toBe('running');
+  });
+  it('maps awaiting_review into completed for display and filters', () => {
+    expect(taskStatuses.awaiting_review).toBeUndefined();
+    expect(taskStatus(task('review', { status: 'awaiting_review' }))).toBe(
+      'completed',
+    );
+    expect(
+      taskStatuses[taskStatus(task('review', { status: 'awaiting_review' }))]
+        ?.label,
+    ).toBe('已完成');
+    expect(expandTaskStatusFilters(['completed'])).toEqual([
+      'completed',
+      'awaiting_review',
+    ]);
+    expect(mergeTaskStatusCounts({ completed: 2, awaiting_review: 3 })).toEqual(
+      { completed: 5 },
+    );
+  });
+  it('only continues partial tasks that still have unfinished work', () => {
+    expect(
+      partialTaskCanContinue(
+        task('done', {
+          status: 'partial',
+          overview: {
+            remaining: 0,
+            processed: 3,
+            total: 3,
+            percent: 100,
+            outcome: '部分完成',
+            reason: '',
+            succeeded: 2,
+            failed: 1,
+            waiting: 0,
+            status: 'partial',
+            startedAt: '',
+            finishedAt: '',
+            elapsedSeconds: null,
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      partialTaskCanContinue(
+        task('more', {
+          status: 'partial',
+          overview: {
+            remaining: 4,
+            processed: 1,
+            total: 5,
+            percent: 20,
+            outcome: '未采集完',
+            reason: '',
+            succeeded: 1,
+            failed: 0,
+            waiting: 0,
+            status: 'partial',
+            startedAt: '',
+            finishedAt: '',
+            elapsedSeconds: null,
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      partialTaskCanContinue(
+        task('collection', {
+          status: 'partial',
+          researchProgress: {
+            done: 2,
+            total: 5,
+            products: 2,
+            evidence: 0,
+            requests: 2,
+            waiting: 0,
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 });
 describe('concurrent list requests', () => {
