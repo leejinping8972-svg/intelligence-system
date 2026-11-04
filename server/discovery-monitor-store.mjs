@@ -10,6 +10,8 @@ import {
   scheduleSlot,
   stableId,
 } from './discovery-monitor-domain.mjs';
+import { officialCapabilities } from './official-new-release-domain.mjs';
+import { runOfficialNewReleases } from './official-new-release-runner.mjs';
 import { discoverySorftime } from './discovery-sorftime.mjs';
 import { upsertProduct } from './platform-products-jobs.mjs';
 import {
@@ -39,7 +41,10 @@ export async function submitDiscovery(input, connection = pool) {
     ])
   ).rows[0];
   if (old) {
-    if (!isDeepStrictEqual(old.input.plan, plan))
+    if (
+      !isDeepStrictEqual(old.input.plan, plan) ||
+      (old.input.monitorId || '') !== (input.monitorId || '')
+    )
       throw new Error('此编号已用于不同任务');
     return old;
   }
@@ -77,7 +82,9 @@ export async function discoveryAction(input, user) {
       ingredients: await list('discovery:ingredient:'),
     };
   if (input.action === 'server_discovery_capabilities')
-    return discoverySorftime({ op: 'catalogue' });
+    return input.kind === 'ingredients'
+      ? discoverySorftime({ op: 'catalogue' })
+      : officialCapabilities();
   requireAdmin(user);
   const c = await pool.connect();
   let held = false;
@@ -85,7 +92,22 @@ export async function discoveryAction(input, user) {
     held = await lock(c, 'monitor-config');
     if (!held) throw new Error('监控配置正在保存，请稍后重试');
     if (input.action === 'server_discovery_submit') {
+      if (input.monitorId) {
+        const monitor = await read(`discovery:monitor:${input.monitorId}`, c);
+        if (!monitor) throw new Error('监控已不存在，请刷新后重试');
+      }
       const job = await submitDiscovery(input, c);
+      if (input.monitorId) {
+        const name = `discovery:monitor:${input.monitorId}`;
+        const old = await read(name, c);
+        await putDocument(
+          'workspace_documents',
+          name,
+          { ...old, lastJobId: job.id },
+          false,
+          c,
+        );
+      }
       return { jobId: job.id };
     }
     if (input.action === 'server_discovery_save') {
@@ -100,6 +122,8 @@ export async function discoveryAction(input, user) {
         ...plan,
         id,
         updatedAt: new Date().toISOString(),
+        lastScheduleError: '',
+        lastScheduleErrorSlot: '',
       };
       await putDocument(
         'workspace_documents',
@@ -152,6 +176,23 @@ export async function tickDiscoveryMonitors(now = Date.now()) {
     for (const plan of await list('discovery:monitor:', c)) {
       const slot = scheduleSlot(plan, now);
       if (!slot) continue;
+      if (plan.lastScheduleErrorSlot === slot) continue;
+      try {
+        discoveryPlan(plan);
+      } catch (error) {
+        await putDocument(
+          'workspace_documents',
+          `discovery:monitor:${plan.id}`,
+          {
+            ...plan,
+            lastScheduleError: String(error.message).slice(0, 500),
+            lastScheduleErrorSlot: slot,
+          },
+          false,
+          c,
+        );
+        continue;
+      }
       const requestId = stableId(`discovery:${plan.id}:${slot}`);
       if (
         (
@@ -195,6 +236,8 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     ...overrides,
   };
   const plan = job.input.plan;
+  if (plan.sourceMode === 'official_new_releases')
+    return runOfficialNewReleases(job, io);
   const cp = {
     ...job.checkpoint,
     logs: [...(job.checkpoint.logs || [])],
@@ -221,6 +264,12 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
   );
   cp.pending ||= [];
   cp.covered ||= [];
+  if (plan.kind === 'ingredients' && cp.records.length >= plan.maxProducts) {
+    cp.work = [];
+    if (!cp.sourceLimitReached)
+      cp.logs.push('达到本次帖子数量上限，停止继续请求');
+    cp.sourceLimitReached = true;
+  }
   const finished = () =>
     io.saveCheckpoint(
       job,
@@ -380,12 +429,30 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
         !cp.analysisDone
       ) {
         cp.calls++;
-        const result = await io.collect(job, 'ingredient-analysis', {
-          sources: ['ingredient_analysis'],
-          records: cp.records,
-        });
+        const offset = cp.analysisOffset || 0;
+        const batch = [];
+        let chars = 0;
+        for (const record of cp.records.slice(offset, offset + 40)) {
+          const size =
+            String(record.title || '').length +
+            String(record.text || '').slice(0, 3500).length;
+          if (batch.length && chars + size > 40000) break;
+          batch.push(record);
+          chars += size;
+        }
+        const result = await io.collect(
+          job,
+          offset === 0
+            ? 'ingredient-analysis'
+            : `ingredient-analysis:${offset}`,
+          {
+            sources: ['ingredient_analysis'],
+            records: batch,
+          },
+        );
         if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
-        cp.ingredients = 0;
+        cp.ingredientKeys ||= [];
+        cp.ingredients = cp.ingredientKeys.length;
         for (const ingredient of result.ingredients) {
           const name = `discovery:ingredient:${stableId(`${plan.market}|${ingredient.key}`)}`;
           const old = await io.read(name);
@@ -419,14 +486,18 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
             },
             false,
           );
-          cp.ingredients++;
+          if (!cp.ingredientKeys.includes(ingredient.key))
+            cp.ingredientKeys.push(ingredient.key);
+          cp.ingredients = cp.ingredientKeys.length;
         }
-        cp.analysisDone = true;
+        cp.analysisOffset = offset + batch.length;
+        cp.analysisDone = cp.analysisOffset >= cp.records.length;
         cp.logs.push(
-          `分析${cp.records.length}条讨论，发现${cp.ingredients}种有原文支持的成分`,
+          `已分析${cp.analysisOffset}/${cp.records.length}条讨论，本批发现${result.ingredients.length}种有原文支持的成分`,
         );
       }
-      return finished();
+      if (plan.kind !== 'ingredients' || !cp.records.length || cp.analysisDone)
+        return finished();
     }
     cp.logs = cp.logs.slice(-200);
     cp.nextRunAt = io.now() + 1000;

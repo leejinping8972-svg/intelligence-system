@@ -30,14 +30,17 @@ import {
 } from './source-field-domain.mjs';
 
 const now = Date.parse('2026-10-30T01:00:00Z');
-const plan = (patch = {}) =>
-  discoveryPlan({
+// Frozen legacy jobs keep the original Sorftime runner. New plans are covered separately.
+const plan = (patch = {}) => {
+  const { sourceMode, officialBoardUrls, ...legacy } = discoveryPlan({
     kind: 'regular_new',
     market: 'US',
     channels: ['amazon'],
     topics: 'dietary supplement',
     ...patch,
   });
+  return legacy;
+};
 const string = { type: 'string' };
 const country = { type: 'string', enum: ['US', 'MX', 'VN'] };
 const tool = (name, properties, required = []) => ({
@@ -524,7 +527,7 @@ test('multi-channel first pass and AI processing continue beyond the legacy call
   const job = {
     id: 'qa',
     input: {
-      plan: { ...plan({ channels: ['amazon', 'walmart'] }), maxCalls: 1 },
+      plan: { ...plan(), channels: ['amazon', 'walmart'], maxCalls: 1 },
     },
     checkpoint: { calls: 0, products: 0 },
   };
@@ -563,9 +566,9 @@ test('multi-channel first pass and AI processing continue beyond the legacy call
 });
 test('runner checkpoints source results, admits only AI-confirmed supplements and honors cancellation', async () => {
   let calls = 0;
-    let cancelled = false;
-    let saved;
-    let writes = 0;
+  let cancelled = false;
+  let saved;
+  let writes = 0;
   const job = {
     id: 'qa',
     input: { plan: plan({ maxCalls: 3, maxProducts: 5 }) },

@@ -109,10 +109,14 @@ export async function collect(job, step, request) {
       // will remain unattributed rather than being assigned to a guessed key.
     }
   }
+  const officialRequest = request.sources?.includes('official_new_releases');
+  const requestUrl = officialRequest
+    ? (request.op === 'detail' && request.ranking?.boardUrl ? new URL(`/dp/${request.asin}`, request.ranking.boardUrl).href : request.url || '')
+    : process.env.COLLECTOR_URL || '';
   const requestState = requestStarted(
     {
-      method: 'POST',
-      url: process.env.COLLECTOR_URL || '',
+      method: officialRequest ? 'GET' : 'POST',
+      url: requestUrl,
       sourceId: request.sources?.[0] || request.provider || 'collector',
       requestId: `${job.id}:${step}`,
     },
@@ -123,9 +127,7 @@ export async function collect(job, step, request) {
     sources: request.sources || [],
     provider: request.provider || null,
     operation: request.op || null,
-    ...(process.env.COLLECTOR_URL
-      ? safeRequestUrl(process.env.COLLECTOR_URL)
-      : {}),
+    ...safeRequestUrl(requestUrl),
   };
   await pool.query(
     "INSERT INTO research_requests(job_id,step,paid_allowance,status,response) VALUES($1,$2,$3,'started',$4)",
@@ -140,7 +142,9 @@ export async function collect(job, step, request) {
     const provider = process.env.COLLECTOR_URL
       ? null
       : await import('./local-provider.mjs');
-    const response = request.sources?.includes('discovery_sorftime')
+    const response = request.sources?.includes('official_new_releases')
+      ? Response.json(await (await import('./official-new-releases.mjs')).officialNewReleases(request))
+      : request.sources?.includes('discovery_sorftime')
       ? Response.json(await (await import('./discovery-sorftime.mjs')).discoverySorftime(request))
       : request.sources?.includes('field_analysis')
         ? Response.json(await (await import('./discovery-ai.mjs')).fieldAnalysisRequest(request))

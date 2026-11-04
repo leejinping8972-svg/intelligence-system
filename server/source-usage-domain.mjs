@@ -188,7 +188,7 @@ export function requestSources(step = '', record = {}, allowance = 0) {
   )
     return ['scrapecreators'];
   if (provider === 'sorftime' || allowance > 0) return ['sorftime'];
-  if (provider === 'public_product') return ['official_sites'];
+  if (provider === 'public_product' || sources.includes('official_new_releases')) return ['official_sites'];
   if (/^(?:https?:\/\/|browser:https?:\/\/)/.test(step)) return ['official_sites'];
   if (sources.some((s) => ['semantic_analysis', 'field_analysis', 'ingredient_analysis'].includes(s)) || /^model/.test(step))
     return ['analysis'];

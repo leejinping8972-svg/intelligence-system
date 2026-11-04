@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  officialBoards,
+  officialBoardUrl,
+} from './official-new-release-domain.mjs';
 
 export const discoveryKinds = {
   fbm_new: 'FBM新品',
@@ -64,8 +68,8 @@ export function discoveryPlan(input, scheduled = false) {
     maxDetails: input.maxDetails ?? 5,
   };
   for (const [key, max] of Object.entries({
-    maxProducts: 500,
-    maxPages: 10,
+    maxProducts: input.kind === 'ingredients' ? 5000 : 1000,
+    maxPages: input.kind === 'ingredients' ? 100 : 10,
     maxDetails: 20,
   }))
     if (
@@ -85,6 +89,11 @@ export function discoveryPlan(input, scheduled = false) {
     )
   )
     throw new Error('来源站点无效');
+  if (input.kind !== 'ingredients' && channels.some((c) => c !== 'amazon'))
+    throw new Error(
+      '当前仅接入Amazon官方新品榜；其他平台未提供已验证的官方新品榜',
+    );
+  if (input.kind !== 'ingredients') sourceMarkets.amazon ||= 'US';
   const plan = {
     kind: input.kind,
     market: input.market,
@@ -94,6 +103,15 @@ export function discoveryPlan(input, scheduled = false) {
     topics,
     ...limits,
     supplementOnly: true,
+    ...(input.kind !== 'ingredients'
+      ? {
+          sourceMode: 'official_new_releases',
+          officialBoardUrls: officialBoards(
+            input.officialBoardUrls,
+            sourceMarkets.amazon,
+          ),
+        }
+      : {}),
   };
   if (scheduled) {
     const frequency =
@@ -146,6 +164,35 @@ export function dateInWindow(value, days, now = Date.now()) {
   return stamp <= today && stamp >= today - (days - 1) * 86_400_000;
 }
 export function newProductEvidence(product, plan, now = Date.now()) {
+  if (plan.sourceMode === 'official_new_releases') {
+    const ranking = product.resourceRaw?.officialNewRelease;
+    if (
+      ranking?.source !== 'amazon_official_new_releases' ||
+      !Number.isInteger(ranking.rank) ||
+      ranking.rank < 1 ||
+      !Number.isFinite(Date.parse(ranking.observedAt))
+    )
+      return;
+    try {
+      officialBoardUrl(ranking.boardUrl, plan.sourceMarkets.amazon);
+    } catch {
+      return;
+    }
+    const fulfillment = product.resourceRaw?.fulfillment || 'unknown';
+    if (plan.kind === 'fbm_new' && fulfillment !== 'FBM') return;
+    return {
+      type: plan.kind,
+      label: plan.kind === 'fbm_new' ? '官方新品榜 · FBM' : '官方新品榜',
+      source: 'Amazon Official',
+      evidenceUrl: ranking.boardUrl,
+      rank: ranking.rank,
+      fulfillment,
+      observedAt: ranking.observedAt,
+      ...(plan.kind === 'fbm_new'
+        ? { fulfillmentEvidenceUrl: product.resourceRaw.fulfillmentEvidenceUrl }
+        : {}),
+    };
+  }
   const date = product.decisionData?.listing?.date;
   if (!dateInWindow(date, plan.days, now)) return;
   const fulfillment = product.resourceRaw?.fulfillment;

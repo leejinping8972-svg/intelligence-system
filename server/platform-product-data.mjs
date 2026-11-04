@@ -698,7 +698,7 @@ export function mergePlatformProduct(old, patch) {
       ).values(),
     ];
   merged.sourceEvidence = merged.sourceEvidence.slice(-100);
-  merged.newProductClassifications = [...new Map(merged.newProductClassifications.map((v) => [`${v.type}|${v.listingDate}|${v.days}`, v])).values()].slice(-30);
+  merged.newProductClassifications = [...new Map(merged.newProductClassifications.map((v) => [`${v.type}|${v.listingDate}|${v.days}|${v.evidenceUrl || ""}`, v])).values()].slice(-30);
   merged.sourceMetrics = { ...old.sourceMetrics, ...patch.sourceMetrics };
   if ((old.sourceMetrics?.soldRaw || old.sourceMetrics?.soldCount !== undefined || old.sourcePlatform === 'TikTok Shop' && old.sourceMetrics?.reportedSales !== undefined) && !patch.sourceMetrics?.soldRaw && patch.sourceMetrics?.soldCount === undefined && patch.sourceMetrics?.reportedSales === undefined)
     merged.sourceMetrics.soldCollectedAt = old.sourceMetrics.soldCollectedAt || old.sourceMetrics.collectedAt;

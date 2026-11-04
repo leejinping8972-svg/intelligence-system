@@ -19,7 +19,7 @@ import {
   Switch,
 } from 'ant-design-vue';
 
-import { cloudRequest, syncCloudWorkspace } from '../cloud-workspace';
+import { cloudRequest } from '../cloud-workspace';
 import { state } from '../data';
 import { defaultDiscoveryPlan, discoveryLabels } from '../discovery-monitors';
 import { serverMode, session } from '../session';
@@ -35,7 +35,8 @@ const initial = defaultDiscoveryPlan(
   props.kind,
   state.market === 'ALL' ? 'US' : state.market,
 );
-const form = reactive({ ...initial, topics: String(initial.topics) });
+const form = reactive({ ...initial, topics: String(initial.topics), officialBoardText: '' });
+const submittedId = ref('');
 const busy = ref(false);
   const loading = ref(false);
   const error = ref('');
@@ -59,6 +60,7 @@ watch(
   (plan) => {
     if (plan)
       Object.assign(form, plan, {
+        officialBoardText: (plan.officialBoardUrls || []).join('\n'),
         topics: Array.isArray(plan.topics)
           ? plan.topics.join('\n')
           : plan.topics,
@@ -80,6 +82,7 @@ watch(
   () => {
     form.channels =
       form.kind === 'ingredients' ? ['reddit', 'quora'] : ['amazon'];
+    if (serverMode) void load();
   },
 );
 const selectedChannels = computed(() =>
@@ -110,17 +113,21 @@ watch(
 );
 async function load() {
   loading.value = true;
+  const kind = form.kind;
   try {
-    capabilities.value = await cloudRequest<DiscoveryCapabilities>(
-      'server_discovery_capabilities',
+    const result = await cloudRequest<DiscoveryCapabilities>(
+      'server_discovery_capabilities', { kind },
     );
+    if (kind !== form.kind) return;
+    capabilities.value = result;
     if (!props.plan && form.kind === 'regular_new')
       form.channels = capabilities.value.channels.map((c) => c.id);
     error.value = '';
   } catch (cause) {
+    if (kind !== form.kind) return;
     error.value = cause instanceof Error ? cause.message : '来源渠道读取失败';
   } finally {
-    loading.value = false;
+    if (kind === form.kind) loading.value = false;
   }
 }
 onMounted(() => {
@@ -130,10 +137,13 @@ async function submit(save: boolean) {
   if (busy.value) return;
   busy.value = true;
   error.value = '';
+  submittedId.value = '';
   try {
     if (form.channels.length === 0) throw new Error('请选择至少一个来源渠道');
+    const { officialBoardText, ...values } = form;
     const payload = {
-      ...form,
+      ...values,
+      officialBoardUrls: form.kind === 'ingredients' ? undefined : officialBoardText.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
       topics: form.kind === 'ingredients' ? form.topics : [],
     };
     const signature = JSON.stringify(payload);
@@ -151,18 +161,21 @@ async function submit(save: boolean) {
     } else {
       const result = await cloudRequest<{ jobId: string }>(
         'server_discovery_submit',
-        { requestId, plan: payload },
+        { requestId, plan: payload, monitorId: form.id },
       );
-      message.success('已提交后台');
+      submittedId.value = result.jobId;
+      requestId = '';
+      requestSignature = '';
+      message.success('任务已进入后台队列');
       emit('submitted', result.jobId);
-      await syncCloudWorkspace();
       await router.push({
         path: '/monitor',
         query: { tab: 'tasks', job: result.jobId },
       });
     }
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存失败';
+    error.value = cause instanceof Error ? cause.message : '提交失败';
+    message.error(error.value);
   } finally {
     busy.value = false;
   }
@@ -175,6 +188,7 @@ async function submit(save: boolean) {
     class="discovery-form"
     @finish="submit(Boolean(scheduled))"
   >
+    <Alert v-if="submittedId" message="任务已进入后台队列，可在任务列表查看进度" type="success" show-icon />
     <Alert v-if="error" :message="error" type="error" show-icon />
     <div class="discovery-grid">
       <Form.Item label="类型">
@@ -231,9 +245,14 @@ async function submit(save: boolean) {
     <Form.Item v-if="form.kind === 'ingredients'" label="研究话题">
 <Input.TextArea v-model:value="form.topics" :rows="3" :maxlength="2000" />
 </Form.Item>
+    <template v-if="form.kind !== 'ingredients'">
+      <Alert type="info" show-icon message="只抓Amazon官方新品榜。默认美国健康与家居新品榜，可填写细分类目榜；墨西哥站需填写官方榜单链接。榜单包含新品及未来发售商品，不代表近7天上架，实际数量以官方返回为准。" />
+      <Form.Item label="官方新品榜链接（可选，每行一个，最多20个）">
+        <Input.TextArea v-model:value="form.officialBoardText" :rows="3" placeholder="https://www.amazon.com/gp/new-releases/hpc/3760901" />
+      </Form.Item>
+    </template>
     <div class="discovery-grid">
-      <Form.Item
-        :label="form.kind === 'ingredients' ? '讨论时间范围' : '上架时间'"
+      <Form.Item v-if="form.kind === 'ingredients'" label="讨论时间范围"
         >
 <Select
           v-model:value="form.days"
@@ -249,14 +268,14 @@ async function submit(save: boolean) {
       <Form.Item
         :label="form.kind === 'ingredients' ? '最多讨论数' : '最多商品数'"
         >
-<InputNumber v-model:value="form.maxProducts" :min="1" :max="500" />
+<InputNumber v-model:value="form.maxProducts" :min="1" :max="form.kind === 'ingredients' ? 5000 : 1000" />
 </Form.Item>
       <Form.Item
         :label="
-          form.kind === 'ingredients' ? '每话题最多页数' : '每渠道最多页数'
+          form.kind === 'ingredients' ? '每话题最多页数' : '每榜单最多页数'
         "
         >
-<InputNumber v-model:value="form.maxPages" :min="1" :max="10" />
+<InputNumber v-model:value="form.maxPages" :min="1" :max="form.kind === 'ingredients' ? 100 : 10" />
 </Form.Item>
       <Form.Item
         v-if="form.kind === 'ingredients'"
@@ -265,6 +284,8 @@ async function submit(save: boolean) {
 <InputNumber v-model:value="form.maxDetails" :min="0" :max="20" />
 </Form.Item>
     </div>
+    <p v-if="form.kind === 'ingredients'" class="hci-subtle">帖子上限5000；实际数量受话题、页数、来源返回和时间筛选影响。扩大时间范围或页数会增加来源请求。</p>
+    <p v-if="scheduled" class="hci-subtle">立即运行使用当前填写的设置；更改每日监控请另点“保存监控”。</p>
     <template v-if="scheduled">
       <div class="discovery-grid">
         <Form.Item label="定时周期">
@@ -303,16 +324,16 @@ async function submit(save: boolean) {
         type="primary"
         html-type="submit"
         :loading="busy"
-        :disabled="!canEdit || !capabilities"
+        :disabled="!canEdit"
         >
-{{ scheduled ? '保存监控' : '抓取新上架商品' }}
+{{ scheduled ? '保存监控' : form.kind === 'ingredients' ? '开始成分研究' : '抓取官方新品榜' }}
 </Button><Button
         v-if="scheduled"
-        :disabled="!canEdit || !capabilities"
+        :disabled="!canEdit"
         :loading="busy"
         @click="submit(false)"
         >
-立即运行一次
+按当前设置立即运行
 </Button>
     </div>
   </Form>

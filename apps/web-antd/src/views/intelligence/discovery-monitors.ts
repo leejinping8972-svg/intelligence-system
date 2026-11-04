@@ -11,6 +11,8 @@ export interface DiscoveryPlan {
   days: number;
   channels: string[];
   sourceMarkets?: Record<string, string>;
+  sourceMode?: 'official_new_releases';
+  officialBoardUrls?: string[];
   topics: string | string[];
   frequency: 'daily' | 'monthly' | 'weekly';
   time: string;
@@ -21,6 +23,7 @@ export interface DiscoveryPlan {
   maxPages: number;
   maxDetails: number;
   lastJobId?: string;
+  lastScheduleError?: string;
   lastScheduledAt?: string;
 }
 export interface DiscoveryCapabilities {

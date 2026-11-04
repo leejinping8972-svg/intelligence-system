@@ -903,10 +903,10 @@ async function exportProducts() {
               <p class="hci-subtle">{{ record.brand }}</p>
               <Tag
                 v-for="item in record.newProductClassifications"
-                :key="item.type + item.listingDate"
+                :key="item.type + item.observedAt"
                 color="green"
               >
-                {{ item.label }} · {{ item.listingDate }}
+                {{ item.label }}{{ item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.listingDate}` : '' }}
               </Tag>
             </div>
           </div>
@@ -921,7 +921,7 @@ async function exportProducts() {
           <template v-if="record.newProductClassifications?.length">
             <Tag
               v-for="item in record.newProductClassifications"
-              :key="item.type + item.listingDate"
+              :key="item.type + item.observedAt"
               :color="item.type === 'fbm_new' ? 'orange' : 'green'"
             >
               {{ item.label }}
@@ -929,7 +929,7 @@ async function exportProducts() {
             <p class="hci-subtle">
               {{
                 record.newProductClassifications
-                  .map((item: { listingDate?: string }) => item.listingDate)
+                  .map((item: { listingDate?: string; rank?: number; observedAt: string }) => item.rank ? `榜单#${item.rank} · 抓取${item.observedAt.slice(0, 10)}` : item.listingDate)
                   .filter(Boolean)
                   .join(' / ')
               }}
