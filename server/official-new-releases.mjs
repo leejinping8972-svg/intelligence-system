@@ -11,6 +11,52 @@ const clean = (value) =>
     .replace(/\s+/g, ' ')
     .trim();
 const validAsin = (value) => /^[A-Z0-9]{10}$/.test(value || '');
+export function officialListingDate(value) {
+  const text = clean(value)
+    .replaceAll(/[\u200e\u200f\u202a-\u202e]/g, '')
+    .trim()
+    .toLowerCase();
+  const months = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ];
+  const spanish = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+  let date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+  const en = /^([a-z]+)\s+(\d{1,2}),?\s+(\d{4})$/.exec(text);
+  const es = /^(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})$/.exec(text);
+  if (en && months.includes(en[1]))
+    date = `${en[3]}-${String(months.indexOf(en[1]) + 1).padStart(2, '0')}-${en[2].padStart(2, '0')}`;
+  if (es && spanish.includes(es[2]))
+    date = `${es[3]}-${String(spanish.indexOf(es[2]) + 1).padStart(2, '0')}-${es[1].padStart(2, '0')}`;
+  return date &&
+    Number.isFinite(Date.parse(date)) &&
+    new Date(date).toISOString().slice(0, 10) === date
+    ? date
+    : '';
+}
 function document(html) {
   const $ = load(html);
   if (
@@ -187,6 +233,27 @@ export function parseOfficialDetail(html, request) {
     .filter(Boolean)
     .slice(0, 12);
   p.sourceContent = { descriptions };
+  $(
+    '#detailBullets_feature_div li, #productDetails_detailBullets_sections1 tr, #productDetails_techSpec_section_1 tr',
+  ).each((_i, el) => {
+    const row = clean($(el).text()).replaceAll(
+      /[\u200e\u200f\u202a-\u202e]/g,
+      '',
+    );
+    const match =
+      /^(Date First Available|Disponible en Amazon(?:\.com\.mx)? desde|Producto en Amazon(?:\.com\.mx)? desde)\s*:?\s*(.+)$/i.exec(
+        row,
+      );
+    const date = match && officialListingDate(match[2]);
+    if (date && !p.decisionData.listing)
+      p.decisionData.listing = {
+        date,
+        provider: 'Amazon Official',
+        sourceField: match[1],
+        collectedAt: new Date(request.now ?? Date.now()).toISOString(),
+        evidenceUrl: p.sourceUrl,
+      };
+  });
   const ships = clean(
     $(
       '#fulfillerInfoFeature_feature_div .offer-display-feature-text-message, #tabular-buybox [tabular-attribute-name="Ships from"] .tabular-buybox-text, #tabular-buybox [tabular-attribute-name="Enviado por"] .tabular-buybox-text',

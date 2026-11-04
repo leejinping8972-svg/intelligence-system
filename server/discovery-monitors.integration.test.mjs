@@ -141,7 +141,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         assert.equal(jobs.length, 1);
         assert.deepEqual(jobs[0].input.plan.topics, []);
         assert.equal(jobs[0].input.plan.sourceMarkets.amazon, 'US');
-        assert.equal(jobs[0].input.plan.sourceMode, 'official_new_releases');
+        assert.equal(jobs[0].input.plan.sourceMode, 'sorftime');
         assert.match(jobTasks(jobs[0])[0].title, /常规新品/);
         await discoveryAction(
           {
@@ -437,7 +437,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           id: randomUUID(),
           kind: 'regular_new',
           market: 'US',
-          channels: ['shopee'],
+          channels: ['unsupported_platform'],
           enabled: true,
           frequency: 'daily',
           time: '09:00',
@@ -464,7 +464,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         await tickDiscoveryMonitors(Date.parse('2026-11-05T01:00:00Z'));
         assert.match(
           (await read(`discovery:monitor:${bad.id}`)).lastScheduleError,
-          /官方新品榜/,
+          /新品支持/,
         );
         assert.ok((await read(`discovery:monitor:${good.id}`)).lastJobId);
       },
@@ -486,6 +486,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           requestId: randomUUID(),
           plan: {
             kind: 'regular_new',
+            sourceMode: 'official_new_releases',
             market: 'US',
             channels: ['amazon'],
             maxProducts: 1000,

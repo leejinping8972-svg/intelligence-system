@@ -32,13 +32,14 @@ import {
 const now = Date.parse('2026-10-30T01:00:00Z');
 // Frozen legacy jobs keep the original Sorftime runner. New plans are covered separately.
 const plan = (patch = {}) => {
-  const { sourceMode, officialBoardUrls, ...legacy } = discoveryPlan({
-    kind: 'regular_new',
-    market: 'US',
-    channels: ['amazon'],
-    topics: 'dietary supplement',
-    ...patch,
-  });
+  const { sourceMode, requireSales, officialBoardUrls, ...legacy } =
+    discoveryPlan({
+      kind: 'regular_new',
+      market: 'US',
+      channels: ['amazon'],
+      topics: 'dietary supplement',
+      ...patch,
+    });
   return legacy;
 };
 const string = { type: 'string' };

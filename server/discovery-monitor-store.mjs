@@ -4,13 +4,13 @@ import { isDeepStrictEqual } from 'node:util';
 import { requireAdmin } from './auth.mjs';
 import { lock, pool, putDocument, unlock } from './database.mjs';
 import {
+  dateInWindow,
   discoveryKinds,
   discoveryPlan,
   newProductEvidence,
   scheduleSlot,
   stableId,
 } from './discovery-monitor-domain.mjs';
-import { officialCapabilities } from './official-new-release-domain.mjs';
 import { runOfficialNewReleases } from './official-new-release-runner.mjs';
 import { discoverySorftime } from './discovery-sorftime.mjs';
 import { upsertProduct } from './platform-products-jobs.mjs';
@@ -82,9 +82,7 @@ export async function discoveryAction(input, user) {
       ingredients: await list('discovery:ingredient:'),
     };
   if (input.action === 'server_discovery_capabilities')
-    return input.kind === 'ingredients'
-      ? discoverySorftime({ op: 'catalogue' })
-      : officialCapabilities();
+    return discoverySorftime({ op: 'catalogue' });
   requireAdmin(user);
   const c = await pool.connect();
   let held = false;
@@ -249,23 +247,39 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
   cp.work ||= plan.channels.flatMap((channel) =>
     (plan.kind === 'ingredients'
       ? plan.topics
-      : [channel === 'ali1688' ? '保健品' : 'dietary supplements']
+      : [
+          plan.sourceMode === 'sorftime'
+            ? {
+                amazon: 'Supplements',
+                tiktok: 'Dietary Supplements',
+                shopee: 'Food Supplement',
+              }[channel]
+            : channel === 'ali1688'
+              ? '保健品'
+              : 'dietary supplements',
+        ]
     ).map((topic) => ({
       channel,
       sourceMarket: plan.sourceMarkets?.[channel],
       topic,
       page: 1,
-      ...(['ali1688', 'shopee', 'temu', 'tiktok', 'tiktok_shop'].includes(
-        channel,
-      ) && plan.kind !== 'ingredients'
+      ...((plan.sourceMode === 'sorftime' ||
+        ['ali1688', 'shopee', 'temu', 'tiktok', 'tiktok_shop'].includes(
+          channel,
+        )) &&
+      plan.kind !== 'ingredients'
         ? { categoryLookup: true }
         : {}),
     })),
   );
   cp.pending ||= [];
   cp.covered ||= [];
-  if (plan.kind === 'ingredients' && cp.records.length >= plan.maxProducts) {
-    cp.work = [];
+  if (
+    plan.kind === 'ingredients' &&
+    cp.records.length + cp.work.filter((w) => w.postDetail).length >=
+      plan.maxProducts
+  ) {
+    cp.work = cp.work.filter((w) => w.postDetail);
     if (!cp.sourceLimitReached)
       cp.logs.push('达到本次帖子数量上限，停止继续请求');
     cp.sourceLimitReached = true;
@@ -340,7 +354,26 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
             now: cp.asOf,
           },
         );
+        cp.sourceRows = (cp.sourceRows || 0) + (result.sourceRows || 0);
+        cp.filterStats ||= {};
+        for (const [reason, count] of Object.entries(result.filterStats || {}))
+          cp.filterStats[reason] = (cp.filterStats[reason] || 0) + count;
+        if (result.filterStats)
+          cp.logs.push(
+            `${work.channel}筛选：${JSON.stringify(result.filterStats)}`,
+          );
+        if (
+          result.sourceRows > 0 &&
+          plan.kind === 'ingredients' &&
+          !result.records?.length &&
+          (result.filterStats?.missingDate ||
+            result.filterStats?.missingOriginalContent ||
+            result.filterStats?.missingUrl)
+        )
+          cp.failures.push(`${work.channel}来源字段不足，详见筛选统计`);
+        let acceptedRows = 0;
         if (work.categoryLookup) {
+          acceptedRows = result.categories?.length || 0;
           for (const category of result.categories || [])
             cp.work.push({
               channel: work.channel,
@@ -360,13 +393,26 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
           for (const record of result.records || []) {
             if (
               cp.seen.includes(record.id) ||
-              cp.records.length >= plan.maxProducts
+              cp.records.length + cp.work.filter((w) => w.postDetail).length >=
+                plan.maxProducts
             )
               continue;
+            acceptedRows++;
             cp.seen.push(record.id);
+            if (record.requiresContent) {
+              cp.work.push({
+                channel: work.channel,
+                topic: work.topic,
+                record,
+                postDetail: true,
+                page: 1,
+              });
+              continue;
+            }
             cp.records.push(record);
             if (
               !work.detail &&
+              !work.postDetail &&
               cp.work.filter((w) => w.detail).length + (cp.details || 0) <
                 plan.maxDetails
             )
@@ -392,10 +438,26 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
                   (p) => !p.resourceRaw?.fulfillment,
                 ).length
               : 0;
+          cp.filterStats.missingListingDate =
+            (cp.filterStats.missingListingDate || 0) + missingDate;
+          cp.filterStats.outsideListingWindow =
+            (cp.filterStats.outsideListingWindow || 0) +
+            (result.products || []).filter(
+              (p) =>
+                p.decisionData?.listing?.date &&
+                !dateInWindow(p.decisionData.listing.date, plan.days, cp.asOf),
+            ).length;
           if (missingDate || missingDelivery)
             cp.failures.push(
               `${work.channel}跳过证据不足的商品：${missingDate}条缺上架日期，${missingDelivery}条缺发货方式`,
             );
+          if (plan.requireSales) {
+            const noSales = (result.products || []).filter(
+              (p) => !(p.resourceRaw?.salesEvidence?.value > 0),
+            ).length;
+            cp.filterStats.noPositiveSales =
+              (cp.filterStats.noPositiveSales || 0) + noSales;
+          }
           for (const product of result.products || []) {
             if (
               cp.seen.includes(product.id) ||
@@ -405,13 +467,35 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
               continue;
             cp.seen.push(product.id);
             cp.pending.push(product);
+            acceptedRows++;
           }
         }
-        if (result.hasMore && !work.detail && work.page < plan.maxPages)
+        const pageKey = JSON.stringify([
+          work.channel,
+          work.topic,
+          work.nodeId || '',
+          work.detail || false,
+        ]);
+        cp.pageFingerprints ||= {};
+        const repeatedPage =
+          result.pageFingerprint &&
+          cp.pageFingerprints[pageKey]?.includes(result.pageFingerprint);
+        if (result.pageFingerprint)
+          (cp.pageFingerprints[pageKey] ||= []).push(result.pageFingerprint);
+        if (repeatedPage) cp.logs.push(`${work.channel}重复页面，停止继续翻页`);
+        if (
+          result.hasMore &&
+          !repeatedPage &&
+          !work.detail &&
+          !work.postDetail &&
+          work.page < plan.maxPages
+        )
           cp.work.push({ ...work, page: work.page + 1 });
+        else if (result.hasMore && work.page >= plan.maxPages)
+          cp.logs.push(`${work.channel}达到每类目/话题${plan.maxPages}页上限`);
         if (!work.categoryLookup) cp.covered.push(work.channel);
         cp.logs.push(
-          `${work.channel} · ${work.topic}：来源${result.sourceRows ?? 0}条`,
+          `${work.channel} · ${work.categoryName || work.topic}：来源${result.sourceRows ?? 0}条，接纳${acceptedRows}条`,
         );
       } catch (error) {
         cp.covered.push(work.channel);

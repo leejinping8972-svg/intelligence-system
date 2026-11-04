@@ -14,6 +14,7 @@ import {
   officialNewReleases,
   parseOfficialBoard,
   parseOfficialDetail,
+  officialListingDate,
 } from './official-new-releases.mjs';
 
 const now = Date.parse('2026-11-05T01:00:00Z');
@@ -28,6 +29,8 @@ const plan = (patch = {}) =>
     kind: 'regular_new',
     market: 'VN',
     channels: ['amazon'],
+    sourceMode: 'official_new_releases',
+    sourceMarkets: { amazon: 'US' },
     ...patch,
   });
 const asin = (i) => `B${String(i).padStart(9, '0')}`;
@@ -58,7 +61,7 @@ test('new plans enforce official boards and separate 1000-product/5000-post limi
     maxPages: 100,
   });
   assert.equal(ingredients.maxProducts, 5000);
-  assert.equal(ingredients.sourceMode, undefined);
+  assert.equal(ingredients.sourceMode, 'sorftime');
   assert.throws(
     () => discoveryPlan({ ...ingredients, maxProducts: 5001 }),
     /数量/,
@@ -397,4 +400,64 @@ test('ingredient batches merge repeated ingredients and count distinct findings'
   assert.equal(job.checkpoint.ingredients, 1);
   assert.equal(documents.size, 1);
   assert.equal([...documents.values()][0].mentionCount, 81);
+});
+
+test('30-day listing parser reads only explicit official date fields and rejects invalid dates', () => {
+  assert.equal(officialListingDate('October 7, 2026'), '2026-10-07');
+  assert.equal(officialListingDate('7 de octubre de 2026'), '2026-10-07');
+  assert.equal(officialListingDate('February 30, 2026'), '');
+  assert.equal(officialListingDate('yesterday'), '');
+  const ranking = parseOfficialBoard(board(), request).items[0].ranking;
+  const p = parseOfficialDetail(
+    `${detail(asin(1))}<div id="detailBullets_feature_div"><li>Date First Available ‏ : ‎ October 7, 2026</li></div>`,
+    { ...request, asin: asin(1), ranking },
+  ).product;
+  const strict = plan({ days: 30, requireListingDate: true });
+  assert.equal(strict.requireListingDate, true);
+  assert.equal(newProductEvidence(p, strict, now).listingDate, '2026-10-07');
+  for (const date of ['2026-10-06', '2026-11-06', undefined]) {
+    assert.equal(
+      newProductEvidence(
+        { ...p, decisionData: { listing: { date } } },
+        strict,
+        now,
+      ),
+      undefined,
+    );
+  }
+});
+
+test('30-day product runs read every official detail and filter old/missing dates before AI', async () => {
+  for (const kind of ['regular_new', 'fbm_new']) {
+    const job = {
+      id: 'synthetic',
+      input: { plan: plan({ kind, days: 30, requireListingDate: true }) },
+      checkpoint: {},
+    };
+    const r = runner(job, async (_j, _s, req) => {
+      if (req.sources[0] === 'field_analysis')
+        return { patch: {}, analysis: { supplement: true } };
+      if (req.op !== 'detail') return parseOfficialBoard(board([1, 2, 3]), req);
+      const date =
+        req.asin === asin(1)
+          ? 'October 20, 2026'
+          : req.asin === asin(2)
+            ? 'August 16, 2026'
+            : '';
+      return parseOfficialDetail(
+        `${detail(req.asin, 'Synthetic Store', 'Synthetic Store')}<div id="detailBullets_feature_div"><li>Date First Available: ${date}</li></div>`,
+        req,
+      );
+    });
+    assert.equal(await r.finish(), 'partial');
+    assert.equal(r.writes.length, 1);
+    assert.equal(r.steps.filter((v) => v.r.op === 'detail').length, 3);
+    assert.equal(
+      r.steps.filter((v) => v.r.sources[0] === 'field_analysis').length,
+      1,
+    );
+    assert.equal(job.checkpoint.skipped.listingUnknown, 1);
+    assert.equal(job.checkpoint.skipped.outsideWindow, 1);
+    assert.equal(r.writes[0].newProductClassifications[0].days, 30);
+  }
 });

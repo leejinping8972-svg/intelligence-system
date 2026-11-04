@@ -11,7 +11,9 @@ export interface DiscoveryPlan {
   days: number;
   channels: string[];
   sourceMarkets?: Record<string, string>;
-  sourceMode?: 'official_new_releases';
+  sourceMode?: 'official_new_releases' | 'sorftime';
+  requireSales?: boolean;
+  requireListingDate?: boolean;
   officialBoardUrls?: string[];
   topics: string | string[];
   frequency: 'daily' | 'monthly' | 'weekly';
@@ -61,7 +63,8 @@ export const defaultDiscoveryPlan = (
 ): DiscoveryPlan => ({
   kind,
   market,
-  days: 7,
+  days: 30,
+  sourceMode: 'sorftime',
   channels: kind === 'ingredients' ? ['reddit', 'quora'] : ['amazon'],
   sourceMarkets: {},
   topics:

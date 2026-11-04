@@ -69,7 +69,7 @@ export function discoveryPlan(input, scheduled = false) {
   };
   for (const [key, max] of Object.entries({
     maxProducts: input.kind === 'ingredients' ? 5000 : 1000,
-    maxPages: input.kind === 'ingredients' ? 100 : 10,
+    maxPages: input.sourceMode === 'official_new_releases' ? 10 : 100,
     maxDetails: 20,
   }))
     if (
@@ -89,11 +89,20 @@ export function discoveryPlan(input, scheduled = false) {
     )
   )
     throw new Error('来源站点无效');
-  if (input.kind !== 'ingredients' && channels.some((c) => c !== 'amazon'))
+  if (
+    input.sourceMode === 'official_new_releases' &&
+    input.kind !== 'ingredients' &&
+    channels.some((c) => c !== 'amazon')
+  )
     throw new Error(
       '当前仅接入Amazon官方新品榜；其他平台未提供已验证的官方新品榜',
     );
-  if (input.kind !== 'ingredients') sourceMarkets.amazon ||= 'US';
+  if (input.kind !== 'ingredients') {
+    if (channels.some((c) => !['amazon', 'tiktok', 'shopee'].includes(c)))
+      throw new Error('新品支持Amazon、TikTok Shop和Shopee');
+    for (const channel of channels)
+      sourceMarkets[channel] ||= channel === 'shopee' ? 'VN' : input.market;
+  }
   const plan = {
     kind: input.kind,
     market: input.market,
@@ -103,15 +112,22 @@ export function discoveryPlan(input, scheduled = false) {
     topics,
     ...limits,
     supplementOnly: true,
-    ...(input.kind !== 'ingredients'
+    ...(input.sourceMode === 'official_new_releases' &&
+    input.kind !== 'ingredients'
       ? {
           sourceMode: 'official_new_releases',
+          ...(input.requireListingDate === true
+            ? { requireListingDate: true }
+            : {}),
           officialBoardUrls: officialBoards(
             input.officialBoardUrls,
             sourceMarkets.amazon,
           ),
         }
-      : {}),
+      : {
+          sourceMode: 'sorftime',
+          ...(input.kind !== 'ingredients' ? { requireSales: true } : {}),
+        }),
   };
   if (scheduled) {
     const frequency =
@@ -179,6 +195,9 @@ export function newProductEvidence(product, plan, now = Date.now()) {
       return;
     }
     const fulfillment = product.resourceRaw?.fulfillment || 'unknown';
+    const listingDate = product.decisionData?.listing?.date;
+    if (plan.requireListingDate && !dateInWindow(listingDate, plan.days, now))
+      return;
     if (plan.kind === 'fbm_new' && fulfillment !== 'FBM') return;
     return {
       type: plan.kind,
@@ -188,6 +207,7 @@ export function newProductEvidence(product, plan, now = Date.now()) {
       rank: ranking.rank,
       fulfillment,
       observedAt: ranking.observedAt,
+      ...(plan.requireListingDate ? { listingDate, days: plan.days } : {}),
       ...(plan.kind === 'fbm_new'
         ? { fulfillmentEvidenceUrl: product.resourceRaw.fulfillmentEvidenceUrl }
         : {}),
@@ -195,16 +215,29 @@ export function newProductEvidence(product, plan, now = Date.now()) {
   }
   const date = product.decisionData?.listing?.date;
   if (!dateInWindow(date, plan.days, now)) return;
+  if (plan.requireSales && !(product.resourceRaw?.salesEvidence?.value > 0))
+    return;
   const fulfillment = product.resourceRaw?.fulfillment;
   if (plan.kind === 'fbm_new' && fulfillment !== 'FBM') return;
   return {
-    type: plan.days === 7 ? plan.kind : 'new_listing',
-    label: plan.days === 7 ? discoveryKinds[plan.kind] : '新上架商品',
+    type:
+      plan.sourceMode === 'sorftime' || plan.days === 7
+        ? plan.kind
+        : 'new_listing',
+    label:
+      plan.sourceMode === 'sorftime'
+        ? `近${plan.days}天 · ${discoveryKinds[plan.kind]}`
+        : plan.days === 7
+          ? discoveryKinds[plan.kind]
+          : '新上架商品',
     listingDate: date,
     fulfillment: fulfillment || 'unknown',
     observedAt: new Date(now).toISOString(),
     evidenceUrl: product.sourceUrl || product.evidenceUrl,
     source: 'Sorftime',
     days: plan.days,
+    ...(product.resourceRaw?.salesEvidence
+      ? { salesEvidence: product.resourceRaw.salesEvidence }
+      : {}),
   };
 }

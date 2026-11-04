@@ -1,4 +1,8 @@
-import { newProductEvidence, stableId } from './discovery-monitor-domain.mjs';
+import {
+  dateInWindow,
+  newProductEvidence,
+  stableId,
+} from './discovery-monitor-domain.mjs';
 import {
   pendingSourceFields,
   sourceFieldSample,
@@ -21,6 +25,8 @@ export async function runOfficialNewReleases(job, io) {
     platformFulfilled: 0,
     notSupplement: 0,
   };
+  cp.skipped.listingUnknown ||= 0;
+  cp.skipped.outsideWindow ||= 0;
   const cancelled = async () =>
     (
       await io.pool.query('SELECT cancelled FROM research_jobs WHERE id=$1', [
@@ -53,6 +59,20 @@ export async function runOfficialNewReleases(job, io) {
         );
         if (newProductEvidence(result.product, plan, cp.asOf))
           cp.pending.unshift({ op: 'classify', product: result.product });
+        else if (
+          plan.requireListingDate &&
+          !result.product.decisionData?.listing?.date
+        )
+          cp.skipped.listingUnknown++;
+        else if (
+          plan.requireListingDate &&
+          !dateInWindow(
+            result.product.decisionData?.listing?.date,
+            plan.days,
+            cp.asOf,
+          )
+        )
+          cp.skipped.outsideWindow++;
         else if (result.product.resourceRaw.fulfillment === 'FBA')
           cp.skipped.platformFulfilled++;
         else cp.skipped.fulfillmentUnknown++;
@@ -100,7 +120,7 @@ export async function runOfficialNewReleases(job, io) {
           continue;
         cp.seen.push(member.asin);
         cp.pending.push(
-          member.product && plan.kind !== 'fbm_new'
+          member.product && plan.kind !== 'fbm_new' && !plan.requireListingDate
             ? { op: 'classify', product: member.product }
             : { op: 'detail', asin: member.asin, ranking: member.ranking },
         );
@@ -116,6 +136,14 @@ export async function runOfficialNewReleases(job, io) {
       );
       if (cp.work.length)
         cp.logs.push('达到本次商品抓取上限，未继续请求剩余榜单');
+      if (plan.requireListingDate)
+        cp.logs.push(
+          `官网日期筛选近${plan.days}天：窗口外${cp.skipped.outsideWindow}件，缺可核实上架日期${cp.skipped.listingUnknown}件`,
+        );
+      if (cp.skipped.listingUnknown)
+        cp.failures.push(
+          `${cp.skipped.listingUnknown}件缺官网上架日期，未纳入近${plan.days}天商品`,
+        );
       if (cp.skipped.fulfillmentUnknown)
         cp.failures.push(
           `${cp.skipped.fulfillmentUnknown}件无法核实FBM发货方，未写入FBM新品`,
