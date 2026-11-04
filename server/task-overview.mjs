@@ -45,6 +45,24 @@ export function taskOverview(job, task) {
     );
     failed = count(p.failed);
     waiting = count(p.retryPending);
+    // Expansion-only jobs report discovery/Semrush progress, not Google trend rows.
+    if (input.expansionOnly) {
+      total = count(
+        p.discovered ||
+          p.total ||
+          cp.keywords?.length ||
+          input.existingRecords?.length ||
+          0,
+      );
+      processed = count(
+        terminal(state) ? total : Math.min(total, p.processed || p.discovered),
+      );
+      succeeded = count(
+        p.succeeded ?? Math.max(0, (p.discovered || 0) - (p.failed || 0)),
+      );
+      failed = count(p.failed);
+      waiting = 0;
+    }
   } else if (input.kind === 'products' && cp.siteWork) {
     total = input.records?.length || 0;
     succeeded = cp.siteWork.filter((w) =>
