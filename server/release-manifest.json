@@ -1,24 +1,24 @@
 {
-  "title": "保留独立中文素材卖点",
+  "title": "重新分析素材时保留既有中文",
   "includedCommits": [
-    "627abf6388b70ad94b951453e967165e07197e18"
+    "be858c562179ff1377392cf8eb7956d3e94250bb"
   ],
-  "sourceSha": "627abf6388b70ad94b951453e967165e07197e18",
+  "sourceSha": "be858c562179ff1377392cf8eb7956d3e94250bb",
   "changes": [
-    "待分析广告再次采集时，标题与文案原文均未变化就保留已有的独立中文卖点；任一原文变化时沿用现有译文回退逻辑。"
+    "广告重新分析入口不再先清空已保存的广告主、标题、文案与卖点中文。",
+    "模型只返回部分新译文时保留其余原有中文，新译文成功返回的字段仍优先更新。"
   ],
   "files": [
-    "server/ad-translation.test.mjs",
-    "server/source-field-domain.mjs"
+    "server/discovery-monitors.integration.test.mjs",
+    "server/source-field-store.mjs"
   ],
   "validation": [
-    "功能开发自测：相关 Node 测试 10/10、脚本语法与差异检查通过。",
-    "独立工作树未安装完整前端工具，提交跳过钩子；未声称完整 lint 或类型检查通过。",
+    "功能开发自测：相关 Node 测试 10/10、PGlite 集成测试 5/5、脚本语法与差异检查通过。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建及 CI 等待。",
     "本批无 schema、迁移或依赖变更；完整数据库备份按用户策略跳过，保留部署锁、队列、检查点、源码、镜像、前端、配置与 public/data 保护。"
   ],
   "operator": "Codex",
-  "id": "20261104141429-298c7f00",
-  "builtAt": "2026-11-04T14:14:29.545Z",
-  "sourceDigest": "298c7f00b83a67bec3d8dea262e3ae022365a4b8d4d8d78ce9de5c980deb1c25"
+  "id": "20261104150348-38b6d6fa",
+  "builtAt": "2026-11-04T15:03:48.052Z",
+  "sourceDigest": "38b6d6fa2234ef182c424003f4cc5bab14932f8392a914adcd4e745908befa80"
 }
