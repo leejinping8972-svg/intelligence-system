@@ -276,7 +276,10 @@ export function gateSourceFields(kind, old, value, patch) {
       if (old[source] === value[source] && String(old[translated] || '').trim())
         pending[translated] = old[translated];
     }
-    if (pending.headlineZh || pending.copyZh)
+    if (old.headline === value.headline && old.copy === value.copy &&
+      String(old.sellingPointZh || '').trim())
+      pending.sellingPointZh = old.sellingPointZh;
+    else if (pending.headlineZh || pending.copyZh)
       pending.sellingPointZh = pending.headlineZh || pending.copyZh;
   }
   return pending;

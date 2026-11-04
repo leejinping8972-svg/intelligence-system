@@ -69,7 +69,7 @@ test('re-observing a pending ad retains translations for unchanged source text',
   const old = {
     id: 'pending-ad', brand: 'Health Shop', brandZh: '健康商店',
     headline: 'Sleep well', headlineZh: '睡得更好',
-    copy: 'Wake up rested', copyZh: '醒来精神饱满', sellingPointZh: '睡得更好',
+    copy: 'Wake up rested', copyZh: '醒来精神饱满', sellingPointZh: '醒来状态更佳',
     fieldAnalysis: { status: 'pending' },
   };
   const repeated = gateSourceFields('ads', old, { ...old }, { brand: old.brand });
@@ -77,7 +77,7 @@ test('re-observing a pending ad retains translations for unchanged source text',
   assert.equal(repeated.brandZh, '健康商店');
   assert.equal(repeated.headlineZh, '睡得更好');
   assert.equal(repeated.copyZh, '醒来精神饱满');
-  assert.equal(repeated.sellingPointZh, '睡得更好');
+  assert.equal(repeated.sellingPointZh, '醒来状态更佳');
 
   const changed = gateSourceFields('ads', old, { ...old, headline: 'New headline' }, { headline: 'New headline' });
   assert.equal(changed.brandZh, '健康商店');
