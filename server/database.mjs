@@ -14,7 +14,9 @@ try {
   config = decryptConfig(JSON.parse(await readFile(configPath, 'utf8')));
 } catch (error) {
   if (error.code !== 'ENOENT')
-    throw new Error('数据库配置无法解密，请检查服务器加密密钥');
+    throw new Error('数据库配置无法解密，请检查服务器加密密钥', {
+      cause: error,
+    });
 }
 export const engine = config ? 'mysql' : 'postgres';
 export const sql = (postgres, my) => (engine === 'mysql' ? my : postgres);
@@ -26,7 +28,7 @@ function wrap(connection, isPool = false) {
     async query(statement, params = []) {
       const values = [];
       const text = statement
-        .replace(/\$(\d+)/g, (_, index) => {
+        .replaceAll(/\$(\d+)/g, (_, index) => {
           const value = params[Number(index) - 1];
           values.push(
             value !== null &&
@@ -66,6 +68,7 @@ const advisoryLocks = new Map([
   ['hotwords-runner', 89_761_041],
   ['identity', 89_761_038],
   ['keyword-submit', 89_761_032],
+  ['keyword-translation', 89_761_043],
   ['keyword-trends-config', 89_761_040],
   ['keyword-trends-runner', 89_761_042],
   ['market-research', 89_761_035],

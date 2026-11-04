@@ -1,9 +1,15 @@
 /* oxlint-disable vitest/no-import-node-test -- Server test suite uses Node. */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
+
 import { aiPromptSnapshot } from './ai-prompt-defaults.mjs';
-import { keywordNamesAction, validateNames } from './keyword-names.mjs';
 import { cleanKeyword, editableKeywordPatch } from './domain.mjs';
+import {
+  keywordNamesAction,
+  keywordTranslationsAction,
+  validateNames,
+} from './keyword-names.mjs';
 
 const record = {
   id: 'one',
@@ -136,4 +142,105 @@ test('timeouts and truncated responses never retry the model automatically', asy
       ),
     /未完整返回/,
   );
+});
+
+test('automatic keyword translations reuse persisted names and record one paid call', async () => {
+  const cache = new Map();
+  const saved = new Map();
+  let calls = 0;
+  let recorded = 0;
+  const io = {
+    records: async () => [
+      {
+        id: 'keyword-1',
+        term: 'creatine gummies',
+        seedTerm: 'protein powder',
+        trendRelatedTop: [{ query: 'fish oil capsules' }],
+      },
+    ],
+    read: async (terms) =>
+      new Map(
+        terms
+          .filter((term) => cache.has(term))
+          .map((term) => [
+            `keyword:translation:v1:${createHash('sha256').update(term.toLocaleLowerCase()).digest('hex')}`,
+            cache.get(term),
+          ]),
+      ),
+    write: async (term, termZh) => {
+      cache.set(term, termZh);
+    },
+    saveKeywordName: async (term, termZh) => {
+      saved.set(term, termZh);
+    },
+    withLock: async (callback) => callback(),
+    config: async () => ({ model: 'synthetic-model' }),
+    prompt: async () => aiPromptSnapshot('keyword_translation'),
+    record: async (context, callback) => {
+      assert.equal(context.sourceId, 'analysis');
+      recorded++;
+      return callback();
+    },
+    post: async (_config, messages) => {
+      calls++;
+      const items = JSON.parse(messages[1].content).items;
+      assert.deepEqual(
+        items.map((item) => item.term),
+        ['creatine gummies', 'protein powder'],
+      );
+      return {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                items: [
+                  { id: '0', termZh: '肌酸软糖' },
+                  { id: '1', termZh: '蛋白粉' },
+                ],
+              }),
+            },
+          },
+        ],
+        usage: { total_tokens: 48 },
+      };
+    },
+  };
+  await assert.rejects(
+    () =>
+      keywordTranslationsAction(
+        { terms: ['unrelated paid query'], keywordIds: ['keyword-1'] },
+        { role: 'researcher' },
+        io,
+      ),
+    /只允许翻译/,
+  );
+  await assert.rejects(
+    () =>
+      keywordTranslationsAction(
+        { terms: [], keywordIds: ['keyword-1'] },
+        { role: 'admin' },
+        io,
+      ),
+    /1～40/,
+  );
+  const input = {
+    keywordIds: ['keyword-1'],
+    terms: ['creatine gummies', 'protein powder', 'creatine gummies'],
+  };
+  const first = await keywordTranslationsAction(
+    input,
+    { role: 'researcher' },
+    io,
+  );
+  assert.deepEqual(first.items, [
+    { term: 'creatine gummies', termZh: '肌酸软糖' },
+    { term: 'protein powder', termZh: '蛋白粉' },
+  ]);
+  assert.equal(first.usage.total_tokens, 48);
+  assert.equal(saved.get('creatine gummies'), '肌酸软糖');
+  const second = await keywordTranslationsAction(input, { role: 'admin' }, io);
+  assert.equal(second.cached, true);
+  assert.deepEqual(second.items, first.items);
+  assert.equal(calls, 1);
+  assert.equal(recorded, 1);
 });
