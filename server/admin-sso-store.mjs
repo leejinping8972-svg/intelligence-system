@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { SESSION_IDLE_MS } from './session-policy.mjs';
+
 export const ssoSchema =
   'CREATE TABLE IF NOT EXISTS admin_sso_tickets (ticket_hash varchar(64) PRIMARY KEY, kind varchar(16) NOT NULL, payload text NOT NULL, expires_at bigint NOT NULL, consumed integer NOT NULL DEFAULT 0)';
 const hash = (value) => createHash('sha256').update(value).digest('hex');
@@ -32,7 +34,7 @@ export function createSsoStore(pool, now = Date.now) {
     async activeAdmin(id, tokenHash) {
       const { rows } = await pool.query(
         "SELECT u.* FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id WHERE u.id=$1 AND s.token_hash=$2 AND s.expires_at>$3 AND s.last_seen_at>$4 AND u.enabled=1 AND u.role='admin'",
-        [id, tokenHash, now(), now() - 30 * 60_000],
+        [id, tokenHash, now(), now() - SESSION_IDLE_MS],
       );
       return rows[0] || null;
     },

@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 
 import { lock, pool, sql, unlock } from './database.mjs';
 import { readCredentials } from './local-provider.mjs';
+import { SESSION_IDLE_MS } from './session-policy.mjs';
 
 const derive = promisify(scrypt);
 const cookieName = '__Host-is_session';
@@ -65,7 +66,7 @@ export async function sessionUser(request, touch = false, connection = pool) {
   const now = Date.now();
   const { rows } = await connection.query(
     'SELECT u.*,s.token_hash,s.last_seen_at FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>$2 AND s.last_seen_at>$3 AND u.enabled=1',
-    [sha(token), now, now - 30 * 60_000],
+    [sha(token), now, now - SESSION_IDLE_MS],
   );
   const user = rows[0];
   if (user && touch && Number(user.last_seen_at) < now - 60_000)
@@ -84,7 +85,7 @@ function scheduleSessionCleanup(now) {
     try {
       await pool.query(
         'DELETE FROM admin_sessions WHERE expires_at<$1 OR last_seen_at<$2',
-        [now, now - 30 * 60_000],
+        [now, now - SESSION_IDLE_MS],
       );
     } catch {
       nextSessionCleanupAt = Date.now() + 60_000;
