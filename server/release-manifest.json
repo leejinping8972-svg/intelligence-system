@@ -1,32 +1,24 @@
 {
-  "title": "广告译文防再次清空",
+  "title": "保留独立中文素材卖点",
   "includedCommits": [
-    "4792367aae9384868bcc7fbabf17d8c783ba0566"
+    "627abf6388b70ad94b951453e967165e07197e18"
   ],
-  "sourceSha": "4792367aae9384868bcc7fbabf17d8c783ba0566",
+  "sourceSha": "627abf6388b70ad94b951453e967165e07197e18",
   "changes": [
-    "广告再次采集时，原文字段未变化则保留已写入的中文译文；只有原文变化时才清理对应译文。",
-    "提供带检查点的一次性广告译文回填与核验工具，发布后从已保存的译文恢复被旧逻辑清空的一条记录。"
+    "待分析广告再次采集时，标题与文案原文均未变化就保留已有的独立中文卖点；任一原文变化时沿用现有译文回退逻辑。"
   ],
   "files": [
-    "server/ad-brand-chinese-backfill.mjs",
-    "server/ad-translation-backfill-domain.mjs",
-    "server/ad-translation-backfill-recover.mjs",
-    "server/ad-translation-backfill-run.mjs",
-    "server/ad-translation-backfill-verify.mjs",
-    "server/ad-translation-backfill.mjs",
-    "server/ad-translation-backfill.test.mjs",
     "server/ad-translation.test.mjs",
     "server/source-field-domain.mjs"
   ],
   "validation": [
     "功能开发自测：相关 Node 测试 10/10、脚本语法与差异检查通过。",
-    "功能树缺少 oxlint、oxfmt、eslint、turbo，提交跳过钩子；未声称完整 lint 或类型检查通过。",
+    "独立工作树未安装完整前端工具，提交跳过钩子；未声称完整 lint 或类型检查通过。",
     "发布阶段按用户策略跳过重复单测、回归、类型检查、lint、隔离数据库测试、界面验收、验证构建及 CI 等待。",
     "本批无 schema、迁移或依赖变更；完整数据库备份按用户策略跳过，保留部署锁、队列、检查点、源码、镜像、前端、配置与 public/data 保护。"
   ],
   "operator": "Codex",
-  "id": "20261104131706-63d58f29",
-  "builtAt": "2026-11-04T13:17:06.565Z",
-  "sourceDigest": "63d58f295fd9c34179eee845ca08a547da7d193583b620d849246381230c8b9c"
+  "id": "20261104141429-298c7f00",
+  "builtAt": "2026-11-04T14:14:29.545Z",
+  "sourceDigest": "298c7f00b83a67bec3d8dea262e3ae022365a4b8d4d8d78ce9de5c980deb1c25"
 }
