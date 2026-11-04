@@ -269,5 +269,15 @@ export function gateSourceFields(kind, old, value, patch) {
     for (const key of fields[kind]) if (key in old) result[key] = old[key];
     return result;
   }
-  return pendingSourceFields(kind, value);
+  const pending = pendingSourceFields(kind, value);
+  if (kind === 'ads' && old) {
+    for (const source of ['brand', 'headline', 'copy']) {
+      const translated = `${source}Zh`;
+      if (old[source] === value[source] && String(old[translated] || '').trim())
+        pending[translated] = old[translated];
+    }
+    if (pending.headlineZh || pending.copyZh)
+      pending.sellingPointZh = pending.headlineZh || pending.copyZh;
+  }
+  return pending;
 }
