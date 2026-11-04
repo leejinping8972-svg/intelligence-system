@@ -19,6 +19,7 @@ import KeywordRelatedQueries from './KeywordRelatedQueries.vue';
 const props = defineProps<{
   kind: CoreKind;
   record: Ad | Keyword | Product | Site;
+  translate?: (text: string) => string;
 }>();
 const period = ref<CorePeriod>(30);
 onMounted(() => {
@@ -44,7 +45,9 @@ const columns = [
         v-if="kind === 'products' || kind === 'keywords'"
         v-model:value="period"
         aria-label="详情统计周期"
-        :options="[30, 90, 180, 365].map((d) => ({ value: d, label: `近${d}天` }))"
+        :options="
+          [30, 90, 180, 365].map((d) => ({ value: d, label: `近${d}天` }))
+        "
         style="width: 120px"
       />
     </div>
@@ -57,7 +60,16 @@ const columns = [
       :scroll="{ x: 560 }"
     >
       <template #bodyCell="{ column, record: row }">
-        <KeywordRelatedQueries v-if="column.key === 'value' && kind === 'keywords' && (row.key === 'relatedTop' || row.key === 'relatedRising')" :keyword="record as Keyword" :kind="row.key" />
+        <KeywordRelatedQueries
+          v-if="
+            column.key === 'value' &&
+            kind === 'keywords' &&
+            (row.key === 'relatedTop' || row.key === 'relatedRising')
+          "
+          :keyword="record as Keyword"
+          :kind="row.key"
+          :translate="translate"
+        />
         <EvidenceMetric
           v-else-if="column.key === 'value'"
           :metric="row as MetricValue"
@@ -79,10 +91,10 @@ const columns = [
 </template>
 <style scoped>
 .core-history {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
   max-height: 320px;
   overflow: auto;
   font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 </style>

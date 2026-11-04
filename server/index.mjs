@@ -47,7 +47,10 @@ import {
   submitInsight,
 } from './insight-jobs.mjs';
 import { retryRecords } from './job-progress.mjs';
-import { keywordNamesAction } from './keyword-names.mjs';
+import {
+  keywordNamesAction,
+  keywordTranslationsAction,
+} from './keyword-names.mjs';
 import { submitKeywordJob } from './keyword-submit.mjs';
 import { keywordTrendsAction } from './keyword-trends-store.mjs';
 import { createKeywordViewsAction } from './keyword-views.mjs';
@@ -213,6 +216,9 @@ async function api(input, user) {
     }
     case 'server_keyword_names': {
       return keywordNamesAction(input, user);
+    }
+    case 'server_keyword_translations': {
+      return keywordTranslationsAction(input, user);
     }
     case 'server_westmonth_session_status':
     case 'server_westmonth_session_save':

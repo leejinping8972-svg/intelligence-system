@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import type { Keyword, Market } from './data';
+import type { KeywordViewFilters } from './keyword-views';
 
 import { computed, nextTick, reactive, ref, watch } from 'vue';
-import type { KeywordViewFilters } from './keyword-views';
-import SavedKeywordViews from './components/SavedKeywordViews.vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import {
@@ -38,18 +37,14 @@ import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
-import PageHeader from './components/PageHeader.vue';
-import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
-import { serverMode } from './session';
-import { useCoreList } from './use-core-list';
-import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
-const core = useCoreList('keywords');
-const { period: corePeriod } = core;
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
+import PageHeader from './components/PageHeader.vue';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
+import SavedKeywordViews from './components/SavedKeywordViews.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
 import SocialTrendCell from './components/SocialTrendCell.vue';
+import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 import {
   audit,
   categories,
@@ -72,8 +67,13 @@ import {
   resolveSelection,
 } from './keyword-selection';
 import { emptyScoreFilter, matchesScore } from './resource-list';
+import { adminRequest, serverMode, session } from './session';
 import { keywordSourceStatus } from './site-discovery';
+import { useCoreList } from './use-core-list';
+import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
 
+const core = useCoreList('keywords');
+const { period: corePeriod } = core;
 const route = useRoute();
 const router = useRouter();
 const open = ref(false);
@@ -139,22 +139,41 @@ const remote = useWorkspaceList<Keyword>(
 const overview = useOverviewSnapshot();
 remote.sort.value = 'score';
 const viewFilters = computed<KeywordViewFilters>(() => ({
-  market: state.market, search: search.value, batch: batchFilter.value, category: category.value,
-  rating: rating.value, ratingStatus: ratingStatus.value, score: scoreFilter.value,
-  tags: tagFilter.value, timeRange: timeRange.value, review: reviewFilter.value,
-  favorite: favoritesOnly.value, sort: remote.sort.value, order: remote.order.value,
-  pageSize: pageSize.value, period: corePeriod.value,
+  market: state.market,
+  search: search.value,
+  batch: batchFilter.value,
+  category: category.value,
+  rating: rating.value,
+  ratingStatus: ratingStatus.value,
+  score: scoreFilter.value,
+  tags: tagFilter.value,
+  timeRange: timeRange.value,
+  review: reviewFilter.value,
+  favorite: favoritesOnly.value,
+  sort: remote.sort.value,
+  order: remote.order.value,
+  pageSize: pageSize.value,
+  period: corePeriod.value,
 }));
 async function applyView(filters: KeywordViewFilters) {
   state.market = filters.market as typeof state.market;
   await nextTick();
-  search.value = filters.search; batchFilter.value = filters.batch || ''; category.value = filters.category;
-  rating.value = filters.rating; ratingStatus.value = filters.ratingStatus;
-  scoreFilter.value = { ...filters.score }; tagFilter.value = [...filters.tags];
-  timeRange.value = filters.timeRange; reviewFilter.value = filters.review;
-  favoritesOnly.value = filters.favorite; remote.sort.value = filters.sort;
-  remote.order.value = filters.order; pageSize.value = filters.pageSize;
-  corePeriod.value = filters.period; currentPage.value = 1; clearSelection();
+  search.value = filters.search;
+  batchFilter.value = filters.batch || '';
+  category.value = filters.category;
+  rating.value = filters.rating;
+  ratingStatus.value = filters.ratingStatus;
+  scoreFilter.value = { ...filters.score };
+  tagFilter.value = [...filters.tags];
+  timeRange.value = filters.timeRange;
+  reviewFilter.value = filters.review;
+  favoritesOnly.value = filters.favorite;
+  remote.sort.value = filters.sort;
+  remote.order.value = filters.order;
+  pageSize.value = filters.pageSize;
+  corePeriod.value = filters.period;
+  currentPage.value = 1;
+  clearSelection();
 }
 const gradeColors: Record<string, string> = {
   A: 'green',
@@ -250,7 +269,9 @@ const localRows = computed(() =>
         (record.reviewStatus || 'pending') === reviewFilter.value) &&
       (!favoritesOnly.value || record.favorite) &&
       (!batchFilter.value ||
-        (record.batch || '').toLocaleLowerCase().includes(batchFilter.value.toLocaleLowerCase()))
+        (record.batch || '')
+          .toLocaleLowerCase()
+          .includes(batchFilter.value.toLocaleLowerCase()))
     );
   }),
 );
@@ -261,6 +282,78 @@ const rows = computed(() =>
         assessment: assessKeyword(record),
       }))
     : localRows.value,
+);
+const translatedTerms = reactive<Record<string, string>>({});
+const translationError = ref('');
+const translationUsage = ref(0);
+let translating = false;
+function chineseText(term?: string, saved?: string) {
+  if (!term) return '';
+  return (
+    saved?.trim() ||
+    translatedTerms[term] ||
+    keywordChineseName({ term, termZh: '' }) ||
+    (translating ? '翻译中' : '待翻译')
+  );
+}
+function translationTerms() {
+  return [
+    ...new Set(
+      rows.value
+        .flatMap((record) => [
+          ...(record.termZh ? [] : [record.term]),
+          record.seedTerm || '',
+          ...(record.trendRelatedTop || []).map((item) => item.query),
+          ...(record.trendRelatedRising || []).map((item) => item.query),
+        ])
+        .filter(
+          (term) =>
+            term && !/[\p{Script=Han}]/u.test(term) && !translatedTerms[term],
+        ),
+    ),
+  ];
+}
+async function translateVisible(force = false) {
+  if (
+    !serverMode ||
+    !session.user ||
+    translating ||
+    (translationError.value && !force)
+  )
+    return;
+  translating = true;
+  translationError.value = '';
+  try {
+    while (true) {
+      const terms = translationTerms().slice(0, 40);
+      if (terms.length === 0) break;
+      const result = await adminRequest<{
+        items: { term: string; termZh: string }[];
+        pending?: number;
+        usage?: { total_tokens?: number };
+      }>(
+        'server_keyword_translations',
+        { terms, keywordIds: rows.value.map((record) => record.id) },
+        100_000,
+      );
+      if (result.items.length === 0) break;
+      for (const item of result.items) translatedTerms[item.term] = item.termZh;
+      translationUsage.value += result.usage?.total_tokens || 0;
+      if (result.pending) break;
+    }
+  } catch (error) {
+    translationError.value =
+      error instanceof Error ? error.message : '自动翻译失败';
+  } finally {
+    translating = false;
+  }
+}
+watch(
+  [rows, () => session.user?.role],
+  () => {
+    void translateVisible();
+  },
+  { immediate: true },
 );
 const selection = computed(() =>
   resolveSelection(selectedIds.value, selectionSnapshots.value, state.keywords),
@@ -362,44 +455,63 @@ const pagination = computed(() => ({
   },
 }));
 const columns = [
-  { title: '关键词 / 种子词', key: 'term', width: 195, fixed: 'left' as const },
-  { title: '采集批次', key: 'batch', width: 130 },
-  { title: '市场 / 品类', key: 'market', width: 100 },
-  { title: '研究评级', key: 'grade', width: 82 },
+  { title: '关键词 / 种子词', key: 'term', width: 220, fixed: 'left' as const },
+  { title: '采集批次', key: 'batch', width: 105 },
+  { title: '市场 / 品类', key: 'market', width: 88 },
+  { title: '研究评级', key: 'grade', width: 76 },
   {
     title: '研究评分',
     key: 'score',
-    width: 88,
+    width: 78,
     sorter: serverMode
       ? true
       : (a: Keyword, b: Keyword) =>
           (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
   },
-  { title: '分析标签', key: 'tags', width: 150 },
-  { title: '谷歌趋势', key: 'trend', width: 158 },
-  { title: 'TK趋势', key: 'tiktok', width: 118 },
-  { title: 'INS趋势', key: 'instagram', width: 118 },
-  { title: 'FB趋势', key: 'facebook', width: 118 },
-  { title: '来源', key: 'source', width: 115 },
+  { title: '分析标签', key: 'tags', width: 130 },
+  { title: '月搜索量', key: 'core:searchVolume', width: 100 },
+  { title: '热门相关查询', key: 'core:relatedTop', width: 170 },
+  { title: '上升相关查询', key: 'core:relatedRising', width: 170 },
+  { title: '来源', key: 'source', width: 105 },
   {
     title: '抓取时间',
     key: 'collectedAt',
-    width: 140,
+    width: 118,
     sorter: serverMode
       ? true
       : (a: Keyword, b: Keyword) =>
           (Date.parse(a.collectedAt || '') || 0) -
           (Date.parse(b.collectedAt || '') || 0),
   },
-  { title: '人工筛选', key: 'review', width: 95 },
-  { title: '操作', key: 'actions', width: 135, fixed: 'right' as const },
+  { title: '人工筛选', key: 'review', width: 78 },
+  { title: '谷歌趋势', key: 'trend', width: 145 },
+  { title: 'TK趋势', key: 'tiktok', width: 108 },
+  { title: 'INS趋势', key: 'instagram', width: 108 },
+  { title: 'FB趋势', key: 'facebook', width: 108 },
+  { title: '操作', key: 'actions', width: 112, fixed: 'right' as const },
 ];
-const displayColumns = computed(() => core.columns(columns).map(column => ({
-  ...column,
-  ...(['score', 'collectedAt'].includes(column.key || '') ? {
-    sortOrder: remote.sort.value === column.key ? remote.order.value as 'ascend' | 'descend' : null,
-  } : {}),
-})));
+const displayColumns = computed(() => {
+  const all = core.columns(columns);
+  const trends = new Set(['facebook', 'instagram', 'tiktok', 'trend']);
+  const ordered = [
+    ...all.filter(
+      (column) => !trends.has(column.key || '') && column.key !== 'actions',
+    ),
+    ...all.filter((column) => trends.has(column.key || '')),
+    ...all.filter((column) => column.key === 'actions'),
+  ];
+  return ordered.map((column) => ({
+    ...column,
+    ...(['collectedAt', 'score'].includes(column.key || '')
+      ? {
+          sortOrder:
+            remote.sort.value === column.key
+              ? (remote.order.value as 'ascend' | 'descend')
+              : null,
+        }
+      : {}),
+  }));
+});
 function formatTime(value?: string) {
   if (!value) return '未记录';
   const date = new Date(value);
@@ -583,12 +695,13 @@ async function exportKeywords() {
   let records = rows.value;
   if (serverMode)
     try {
-      records = (await remote.exportRows()).map((record) => ({
+      const exported = await remote.exportRows();
+      records = exported.map((record) => ({
         ...record,
         assessment: assessKeyword(record),
       }));
-    } catch (cause) {
-      message.error((cause as Error).message);
+    } catch (error) {
+      message.error((error as Error).message);
       return;
     }
   exportCsv(
@@ -853,25 +966,29 @@ function saveMetrics() {
         >
           重置筛选
         </Button>
-        <ScoreRangeFilter
-          v-model="scoreFilter"
-          label="关键词"
-        /><KeywordNamesDialog :ids="selectedIds" />
+      </div>
+      <div class="keyword-list-controls">
+        <ScoreRangeFilter v-model="scoreFilter" label="关键词" />
+        <CoreListControls v-model:period="corePeriod" kind="keywords" />
+        <SavedKeywordViews :filters="viewFilters" @apply="applyView" />
+        <KeywordNamesDialog :ids="selectedIds" />
         <KeywordTrendsControl
           :ids="selectedIds"
           :visible-ids="serverMode ? rows.map((r) => r.id) : undefined"
         />
-      </div>
-      <div class="hci-toolbar">
-        <span class="hci-subtle"
-          >已勾选 {{ selectedIds.length }} 个关键词（跨页保留）</span
-        >
         <Button
           :disabled="!rows.length || supplementSubmitting"
           @click="selectFiltered"
         >
-          全选筛选结果（跨页）
+          全选筛选结果
         </Button>
+        <span class="keyword-result-count hci-subtle">{{ serverMode ? remote.total.value : rows.length }} 条结果</span>
+      </div>
+      <div
+        v-if="selectedIds.length"
+        class="hci-toolbar keyword-selection-actions"
+      >
+        <span class="hci-subtle">已勾选 {{ selectedIds.length }} 个（跨页保留）</span>
         <Button
           :disabled="!selectedIds.length || supplementSubmitting"
           @click="clearSelection"
@@ -918,9 +1035,23 @@ function saveMetrics() {
         >
           标为排除
         </Button>
-        <span class="hci-toolbar-end hci-subtle"
-          >{{ serverMode ? remote.total.value : rows.length }} 条筛选结果</span
-        >
+      </div>
+      <div
+        v-if="translationError"
+        class="keyword-translation-status"
+        role="alert"
+      >
+        自动翻译未完成：{{ translationError }}
+        <Button type="link" size="small" @click="translateVisible(true)">
+          重试
+        </Button>
+      </div>
+      <div
+        v-else-if="translationUsage"
+        class="keyword-translation-status hci-subtle"
+        role="status"
+      >
+        本次自动翻译 {{ translationUsage }} tokens，模型用量已记入资源消耗
       </div>
       <Alert
         v-if="selection.missing.length"
@@ -934,11 +1065,6 @@ function saveMetrics() {
         :loading="remote.loading.value"
         @retry="remote.reload(true)"
       />
-      <CoreListControls
-        v-model:period="corePeriod"
-        kind="keywords"
-      />
-      <SavedKeywordViews :filters="viewFilters" @apply="applyView" />
       <Table
         @change="remote.tableChange"
         :data-source="rows"
@@ -956,7 +1082,12 @@ function saveMetrics() {
               rows.length === 0
         "
         table-layout="fixed"
-        :scroll="{ x: core.columns(columns).reduce((total, column) => total + (column.width || 0), 32) }"
+        :scroll="{
+          x: displayColumns.reduce(
+            (total, column) => total + (column.width || 0),
+            32,
+          ),
+        }"
       >
         <template #bodyCell="{ column, record }">
           <KeywordRelatedQueries
@@ -965,6 +1096,7 @@ function saveMetrics() {
               column.key === 'core:relatedRising'
             "
             :keyword="record as Keyword"
+            :translate="chineseText"
             :kind="
               column.key === 'core:relatedTop' ? 'relatedTop' : 'relatedRising'
             "
@@ -975,17 +1107,21 @@ function saveMetrics() {
           />
           <template v-else-if="column.key === 'term'">
             <button class="hci-link keyword-term" @click="openDetail(record)">
-              {{ record.term }}
+              {{ chineseText(record.term, record.termZh) }}
             </button>
-            <p class="hci-subtle">
-              {{ record.termZh ? '中文' : '中文参考' }}：{{
-                keywordChineseName({
-                  term: record.term,
-                  termZh: record.termZh,
-                }) || '待补充'
-              }}
+            <p
+              v-if="chineseText(record.term, record.termZh) !== record.term"
+              class="hci-subtle keyword-original"
+            >
+              {{ record.term }}
             </p>
-            <p class="hci-subtle">种子：{{ record.seedTerm || '历史记录' }}</p>
+            <p
+              v-if="record.seedTerm && record.seedTerm !== record.term"
+              class="keyword-seed"
+            >
+              种子 {{ chineseText(record.seedTerm) }}
+              <span class="hci-subtle">{{ record.seedTerm }}</span>
+            </p>
           </template>
           <template v-else-if="column.key === 'market'">
             <Tag>{{ marketName(record.market) }}</Tag>
@@ -1039,7 +1175,7 @@ function saveMetrics() {
                 }}
               </Tag>
             </Tooltip>
-            <KeywordTrendComparison :keyword="record as Keyword" />
+            <KeywordTrendComparison :keyword="record as Keyword" compact />
           </template>
           <template
             v-else-if="
@@ -1049,6 +1185,7 @@ function saveMetrics() {
             <SocialTrendCell
               :keyword="record as Keyword"
               :source="String(column.key)"
+              compact
             />
           </template>
           <template v-else-if="column.key === 'source'">
@@ -1059,8 +1196,7 @@ function saveMetrics() {
             </div>
           </template>
           <template v-else-if="column.key === 'collectedAt'">
-            <span>{{ formatTime(record.collectedAt) }}</span
-            ><Tooltip :title="formatTime(record.trendCollectedAt)">
+            <span>{{ formatTime(record.collectedAt) }}</span><Tooltip :title="formatTime(record.trendCollectedAt)">
               <p class="hci-subtle">
                 趋势日期 {{ record.trendCollectedAt?.slice(0, 10) || '未记录' }}
               </p>
@@ -1085,8 +1221,7 @@ function saveMetrics() {
               :market="record.market"
               :keyword-ids="[record.id]"
             />
-            <Button type="link" @click="openDetail(record)">评分详情</Button
-            ><Button type="link" @click="toggleFavorite(record)">
+            <Button type="link" @click="openDetail(record)">评分详情</Button><Button type="link" @click="toggleFavorite(record)">
               {{ record.favorite ? '已收藏' : '收藏' }}
             </Button>
           </template>
@@ -1095,17 +1230,11 @@ function saveMetrics() {
     </section>
     <div class="hci-field-notes">
       <div>
-        <b>分阶段决策</b
-        ><span
-          >本页扩词、补齐平台指标与趋势后评分。标为入选后，在「已入选关键词」中发起独立站采集。</span
-        >
+        <b>分阶段决策</b><span>本页扩词、补齐平台指标与趋势后评分。标为入选后，在「已入选关键词」中发起独立站采集。</span>
       </div>
       <div>
-        <b>评级与证据</b
-        ><span
-          >A ≥80，B 65～79，C 50～64，D
-          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span
-        >
+        <b>评级与证据</b><span>A ≥80，B 65～79，C 50～64，D
+          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span>
       </div>
     </div>
 
@@ -1139,7 +1268,9 @@ function saveMetrics() {
             :maxlength="100"
             placeholder="例如：2026-11-02 美国益生菌"
           />
-          <p class="hci-subtle">同一批采集的关键词填写相同名称，提交后可在列表按批次检索。</p>
+          <p class="hci-subtle">
+            同一批采集的关键词填写相同名称，提交后可在列表按批次检索。
+          </p>
         </Form.Item>
         <Form.Item label="目标市场" required>
           <Checkbox.Group
@@ -1271,8 +1402,7 @@ function saveMetrics() {
         :key="dimension.key"
         class="hci-market-row"
       >
-        <b>{{ dimension.label }}</b
-        ><span>{{ dimension.weight }}%</span>
+        <b>{{ dimension.label }}</b><span>{{ dimension.weight }}%</span>
       </div>
       <div class="hci-evidence">
         A ≥80，B 65～79，C 50～64，D
@@ -1324,14 +1454,18 @@ function saveMetrics() {
         </template>
       </Alert>
       <template v-else-if="detail && assessment">
-        <CoreMetricsPanel kind="keywords" :record="detail" />
+        <CoreMetricsPanel
+          kind="keywords"
+          :record="detail"
+          :translate="chineseText"
+        />
         <h2 class="keyword-detail-title hci-resource-title">
-          {{ detail.term }}
+          {{ chineseText(detail.term, detail.termZh) }}
         </h2>
-        <p>
-          {{ detail.termZh ? '中文名称' : '中文参考' }}：{{
-            keywordChineseName(detail) || '待补充'
-          }}
+        <p class="hci-subtle">{{ detail.term }}</p>
+        <p v-if="detail.seedTerm && detail.seedTerm !== detail.term">
+          种子 {{ chineseText(detail.seedTerm) }}
+          <span class="hci-subtle">{{ detail.seedTerm }}</span>
         </p>
         <p class="hci-subtle">
           {{ marketName(detail.market) }} · {{ detail.category }} ·
@@ -1342,8 +1476,7 @@ function saveMetrics() {
             {{ assessment.grade || '待评级'
             }}{{ assessment.status === 'provisional' ? ' · 暂评' : '' }}
           </Tag>
-          <b>{{ assessment.score ?? '—' }} / 100</b
-          ><span>数据覆盖 {{ assessment.coverage }}%</span>
+          <b>{{ assessment.score ?? '—' }} / 100</b><span>数据覆盖 {{ assessment.coverage }}%</span>
         </div>
         <Alert
           :message="assessment.recommendation"
@@ -1367,17 +1500,12 @@ function saveMetrics() {
             class="keyword-dimension hci-dimension-card"
           >
             <div>
-              <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b
-              ><strong
-                >{{ dimension.score ?? '待补充'
-                }}{{ dimension.score === null ? '' : ' / 100' }}</strong
-              >
+              <b>{{ dimension.label }} · 权重 {{ dimension.weight }}%</b><strong>{{ dimension.score ?? '待补充'
+                }}{{ dimension.score === null ? '' : ' / 100' }}</strong>
             </div>
             <p class="hci-subtle">{{ dimension.evidence }}</p>
-            <span class="hci-subtle"
-              >已覆盖权重 {{ dimension.coveredWeight }} /
-              {{ dimension.weight }}</span
-            >
+            <span class="hci-subtle">已覆盖权重 {{ dimension.coveredWeight }} /
+              {{ dimension.weight }}</span>
           </div>
         </div>
         <p class="hci-subtle">
@@ -1465,10 +1593,7 @@ function saveMetrics() {
           </Form.Item>
         </Form>
         <div class="hci-toolbar">
-          <Button type="primary" @click="saveMetrics">保存依据并重评</Button
-          ><Button @click="markRecords([detail], 'selected')">标为入选</Button
-          ><Button @click="markRecords([detail], 'excluded')">标为排除</Button
-          ><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
+          <Button type="primary" @click="saveMetrics">保存依据并重评</Button><Button @click="markRecords([detail], 'selected')">标为入选</Button><Button @click="markRecords([detail], 'excluded')">标为排除</Button><Button @click="markRecords([detail], 'pending')">恢复待筛选</Button>
         </div>
       </template>
     </Drawer>
@@ -1488,21 +1613,30 @@ function saveMetrics() {
 }
 
 .keyword-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: var(--hci-paper);
+  border: 1px solid var(--hci-border, #e6ebee);
+  border-radius: 5px;
 }
 
 .keyword-summary > div {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 22px;
-  background: var(--hci-paper);
-  border: 1px solid var(--hci-border, #e6ebee);
-  border-radius: 12px;
+  padding: 2px 18px;
+  border-right: 1px solid var(--hci-border, #e6ebee);
+}
+
+.keyword-summary > div:first-child {
+  padding-left: 0;
+}
+
+.keyword-summary > div:last-child {
+  border-right: 0;
 }
 
 .keyword-summary span {
@@ -1510,7 +1644,116 @@ function saveMetrics() {
 }
 
 .keyword-summary b {
-  font-size: 25px;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.keyword-filters {
+  gap: 6px !important;
+  margin: 0 0 4px !important;
+}
+
+.keyword-filters :deep(.ant-input-search) {
+  flex: 1 1 210px !important;
+  min-width: 180px !important;
+  max-width: 270px !important;
+}
+
+.keyword-filters > :deep(.ant-input-affix-wrapper) {
+  flex: 0 1 145px !important;
+  min-width: 120px !important;
+}
+
+.keyword-filters > :deep(.ant-select) {
+  flex: 0 1 118px !important;
+  min-width: 100px !important;
+}
+
+.keyword-filters > :deep(.ant-select[aria-label='按分析标签筛选']) {
+  flex-basis: 175px !important;
+}
+
+.keyword-filters > :deep(.ant-select[aria-label='按抓取时间筛选']) {
+  flex-basis: 138px !important;
+}
+
+.keyword-filters > :deep(.ant-checkbox-wrapper) {
+  white-space: nowrap;
+}
+
+.keyword-list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 5px 0;
+  border-top: 1px solid var(--hci-border, #e6ebee);
+}
+
+.keyword-list-controls :deep(.hci-toolbar) {
+  gap: 5px;
+  margin: 0;
+}
+
+.keyword-list-controls :deep(.core-list-controls) {
+  flex-wrap: nowrap;
+}
+
+.keyword-list-controls :deep(.core-control-group) {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.keyword-list-controls :deep(.saved-keyword-views .ant-select) {
+  width: 160px !important;
+  min-width: 140px;
+}
+
+.keyword-result-count {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.keyword-selection-actions {
+  padding: 4px 0;
+  margin: 0 !important;
+  border-top: 1px solid var(--hci-border, #e6ebee);
+}
+
+.keyword-translation-status {
+  padding: 2px 0 4px;
+  font-size: 11px;
+}
+
+.keyword-original {
+  color: var(--hci-muted, #667085);
+  overflow-wrap: anywhere;
+}
+
+.keyword-seed {
+  margin-top: 3px !important;
+  font-size: 11px;
+}
+
+.keyword-seed .hci-subtle {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.keyword-compact-table :deep(.ant-table-tbody > tr > td),
+.keyword-compact-table :deep(.ant-table-thead > tr > th) {
+  padding: 4px 6px !important;
+  line-height: 1.3;
+}
+
+.keyword-compact-table :deep(.ant-tag) {
+  line-height: 19px;
+}
+
+.keyword-compact-table :deep(.ant-btn-link) {
+  height: 22px;
+  padding: 0 3px;
 }
 
 .keyword-tags {
@@ -1558,13 +1801,31 @@ function saveMetrics() {
   margin: 8px 0;
 }
 
-:global(.dark) .keyword-summary > div {
-  background: var(--hci-paper);
-}
-
 @media (max-width: 760px) {
   .keyword-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 0;
+  }
+
+  .keyword-summary > div {
+    flex: 1 1 50%;
+    padding: 2px 8px;
+    border: 0;
+  }
+
+  .keyword-summary > div:first-child {
+    padding-left: 8px;
+  }
+
+  .keyword-filters :deep(.ant-input-search) {
+    max-width: none !important;
+  }
+
+  .keyword-filters > :deep(.ant-select) {
+    flex: 1 1 calc(50% - 6px) !important;
+  }
+
+  .keyword-list-controls :deep(.core-list-controls) {
+    flex-wrap: wrap;
   }
 }
 </style>
