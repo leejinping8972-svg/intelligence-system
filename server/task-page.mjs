@@ -1,5 +1,7 @@
 import { projectJobTasks } from './task-projection.mjs';
 import { compactTask } from './workspace-snapshot.mjs';
+import { decorateAnalysisTasks, visibleTaskSource } from './source-analysis-stage.mjs';
+import { decorateKeywordTasks } from './task-keyword-executions.mjs';
 
 const PAGE_SIZES = new Set([10, 20, 50, 100]);
 const STATUS_FILTERS = new Set([
@@ -152,6 +154,7 @@ export async function listTaskPage(
   },
 ) {
   const query = normalizeTaskPageInput(input);
+  const source = visibleTaskSource(sql);
   const status = sqlStatus(expandStatuses(query.statuses));
   const search = sqlSearch(query.search, status.params.length, sql);
   const market = sqlMarket(
@@ -163,10 +166,10 @@ export async function listTaskPage(
   const where = filters ? `WHERE ${filters.replace(/^\s*AND\s+/, '')}` : '';
   const params = [...status.params, ...search.params, ...market.params];
   const order = `ORDER BY CASE WHEN status IN ('queued','running') THEN 0 ELSE 1 END, created_at DESC, id DESC`;
-  const countSql = `SELECT COUNT(*)::integer AS n FROM research_jobs ${where}`;
-  const listSql = `SELECT * FROM research_jobs ${where} ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+  const countSql = `SELECT COUNT(*)::integer AS n FROM ${source} ${where}`;
+  const listSql = `SELECT * FROM ${source} ${where} ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
   const countsSql =
-    'SELECT status, COUNT(*)::integer AS n FROM research_jobs GROUP BY status';
+    `SELECT status, COUNT(*)::integer AS n FROM ${source} GROUP BY status`;
   const [totalResult, list, counts, active] = await Promise.all([
     pool.query(sql(countSql, countSql.replaceAll('::integer', '')), params),
     pool.query(sql(listSql, listSql.replaceAll('::integer', '')), [
@@ -176,15 +179,17 @@ export async function listTaskPage(
     ]),
     pool.query(sql(countsSql, countsSql.replaceAll('::integer', ''))),
     pool.query(
-      `SELECT id, status, updated_at FROM research_jobs
+      `SELECT id, status, updated_at FROM ${source}
        WHERE cancelled=false AND status IN ('queued','running')
        ORDER BY updated_at DESC, id DESC
        LIMIT 20`,
     ),
   ]);
   const projected = list.rows.flatMap((job) => project(job, jobTasks));
+  const keywordTasks = await decorateKeywordTasks(projected, list.rows, pool);
+  const decorated = await decorateAnalysisTasks(keywordTasks, list.rows, pool, sql);
   const tasks = (
-    decorateTasks ? await decorateTasks(projected, list.rows) : projected
+    decorateTasks ? await decorateTasks(decorated, list.rows) : decorated
   ).map((task) => compact(task));
   const statusCounts = mergeStatusCounts(counts.rows);
   return {

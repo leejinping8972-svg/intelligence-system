@@ -70,7 +70,7 @@ import { emptyScoreFilter, matchesScore } from './resource-list';
 import { adminRequest, serverMode, session } from './session';
 import { keywordSourceStatus } from './site-discovery';
 import { useCoreList } from './use-core-list';
-import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
+import { useWorkspaceList } from './workspace-queries';
 
 const core = useCoreList('keywords');
 const { period: corePeriod } = core;
@@ -136,7 +136,6 @@ const remote = useWorkspaceList<Keyword>(
   currentPage,
   pageSize,
 );
-const overview = useOverviewSnapshot();
 remote.sort.value = 'score';
 const viewFilters = computed<KeywordViewFilters>(() => ({
   market: state.market,
@@ -380,11 +379,11 @@ const assessment = computed(() =>
 );
 const summary = computed(() =>
   serverMode
-    ? overview.snapshot.value?.keywords || {
-        total: 0,
-        priority: 0,
-        pending: 0,
-        selected: 0,
+    ? remote.marketSummary.value || {
+        total: null,
+        priority: null,
+        pending: null,
+        selected: null,
       }
     : {
         total: allRows.value.length,
@@ -842,7 +841,7 @@ function saveMetrics() {
       class="keyword-job-note"
     >
       <template #message>
-        {{ keywordJob.phase }} · 已发现 {{ keywordJob.discovered }} 个词 ·
+        {{ keywordJob.phase }} · 任务累计得到 {{ keywordJob.discovered }} 个词（含合并已有词） ·
         已查询趋势 {{ keywordJob.trended }} 个词
       </template>
       <template #description>
@@ -862,16 +861,16 @@ function saveMetrics() {
     </Alert>
     <div class="keyword-summary">
       <div>
-        <span>当前市场关键词</span><b>{{ summary.total }}</b>
+        <span>当前市场关键词</span><b>{{ summary.total ?? '—' }}</b>
       </div>
       <div>
-        <span>A / B 研究候选（含暂评）</span><b>{{ summary.priority }}</b>
+        <span>A / B 研究候选（含暂评）</span><b>{{ summary.priority ?? '—' }}</b>
       </div>
       <div>
-        <span>证据不足 · 待评级</span><b>{{ summary.pending }}</b>
+        <span>证据不足 · 待评级</span><b>{{ summary.pending ?? '—' }}</b>
       </div>
       <div>
-        <span>人工已入选</span><b>{{ summary.selected }}</b>
+        <span>人工已入选</span><b>{{ summary.selected ?? '—' }}</b>
       </div>
     </div>
     <section class="hci-panel">

@@ -10,6 +10,7 @@ import { rollingTrendComparison } from './trend-comparison';
 export type CoreKind = 'ads' | 'keywords' | 'products' | 'sites';
 export type CorePeriod = 30 | 90 | 180 | 365;
 export type MetricStatus =
+  | 'not_started'
   | 'accumulating'
   | 'available'
   | 'budget_limited'
@@ -100,6 +101,7 @@ export interface CoreMetricSummary {
   };
 }
 export const metricStatusLabels: Record<MetricStatus, string> = {
+  not_started: '未执行',
   available: '已获取',
   unsupported: '不支持',
   not_indexed: '未收录',
@@ -149,6 +151,7 @@ export function rollingWindow(at: string, market: string, days: CorePeriod) {
   };
 }
 export function missingStatus(status?: string, message = ''): MetricStatus {
+  if (status === 'not_started') return 'not_started';
   const s = `${status || ''} ${message}`;
   if (/budget|limit|截断|预算|上限/i.test(s)) return 'budget_limited';
   if (/unsupported|不支持|未开放/i.test(s)) return 'unsupported';
@@ -933,7 +936,7 @@ export function keywordMetrics(
       {
         source: m?.source || 'Semrush MCP',
         platform: 'Google搜索',
-        collectedAt: m?.collectedAt || '',
+        collectedAt: m?.collectedAt || k.semrushCollection?.finishedAt || '',
         period: '来源月度估算；起止日未提供',
         nature: 'third_party_estimate',
         status: validNumber(m?.monthlySearchVolume)

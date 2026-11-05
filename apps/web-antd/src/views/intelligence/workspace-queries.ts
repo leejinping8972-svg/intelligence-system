@@ -23,6 +23,7 @@ export type ReadCollection =
   | 'products'
   | 'sites';
 export interface PageResult<T> {
+  marketSummary?: { total: number; priority: number; pending: number; selected: number };
   rows: T[];
   total: number;
   page: number;
@@ -76,6 +77,8 @@ export function useWorkspaceList<T extends { id: string }>(
     loading = ref(false),
     error = ref('');
   const facets = ref<Record<string, any[]>>({});
+  const marketSummary = shallowRef<PageResult<T>['marketSummary']>();
+  let summaryMarket: unknown;
   const sort = ref(''),
     order = ref('descend');
   let active = true,
@@ -103,6 +106,7 @@ export function useWorkspaceList<T extends { id: string }>(
     if (!serverMode || !active || query.value.enabled === false) return;
     const ticket = ++sequence;
     const requested = input.value;
+    if (summaryMarket !== query.value.market) { marketSummary.value = undefined; summaryMarket = query.value.market; }
     const requestedKey = keyOf(requested);
     const cached = cache.get(requestedKey);
     if (displayedKey !== requestedKey || controller?.signal.aborted) {
@@ -119,6 +123,7 @@ export function useWorkspaceList<T extends { id: string }>(
     if (cached) {
       rows.value = hydrate(cached.value.rows as T[]);
       total.value = cached.value.total;
+      marketSummary.value = cached.value.marketSummary;
       loadedKey = requestedKey;
     }
     loading.value = !cached && loadedKey !== requestedKey;
@@ -127,6 +132,7 @@ export function useWorkspaceList<T extends { id: string }>(
       if (ticket !== sequence || !active) return;
       rows.value = hydrate(result.rows);
       total.value = result.total;
+      marketSummary.value = result.marketSummary;
       loadedKey = requestedKey;
       page.value = result.page;
       error.value = result.error || '';
@@ -234,6 +240,7 @@ export function useWorkspaceList<T extends { id: string }>(
     loading,
     error,
     facets,
+    marketSummary,
     reload,
     selectAll,
     async exportRows(ids: string[] = []): Promise<T[]> {

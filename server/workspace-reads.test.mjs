@@ -163,6 +163,11 @@ async function exerciseReadModel(
     });
   await drain();
   const firstProducts = await reads.list({ collection: 'products', pageSize: 1 });
+  const keywordSummary = await reads.list({ collection: 'keywords', market: 'US', search: 'magnesium gummies 0', pageSize: 1 });
+  assert.equal(keywordSummary.total, 1);
+  assert.equal(keywordSummary.marketSummary.total, 17);
+  assert.equal(keywordSummary.marketSummary.selected, 17);
+  assert.equal((await reads.list({ collection: 'keywords' })).marketSummary.total, 34);
   assert.equal(firstProducts.rows[0].linkedSite.domain, 'synthetic.example');
   assert.equal(firstProducts.rows[0].linkedSite.brand, 'Test brand');
   assert.deepEqual(Object.keys(firstProducts.rows[0].linkedSite).sort(), ['brand', 'domain', 'id', 'market']);

@@ -42,7 +42,7 @@ const phaseLabel = computed(() => {
   if (!value) return '';
   if (props.task.status === 'cancelled') return '任务已取消，已获取结果保留';
   if (value.terminal) {
-    if (value.failed || props.task.status === 'partial')
+    if (value.failed || props.task.status === 'partial' || (value.expansionOnly && ((value.metricPending || 0) > 0 || (value.metricUnknown || 0) > 0 || value.discoveryDone < value.discoveryTotal)))
       return '任务已结束 · 部分完成';
     return '采集已完成';
   }
@@ -54,6 +54,7 @@ const phaseLabel = computed(() => {
     return '控制请求频率 · 等待继续';
   }
   if (value.phase === 'queued') return '已入队 · 等待后台执行';
+  if (value.phase === 'blocked') return 'Semrush查询未完成，请查看失败原因';
   if (value.phase === 'discovery') return '正在发现关键词';
   if (value.phase === 'metrics') return '正在补充 Semrush 搜索量、KD 与意图';
   return '正在采集趋势并计算评分';
@@ -75,6 +76,7 @@ const rowLabels: Record<string, string> = {
   limited: '限流未完成',
   failed: '需人工处理',
   not_started: '任务停止 · 未执行',
+  unknown: '请求结果待确认',
 };
 const productLabels: Record<string, string> = {
   pending: '待采集',
@@ -111,12 +113,14 @@ const visibleRows = computed(() =>
     (row) =>
       rowFilter.value === 'all' ||
       row.failed ||
-      ['in_progress', 'pending', 'retrying', 'running'].includes(row.status),
+      ['in_progress', 'pending', 'retrying', 'running', 'not_started', 'unknown'].includes(row.status),
   ),
 );
 </script>
 
 <template>
+  <Alert v-if="task.sourceAnalysis" class="mb-3" type="info"
+    :message="`AI分析环节：完成 ${task.sourceAnalysis.completed}/${task.sourceAnalysis.total} · 执行中 ${task.sourceAnalysis.running} · 排队 ${task.sourceAnalysis.queued} · 失败 ${task.sourceAnalysis.failed} · 取消 ${task.sourceAnalysis.cancelled}`" />
   <div v-if="task.researchProgress" class="task-progress">
     <strong>{{
       task.status === 'queued'
@@ -503,7 +507,14 @@ const visibleRows = computed(() =>
       报告累计返回扣用 {{ p.semrushUnits || 0 }} API
       units（不含扣费结果未知的调用）；缺失或失败原因保留在任务日志
     </p>
-    <div class="stage-grid">
+    <Alert v-if="p.metricBlockReason" type="warning" show-icon :message="p.metricBlockReason" class="mb-3" />
+    <div v-if="p.expansionOnly" class="stage-grid">
+      <div><span>累计得到关键词</span><b>{{ p.discovered }} 个</b><small>包含与已有词合并的结果，不等于净新增</small></div>
+      <div><span>关键词发现</span><b>{{ p.discoveryDone }} / {{ p.discoveryTotal }}</b><small>种子词与市场组合 · 来源返回失败 {{ p.discoveryFailed || 0 }} 次</small></div>
+      <div><span>月搜索量</span><b>{{ p.semrushEnabled ? `${p.metricProcessed} / ${p.total}` : '未选择' }}</b><small v-if="p.semrushEnabled">成功 {{ p.succeeded || 0 }} · 失败 {{ p.failed }} · 未执行 {{ p.metricPending || 0 }} · 结果待确认 {{ p.metricUnknown || 0 }}</small></div>
+      <div><span>趋势采集</span><b>单独按需执行</b><small>获取关键词不代表趋势和其他指标已完成</small></div>
+    </div>
+    <div v-else class="stage-grid">
       <div>
         <span>{{
           p.discoveryTotal === 0 ? '本次补齐关键词' : '关键词发现'
@@ -552,7 +563,10 @@ const visibleRows = computed(() =>
         秒）。关闭页面不影响后台任务。
       </template>
     </Alert>
-    <p v-if="p.terminal" class="completion-note">
+    <p v-if="p.terminal && p.expansionOnly" class="completion-note">
+      本轮已结束，已获取关键词保留。月搜索量成功 {{ p.succeeded || 0 }}、失败 {{ p.failed }}、未执行 {{ p.metricPending || 0 }}、结果待确认 {{ p.metricUnknown || 0 }}；具体状态和原因见逐词结果。
+    </p>
+    <p v-else-if="p.terminal" class="completion-note">
       {{
         task.status === 'cancelled'
           ? '任务已停止。'
@@ -593,8 +607,8 @@ const visibleRows = computed(() =>
         :columns="[
           { title: '关键词 / 市场', key: 'term', width: 220 },
           { title: '状态', key: 'status', width: 140 },
-          { title: '一年 / 日趋势时点', key: 'points', width: 135 },
-          { title: '30天变化', key: 'growth', width: 110 },
+          ...(!p.expansionOnly ? [{ title: '一年 / 日趋势时点', key: 'points', width: 135 },
+          { title: '30天变化', key: 'growth', width: 110 }] : []),
           ...(p.asyncRetries
             ? [{ title: '自动重试 / 下次执行', key: 'retry', width: 190 }]
             : []),
@@ -621,7 +635,7 @@ const visibleRows = computed(() =>
                     : 'default'
               "
             >
-              {{ rowLabels[record.status] || record.status }}
+              {{ p.expansionOnly && record.status === 'collected' ? '已处理' : rowLabels[record.status] || record.status }}
             </Tag>
           </template>
           <template v-else-if="column.key === 'points'">

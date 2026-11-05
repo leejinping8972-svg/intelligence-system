@@ -18,6 +18,7 @@ export interface HotConfig {
   unitLimit: number;
 }
 export interface WatchRun {
+  sourceAnalysis?: { total: number; queued: number; running: number; completed: number; failed: number; cancelled: number; pending: number; processed: number };
   id: string;
   market: Market;
   day: string;

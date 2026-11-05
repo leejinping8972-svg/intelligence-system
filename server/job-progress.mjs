@@ -38,7 +38,7 @@ export function jobProgress(
     ? 0
     : job.input.seeds.length * job.input.markets.length;
   const discoveryDone =
-    cp.discoveryComplete || (terminal && !job.cancelled)
+    cp.discoveryComplete
       ? discoveryTotal
       : Math.min(cp.discoveryIndex || 0, discoveryTotal);
   const processed = Math.min(cp.trendIndex || 0, records.length);
@@ -106,17 +106,17 @@ export function jobProgress(
     };
   });
   const expansionOnly = Boolean(job.input.expansionOnly);
-  const expansionFinished =
-    expansionOnly && terminal && !job.cancelled;
+  const expansionFinished = expansionOnly && ['completed', 'awaiting_review'].includes(job.status) && !job.cancelled;
   const semrushEnabled = job.input.sources.includes('semrush');
   const metricProcessed = Math.min(cp.metricIndex || 0, records.length);
+  const metricUnknown = cp.metricEvidence ? Object.values(cp.metricEvidence).filter(status => !['done', 'failed'].includes(status)).length : 0;
   const expansionMetricsDone =
     !semrushEnabled ||
     Boolean(cp.semBlocked) ||
     metricProcessed >= records.length;
   const expansionPhase =
     expansionOnly && !terminal
-      ? waiting
+      ? job.status === 'queued' ? 'queued' : cp.semBlocked ? 'blocked' : waiting
         ? 'waiting'
         : discoveryDone < discoveryTotal
           ? 'discovery'
@@ -126,8 +126,14 @@ export function jobProgress(
       : phase;
   const expansionRows = expansionOnly
     ? records.map((record, index) => {
-        const metric = record.semrushCollection;
-        const metricFailed = metric?.status === 'failed';
+        const savedMetric = record.semrushCollection;
+        const evidence = cp.metricEvidence?.[index];
+        const attempted = cp.metricEvidence ? ['done','failed'].includes(evidence) : index < metricProcessed;
+        // A refreshed keyword must not count another task's failed metric as
+        // an attempt by this task. A cache reuse is recorded by this runner.
+        const metric = attempted && (savedMetric?.jobId === job.id || !savedMetric?.jobId) ? savedMetric : undefined;
+        const unknown = evidence && !['done','failed'].includes(evidence);
+        const metricFailed = evidence === 'failed' || metric?.status === 'failed';
         const metricDone = ['completed', 'partial', 'empty'].includes(
           metric?.status,
         );
@@ -142,7 +148,8 @@ export function jobProgress(
           index === metricProcessed &&
           !cp.semBlocked;
         let status = 'pending';
-        if (metricFailed) status = 'failed';
+        if (unknown) status = 'unknown';
+        else if (metricFailed) status = 'failed';
         else if (skipped) status = 'not_started';
         else if (running) status = 'running';
         else if (semrushEnabled && discoveryDone >= discoveryTotal) {
@@ -150,7 +157,7 @@ export function jobProgress(
           else if (expansionFinished || Boolean(cp.semBlocked))
             status = 'not_started';
           else status = 'pending';
-        } else if (discoveryDone >= discoveryTotal || terminal)
+        } else if (!semrushEnabled)
           status = 'collected';
         return {
           id: record.id,
@@ -161,11 +168,9 @@ export function jobProgress(
           growth: trendComparisons(record)[0].change,
           assessment: assess(record).status,
           status,
-          message:
-            metric?.message ||
-            (skipped
-              ? 'Semrush 已阻断，本词指标未查询'
-              : record.trendMessage || ''),
+          message: semrushEnabled
+            ? `关键词已获取；月搜索量${unknown ? '请求结果待确认，不自动重试' : metricFailed ? '查询失败：' + (metric?.message || '') : metricDone ? '查询已处理：' + (metric?.message || '') : running ? '正在查询' : skipped ? '未执行：' + (cp.semBlockedError || cp.semBlocked) : '尚未执行'}`
+            : '关键词已获取；本任务未选择月搜索量，趋势请按需提交趋势采集',
           annual: Boolean(record.series?.length),
           daily: Boolean(record.trendDailyPoints?.length),
           limited: false,
@@ -177,16 +182,8 @@ export function jobProgress(
     ['collected', 'no_signal'].includes(row.status),
   ).length;
   const expansionFailed = expansionRows.filter((row) => row.failed).length;
-  const expansionProcessed = expansionFinished
-    ? records.length
-    : discoveryDone < discoveryTotal
-      ? records.length
-      : semrushEnabled
-        ? Boolean(cp.semBlocked)
-          ? records.length
-          : metricProcessed
-        : records.length;
-  const percent =
+  const expansionProcessed = semrushEnabled ? metricProcessed : records.length;
+  let percent =
     (expansionFinished ||
       (terminal && !job.cancelled && processed === records.length))
       ? 100
@@ -215,7 +212,13 @@ export function jobProgress(
     Number.isInteger(job.input.limit) && job.input.limit > 0
       ? job.input.limit
       : Math.max(records.length, discoveryTotal);
+  const expansionTotal = discoveryTotal + (semrushEnabled ? records.length : 0);
+  if (expansionOnly) percent = expansionTotal ? Math.min(100, Math.floor(100 * (discoveryDone + (semrushEnabled ? metricProcessed : 0)) / expansionTotal)) : 0;
+  const discoveryFailed = Number(cp.discoveryFailures ?? Math.max(0, (cp.failures || 0) - (cp.metricFailures || 0)));
+  const quotaError = (cp.logs || []).some(message => /ERROR\s*132|API UNITS BALANCE IS ZERO/i.test(message));
+  const metricBlockReason = quotaError ? 'Semrush API额度为0（ERROR 132），相关扩词或搜索量查询未完成' : cp.semBlockedError || cp.semBlocked || '';
   return {
+    expansionOnly,
     phase: expansionOnly ? expansionPhase : phase,
     semrushUnits: cp.semUnits || 0,
     metricProcessed,
@@ -226,6 +229,10 @@ export function jobProgress(
     discovered: records.length,
     discoveryDone,
     discoveryTotal,
+    discoveryFailed,
+    metricBlockReason,
+    metricUnknown,
+    metricPending: semrushEnabled ? Math.max(0, records.length - metricProcessed - metricUnknown) : 0,
     processed: expansionOnly ? expansionProcessed : processed,
     total: records.length,
     succeeded: expansionOnly ? expansionSucceeded : undefined,

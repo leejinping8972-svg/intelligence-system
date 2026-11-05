@@ -49,20 +49,10 @@ export function taskOverview(job, task) {
     waiting = count(p.retryPending);
     // Expansion-only jobs report discovery/Semrush progress, not Google trend rows.
     if (input.expansionOnly) {
-      total = count(
-        p.discovered ||
-          p.total ||
-          cp.keywords?.length ||
-          input.existingRecords?.length ||
-          0,
-      );
-      processed = count(
-        terminal(state) ? total : Math.min(total, p.processed || p.discovered),
-      );
-      succeeded = count(
-        p.succeeded ?? Math.max(0, (p.discovered || 0) - (p.failed || 0)),
-      );
-      failed = count(p.failed);
+      total = count(p.discoveryTotal) + (p.semrushEnabled ? count(p.total) : 0);
+      processed = count(p.discoveryDone) + (p.semrushEnabled ? count(p.metricProcessed) : 0);
+      succeeded = p.semrushEnabled ? count(p.succeeded) : count(p.discovered);
+      failed = count(p.failed) + count(p.discoveryFailed);
       waiting = 0;
     }
   } else if (input.kind === 'products' && cp.siteWork) {
@@ -100,7 +90,7 @@ export function taskOverview(job, task) {
   const unknown = count(
     cp.personaProgress?.unknownCharges ??
       c?.unknownCharges ??
-      cp.unknownCharges,
+      cp.unknownCharges ?? p?.metricUnknown,
   );
   let reason =
     cp.personaProgress?.reason ||
@@ -108,6 +98,12 @@ export function taskOverview(job, task) {
     cp.stopReason ||
     cp.error ||
     '';
+  if (input.expansionOnly && p) reason = [
+    `已得到 ${p.discovered} 个关键词（含与已有词合并的结果）；发现组合 ${p.discoveryDone}/${p.discoveryTotal}`,
+    p.semrushEnabled ? `月搜索量已处理 ${p.metricProcessed}/${p.total}，成功 ${p.succeeded}，失败 ${p.failed}，未执行 ${p.metricPending}，结果待确认 ${p.metricUnknown || 0}` : '本任务未选择月搜索量',
+    p.discoveryFailed ? `来源返回失败 ${p.discoveryFailed} 次` : '',
+    p.metricBlockReason,
+  ].filter(Boolean).join('；');
   if (unknown)
     reason = '来源扣费或请求结果未确认，停止后续收费调用；已有结果保留';
   else if (state === 'cancelled')
@@ -139,7 +135,9 @@ export function taskOverview(job, task) {
     waiting,
     remaining: Math.max(0, total - processed),
     percent,
-    outcome: ['failed', 'partial'].includes(state)
+    outcome: input.expansionOnly && ['completed', 'awaiting_review'].includes(state) && (failed || processed < total)
+      ? '本轮结束 · 部分环节未完成'
+      : ['failed', 'partial'].includes(state)
       ? '已停止 · 采集未完成'
       : state === 'cancelled'
         ? '已取消 · 结果保留'

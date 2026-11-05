@@ -6,6 +6,7 @@ import { runProductWatch, tickProductWatch } from './product-watch-store.mjs';
 import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { discoveryKinds, runDiscoveryMonitor, tickDiscoveryMonitors } from './discovery-monitor-store.mjs';
 import { runSourceFields } from './source-field-store.mjs';
+import { withAnalysisTask } from './source-analysis-stage.mjs';
 import { lock, sql, unlock } from './database.mjs';
 import {
   KEYWORD_EXPANSION_FETCH_CAP,
@@ -396,12 +397,12 @@ export async function runJob(job, overrides = {}) {
                 cp.logs.push(
                   `${seed} · ${source.source}：${source.count}个词；${source.message}`,
                 );
-                if (source.status === 'error') cp.failures++;
+                if (source.status === 'error') { cp.failures++; cp.discoveryFailures = (cp.discoveryFailures || 0) + 1; }
               }
             }
           } catch (e) {
             cp.logs.push(`${seed} · Semrush 扩词失败：${e.message}`);
-            cp.failures++;
+            cp.failures++; cp.discoveryFailures = (cp.discoveryFailures || 0) + 1;
           }
         }
         if (
@@ -436,12 +437,12 @@ export async function runJob(job, overrides = {}) {
                   `${label[market]} · ${seed} · ${source.source}：${source.count}个词；${source.message || source.status}`,
                 );
                 if (['error', 'partial'].includes(source.status))
-                  cp.failures += 1;
+                  { cp.failures += 1; cp.discoveryFailures = (cp.discoveryFailures || 0) + 1; }
               }
             }
           } catch (error) {
             cp.logs.push(`${seed}：关键词发现失败；${error.message}`);
-            cp.failures += 1;
+            cp.failures += 1; cp.discoveryFailures = (cp.discoveryFailures || 0) + 1;
           }
         // Cursor and results commit together after each completed discovery stage.
         await io.saveCheckpoint(job, {
@@ -524,10 +525,13 @@ export async function runJob(job, overrides = {}) {
           cp.failures++;
           cp.semBlocked =
             'Semrush 报告异常，已停止后续指标调用，请先查看首条错误';
+          cp.semBlockedError = e.message;
+          cp.metricFailures = (cp.metricFailures || 0) + 1;
           r.semrushCollection = {
             jobId: job.id,
             status: 'failed',
             message: e.message,
+            finishedAt: new Date().toISOString(),
           };
           await io.patchCollection(
             r.id,
@@ -632,6 +636,7 @@ async function runLane(signal, trends = false) {
             "UPDATE research_jobs SET status='running',updated_at=now() WHERE id=$1",
             [next.id],
           );
+          await withAnalysisTask(next.id, async () => {
           if (trends) await runTrendJob(next);
           else if (next.input.kind === 'product_watch') await runProductWatch(next);
           else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next);
@@ -656,6 +661,7 @@ async function runLane(signal, trends = false) {
           else if (['metrics', 'sites'].includes(next.input.kind))
             await runEnrichment(next);
           else await runJob(next);
+          });
         }
       }
     } catch (error) {

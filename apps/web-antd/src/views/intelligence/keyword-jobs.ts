@@ -10,6 +10,7 @@ import {
   submitCloudResearch,
 } from './cloud-workspace';
 import { audit, state } from './data';
+import { activeKeywordTasks } from './keyword-task-summary';
 export const keywordJob = reactive({
   running: false,
   discovered: 0,
@@ -19,16 +20,16 @@ export const keywordJob = reactive({
 });
 watch(
   () => [
-    cloudWorkspace.active,
+    cloudWorkspace.taskRevision,
     cloudWorkspace.submitting,
-    state.keywords.length,
+    state.market,
+    state.tasks,
   ],
   () => {
-    keywordJob.running = cloudWorkspace.active > 0 || cloudWorkspace.submitting;
-    keywordJob.discovered = state.keywords.length;
-    keywordJob.trended = state.keywords.filter(
-      (record) => record.trendStatus === 'collected',
-    ).length;
+    const tasks = activeKeywordTasks(state.tasks, state.market);
+    keywordJob.running = tasks.length > 0 || cloudWorkspace.submitting;
+    keywordJob.discovered = tasks.reduce((n, task) => n + (task.progress?.discovered || 0), 0);
+    keywordJob.trended = tasks.reduce((n, task) => n + (task.progress?.expansionOnly ? 0 : task.progress?.processed || 0), 0);
     keywordJob.phase = keywordJob.running ? '腾讯云后台执行' : '等待人工筛选';
   },
 );
@@ -43,7 +44,7 @@ export async function startKeywordJob(
 }
 export async function stopKeywordJob() {
   const ids = new Set(
-    state.tasks
+    activeKeywordTasks(state.tasks, state.market)
       .filter(
         (task) =>
           task.cloudJobId && ['queued', 'running'].includes(task.status),
