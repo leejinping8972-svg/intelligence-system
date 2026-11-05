@@ -1,34 +1,44 @@
 {
-  "title": "新品监控支持编辑日期范围、周期和时间",
-  "sourceSha": "daa05385b8d056aa0c08740b9f27f7d6198deb49",
+  "title": "资源消耗与请求日志查询加速",
+  "sourceSha": "b1c23e9277cc666d10f658f0b2a18835e9fad566",
   "includedCommits": [
-    "daa05385b8d056aa0c08740b9f27f7d6198deb49"
+    "b1c23e9277cc666d10f658f0b2a18835e9fad566"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
-    "server/discovery-monitor-store.mjs",
-    "server/discovery-monitors.integration.test.mjs",
-    "server/product-pool-domain.mjs",
-    "server/product-pool.browser.test.mjs"
+    "apps/web-antd/src/views/intelligence/__tests__/source-usage-load.test.ts",
+    "apps/web-antd/src/views/intelligence/components/RequestLogDashboard.vue",
+    "apps/web-antd/src/views/intelligence/components/SourceUsageDashboard.vue",
+    "apps/web-antd/src/views/intelligence/source-usage-load.ts",
+    "apps/web-antd/src/views/intelligence/source-usage.ts",
+    "server/REQUEST-LOG.md",
+    "server/SOURCE-USAGE.md",
+    "server/source-usage-domain.mjs",
+    "server/source-usage-snapshot.mjs",
+    "server/source-usage-snapshot.test.mjs",
+    "server/source-usage.mjs",
+    "server/source-usage.test.mjs"
   ],
   "changes": [
-    "常规/FBM监控可编辑近7/30/60/90天、每天/每周/每月和北京时间，默认7天/每天/00:00，说明随表单变化。",
-    "保存与调度尊重自定义条件，旧监控首次重新保存前保持当前生效设置；已冻结任务和同日幂等保留。"
+    "两个看板共用完整脱敏事件快照与在途读取；现有文档表保存可重建压缩缓存，默认30秒复用。",
+    "筛选复用日期及来源索引；请求日志从完整快照筛选分页，取消5000条预读取截断。",
+    "已有结果保留并后台更新，显示实际快照时间；较早响应不覆盖新筛选，离开停止轮询。"
   ],
   "developmentValidation": [
-    "35项Node/PGlite专项通过",
-    "浏览器日期/周月周期/时间/保存/立即运行交互通过",
-    "Web类型检查、独立前端构建、diff检查通过"
+    "相关服务端33项32通过；原有脱敏失败在未改基线复现，新增6项快照专项最终全部通过",
+    "前端加载器5项、Web类型检查、独立开发构建、Edge合成界面、JS语法与diff检查通过",
+    "整仓lint及提交钩子未执行；线上首轮无快照仍需历史整理"
   ],
   "releaseValidation": "重复验证、验证构建及CI等待按用户策略跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
-    "consistency": "skipped-by-user"
+    "startupMigration": false,
+    "consistency": "skipped-by-user",
+    "cacheWrite": "rebuildable derived snapshot on dashboard read"
   },
   "preservePendingTasks": true,
-  "id": "20261105041903-43b585e6",
-  "builtAt": "2026-11-05T04:19:03.716Z",
-  "sourceDigest": "43b585e677b85c23336c946eb0a51759f7bb847fd3f9f32cbcdc1d02ed22deb6",
+  "id": "20261105042507-c5ed3987",
+  "builtAt": "2026-11-05T04:25:07.969Z",
+  "sourceDigest": "c5ed3987cc40fef03c08a4b408b23bdd509ca8d59c20a059daf29accd7cd52ec",
   "operator": "Codex"
 }
