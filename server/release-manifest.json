@@ -1,69 +1,31 @@
 {
-  "title": "商品采集时补齐字段与中文优先列表",
+  "title": "商品成分多名称引用兼容修正",
+  "sourceSha": "80b718f18e62990468b58cfbb07b14a9c21e3f9b",
   "includedCommits": [
-    "8c42a60bc87ee2d019d582f1dfe03afc75bfb32f"
-  ],
-  "sourceSha": "8c42a60bc87ee2d019d582f1dfe03afc75bfb32f",
-  "changes": [
-    "新品与商品采集在保存前通过Sorftime补取详情/图片，再由AI提取成分、规格、卖点、品牌及中文名称；允许标题、描述和详情中的成分提及，保留来源销量与上架日期。",
-    "移除单独补全商品入口与所选周期销量、日均件数、资源口径/覆盖、配方与成分列，成分与剂量改为成分。",
-    "商品库、商品研究与详情中文优先，原文浅色小2px并限两行；缺失来源值不编造，已有值不因AI缺省清空。"
+    "80b718f18e62990468b58cfbb07b14a9c21e3f9b"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/EvidenceMetric.vue",
-    "apps/web-antd/src/views/intelligence/components/PlatformProductsDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductChineseName.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductDecisionTags.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductHistory.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductText.vue",
-    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/product-decisions.ts",
-    "apps/web-antd/src/views/intelligence/product-research.vue",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/use-core-list.ts",
-    "server/discovery-monitor-store.mjs",
-    "server/discovery-monitors.integration.test.mjs",
-    "server/discovery-monitors.test.mjs",
-    "server/discovery-newness.mjs",
-    "server/discovery-sorftime.mjs",
-    "server/model.js",
-    "server/official-new-release-runner.mjs",
-    "server/official-new-releases.test.mjs",
-    "server/platform-product-data.mjs",
-    "server/platform-products-jobs.mjs",
-    "server/platform-products.test.mjs",
-    "server/product-intake-sorftime.mjs",
-    "server/product-intake.mjs",
-    "server/product-intake.test.mjs",
-    "server/product-list-sort.d.mts",
-    "server/product-list-sort.mjs",
-    "server/product-resource-engine.mjs",
     "server/source-field-domain.mjs",
-    "server/source-field-store.mjs",
-    "server/store.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs",
-    "tests/core-list-metrics.test.ts"
+    "server/discovery-ai.mjs",
+    "server/product-intake.test.mjs"
+  ],
+  "changes": [
+    "成分支持AI返回多个名称拼接或非连续摘录，逐一匹配同一商品指定来源的实际文本后生成连续证据，避免有成分却被丢弃。",
+    "强化标题成分必须提取的提示，保留商品AI候选结果用于已知成功请求的修正恢复，未出现和否定成分仍拒绝。"
   ],
   "developmentValidation": [
-    "相关服务端专项/隔离集成测试通过",
-    "前端专项39项、类型检查、开发构建通过",
-    "桌面与390px合成展示通过，原文14px对12px、浅色、两行且无脚本错误",
-    "diff检查及新模块格式检查通过；整仓lint和提交钩子未执行"
+    "39项相关服务端专项与隔离集成通过",
+    "git diff检查通过；本批无前端改动"
   ],
-  "releaseValidation": "发布阶段重复验证、独立验证构建及CI等待按用户策略跳过",
+  "releaseValidation": "重复验证、验证构建及CI等待按用户策略跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
-    "consistency": "skipped-by-user",
-    "fullBackup": "skipped-by-user-no-schema-change"
+    "consistency": "skipped-by-user"
   },
   "preservePendingTasks": true,
-  "id": "20261105023934-168dc99e",
-  "builtAt": "2026-11-05T02:39:34.485Z",
-  "sourceDigest": "168dc99e8b23b9ebee26d967a837b9e676e01b35d7d548ed92bab74e2cda0bcd",
+  "id": "20261105025705-12e7f82a",
+  "builtAt": "2026-11-05T02:57:05.255Z",
+  "sourceDigest": "12e7f82a85da09e0d12d388e5bc1b8f910e096f77606f099e2a2cdbc2db51817",
   "operator": "Codex"
 }
