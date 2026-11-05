@@ -7,6 +7,12 @@ import { state } from './data';
 import { RequestFlight } from './request-flight';
 import { adminRequest, leaveSession, serverMode, session } from './session';
 import { isWorkspaceSyncKey } from './workspace-sync-keys';
+import {
+  createWorkspaceReadClient,
+  workspaceReadActions,
+} from './workspace-read-client';
+
+const workspaceReads = createWorkspaceReadClient();
 
 export const cloudWorkspace = reactive({
   publishedRevision: '',
@@ -258,6 +264,7 @@ const editable = (record: Keyword) => ({
 export async function cloudRequest<T>(
   action: string,
   input: Record<string, unknown> = {},
+  options: { signal?: AbortSignal; priority?: 'foreground' | 'background' } = {},
 ): Promise<T> {
   // A first workspace sync can contain years of products and evidence. The
   // gateway compresses the response, but a slower connection may still need
@@ -266,6 +273,23 @@ export async function cloudRequest<T>(
     let timeout = 30_000;
     if (action === 'server_workspace_delta') timeout = 90_000;
     else if (action === 'server_product_resource_categories') timeout = 120_000;
+    if (workspaceReadActions.has(action)) {
+      const key = JSON.stringify([session.user?.id, action, input]);
+      try {
+        return await workspaceReads.run(
+          key,
+          signal => adminRequest<T>(action, input, timeout, signal),
+          {
+            ...options,
+            priority: options.priority || (action === 'server_workspace_list' ? 'foreground' : 'background'),
+          },
+        );
+      } catch (error) {
+        if (error instanceof Error && error.name === 'TimeoutError')
+          throw new Error('数据读取超时，请重试；已加载的内容会继续保留', { cause: error });
+        throw error;
+      }
+    }
     return adminRequest<T>(action, input, timeout);
   }
   const { researchApiUrl, researchAccessKey } = state.settings;

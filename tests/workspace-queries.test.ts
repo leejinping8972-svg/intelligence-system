@@ -76,6 +76,36 @@ afterEach(() => {
 });
 
 describe('paged workspace queries', () => {
+  it('downloads only the visible page after indexing completes', async () => {
+    mock.request.mockImplementation(async (action, input) =>
+      action === 'server_workspace_facets' ? { facets: {} } : { ...result('visible', input.page), indexing: false },
+    );
+    setup();
+    await settle();
+    expect(mock.request.mock.calls.filter(([action]) => action === 'server_workspace_list')).toHaveLength(1);
+  });
+  it('cancels an old filter and stops its download when the page closes', async () => {
+    const { filter } = setup();
+    await settle();
+    const signals: AbortSignal[] = [];
+    mock.request.mockImplementation((action, _input, options) => {
+      if (action === 'server_workspace_list') {
+        signals.push(options.signal);
+        return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+      }
+      return Promise.resolve({ facets: {} });
+    });
+    filter.value = 'first';
+    await settle();
+    filter.value = 'second';
+    await settle();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    dispose?.();
+    dispose = undefined;
+    await settle();
+    expect(signals[1]?.aborted).toBe(true);
+  });
   it('loads separate pages and reuses cached pages without downloading the workspace', async () => {
     const { list, page } = setup();
     await settle();

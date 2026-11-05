@@ -12,7 +12,7 @@ const user = {
 const anonymous = { setupRequired: false, ssoEnabled: true, user: null };
 
 function response(value: unknown, status = 200) {
-  return { ok: status < 400, status, json: async () => value };
+  return { ok: status < 400, status, json: async () => value, text: async () => JSON.stringify(value) };
 }
 
 function deferred<T>() {
@@ -36,6 +36,22 @@ afterEach(() => {
 });
 
 describe('session startup requests', () => {
+  it('cancels an abandoned read without changing the authenticated session', async () => {
+    let signal!: AbortSignal;
+    vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => {
+      signal = options.signal;
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    })));
+    const { adminRequest, session } = await import('../apps/web-antd/src/views/intelligence/session');
+    session.user = user;
+    const controller = new AbortController();
+    const reading = adminRequest('server_workspace_list', {}, 30_000, controller.signal);
+    const cancelled = reading.catch(error => error);
+    controller.abort();
+    expect(await cancelled).toMatchObject({ name: 'AbortError' });
+    expect(signal.aborted).toBe(true);
+    expect(session.user).toEqual(user);
+  });
   it('shares the initial cookie check between startup and route navigation', async () => {
     const pending = deferred<ReturnType<typeof response>>();
     const fetch = vi.fn().mockReturnValue(pending.promise);
