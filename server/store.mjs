@@ -5,6 +5,7 @@ import { platformLinkSchema } from './platform-link-store.mjs';
 import { identitySchema } from './identity-store.mjs';
 import { engine, pool, sql } from './database.mjs';
 import { createKeywordSaver } from './keyword-store.mjs';
+import { translateCollectedResult, translateCollectionRecords } from './collection-translation.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 import {
@@ -59,7 +60,7 @@ export const mysqlSchema = [
   `CREATE TABLE IF NOT EXISTS provider_configs (name varchar(160) PRIMARY KEY, value json NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS workspace_documents (name varchar(180) PRIMARY KEY, value json NOT NULL, revision integer NOT NULL DEFAULT 1)`,
 ];
-export const saveKeyword = createKeywordSaver({ pool, sql });
+export const saveKeyword = createKeywordSaver({ pool, sql, prepare: async (record) => (await translateCollectionRecords('keywords', [record]))[0] });
 export async function saveCheckpoint(job, checkpoint, status = 'running', connection = pool) {
   await connection.query(
     "UPDATE research_jobs SET checkpoint=$2,status=CASE WHEN cancelled THEN 'cancelled' ELSE $3 END,updated_at=now() WHERE id=$1",
@@ -67,6 +68,12 @@ export async function saveCheckpoint(job, checkpoint, status = 'running', connec
   );
 }
 export async function collect(job, step, request) {
+  // The source response is committed first. A translation failure must never
+  // turn a successful paid collection into an unknown request or replay it.
+  const result = await collectRaw(job, step, request);
+  return translateCollectedResult(result, (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step }));
+}
+async function collectRaw(job, step, request) {
   const cached = await pool.query(
     'SELECT * FROM research_requests WHERE job_id=$1 AND step=$2',
     [job.id, step],

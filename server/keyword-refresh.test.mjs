@@ -25,6 +25,15 @@ const keyword = (patch = {}) =>
     ...patch,
   });
 
+test('seed translations remain paired with the seed retained by keyword merging', () => {
+  const current = keyword({ seedTerm: 'original seed' });
+  const different = mergeKeyword(current, keyword({ seedTerm: 'other seed', seedTermZh: '其他种子' }));
+  assert.equal(different.seedTerm, 'original seed');
+  assert.equal(different.seedTermZh, undefined);
+  const matching = mergeKeyword(current, keyword({ seedTerm: 'original seed', seedTermZh: '原始种子' }));
+  assert.equal(matching.seedTermZh, '原始种子');
+});
+
 test('reruns refresh partial metrics including zero while retaining manual edits, links and source history', () => {
   const current = keyword({
     id: 'original',

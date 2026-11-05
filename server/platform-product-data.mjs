@@ -677,6 +677,10 @@ export function mergePlatformProduct(old, patch) {
       /^(平台未返回|官网未公开|品牌待确认|待分类|待识别)/.test(patch[key])
     )
       merged[key] = resetFields && ['ingredient', 'dose', 'claim', 'category', 'form', 'size'].includes(key) ? patch[key] : old[key] || patch[key];
+    if (merged[key] === old[key] && merged[key] !== patch[key]) {
+      if (old[`${key}Zh`] !== undefined) merged[`${key}Zh`] = old[`${key}Zh`];
+      else delete merged[`${key}Zh`];
+    }
   }
   if (
     patch.price === 0 &&

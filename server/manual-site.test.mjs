@@ -29,6 +29,7 @@ async function harness(t) {
   let fetched = 0;
   const c = { query: (...args) => db.query(...args), release() {} };
   const io = {
+    translate: async (_kind, records) => records,
     pool: { query: c.query, connect: async () => c }, lock: async () => true, unlock: async () => {},
     fetchPage: async (_url, _depth, _types, options) => { fetched++; assert.equal(options.allowedDomain, 'example.com'); return { html, url: 'https://www.example.com/shop' }; },
     putDocument: async (_table, name, value) => db.query('INSERT INTO workspace_documents VALUES($1,$2) ON CONFLICT(name) DO UPDATE SET value=$2', [name, value]),
@@ -78,4 +79,50 @@ test('site-only mode skips product collection, retains AI analysis and a full qu
   for (let i = 0; i < 20; i++) await h.db.query('INSERT INTO research_jobs(id,request_id,input,checkpoint) VALUES($1,$2,$3,$4)', [randomUUID(), randomUUID(), {}, {}]);
   await assert.rejects(addManualSite(input({ market: 'US' }), h.io), /20个任务/);
   assert.equal((await h.db.query("SELECT * FROM workspace_documents WHERE name='business:sites:US-example.com'")).rows.length, 0);
+});
+
+test('refreshing an existing site saves translations for the combined product list before entering the write transaction', async (t) => {
+  const h = await harness(t);
+  const old = { id: 'translated', domain: 'example.com', market: 'VN', brand: 'Reviewed brand', mainProducts: ['old'], mainProductsZh: ['旧商品'] };
+  await h.io.putDocument('', 'business:sites:translated', old);
+  const { translateCollectionRecords } = await import('./collection-translation.mjs');
+  const cache = new Map();
+  let transactionOpen = false;
+  const connect = h.io.pool.connect;
+  h.io.pool.connect = async () => {
+    const c = await connect();
+    return { ...c, query: (statement, ...args) => {
+      if (statement === 'BEGIN') transactionOpen = true;
+      if (['COMMIT', 'ROLLBACK'].includes(statement)) transactionOpen = false;
+      return c.query(statement, ...args);
+    } };
+  };
+  h.io.translate = (kind, records) => translateCollectionRecords(kind, records, {
+    read: async () => cache,
+    claim: async () => new Map(),
+    write: async (key, value) => cache.set(key, value),
+    request: async (items) => {
+      assert.equal(transactionOpen, false, 'network translation must finish before opening the write transaction');
+      return { result: { items: items.map((item) => ({ id: item.key, text: `中文${item.text}` })) } };
+    },
+  });
+  await addManualSite(input({ collectProducts: false }), h.io);
+  const site = (await h.db.query("SELECT value FROM workspace_documents WHERE name='business:sites:translated'")).rows[0].value;
+  assert.deepEqual(site.mainProducts, ['old', 'Magnesium tablets']);
+  assert.deepEqual(site.mainProductsZh, ['中文old', '中文Magnesium tablets']);
+  assert.equal(site.brand, old.brand);
+  assert.equal(site.brandZh, '中文Reviewed brand');
+});
+
+test('a failed manual-site translation retains the collected profile for a later explicit retry', async (t) => {
+  const h = await harness(t);
+  const request = input({ collectProducts: false });
+  h.io.translate = async () => { throw Error('synthetic translation failure'); };
+  await assert.rejects(addManualSite(request, h.io), /translation failure/);
+  const source = (await h.db.query('SELECT value FROM workspace_documents WHERE name=$1', [`manual-site:source:${request.requestId}`])).rows[0].value;
+  assert.equal(source.profile.brand, 'Example');
+  assert.equal((await h.db.query('SELECT count(*)::int AS n FROM research_jobs')).rows[0].n, 0);
+  h.io.translate = async (_kind, records) => records;
+  await addManualSite(request, h.io);
+  assert.equal(h.fetched(), 1, 'retry reuses the saved source profile');
 });

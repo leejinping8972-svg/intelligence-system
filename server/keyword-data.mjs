@@ -70,6 +70,8 @@ export function mergeKeyword(current, incoming, importOnly = false) {
     merged.batch = incoming.batch;
   for (const key of ['seedTerm', 'category', 'termZh'])
     if (!merged[key] && incoming[key]) merged[key] = incoming[key];
+  if (!merged.seedTermZh && incoming.seedTermZh && merged.seedTerm === incoming.seedTerm)
+    merged.seedTermZh = incoming.seedTermZh;
   for (const key of ['productIds', 'siteIds'])
     merged[key] = [
       ...new Set([...(current[key] || []), ...(incoming[key] || [])]),

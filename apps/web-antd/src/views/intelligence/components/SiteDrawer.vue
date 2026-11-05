@@ -14,6 +14,7 @@ import CollectionTime from './CollectionTime.vue';
 import { siteCollectedAt } from '../resource-metadata';
 import ProductCollectDialog from './ProductCollectDialog.vue';
 import CoreMetricsPanel from './CoreMetricsPanel.vue';
+import ProductText from './ProductText.vue';
 
 const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
@@ -63,9 +64,9 @@ function go(path: string, query: Record<string, string>) {
           <p class="hci-eyebrow">
             {{ marketName(site.market) }} · {{ site.platform || '平台待识别' }}
           </p>
-          <h2>{{ site.brand }}</h2>
+          <h2><ProductText :text="site.brand" :translated="site.brandZh" /></h2>
           <p class="hci-subtle hci-break">{{ site.domain }}</p>
-          <Tag>{{ site.category || '类别待确认' }}</Tag><Tag>{{ site.type || '类型待确认' }}</Tag>
+          <Tag>{{ site.categoryZh || site.category || '类别待确认' }}</Tag><Tag>{{ site.type || '类型待确认' }}</Tag>
         </div>
         <div class="hci-resource-score">
           <strong>{{ site.assessment?.score ?? '—' }}</strong><span>/ 100</span>
@@ -90,6 +91,10 @@ function go(path: string, query: Record<string, string>) {
         </div>
       </div>
       <CoreMetricsPanel kind="sites" :record="site" />
+      <section v-if="site.description || site.descriptionZh" class="hci-detail-section">
+        <h3>站点介绍</h3>
+        <ProductText :text="site.description" :translated="site.descriptionZh" />
+      </section>
       <section class="hci-detail-section">
         <h3>站点概况</h3>
         <dl class="hci-detail-grid">
@@ -124,7 +129,7 @@ function go(path: string, query: Record<string, string>) {
         <h3>
           主要产品 <small>{{ site.mainProducts.length }} 项</small>
         </h3>
-        <CompactTags :items="site.mainProducts" label="站点主要产品" />
+        <ProductText :text="site.mainProducts.join('；')" :translated="site.mainProductsZh?.join('；')" />
       </section>
       <section class="hci-detail-section">
         <h3>评分与第三方指标</h3>

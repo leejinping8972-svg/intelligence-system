@@ -534,6 +534,7 @@ test('multi-channel first pass and AI processing continue beyond the legacy call
     checkpoint: { calls: 0, products: 0 },
   };
   const io = {
+    translate: async (_kind, records) => records,
     now: () => now,
     pool: { query: async () => ({ rows: [{ cancelled: false }] }) },
     collect: async (_job, _step, request) => {
@@ -589,6 +590,7 @@ test('runner checkpoints source results, admits only AI-confirmed supplements an
     sourceContent: { descriptions: ['Dietary supplement'] },
   };
   const io = {
+    translate: async (_kind, records) => records,
     now: () => now,
     pool: { query: async () => ({ rows: [{ cancelled }] }) },
     collect: async (_job, _step, r) => {

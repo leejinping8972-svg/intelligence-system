@@ -33,6 +33,7 @@ import { withQueueConfig } from './queue-config-lock.mjs';
 import { parallelItems } from './source-scheduler.mjs';
 import { requestFailed, requestStarted, requestSucceeded } from './request-log.mjs';
 import { saveKeyword } from './store.mjs';
+import { translateCollectionRecords } from './collection-translation.mjs';
 import { decorateMonitorAnalysis, withAnalysisTask } from './source-analysis-stage.mjs';
 
 import { westmonthChannelKey } from './westmonth-market.mjs';
@@ -280,7 +281,9 @@ export async function competitorAction(input, user) {
   });
 }
 
-export async function persistObservation(c, target, kind, item, event, at) {
+export async function persistObservation(c, target, kind, item, event, at, translate = translateCollectionRecords) {
+  [item] = await translate(kind, [item]);
+  const eventKeywords = await translate('keywords', (event?.terms || []).map((term) => ({ term })));
   const db = createMonitorStore(c);
   const businessName = `business:${kind}:${item.id}`;
   await c.query('BEGIN');
@@ -314,11 +317,12 @@ export async function persistObservation(c, target, kind, item, event, at) {
     await db.write(businessName, observed);
     if (event) {
       event.keywordIds = [];
-      for (const term of event.terms) {
+      for (const translated of eventKeywords) {
         const keyword = cleanKeyword({
           id: randomUUID(),
           market: target.market,
-          term,
+          term: translated.term,
+          termZh: translated.termZh,
           source: '竞品上新',
           category: '待分类',
           collectedAt: at,
@@ -524,6 +528,8 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
           (providers.fetchHotwordSeed || fetchHotwordSeed)(config, seed, req),
         previous: () => db.read(`${PREFIX}ranking:${config.market}`),
         saveRanking: async (r) => {
+          const rows = await (providers.translate || translateCollectionRecords)('keywords', r.rows.map((row) => ({ ...row, seedTerm: row.seed })));
+          r = { ...r, rows };
           await c.query('BEGIN');
           try {
             for (const row of r.rows)
@@ -531,9 +537,11 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
                 {
                   market: config.market,
                   term: row.term,
+                  termZh: row.termZh,
                   source: 'Semrush热词',
                   metrics: row.metrics,
                   seedTerm: row.seed,
+                  seedTermZh: row.seedTermZh,
                   collectedAt: at,
                   dataNature: 'collected',
                 },
@@ -565,7 +573,7 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
         seen: (kind, itemId) =>
           db.read(`${PREFIX}seen:${id}:${channelKey(kind)}:${digest(itemId)}`),
         persist: (kind, item, event) =>
-          persistObservation(c, config, kind, item, event, at),
+          persistObservation(c, config, kind, item, event, at, providers.translate || translateCollectionRecords),
         saveProgress: (kind, value) =>
           value
             ? db.write(`${PREFIX}crawl:${id}:${kind}`, value)

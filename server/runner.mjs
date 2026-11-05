@@ -288,7 +288,7 @@ export async function runJob(job, overrides = {}) {
   cp.startedAt ||= new Date(io.now()).toISOString();
   if (Number(cp.nextRunAt) > io.now()) return;
   cp.nextRunAt = 0;
-  const add = async (term, market, seed, source, collectedAt) => {
+  const add = async (term, market, seed, source, collectedAt, termZh) => {
     term = normalizeTerm(term);
     let record = cp.keywords.find(
       (item) => naturalKey(item) === naturalKey({ term, market }),
@@ -323,6 +323,7 @@ export async function runJob(job, overrides = {}) {
       };
       cp.keywords.push(record);
     }
+    if (termZh && !record.termZh) record.termZh = termZh;
     const stored = await io.saveKeyword(record);
     if (stored?.id) Object.assign(record, stored);
   };
@@ -393,6 +394,7 @@ export async function runJob(job, overrides = {}) {
                   seed,
                   item.source,
                   sem.generatedAt,
+                  item.termZh,
                 );
               for (const source of group.sources || []) {
                 cp.logs.push(
@@ -432,6 +434,7 @@ export async function runJob(job, overrides = {}) {
                   seed,
                   item.source,
                   result.generatedAt,
+                  item.termZh,
                 );
               for (const source of group.sources || []) {
                 cp.logs.push(

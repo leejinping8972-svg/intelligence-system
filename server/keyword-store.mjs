@@ -1,9 +1,12 @@
 import { cleanKeyword, naturalKey } from './domain.mjs';
 import { mergeKeyword } from './keyword-data.mjs';
 
-export function createKeywordSaver({ pool, sql }) {
+export function createKeywordSaver({ pool, sql, prepare = async (record) => record }) {
   return async function saveKeyword(value, importOnly = false, connection) {
-    const record = cleanKeyword(value);
+    let record = cleanKeyword(value);
+    // Collection callers with an open transaction prepare their batch first.
+    // Network requests never run while a keyword row is locked.
+    if (!connection || connection === pool) record = await prepare(record);
     const key = naturalKey(record);
     const ownTransaction = !connection || connection === pool;
     const c = ownTransaction ? await pool.connect() : connection;

@@ -22,7 +22,7 @@ const queries = computed(
       ? props.keyword.trendRelatedTop
       : props.keyword.trendRelatedRising) || [],
 );
-const translated = (text: string) => props.translate?.(text) || text;
+const translated = (text: string) => queries.value.find((item) => item.query === text)?.queryZh || props.translate?.(text) || text;
 const metric = computed(() => {
   const found = keywordMetrics(props.keyword, 30).find(
     (item) => item.key === props.kind,

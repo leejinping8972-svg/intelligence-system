@@ -14,6 +14,7 @@ import { runCombinedDiscovery } from './combined-discovery.mjs';
 import { observeDiscovery } from './discovery-newness.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
 import { appendCoreEvidence, archiveCoreEvidence, exactProductLinks } from './core-evidence.mjs';
+import { translateCollectionRecords } from './collection-translation.mjs';
 const readDoc = async (key) =>
   (
     await pool.query('SELECT value FROM workspace_documents WHERE name=$1', [
@@ -21,6 +22,8 @@ const readDoc = async (key) =>
     ])
   ).rows[0]?.value;
 export async function mergeBusiness(key, patch, options = {}) {
+  if (!options.evidenceOnlyIfExists)
+    [patch] = await translateCollectionRecords(key.split(':')[0], [patch]);
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
