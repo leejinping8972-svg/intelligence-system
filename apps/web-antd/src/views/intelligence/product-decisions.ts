@@ -36,6 +36,7 @@ export interface ProductDecisionData {
     date: string;
     rawDate?: string;
     sourceField?: string;
+    dateBasis?: 'exposure' | 'listing';
     provider: string;
     platform: string;
     market: string;

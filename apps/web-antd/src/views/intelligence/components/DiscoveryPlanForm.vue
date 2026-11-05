@@ -287,7 +287,7 @@ async function submit(save: boolean) {
       v-if="form.kind !== 'ingredients'"
       type="info"
       show-icon
-      message="每天北京时间00:00采集前7个完整自然日上架、Sorftime报告销量大于0的商品。未选类目时默认查保健品；TikTok曝光时间不能代替上架时间，缺证据会跳过。"
+      message="每天北京时间00:00采集前7个完整自然日上架、Sorftime报告销量大于0的商品。未选类目时默认查保健品；TikTok缺上架日期时使用来源曝光日期，列表会说明替代口径；日期或销量均无证据时跳过。"
     />
     <div class="discovery-grid">
       <Form.Item

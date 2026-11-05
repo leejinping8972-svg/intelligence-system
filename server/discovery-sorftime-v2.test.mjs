@@ -7,6 +7,7 @@ import {
 import {
   discoverySorftime,
   normalizeSocialRows,
+  normalizeDiscoveryProduct,
 } from './discovery-sorftime.mjs';
 import { runDiscoveryMonitor } from './discovery-monitor-store.mjs';
 
@@ -291,4 +292,28 @@ test('runner fetches date-eligible summary candidates as original posts before i
   assert.equal(calls.filter((c) => c.postDetail).length, 1);
   assert.equal(job.checkpoint.records.length, 1);
   assert.equal(job.checkpoint.analysisDone, true);
+});
+
+
+test('TikTok falls back to dated exposure, preserves true launch priority and does not apply to other platforms', async () => {
+  const at = new Date(now).toISOString();
+  const raw = { product_id: '12345678901', product_url: 'https://www.tiktok.com/shop/pdp/12345678901', title: 'Synthetic oral supplement', month_sale_count: 5, exposure_time: '2026-11-01' };
+  const product = normalizeDiscoveryProduct(raw, {channel:'tiktok',market:'US'}, at);
+  assert.equal(product.decisionData.listing.date, '2026-11-01');
+  assert.equal(product.decisionData.listing.dateBasis, 'exposure');
+  assert.equal(product.decisionData.listing.sourceField, 'exposure_time');
+  const evidence = newProductEvidence(product, plan({channels:['tiktok'],days:7,completeDays:true}), now);
+  assert.equal(evidence.dateBasis, 'exposure');
+  const listed = normalizeDiscoveryProduct({...raw, online_date:'2026-10-01'}, {channel:'tiktok',market:'US'}, at);
+  assert.equal(listed.decisionData.listing.dateBasis, 'listing');
+  assert.equal(newProductEvidence(listed, plan({channels:['tiktok'],days:7,completeDays:true}), now), undefined);
+  const amazon = normalizeDiscoveryProduct({...raw,asin:'B000000001'}, {channel:'amazon',market:'US'}, at);
+  assert.equal(amazon.decisionData?.listing, undefined);
+  const { mergePlatformProduct } = await import('./platform-product-data.mjs');
+  assert.equal(mergePlatformProduct(listed,product).decisionData.listing.dateBasis, 'listing');
+  assert.equal(mergePlatformProduct(product,listed).decisionData.listing.dateBasis, 'listing');
+  const { discoveryDecision } = await import('./discovery-newness.mjs');
+  const decision = discoveryDecision(product, 'product', now);
+  assert.match(decision.reason, /曝光日期不等于实际上架日期/);
+  assert.match(decision.label, /曝光/);
 });

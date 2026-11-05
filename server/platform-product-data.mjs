@@ -744,7 +744,9 @@ export function mergePlatformProduct(old, patch) {
   merged.decisionData = {
     ...old.decisionData,
     ...patch.decisionData,
-    listing: patch.decisionData?.listing || old.decisionData?.listing,
+    listing: patch.decisionData?.listing?.dateBasis === 'exposure' && old.decisionData?.listing?.date && old.decisionData.listing.dateBasis !== 'exposure'
+      ? old.decisionData.listing
+      : patch.decisionData?.listing || old.decisionData?.listing,
     series: [...series.values()],
   };
   merged.dataCompletion = { ...old.dataCompletion };

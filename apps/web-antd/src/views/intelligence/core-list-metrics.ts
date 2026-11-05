@@ -395,14 +395,14 @@ export function productMetrics(
   };
   const result = [
     ...productSales(p, days),
-    metric(p, 'listingDate', '商品上架时间', listing.evidenceDate || null, '', {
+    metric(p, 'listingDate', p.decisionData?.listing?.dateBasis === 'exposure' ? '曝光日期（替代上架）' : '商品上架时间', listing.evidenceDate || null, '', {
       ...meta,
       source: listing.source || '来源未记录',
       platform: p.decisionData?.listing?.platform || '',
       nature: 'platform_display',
       collectedAt: p.decisionData?.listing?.collectedAt || '',
       evidenceUrl: listing.evidenceUrl,
-      period: '来源上架日期',
+      period: p.decisionData?.listing?.dateBasis === 'exposure' ? 'Sorftime曝光日期（替代上架）' : '来源上架日期',
       reason:
         listing.reason +
         (p.decisionData?.listing?.sourceField

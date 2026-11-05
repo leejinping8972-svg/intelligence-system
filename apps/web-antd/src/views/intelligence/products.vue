@@ -374,7 +374,7 @@ const tableColumns = computed(() =>
       },
       { title: '美元对比价', key: 'core:priceUsd', width: 116 },
       { title: '销量', key: 'core:cumulativeSold', width: 110 },
-      { title: '上架时间', key: 'core:listingDate', width: 112 },
+      { title: '上架/曝光时间', key: 'core:listingDate', width: 112 },
       { title: '规格 / 剂型', key: 'spec', width: 125 },
       { title: '成分', key: 'core:ingredients', width: 180 },
       { title: '品牌宣称', key: 'core:claim', width: 150 },
@@ -884,7 +884,7 @@ async function exportProducts() {
                 :key="item.type + item.observedAt"
                 color="green"
               >
-                {{ item.label }}{{ item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.listingDate}` : '' }}
+                {{ item.label }}{{ item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.dateBasis === 'exposure' ? '曝光 ' : ''}${item.listingDate}` : '' }}
               </Tag>
             </div>
           </div>
@@ -907,7 +907,7 @@ async function exportProducts() {
             <p class="hci-subtle">
               {{
                 record.newProductClassifications
-                  .map((item: { listingDate?: string; rank?: number; observedAt: string }) => item.rank ? `榜单#${item.rank} · 抓取${item.observedAt.slice(0, 10)}` : item.listingDate)
+                  .map((item: { listingDate?: string; dateBasis?: string; rank?: number; observedAt: string }) => item.rank ? `榜单#${item.rank} · 抓取${item.observedAt.slice(0, 10)}` : `${item.dateBasis === 'exposure' ? '曝光 ' : ''}${item.listingDate || ''}`)
                   .filter(Boolean)
                   .join(' / ')
               }}
@@ -990,7 +990,7 @@ async function exportProducts() {
     >
       <p>{{ PRODUCT_DECISION_RULES }}</p>
       <p style="margin-top: 12px">
-        新品需要平台上架日期，首次发现不等于新品。销量、排名、关键词覆盖分别判断；不会用关键词搜索热度代替商品销量。历史不足或数据过旧时保留待补充状态。
+        新品优先使用平台上架日期；TikTok缺少时使用来源曝光日期并标注。首次发现不等于新品。销量、排名、关键词覆盖分别判断；不会用关键词搜索热度代替商品销量。历史不足或数据过旧时保留待补充状态。
       </p>
       <p style="margin-top: 12px">
         偶发尖峰要求至少三个前期完整周期、一个明显峰值和两个后续回落周期。数据缺失不按0处理，未结束的周期不参与比较。

@@ -32,6 +32,7 @@ export function discoveryDecision(item, kind, now = Date.now()) {
     Date.parse(first) <= now &&
     now - observed < 8 * DAY;
   const listing = productListingEvidence(item);
+  const exposureFallback = kind === 'product' && listing?.dateBasis === 'exposure';
   const isProduct = kind === 'product';
   const date = isProduct ? listing?.date : item.startDate;
   const source = isProduct ? listing?.provider : item.source;
@@ -63,13 +64,16 @@ export function discoveryDecision(item, kind, now = Date.now()) {
   let label = isProduct ? '新品待核验' : '新广告待核验';
   if (isNew === true) label = isProduct ? '新品（90天内）' : '新广告（7天内）';
   if (isNew === false) label = isProduct ? '非近期新品' : '非近期新广告';
+  if (exposureFallback && known) label = isNew ? '近期曝光商品（替代上架）' : '非近期曝光商品';
   return {
     version: 'discovery-v1',
     isNew,
     label,
     recentDiscovery,
     windowDays,
-    reason: known
+    reason: known && exposureFallback
+      ? `未取得TikTok可靠上架日期，使用Sorftime曝光日期 ${date.slice(0, 10)} 作为新品筛选和排序依据。曝光日期不等于实际上架日期，也不是本系统首次抓取日期。`
+      : known
       ? `${isProduct ? '来源上架' : '平台投放开始'}日期 ${date.slice(0, 10)}，${isNew ? '在' : '超过'}${windowDays}天窗口；${isProduct ? '不等同于品牌首发' : '按广告ID判断，不将同素材复用合并'}。`
       : '缺少可核验的来源日期或来源依据；系统首次发现不能证明刚上市或刚开始投放。',
     source: source || '',

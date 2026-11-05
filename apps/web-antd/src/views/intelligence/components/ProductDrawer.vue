@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Alert, Button, Drawer, message, Tabs, Tag } from 'ant-design-vue';
+import { Alert, Button, Drawer, message, Popover, Tabs, Tag } from 'ant-design-vue';
 import { loadWorkspaceDetail } from '../cloud-workspace';
 
 import {
@@ -82,7 +82,7 @@ function addMonitor() {
         </div>
       </div></div>
       <Button type="primary" @click="emit('close'); router.push({ path: '/product-research', query: { product: product.id } })">进入商品研究</Button>
-      <a v-for="item in product.newProductClassifications" :key="item.type + item.observedAt" :href="item.evidenceUrl" target="_blank" rel="noopener noreferrer"><Tag color="green">{{item.label}}{{item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.listingDate}` : ''}}</Tag></a>
+      <a v-for="item in product.newProductClassifications" :key="item.type + item.observedAt" :href="item.evidenceUrl" target="_blank" rel="noopener noreferrer"><Tag color="green">{{item.label}}{{item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.dateBasis === 'exposure' ? '曝光 ' : ''}${item.listingDate}` : ''}}</Tag></a>
       <Tabs>
         <Tabs.TabPane v-if="product.newProductClassifications?.length" key="product-watch" tab="持续观察趋势"><ProductWatchHistory :product-id="product.id" /></Tabs.TabPane>
         <Tabs.TabPane v-if="product.fieldAnalysis" key="field-analysis" tab="AI字段证据"><p>{{product.fieldAnalysis.status === 'pending' ? '待AI分析' : 'AI已分析'}} {{product.fieldAnalysis.analyzedAt}}</p><dl class="hci-detail-grid"><template v-for="(evidence,field) in product.fieldAnalysis.fields" :key="field"><dt>{{field}}</dt><dd><blockquote>{{evidence.quote}}</blockquote><a :href="evidence.url" target="_blank" rel="noreferrer">来源原文</a></dd></template></dl></Tabs.TabPane>
@@ -99,7 +99,7 @@ function addMonitor() {
             <template v-if="product.sourceMarket"><dt>来源市场</dt><dd>{{product.sourceMarket}}</dd></template>
             <dt>平台商品标识</dt>
             <dd>{{ product.sourceProductId }}</dd>
-            <dt>平台上架日期</dt>
+            <dt>{{ product.decisionData?.listing?.dateBasis === 'exposure' ? '曝光日期（替代上架）' : '平台上架日期' }} <Popover :trigger="['hover','focus','click']" :content="product.decisionData?.listing?.dateBasis === 'exposure' ? '未取得TikTok可靠上架日期，使用Sorftime曝光日期作为新品筛选和排序依据；曝光日期不等于实际上架日期，也不是本系统首次抓取日期。' : '优先使用平台上架日期；TikTok未提供上架日期时，才使用来源曝光日期并明确标注。'"><button type="button" aria-label="查看商品日期口径">?</button></Popover></dt>
             <dd>
               {{
                 product.decisionData?.listing?.date ||

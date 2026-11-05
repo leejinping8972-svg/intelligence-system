@@ -244,6 +244,7 @@ export function newProductEvidence(product, plan, now = Date.now()) {
           ? discoveryKinds[plan.kind]
           : '新上架商品',
     listingDate: date,
+    dateBasis: product.decisionData?.listing?.dateBasis || 'listing',
     fulfillment: fulfillment || 'unknown',
     observedAt: new Date(now).toISOString(),
     evidenceUrl: product.sourceUrl || product.evidenceUrl,

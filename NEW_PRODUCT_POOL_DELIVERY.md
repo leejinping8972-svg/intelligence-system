@@ -19,7 +19,7 @@
 - 读取实时Sorftime目录：118项工具，包含Temu美国站商品检索、上架日期/销量过滤、详情和类目接口。此前保存的目录文件使用过名称筛选，不足以断言Temu工具不存在。
 - 执行2次明确范围的来源数据查询：Temu美国“Dietary Supplements”类目返回空；Amazon一个已有ASIN的DailySalesVolume返回逐日数值和`-1`缺失值。调用结果均已保存，没有未知结果重放，没有写入正式商品库或创建正式任务。
 - Temu接口能力已确认，保健品覆盖未验证，本版界面暂不启用Temu；保留已适配的后端日期/销量/详情能力。
-- Shopee没有美国站，默认美国监控不纳入。TikTok曝光时间不是上架日期；没有可靠上架日期的候选不会入池，因此不保证TikTok新品覆盖。
+- Shopee没有美国站，默认美国监控不纳入。TikTok优先真实上架日期，缺失时使用来源曝光日期入池；保留dateBasis/sourceField，并在日期旁问号和详情中明确曝光替代口径。曝光不是实际上架，也不是本系统首次抓取时间。
 - 每日销量仍是Sorftime来源数据，不宣称已核实真实订单。近来源当地日期的数据保守标记可能未完整。
 - 原始接口回执仅保留本机忽略目录 `.artifacts/`，不提交业务样本或凭据。
 
@@ -34,4 +34,11 @@
 
 - 无数据库schema、迁移或依赖变更。复用workspace_documents、research_jobs、研究请求账本与同一runner/部署锁。
 - 共用入口包含：discovery-monitor-domain/store、discovery-sorftime、product-intake-sorftime、platform-product-data、workspace-reads、index、runner、store、task-projection/overview；前端products/monitor、data、DiscoveryPlanForm/DiscoveryMonitors/NewMonitorDialog/ProductDrawer。
-- 本批没有共享testing推送或正式发布授权，不合并、不发布。集成后另行启用商品持续监控；旧新品监控已启用时，新规则将在下一次定时轮次生效。
+- 用户后续已明确授权“改完后更新到线上我看看”；本功能提交完成后转本批集成发布，发布状态另见协调记录。集成后另行启用商品持续监控；旧新品监控已启用时，新规则将在下一次定时轮次生效。
+
+## TikTok跟进验证
+
+- 日期回退/真实日期优先/其他平台不回退及来源解释：24项相关Node测试通过。
+- 指标展示：24项Vitest测试通过；Web类型检查通过。
+- 持续监控首次仍默认关闭，未触发新收费查询。
+- 跟进浏览器交互通过（曝光日期问号说明、桌面/手机无横向溢出）；跟进独立前端构建和diff检查通过。

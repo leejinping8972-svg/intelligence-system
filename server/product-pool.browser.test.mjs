@@ -13,7 +13,7 @@ test('US discovery categories, daily watch controls and honest trend display on 
   const components = `${root.replaceAll('\\', '/')}/apps/web-antd/src/views/intelligence/components`;
   await writeFile(
     resolve(fixture, 'index.html'),
-    `<style>body{font:14px system-ui;margin:16px}*{box-sizing:border-box}.hci-toolbar{display:flex;gap:8px;flex-wrap:wrap}.hci-subtle{color:#687385}p{overflow-wrap:anywhere}.hci-toolbar .ant-input{min-width:0;flex:1}</style><div id="app"></div><script type="module">import {createApp,h} from 'vue';import Discovery from '/@fs/${components}/DiscoveryPlanForm.vue';import Panel from '/@fs/${components}/ProductWatchPanel.vue';import History from '/@fs/${components}/ProductWatchHistory.vue';window.calls=[];createApp({render:()=>h('main',[h('h2','新品池 · 采集设置'),h(Discovery,{kind:'regular_new',scheduled:true}),h(Panel),h('h2','持续观察趋势'),h(History,{productId:'synthetic'})])}).mount('#app');</script>`,
+    `<style>body{font:14px system-ui;margin:16px}*{box-sizing:border-box}.hci-toolbar{display:flex;gap:8px;flex-wrap:wrap}.hci-subtle{color:#687385}p{overflow-wrap:anywhere}.hci-toolbar .ant-input{min-width:0;flex:1}</style><div id="app"></div><script type="module">import {createApp,h} from 'vue';import Discovery from '/@fs/${components}/DiscoveryPlanForm.vue';import Panel from '/@fs/${components}/ProductWatchPanel.vue';import History from '/@fs/${components}/ProductWatchHistory.vue';import Metric from '/@fs/${components}/EvidenceMetric.vue';window.calls=[];createApp({render:()=>h('main',[h(Metric,{metric:{key:'listingDate',label:'曝光日期（替代上架）',value:'2026-11-01',status:'available',reason:'未取得TikTok可靠上架日期，曝光日期不等于实际上架日期。',source:'Sorftime',market:'US',platform:'TikTok Shop',unit:'日期',period:'曝光日期（替代上架）',timezone:'来源时区',collectedAt:'2026-11-05',nature:'platform_display'}}),h('h2','新品池 · 采集设置'),h(Discovery,{kind:'regular_new',scheduled:true}),h(Panel),h('h2','持续观察趋势'),h(History,{productId:'synthetic'})])}).mount('#app');</script>`,
   );
   const mocks = {
     '../data': `import {reactive} from 'vue'; export const state=reactive({market:'US'});`,
@@ -63,6 +63,11 @@ test('US discovery categories, daily watch controls and honest trend display on 
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
+    const dateButton=page.getByRole('button', {name:/曝光日期（替代上架）.*查看来源与口径/});
+    assert.equal(await dateButton.locator('.date-help').textContent(), '?');
+    await dateButton.click();
+    await page.getByText('未取得TikTok可靠上架日期，曝光日期不等于实际上架日期。',{exact:true}).waitFor();
+    await dateButton.click();
     await page
       .getByRole('button', { name: '获取Sorftime类目' })
       .first()

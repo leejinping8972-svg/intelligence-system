@@ -12,7 +12,7 @@ export function poolType(product) {
     : 'regular_new';
 }
 export const NEW_PRODUCT_RULES =
-  '每天北京时间00:00发起采集，筛选此前7个完整自然日上架、Sorftime报告销量大于0的商品。默认美国保健品，可选择来源真实类目；FBM仅指Amazon商家自配送。缺上架日期或销量证据不入池，TikTok曝光时间不代替上架时间。销量为来源报告或估算，不是已核实订单；覆盖受来源收录、类目、页数和采集上限影响。入池后保留历史，不因超过7天移除；历史宽窗口或官方榜单数据按原入池证据标注。';
+  '每天北京时间00:00发起采集，筛选此前7个完整自然日上架、Sorftime报告销量大于0的商品。默认美国保健品，可选择来源真实类目；FBM仅指Amazon商家自配送。TikTok优先取上架日期，缺少时使用来源曝光日期并标注替代口径；其他平台缺上架日期、或所有平台缺销量证据时不入池。销量为来源报告或估算，不是已核实订单；覆盖受来源收录、类目、页数和采集上限影响。入池后保留历史，不因超过7天移除；历史宽窗口或官方榜单数据按原入池证据标注。';
 
 // Apply only to future scheduled runs; never rewrite a frozen job/checkpoint.
 export function dailyNewProductPlan(plan) {

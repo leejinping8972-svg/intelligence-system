@@ -425,18 +425,20 @@ export function normalizeDiscoveryProduct(row, request, at) {
     };
   }
   const dateKey = listingKeys.find((key) => field(raw, key) !== undefined);
-  const date =
-    product.decisionData?.listing?.date ||
-    sourceDate(field(raw, dateKey || ''));
+  const sourceListingDate = product.decisionData?.listing?.date || sourceDate(field(raw, dateKey || ''));
+  const hasListingDate = dateInWindow(sourceListingDate, 36_500, Date.parse(at));
   const exposureDate = sourceDate(field(raw, 'exposure_time'));
   if (exposureDate)
     product.resourceRaw = { ...product.resourceRaw, exposureDate };
-  if (dateInWindow(date, 36_500, Date.parse(at)))
+  const useExposure = !hasListingDate && platform === 'tiktok_shop' && dateInWindow(exposureDate, 36_500, Date.parse(at));
+  const date = useExposure ? exposureDate : sourceListingDate;
+  if (hasListingDate || useExposure)
     product.decisionData = {
       ...product.decisionData,
       listing: {
         date,
-        sourceField: dateKey || 'listingDate',
+        sourceField: useExposure ? 'exposure_time' : dateKey || 'listingDate',
+        dateBasis: useExposure ? 'exposure' : 'listing',
         provider: 'Sorftime',
         platform: product.sourcePlatform,
         market: product.market,
