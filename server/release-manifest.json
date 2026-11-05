@@ -1,30 +1,59 @@
 {
-  "title": "来源字段AI分析独立并发队列",
-  "sourceSha": "feb4ed8bf6b88758e150a6977dc052f959da2579",
+  "title": "翻译统一纳入采集流程",
+  "sourceSha": "9a7022e9cb458ffe779fc54a6a9b5ac2e5f44578",
   "includedCommits": [
-    "feb4ed8bf6b88758e150a6977dc052f959da2579"
+    "9a7022e9cb458ffe779fc54a6a9b5ac2e5f44578"
   ],
   "files": [
-    "deploy/server/drain-queue.mjs",
-    "server/database.mjs",
+    "apps/web-antd/src/views/intelligence/__tests__/keyword-related-translations.test.ts",
+    "apps/web-antd/src/views/intelligence/components/KeywordNamesDialog.vue",
+    "apps/web-antd/src/views/intelligence/components/KeywordRelatedQueries.vue",
+    "apps/web-antd/src/views/intelligence/components/SiteDrawer.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "server/collection-translation-domain.mjs",
+    "server/collection-translation.integration.test.mjs",
+    "server/collection-translation.md",
+    "server/collection-translation.mjs",
+    "server/collection-translation.test.mjs",
+    "server/competitor-monitor-store.mjs",
+    "server/discovery-monitor-store.mjs",
+    "server/discovery-monitors.integration.test.mjs",
+    "server/discovery-monitors.test.mjs",
+    "server/domain.mjs",
+    "server/keyword-data.mjs",
+    "server/keyword-names.mjs",
+    "server/keyword-names.test.mjs",
+    "server/keyword-refresh.test.mjs",
+    "server/keyword-store.mjs",
+    "server/manual-site.mjs",
+    "server/manual-site.test.mjs",
+    "server/market-jobs.mjs",
+    "server/platform-product-data.mjs",
+    "server/platform-products-jobs.mjs",
+    "server/platform-products.test.mjs",
+    "server/product-intake.mjs",
     "server/runner.mjs",
-    "server/source-analysis-queue.mjs",
-    "server/source-analysis-queue.test.mjs"
-  ],
-  "documentationFiles": [
-    "SOURCE_ANALYSIS_CONCURRENCY.md"
+    "server/source-analysis-stage.test.mjs",
+    "server/source-field-domain.mjs",
+    "server/source-field-store.mjs",
+    "server/store.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "changes": [
-    "来源字段AI分析从普通采集拆出，默认最多3项同时执行；普通采集、趋势和AI分析可以同时推进。",
-    "普通runner在SQL选择时排除source_fields，独立互斥锁防止执行器重叠；取消、冷却和未确认请求防重放规则保留。",
-    "发布排空增加source-fields-runner锁，本批采用23项持续队列互斥；全部分析请求结束后才释放调度锁。"
+    "关键词、种子词、热门/上升相关查询、广告、商品和独立站统一在采集流程中翻译后保存，页面直接读取已保存译文。",
+    "沿用已配置模型，批量去重、分段与缓存复用；来源响应先持久保存，翻译失败不重新采集，不自动重试未知模型请求。",
+    "竞品、热词和上新监控及来源字段分析共用翻译服务；修复种子配对、站点新增产品译文与商品/广告合并。",
+    "本次不自动回填历史缺译、不调整提供商或启用新监控；保留已上线的最多3项来源字段分析并发。"
   ],
   "developmentValidation": [
-    "Node/PGlite 30/30通过，覆盖三项同时执行、互斥/取消竞争、冷却、错误时等待其他请求结束及父任务/商品分析账本。",
-    "新增核心模块定向ESLint、MJS语法与diff通过；无前端改动，不重复运行无关Web验证构建。",
-    "没有调用真实模型/来源，未新增收费任务或自动重试；真实吞吐以正式观察为准。"
+    "服务端12文件101项通过（分批验证），前端5文件27项通过；Web完整类型检查、定向ESLint、MJS语法及diff通过。",
+    "功能独立Web构建通过；另有5项旧前端组件测试失败，相关测试和对应组件与功能基线一致，详见server/collection-translation.md。",
+    "未执行真实收费来源/模型调用或浏览器验收；真实翻译耗时未实测。"
   ],
-  "releaseValidation": "发布重复验证、验证构建及CI等待按用户策略跳过",
+  "releaseValidation": "发布重复测试、验证构建及CI等待按用户策略跳过；仅生成一次必要正式产物",
   "database": {
     "schemaChange": false,
     "migration": false,
@@ -33,8 +62,8 @@
   },
   "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261105090853-ef0bbcae",
-  "builtAt": "2026-11-05T09:08:53.583Z",
-  "sourceDigest": "ef0bbcae33a77d35d2656a75fffc8591547ae2775e38229a33fb226d9cc24e15",
+  "id": "20261105100751-4ac3e26d",
+  "builtAt": "2026-11-05T10:07:51.697Z",
+  "sourceDigest": "4ac3e26d4aea9b99d0f2ea9a924f2c7fac65a7635396f6f498f19d9008baba59",
   "operator": "Codex"
 }
