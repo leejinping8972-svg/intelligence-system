@@ -34,6 +34,7 @@ import CollectionTime from './components/CollectionTime.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import PageHeader from './components/PageHeader.vue';
 import ProductArt from './components/ProductArt.vue';
+import ProductAsin from './components/ProductAsin.vue';
 import ProductChineseName from './components/ProductChineseName.vue';
 import ProductText from './components/ProductText.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
@@ -751,6 +752,7 @@ async function exportProducts() {
           >
             <ProductChineseName :product="product" />
           </button>
+          <ProductAsin :product="product" />
           <ProductText :text="`${product.size} · ${product.form}`" :translated="product.sizeZh || product.formZh ? `${product.sizeZh || product.size} · ${product.formZh || product.form}` : ''" />
           <p class="hci-subtle">
             采集：<CollectionTime :at="productCollectedAt(product)" />
@@ -879,13 +881,7 @@ async function exportProducts() {
                 <ProductChineseName :product="record as Product" />
               </Button>
               <ProductText :text="record.brand" :translated="record.brandZh" />
-              <Tag
-                v-for="item in record.newProductClassifications"
-                :key="item.type + item.observedAt"
-                color="green"
-              >
-                {{ item.label }}{{ item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.dateBasis === 'exposure' ? '曝光 ' : ''}${item.listingDate}` : '' }}
-              </Tag>
+              <ProductAsin :product="record as Product" />
             </div>
           </div>
         </template>

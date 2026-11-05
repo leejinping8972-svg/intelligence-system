@@ -15,6 +15,7 @@ import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
 import { keywordMetricEvidence } from './keyword-metric-evidence.mjs';
 import { productChineseName } from './product-names.mjs';
+import { productAsin } from './product-asin.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 import { compareProductValues, productSortKeys, productSortValue } from './product-list-sort.mjs';
 import { productPlatformSql, resolvedProductPlatform } from './product-platform.mjs';
@@ -77,6 +78,8 @@ export function projectRecord(collection, value) {
     if (collection === 'keywords') Object.assign(data, pick(value, ['trendRelatedTop', 'trendRelatedRising', 'trendInsightsStatus', 'trendInsightsMessage', 'trendInsightsPeriod', 'trendSourceUrl']));
   }
   if (collection === 'products') {
+    const asin = productAsin(value);
+    if (asin) data.asin = asin;
     data.ingredientInsights = (value.ingredientInsights || [])
       .slice(0, 20)
       .map((item) => ({
@@ -268,7 +271,8 @@ export function createWorkspaceReads({
       return records.map((record) => {
         const linkedSite = byId.get(record.siteId) || null;
         const platform = resolvedProductPlatform(record, linkedSite);
-        return { ...record, linkedSite, ...(platform !== '未记录' ? { sourcePlatform: platform } : {}) };
+        const asin = productAsin(record);
+        return { ...record, linkedSite, ...(asin ? { asin } : {}), ...(platform !== '未记录' ? { sourcePlatform: platform } : {}) };
       });
     }
     const values = records.map((record) => record.id);
