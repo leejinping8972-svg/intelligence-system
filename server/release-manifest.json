@@ -1,44 +1,50 @@
 {
-  "title": "资源消耗与请求日志查询加速",
-  "sourceSha": "b1c23e9277cc666d10f658f0b2a18835e9fad566",
+  "title": "列表切换超时与重复读取优化",
+  "sourceSha": "e24fdb4fd36755b962fb4e167ad0f4a961cf5133",
   "includedCommits": [
-    "b1c23e9277cc666d10f658f0b2a18835e9fad566"
+    "e24fdb4fd36755b962fb4e167ad0f4a961cf5133"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/__tests__/source-usage-load.test.ts",
-    "apps/web-antd/src/views/intelligence/components/RequestLogDashboard.vue",
-    "apps/web-antd/src/views/intelligence/components/SourceUsageDashboard.vue",
-    "apps/web-antd/src/views/intelligence/source-usage-load.ts",
-    "apps/web-antd/src/views/intelligence/source-usage.ts",
-    "server/REQUEST-LOG.md",
-    "server/SOURCE-USAGE.md",
-    "server/source-usage-domain.mjs",
-    "server/source-usage-snapshot.mjs",
-    "server/source-usage-snapshot.test.mjs",
-    "server/source-usage.mjs",
-    "server/source-usage.test.mjs"
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
+    "apps/web-antd/src/views/intelligence/session.ts",
+    "apps/web-antd/src/views/intelligence/workspace-queries.ts",
+    "apps/web-antd/src/views/intelligence/workspace-read-client.ts",
+    "server/workspace-read-latency.test.mjs",
+    "server/workspace-reads.mjs",
+    "tests/session-startup.test.ts",
+    "tests/workspace-queries.test.ts",
+    "tests/workspace-read-client.test.ts"
+  ],
+  "documentationFiles": [
+    "WORKSPACE_READ_PERFORMANCE.md"
   ],
   "changes": [
-    "两个看板共用完整脱敏事件快照与在途读取；现有文档表保存可重建压缩缓存，默认30秒复用。",
-    "筛选复用日期及来源索引；请求日志从完整快照筛选分页，取消5000条预读取截断。",
-    "已有结果保留并后台更新，显示实际快照时间；较早响应不覆盖新筛选，离开停止轮询。"
+    "列表、总览、筛选和初始化读取最多两个并发，相同用户相同请求共享，列表优先；切换或离开取消失效订阅。",
+    "删除下一页自动预取，保留用户/完整筛选缓存，后台超时保留已有内容并中文提示；无采集或保存自动重试。",
+    "服务端共享在途状态读取，计数与状态、当前页趋势与关联并行；完成状态不缓存，无数据库结构或任务执行变更。"
   ],
   "developmentValidation": [
-    "相关服务端33项32通过；原有脱敏失败在未改基线复现，新增6项快照专项最终全部通过",
-    "前端加载器5项、Web类型检查、独立开发构建、Edge合成界面、JS语法与diff检查通过",
-    "整仓lint及提交钩子未执行；线上首轮无快照仍需历史整理"
+    "前端35/35、服务端5/5通过，含合成PGlite集成；Web类型检查、独立完整构建、语法及diff检查通过。",
+    "新代码定向lint通过；全改动lint仍有原有问题，提交钩子未执行。",
+    "Edge合成18次切换并发上限2、超时保留内容、脚本错误0；合成查询15→11次，233→139ms，不代表线上速度。",
+    "真实用户网络连续切换待观察；曾见独立MySQL连接超时，未证明已解决全部网络波动。"
   ],
   "releaseValidation": "重复验证、验证构建及CI等待按用户策略跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupMigration": false,
-    "consistency": "skipped-by-user",
-    "cacheWrite": "rebuildable derived snapshot on dashboard read"
+    "consistency": "skipped-by-user"
+  },
+  "taskCancellation": {
+    "completedBeforeRelease": true,
+    "partialJobsCancelled": 115,
+    "resultsPreserved": true,
+    "activeJobsCancelled": 0
   },
   "preservePendingTasks": true,
-  "id": "20261105042507-c5ed3987",
-  "builtAt": "2026-11-05T04:25:07.969Z",
-  "sourceDigest": "c5ed3987cc40fef03c08a4b408b23bdd509ca8d59c20a059daf29accd7cd52ec",
+  "id": "20261105070825-73087830",
+  "builtAt": "2026-11-05T07:08:25.033Z",
+  "sourceDigest": "73087830f54469262c526758343e54b3c2d7b57afd5721b55b66c1b08aeb0ea5",
   "operator": "Codex"
 }
