@@ -108,14 +108,14 @@ function negatedIngredient(value, text) {
   const escaped = value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(?:\\b(?:no|free from|without|does not contain)\\s+(?:added\\s+)?|不含|无添加)${escaped}|${escaped}[- ]free\\b`, 'i').test(text);
 }
-function ingredientValues(item, sample) {
+function sourceListValues(item, sample) {
   const source = sample.sources.find(s => s.id === item?.sourceId);
   if (!source) return;
   const text = source.text.toLowerCase();
   const candidates = (Array.isArray(item.value) ? item.value : [item.value])
     .map(v => clean(v, 2000))
     .flatMap(v => text.includes(v.toLowerCase()) ? [v] : v.split(/[,;；、\n]+/).map(v => v.trim()));
-  const indices = candidates.flatMap((v, i) => v && text.includes(v.toLowerCase()) && !negatedIngredient(v, source.text) ? [i] : []);
+  const indices = candidates.flatMap((v, i) => v && text.includes(v.toLowerCase()) && (item.field !== 'ingredient' || !negatedIngredient(v, source.text)) ? [i] : []);
   const values = indices.map(i => candidates[i]);
   if (!values.length) return;
   const starts = values.map(v => text.indexOf(v.toLowerCase()));
@@ -128,9 +128,9 @@ export function validateSourceFields(result, sample) {
     throw new Error('AI字段结果格式无效');
   const evidence = {};
   const patch = {};
-  let ingredientMapping;
+  const listMappings = {};
   for (const item of result.fields) {
-    const mentioned = item.field === 'ingredient' ? ingredientValues(item, sample) : undefined;
+    const mentioned = item.field === 'ingredient' || sample.kind === 'products' && item.field === 'benefits' ? sourceListValues(item, sample) : undefined;
     const p = mentioned || proof(item, sample);
     if (
       !sample.fields.includes(item.field) ||
@@ -163,7 +163,7 @@ export function validateSourceFields(result, sample) {
     patch[item.field] = arrayFields.has(item.field)
       ? values
       : values.join('; ');
-    if (item.field === 'ingredient') ingredientMapping = mentioned;
+    if (mentioned) listMappings[item.field] = mentioned;
     evidence[item.field] = {
       sourceId: p.source.id,
       quote: p.quote,
@@ -177,16 +177,18 @@ export function validateSourceFields(result, sample) {
       if (evidence[key]) allowed[`${key}Zh`] = evidence[key].sourceId;
     for (const translated of Array.isArray(result.translations) ? result.translations.slice(0, 16) : []) {
       if (!Object.hasOwn(allowed, translated?.field) || Object.hasOwn(patch, translated.field)) continue;
-      const source = translated.field === 'ingredientZh' && translated.sourceId === evidence.ingredient?.sourceId
-        ? { source: sample.sources.find(s => s.id === translated.sourceId), quote: evidence.ingredient.quote }
+      const raw = translated.field.slice(0, -2);
+      const mapping = listMappings[raw];
+      const source = mapping && translated.sourceId === evidence[raw]?.sourceId
+        ? { source: sample.sources.find(s => s.id === translated.sourceId), quote: evidence[raw].quote }
         : proof(translated, sample);
       let values = (Array.isArray(translated.text) ? translated.text : [translated.text]).map(v => clean(v, 2000));
-      if (translated.field === 'ingredientZh' && ingredientMapping && ingredientMapping.indices.length < ingredientMapping.candidateCount) {
-        if (values.length !== ingredientMapping.candidateCount) continue;
-        values = ingredientMapping.indices.map(i => values[i]);
+      if (mapping && mapping.indices.length < mapping.candidateCount) {
+        const prefix = mapping.indices.every((value, index) => value === index);
+        if (values.length !== mapping.candidateCount && !(prefix && values.length >= mapping.indices.length)) continue;
+        values = mapping.indices.map(i => values[i]);
       }
-      if (!source || source.source.id !== allowed[translated.field] || !values.length || values.some(v => !v)) continue;
-      const raw = translated.field.slice(0, -2);
+      if (!source || ['title', 'brand'].includes(raw) && source.source.id !== allowed[translated.field] || !values.length || values.some(v => !v)) continue;
       const original = raw === 'title' || raw === 'brand' && !patch.brand ? source.source.text : patch[raw];
       if ((Array.isArray(original) ? original : String(original).split(/;\s*/)).some(v => !source.quote.toLowerCase().includes(String(v).toLowerCase()))) continue;
       if (translated.field !== 'brandZh' && values.some(v => !/\p{Script=Han}/u.test(v) && !source.quote.includes(v))) continue;

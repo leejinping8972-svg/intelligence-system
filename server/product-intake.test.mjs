@@ -144,6 +144,20 @@ test('a hallucinated or negated name does not discard other proven ingredients o
   assert.equal(result.patch.ingredientZh, '分子氢');
 });
 
+test('product selling points keep literal items and translations may cite another current source containing the same attribute', () => {
+  const sample = sourceFieldSample('products', { title: 'Energy, Stamina & Drive, 60 Capsules', sourceContent: { attributes: { 'Item Form': 'Capsule' } } });
+  const result = validateSourceFields({ fields: [{ field: 'benefits', value: ['Energy', 'Stamina', 'Cures disease'], sourceId: 'title', quote: 'Energy', relation: 'mention' }, { field: 'form', value: 'Capsule', sourceId: 'attribute:Item Form', quote: 'Item Form: Capsule', relation: 'attribute' }], translations: [{ field: 'benefitsZh', text: ['能量', '耐力', '治病'], sourceId: 'title', quote: 'Energy' }, { field: 'formZh', text: '胶囊', sourceId: 'title', quote: '60 Capsules' }] }, sample);
+  assert.deepEqual(result.patch.benefits, ['Energy', 'Stamina']);
+  assert.deepEqual(result.patch.benefitsZh, ['能量', '耐力']);
+  assert.equal(result.patch.formZh, '胶囊');
+});
+
+test('a valid ingredient prefix keeps its matching Chinese prefix when unsupported trailing names were compressed by AI', () => {
+  const sample = sourceFieldSample('products', { title: 'Magnesium with D3 and K2' });
+  const result = validateSourceFields({ fields: [{ field: 'ingredient', value: ['Magnesium', 'D3', 'K2', 'Vitamin D3', 'Vitamin K2', 'Biotin'], sourceId: 'title', quote: 'Magnesium with D3 and K2' }], translations: [{ field: 'ingredientZh', text: ['镁', '维生素D3', '维生素K2', '生物素'], sourceId: 'title', quote: 'Magnesium with D3 and K2' }] }, sample);
+  assert.equal(result.patch.ingredientZh, '镁；维生素D3；维生素K2');
+});
+
 test('capture obtains details and content before AI, preserving usable fields when AI omits them', async () => {
   const p = makeProduct(),
     calls = [];
