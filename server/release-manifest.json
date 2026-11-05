@@ -1,49 +1,31 @@
 {
-  "title": "继续采集恢复、监控列表加载与Semrush手动额度",
-  "sourceSha": "920f42d0fd0c06bdc2fc7c9dfaaa8a8536977ebc",
+  "title": "Sorftime Amazon ASIN采集与商品展示",
+  "sourceSha": "316d17b786bb95a0e4507f12e0dc5d63deca85bf",
   "includedCommits": [
-    "920f42d0fd0c06bdc2fc7c9dfaaa8a8536977ebc"
+    "316d17b786bb95a0e4507f12e0dc5d63deca85bf"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/competitor-workspace.ts",
-    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
-    "apps/web-antd/src/views/intelligence/components/PageHeader.vue",
-    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
-    "apps/web-antd/src/views/intelligence/components/SemrushSettings.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductAsin.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
     "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/monitor.vue",
-    "apps/web-antd/src/views/intelligence/task-list.ts",
-    "apps/web-antd/src/views/intelligence/task-page.ts",
-    "apps/web-antd/src/views/intelligence/workspace-read-client.ts",
-    "server/index.mjs",
-    "server/monitor-workspace.mjs",
-    "server/monitor-workspace.test.mjs",
-    "server/semrush-balance.test.mjs",
-    "server/semrush-config.mjs",
-    "server/source-analysis-stage.mjs",
-    "server/source-usage-domain.mjs",
-    "server/source-usage.mjs",
-    "server/source-usage.test.mjs",
-    "server/task-resume.mjs",
-    "server/task-resume.test.mjs",
-    "tests/cloud-workspace.test.ts"
-  ],
-  "documentationFiles": [
-    "TASK_ACTION_LATENCY_DELIVERY.md"
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "server/platform-product-data.mjs",
+    "server/product-asin.d.mts",
+    "server/product-asin.mjs",
+    "server/product-asin.test.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "changes": [
-    "修复关键词Semrush受阻时底层已结束、页面未完成导致无法继续；仅续跑未执行指标，保留原账本及未知请求保护。",
-    "继续与取消动作确认后后台刷新，避免读取超时误报提交失败；重复继续同一任务幂等确认。",
-    "三个监控页签使用轻量作用域读取，任务分页及过期读取取消，后台更新保留列表；隐藏页签暂停对应轮询。",
-    "Semrush关闭自动账户余额获取，手动额度始终优先；配置窗口不自动扫描历史消耗。"
+    "Sorftime Amazon关键词、资源及新品采集明确保存ASIN，详情和合并保留该字段，校验不同商品标识。",
+    "商品名称栏移除重复新品分类标签并显示ASIN，卡片与详情增加ASIN；已有商品从保存的Amazon标识直接展示，无需重新付费抓取。",
+    "商品分页和详情对旧缓存补充ASIN，不重建历史读模型，不改变来源调用计划。"
   ],
   "developmentValidation": [
-    "服务端35/36通过；1项公共来源URL上下文既有用例在未改基线773fd51独立复现，已记录限制，未修改其源码。",
-    "新增核心7项复测、前端4文件26项、完整Web类型检查、独立Web构建、核心定向ESLint和diff通过。",
-    "不发起真实采集/模型或恢复动作写入测试，未做登录用户浏览器验收。"
+    "相关服务端56/56、隔离PGlite商品读模型4/4通过；Web完整类型检查、独立开发构建、新增模块定向ESLint、语法和diff检查通过。",
+    "未执行整仓lint、提交钩子、浏览器或正式用户界面验收；未调用真实来源/模型或执行历史付费回填。"
   ],
-  "releaseValidation": "发布重复验证、验证构建和CI等待按用户要求跳过",
+  "releaseValidation": "发布重复测试、独立验证构建和CI等待按用户要求跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
@@ -52,8 +34,8 @@
   },
   "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261105103450-ef47efa0",
-  "builtAt": "2026-11-05T10:34:50.414Z",
-  "sourceDigest": "ef47efa000fe667b3ec3073a1c8109283ece79c71e6f65b821a6713d09b47909",
+  "id": "20261105104700-a867a627",
+  "builtAt": "2026-11-05T10:47:00.556Z",
+  "sourceDigest": "a867a627adea01194a10d2e93bce4b62468f0e0ce678cdfff0a87a39a3d45581",
   "operator": "Codex"
 }
