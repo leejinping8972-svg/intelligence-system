@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import type { RequestLogEntry, RequestLogSnapshot } from '../source-usage';
+import type { RequestLogEntry, RequestLogSnapshot, SourceUsagePending } from '../source-usage';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue';
 
 import { Alert, Button, Empty, Input, Pagination, Select, Skeleton, Tag } from 'ant-design-vue';
 
 import { adminRequest, session } from '../session';
 import { usageTime } from '../source-usage';
+import { createUsageLoader } from '../source-usage-load';
 
 const data = ref<RequestLogSnapshot>();
 const busy = ref(false);
@@ -46,30 +47,28 @@ function outcomeColor(entry: RequestLogEntry) {
   if (entry.status === 'started') return 'blue';
   return 'green';
 }
-async function load() {
+const loader = createUsageLoader<RequestLogSnapshot>({
+  apply: (result) => { data.value = result; },
+  busy: (value) => { busy.value = value; },
+  error: (value) => { error.value = value; },
+});
+async function load(refresh = false) {
   if (!isAdmin.value) return;
-  busy.value = true;
-  error.value = '';
-  try {
-    data.value = await adminRequest<RequestLogSnapshot>('server_source_request_log', {
-      days: days.value,
-      sourceId: sourceId.value.trim(),
-      status: status.value,
-      query: query.value.trim(),
-      host: host.value.trim(),
-      page: page.value,
-      pageSize: 50,
-    });
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '请求日志读取失败';
-  } finally {
-    busy.value = false;
-  }
+  const filters = {
+    days: days.value, sourceId: sourceId.value.trim(), status: status.value,
+    query: query.value.trim(), host: host.value.trim(), page: page.value, pageSize: 50,
+  };
+  return loader.load((force) => adminRequest<SourceUsagePending | RequestLogSnapshot>(
+    'server_source_request_log', { ...filters, refresh: force },
+  ), refresh);
 }
 async function applyFilters() {
   page.value = 1;
   await load();
 }
+onBeforeUnmount(() => loader.stop());
+onDeactivated(() => loader.stop());
+onActivated(() => { if (loader.signal?.aborted) void load(); });
 onMounted(() => void load());
 </script>
 
@@ -80,7 +79,7 @@ onMounted(() => void load());
         <h2>请求频率日志</h2>
         <p>按任务、来源和目标主机查看实际请求、耗时、重试与 429。</p>
       </div>
-      <Button :loading="busy" aria-label="刷新请求日志" @click="load">刷新</Button>
+      <Button :loading="busy" aria-label="刷新请求日志" @click="load(true)">刷新</Button>
     </div>
     <Alert
       v-if="!isAdmin"
@@ -92,6 +91,7 @@ onMounted(() => void load());
       <Alert v-if="error" type="error" :message="error" show-icon />
       <Skeleton v-if="!data && busy" active :paragraph="{ rows: 4 }" />
       <template v-if="data">
+        <p class="source-coverage">更新于 {{ usageTime(data.checkedAt) }}<span v-if="busy"> · 正在更新</span></p>
         <div class="request-log-overview">
           <div><span>请求总数</span><strong>{{ data.summary.requests }}</strong></div>
           <div><span>平均频率</span><strong>{{ formatRate(data.summary.requestsPerHour) }}</strong></div>
@@ -156,7 +156,7 @@ onMounted(() => void load());
           </table>
           <Empty v-if="!data.entries.length" description="当前筛选下没有请求记录" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
         </div>
-        <Pagination v-model:current="page" :total="data.total" :page-size="data.pageSize" :show-size-changer="false" show-less-items @change="load" />
+        <Pagination v-model:current="page" :total="data.total" :page-size="data.pageSize" :show-size-changer="false" show-less-items @change="load()" />
       </template>
     </template>
   </section>

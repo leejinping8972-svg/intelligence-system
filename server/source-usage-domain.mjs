@@ -188,9 +188,21 @@ export function requestSources(step = '', record = {}, allowance = 0) {
   )
     return ['scrapecreators'];
   if (provider === 'sorftime' || allowance > 0) return ['sorftime'];
-  if (provider === 'public_product' || sources.includes('official_new_releases')) return ['official_sites'];
-  if (/^(?:https?:\/\/|browser:https?:\/\/)/.test(step)) return ['official_sites'];
-  if (sources.some((s) => ['semantic_analysis', 'field_analysis', 'ingredient_analysis'].includes(s)) || /^model/.test(step))
+  if (
+    provider === 'public_product' ||
+    sources.includes('official_new_releases')
+  )
+    return ['official_sites'];
+  if (/^(?:https?:\/\/|browser:https?:\/\/)/.test(step))
+    return ['official_sites'];
+  if (
+    sources.some((s) =>
+      ['semantic_analysis', 'field_analysis', 'ingredient_analysis'].includes(
+        s,
+      ),
+    ) ||
+    /^model/.test(step)
+  )
     return ['analysis'];
   if (sources.includes('google_trends_part') || /^trend/.test(step))
     return ['google_trends'];
@@ -205,14 +217,20 @@ export function sourceCharge(id, record, status) {
   if (!['completed', 'done', 'success'].includes(status))
     return { amount: null, billing: 'unknown' };
   let amount = null;
-  if (id === 'semrush') amount = Number.isSafeInteger(record.apiUnits) && record.apiUnits >= 0 ? record.apiUnits : null;
+  if (id === 'semrush')
+    amount =
+      Number.isSafeInteger(record.apiUnits) && record.apiUnits >= 0
+        ? record.apiUnits
+        : null;
   else if (id === 'sorftime')
     amount = number(record.usage?.sorftimeCalls ?? record.providerCalls);
   else if (['firecrawl', 'scrapecreators'].includes(id))
     amount = number(record.creditsCharged);
   else if (id === 'analysis')
     amount = number(
-      record.usage?.total_tokens ?? record.usage?.totalTokenCount ?? record.usage?.modelTokens,
+      record.usage?.total_tokens ??
+        record.usage?.totalTokenCount ??
+        record.usage?.modelTokens,
     );
   else if (id === 'youtube') amount = number(record.quotaUnits);
   else if (sourceById(id)) amount = number(record.requests);
@@ -388,7 +406,9 @@ export function validateQuota(input) {
     throw new Error('剩余额度不能超过总额度');
   if (
     input.expiresAt &&
-    (!/^\d{4}-\d{2}-\d{2}$/.test(input.expiresAt) || !usageDay(input.expiresAt) || new Date(input.expiresAt).toISOString().slice(0, 10) !== input.expiresAt)
+    (!/^\d{4}-\d{2}-\d{2}$/.test(input.expiresAt) ||
+      !usageDay(input.expiresAt) ||
+      new Date(input.expiresAt).toISOString().slice(0, 10) !== input.expiresAt)
   )
     throw new Error('到期日期无效');
   return {
@@ -399,6 +419,54 @@ export function validateQuota(input) {
     origin: 'manual',
   };
 }
+const usageIndexes = new WeakMap();
+function usageIndex(events) {
+  let index = usageIndexes.get(events);
+  if (index) return index;
+  const sources = new Map(),
+    daily = new Map();
+  let undated = 0;
+  for (const event of events) {
+    const total = sources.get(event.sourceId) || {
+      records: 0,
+      cumulative: 0,
+      unknown: 0,
+      cached: 0,
+      undated: 0,
+    };
+    total.records++;
+    const unknown = ['partial', 'unknown'].includes(event.billing) ? 1 : 0;
+    const amount = event.billing !== 'cached' ? event.amount || 0 : 0;
+    total.cumulative += amount;
+    total.unknown += unknown;
+    total.cached += event.billing === 'cached' ? 1 : 0;
+    if (!event.day) {
+      total.undated++;
+      undated++;
+    }
+    sources.set(event.sourceId, total);
+    if (event.day) {
+      const day = daily.get(event.day) || new Map();
+      const source = day.get(event.sourceId) || { amount: 0, unknown: 0 };
+      source.amount += amount;
+      source.unknown += unknown;
+      day.set(event.sourceId, source);
+      daily.set(event.day, day);
+    }
+  }
+  index = {
+    sources,
+    daily,
+    undated,
+    ordered: events.toSorted(
+      (a, b) =>
+        (b.at || '').localeCompare(a.at || '') || a.id.localeCompare(b.id),
+    ),
+  };
+  usageIndexes.set(events, index);
+  return index;
+}
+
 export function summarizeUsage(
   events,
   configs,
@@ -423,11 +491,10 @@ export function summarizeUsage(
     Date.parse(end) - Date.parse(start) > 366 * 86400000
   )
     throw new Error('请选择不超过一年的有效日期范围');
+  const index = usageIndex(events);
   const catalog = SOURCE_CATALOG.map((source) => {
-    const records = events.filter((e) => e.sourceId === source.id);
-    const known = records.filter(
-      (e) => e.amount !== null && e.billing !== 'cached',
-    );
+    const total = index.sources.get(source.id);
+    const todayUsage = index.daily.get(today)?.get(source.id);
     const quota = quotas[source.id] || {};
     const auto =
       quota.automatic?.remaining !== null &&
@@ -458,18 +525,13 @@ export function summarizeUsage(
             : source.id === 'brave'
               ? Boolean(configs.credentialStatus?.brave)
               : Boolean(configs[source.config]),
-      records: records.length,
-      today: known
-        .filter((e) => e.day === today)
-        .reduce((sum, e) => sum + e.amount, 0),
-      cumulative: known.reduce((sum, e) => sum + e.amount, 0),
-      unknown: records.filter((e) => ['partial', 'unknown'].includes(e.billing))
-        .length,
-      todayUnknown: records.filter(
-        (e) => e.day === today && ['partial', 'unknown'].includes(e.billing),
-      ).length,
-      cached: records.filter((e) => e.billing === 'cached').length,
-      undated: records.filter((e) => !e.day).length,
+      records: total?.records || 0,
+      today: todayUsage?.amount || 0,
+      cumulative: total?.cumulative || 0,
+      unknown: total?.unknown || 0,
+      todayUnknown: todayUsage?.unknown || 0,
+      cached: total?.cached || 0,
+      undated: total?.undated || 0,
       quota: chosen || null,
       manualQuota: quota.manual || null,
       preferManual: quota.preferManual === true,
@@ -480,7 +542,7 @@ export function summarizeUsage(
           : '未提供可用的免费余额接口，可手动登记'),
     };
   });
-  let filtered = events.filter(
+  const filtered = index.ordered.filter(
     (e) =>
       (!input.sourceId || e.sourceId === input.sourceId) &&
       (!input.billing || e.billing === input.billing) &&
@@ -492,10 +554,6 @@ export function summarizeUsage(
         ? !e.day
         : e.day && e.day >= start && e.day <= end),
   );
-  filtered.sort(
-    (a, b) =>
-      (b.at || '').localeCompare(a.at || '') || a.id.localeCompare(b.id),
-  );
   const page = Math.max(1, Math.floor(Number(input.page) || 1));
   const daily = [];
   for (
@@ -504,24 +562,17 @@ export function summarizeUsage(
     day += 86400000
   ) {
     const date = new Date(day).toISOString().slice(0, 10);
-    const rows = events.filter((e) => e.day === date);
+    const dayUsage = index.daily.get(date);
     daily.push({
       day: date,
       sources: SOURCE_CATALOG.map((s) => ({
         sourceId: s.id,
-        amount: rows
-          .filter((e) => e.sourceId === s.id && e.billing !== 'cached')
-          .reduce((sum, e) => sum + (e.amount || 0), 0),
-        unknown: rows.filter(
-          (e) =>
-            e.sourceId === s.id && ['partial', 'unknown'].includes(e.billing),
-        ).length,
+        amount: dayUsage?.get(s.id)?.amount || 0,
+        unknown: dayUsage?.get(s.id)?.unknown || 0,
       })),
     });
   }
-  const unattributed = events.filter(
-    (e) => e.sourceId === 'unattributed',
-  ).length;
+  const unattributed = index.sources.get('unattributed')?.records || 0;
   return {
     sources: catalog,
     daily,
@@ -533,7 +584,7 @@ export function summarizeUsage(
     end,
     today,
     checkedAt: now.toISOString(),
-    undated: events.filter((e) => !e.day).length,
+    undated: index.undated,
     unattributed,
     coverage: `仅统计系统已记录请求；历史缺少时间的记录单列，未覆盖调用与未知扣费不按零处理。不同来源单位不合计，余额为最近一次账户快照。${unattributed ? `另有 ${unattributed} 条历史请求来源待核验。` : ''}`,
   };

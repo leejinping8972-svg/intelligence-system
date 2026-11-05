@@ -38,6 +38,7 @@ import {
 
 import { adminRequest, session } from '../session';
 import { billingLabels, usageNumber, usageStep, usageTime } from '../source-usage';
+import { createUsageLoader } from '../source-usage-load';
 
 const RefreshIcon = createIconifyIcon('lucide:refresh-cw');
 const SettingsIcon = createIconifyIcon('lucide:settings-2');
@@ -89,66 +90,25 @@ const totals = computed(() => [
   { label: '扣费待确认', value: data.value ? `${unknownCount.value} 条` : '未获取' },
   { label: '历史未定日期', value: data.value ? `${data.value.undated} 条` : '未获取' },
 ]);
-let revision = 0;
-let loadingController: AbortController | undefined;
-async function waitForRetry(signal: AbortSignal, milliseconds: number) {
-  await new Promise<void>((resolve) => {
-    const done = () => {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', done);
-      resolve();
-    };
-    const timer = setTimeout(done, milliseconds);
-    signal.addEventListener('abort', done, { once: true });
-    if (signal.aborted) done();
-  });
-}
+const loader = createUsageLoader<SourceUsageSnapshot>({
+  apply: async (result) => { data.value = result; await draw(); },
+  busy: (value) => { busy.value = value; },
+  error: (value) => { error.value = value; },
+});
 async function load(refresh = false) {
-  if (!isAdmin.value) return;
-  const current = ++revision;
-  loadingController?.abort();
-  const controller = new AbortController();
-  loadingController = controller;
-  busy.value = true;
-  error.value = '';
-  try {
-    for (;;) {
-      const result = await adminRequest<SourceUsagePending | SourceUsageSnapshot>(
-        'server_source_usage',
-        {
-          days: days.value,
-          refresh: refresh === true,
-          sourceId: sourceId.value,
-          billing: billing.value,
-          query: query.value.trim(),
-          page: page.value,
-          undated: undated.value,
-          ...(dateRange.value
-            ? { start: dateRange.value[0], end: dateRange.value[1] }
-            : {}),
-        },
-      );
-      if (current !== revision || controller.signal.aborted) return false;
-      if ('loading' in result) {
-        await waitForRetry(
-          controller.signal,
-          Math.max(1000, Math.min(5000, result.retryAfterMs || 2000)),
-        );
-        if (current !== revision || controller.signal.aborted) return false;
-        refresh = false;
-        continue;
-      }
-      data.value = result;
-      await draw();
-      return true;
-    }
-  } catch (cause) {
-    if (current === revision)
-      error.value = cause instanceof Error ? cause.message : '消耗记录读取失败';
-  } finally {
-    if (current === revision) busy.value = false;
-  }
-  return false;
+  if (!isAdmin.value) return false;
+  const filters = {
+    days: days.value,
+    sourceId: sourceId.value,
+    billing: billing.value,
+    query: query.value.trim(),
+    page: page.value,
+    undated: undated.value,
+    ...(dateRange.value ? { start: dateRange.value[0], end: dateRange.value[1] } : {}),
+  };
+  return loader.load((force) => adminRequest<SourceUsagePending | SourceUsageSnapshot>(
+    'server_source_usage', { ...filters, refresh: force },
+  ), refresh);
 }
 async function draw() {
   await nextTick();
@@ -277,25 +237,23 @@ async function filterTask(jobId: string) {
 }
 watch(chartSource, () => void draw());
 function stopLoading() {
-  revision++;
-  loadingController?.abort();
-  busy.value = false;
+  loader.stop();
 }
 onBeforeUnmount(stopLoading);
 onDeactivated(stopLoading);
 onActivated(() => {
-  if (loadingController?.signal.aborted) void load();
+  if (loader.signal?.aborted) void load();
 });
 onMounted(async () => {
   if (!(await load())) return;
-  const mountedController = loadingController;
+  const mountedSignal = loader.signal;
   let quotaChanged = false;
   for (const source of data.value?.sources || []) {
-    if (mountedController?.signal.aborted) return;
+    if (mountedSignal?.aborted) return;
     if (source.automatic && source.configured && !source.quota)
       quotaChanged = (await refreshQuota(source, true)) || quotaChanged;
   }
-  if (quotaChanged && !mountedController?.signal.aborted) await load();
+  if (quotaChanged && !mountedSignal?.aborted) await load();
 });
 </script>
 
@@ -318,6 +276,7 @@ onMounted(async () => {
                 ? `更新于 ${usageTime(data.checkedAt)}`
                 : error ? '读取失败' : '正在读取'
             }}
+          <span v-if="busy && data"> · 正在更新</span>
           </p>
         </div>
         <Tooltip title="刷新系统消耗记录">
