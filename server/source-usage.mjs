@@ -7,7 +7,6 @@ import { openFetchKey } from './site-fetch-config.mjs';
 import {
   contentEvents,
   researchEvents,
-  requestSources,
   sourceById,
   summarizeUsage,
   usageEvent,
@@ -16,13 +15,15 @@ import {
 import {
   accountingProjection,
   createMonitorUsageReader,
-  createUsageEventCache,
   usageReadWithin,
 } from './source-usage-reader.mjs';
 import {
+  createUsageSnapshotReader,
+  USAGE_SNAPSHOT_NAME,
+} from './source-usage-snapshot.mjs';
+import {
   requestFailed,
   requestLogFromEvent,
-  requestLogRange,
   requestStarted,
   requestSucceeded,
   summarizeRequestLogs,
@@ -44,16 +45,18 @@ const readMonitorEvents = createMonitorUsageReader({
     putDocument('workspace_documents', name, value, false, connection),
 });
 export async function readSourceEvents(connection = pool) {
-  const research = await connection.query(
-    `SELECT r.job_id,r.step,r.status,r.paid_allowance,${sql(accountingProjection('r.response'), accountingProjection('r.response', 'mysql'))} AS record,COALESCE(${jsonText('j.input', 'kind')},'keyword_research') AS task,${jsonText('j.input', 'market')} AS market FROM research_requests r JOIN research_jobs j ON j.id=r.job_id`,
-  );
-  const monitor = await readMonitorEvents(connection);
-  const content = await connection.query(
-    `SELECT name,${sql("jsonb_build_object('id',value->'id','mode',value->'mode','steps',value->'steps','input',jsonb_build_object('query',value->'input'->'query','market',value->'input'->'market'),'aiUsage',value->'aiUsage','aiStatus',value->'aiStatus','aiUsageAt',value->'aiUsageAt')", "JSON_OBJECT('id',JSON_EXTRACT(value,'$.id'),'mode',JSON_EXTRACT(value,'$.mode'),'steps',JSON_EXTRACT(value,'$.steps'),'input',JSON_OBJECT('query',JSON_EXTRACT(value,'$.input.query'),'market',JSON_EXTRACT(value,'$.input.market')),'aiUsage',JSON_EXTRACT(value,'$.aiUsage'),'aiStatus',JSON_EXTRACT(value,'$.aiStatus'),'aiUsageAt',JSON_EXTRACT(value,'$.aiUsageAt'))")} AS value FROM workspace_documents WHERE name LIKE 'content:job:%'`,
-  );
-  const direct = await connection.query(
-    "SELECT value FROM workspace_documents WHERE name LIKE 'source-usage:event:%'",
-  );
+  const [research, monitor, content, direct] = await Promise.all([
+    connection.query(
+      `SELECT r.job_id,r.step,r.status,r.paid_allowance,${sql(accountingProjection('r.response'), accountingProjection('r.response', 'mysql'))} AS record,COALESCE(${jsonText('j.input', 'kind')},'keyword_research') AS task,${jsonText('j.input', 'market')} AS market FROM research_requests r JOIN research_jobs j ON j.id=r.job_id`,
+    ),
+    readMonitorEvents(connection),
+    connection.query(
+      `SELECT name,${sql("jsonb_build_object('id',value->'id','mode',value->'mode','steps',value->'steps','input',jsonb_build_object('query',value->'input'->'query','market',value->'input'->'market'),'aiUsage',value->'aiUsage','aiStatus',value->'aiStatus','aiUsageAt',value->'aiUsageAt')", "JSON_OBJECT('id',JSON_EXTRACT(value,'$.id'),'mode',JSON_EXTRACT(value,'$.mode'),'steps',JSON_EXTRACT(value,'$.steps'),'input',JSON_OBJECT('query',JSON_EXTRACT(value,'$.input.query'),'market',JSON_EXTRACT(value,'$.input.market')),'aiUsage',JSON_EXTRACT(value,'$.aiUsage'),'aiStatus',JSON_EXTRACT(value,'$.aiStatus'),'aiUsageAt',JSON_EXTRACT(value,'$.aiUsageAt'))")} AS value FROM workspace_documents WHERE name LIKE 'content:job:%'`,
+    ),
+    connection.query(
+      "SELECT value FROM workspace_documents WHERE name LIKE 'source-usage:event:%'",
+    ),
+  ]);
   const events = [
     ...researchEvents(
       research.rows.map((r) => ({ ...r, id: `${r.job_id}:${r.step}` })),
@@ -64,7 +67,38 @@ export async function readSourceEvents(connection = pool) {
   ];
   return [...new Map(events.map((e) => [e.id, e])).values()];
 }
-const cachedSourceEvents = createUsageEventCache(readSourceEvents);
+const cachedSourceSnapshot = createUsageSnapshotReader({
+  read: readSourceEvents,
+  load: async (connection) =>
+    (
+      await connection.query(
+        'SELECT value FROM workspace_documents WHERE name=$1',
+        [USAGE_SNAPSHOT_NAME],
+      )
+    ).rows[0]?.value,
+  save: (value, connection) =>
+    putDocument(
+      'workspace_documents',
+      USAGE_SNAPSHOT_NAME,
+      value,
+      false,
+      connection,
+    ),
+  onCacheError: (error) =>
+    console.warn(
+      'Source usage snapshot cache unavailable',
+      error.code || 'CACHE_UNAVAILABLE',
+    ),
+});
+const requestLogsBySnapshot = new WeakMap();
+function snapshotRequestLogs(events) {
+  let logs = requestLogsBySnapshot.get(events);
+  if (!logs) {
+    logs = events.map(requestLogFromEvent).filter(Boolean);
+    requestLogsBySnapshot.set(events, logs);
+  }
+  return logs;
+}
 export async function recordSourceCall(
   context,
   callback,
@@ -90,7 +124,7 @@ export async function recordSourceCall(
     ),
   };
   await io.write(name, usageEvent(row, context.sourceId));
-  cachedSourceEvents.invalidate();
+  cachedSourceSnapshot.invalidate();
   let result;
   try {
     result = await callback();
@@ -106,7 +140,7 @@ export async function recordSourceCall(
         context.sourceId,
       ),
     );
-    cachedSourceEvents.invalidate();
+    cachedSourceSnapshot.invalidate();
     throw error;
   }
   await io.write(
@@ -121,7 +155,7 @@ export async function recordSourceCall(
       context.sourceId,
     ),
   );
-  cachedSourceEvents.invalidate();
+  cachedSourceSnapshot.invalidate();
   return result;
 }
 const QUOTA_PREFIX = 'source-usage:quota:';
@@ -129,7 +163,12 @@ export async function sourceUsageAction(input, user, overrides = {}) {
   requireAdmin(user);
   const io = {
     pool,
-    readEvents: cachedSourceEvents,
+    readSnapshot: overrides.readEvents
+      ? async (connection, options) => ({
+          events: await overrides.readEvents(connection, options),
+          checkedAt: new Date().toISOString(),
+        })
+      : cachedSourceSnapshot,
     write: (name, value) => putDocument('provider_configs', name, value),
     semrush: semrushAction,
     fetcher: fetch,
@@ -255,10 +294,7 @@ export async function sourceUsageAction(input, user, overrides = {}) {
     });
     return { available: Boolean(automatic), message };
   }
-  if (
-    input.action === 'server_source_connections' ||
-    input.summary === true
-  ) {
+  if (input.action === 'server_source_connections' || input.summary === true) {
     // The settings page only needs connection/configuration state. Do not make
     // it scan every historical request journal just to render the source list.
     const configsResult = await io.pool.query(
@@ -280,23 +316,30 @@ export async function sourceUsageAction(input, user, overrides = {}) {
     });
   }
   if (input.action === 'server_source_request_log') {
-    const result = await readRequestEvents(io.pool, input);
-    return summarizeRequestLogs(result.events, {
-      ...input,
-      truncated: result.truncated,
-    });
+    const result = await usageReadWithin(
+      io.readSnapshot(io.pool, { refresh: input.refresh === true }),
+    );
+    if (result.loading) return { loading: true, retryAfterMs: 2000 };
+    const snapshot = result.events;
+    return {
+      ...summarizeRequestLogs(snapshotRequestLogs(snapshot.events), input),
+      checkedAt: snapshot.checkedAt,
+      refreshing: snapshot.refreshing === true,
+      ...(snapshot.refreshError ? { refreshError: snapshot.refreshError } : {}),
+    };
   }
   if (input.action !== 'server_source_usage') throw new Error('未知数据源操作');
   const [eventResult, configsResult] = await Promise.all([
     usageReadWithin(
-      io.readEvents(io.pool, { refresh: input.refresh === true }),
+      io.readSnapshot(io.pool, { refresh: input.refresh === true }),
     ),
     io.pool.query(
       "SELECT name,value FROM provider_configs WHERE name LIKE 'provider:%' OR name LIKE 'source-usage:quota:%' OR name IN ('credentials','sorftime-mcp')",
     ),
   ]);
   if (eventResult.loading) return { loading: true, retryAfterMs: 2000 };
-  const events = eventResult.events;
+  const snapshot = eventResult.events;
+  const events = snapshot.events;
   const configs = Object.fromEntries(
     configsResult.rows.map((r) => [r.name, r.value]),
   );
@@ -320,6 +363,9 @@ export async function sourceUsageAction(input, user, overrides = {}) {
       };
   }
   const result = summarizeUsage(events, configs, quotas, input);
+  result.checkedAt = snapshot.checkedAt;
+  result.refreshing = snapshot.refreshing === true;
+  if (snapshot.refreshError) result.refreshError = snapshot.refreshError;
   // Previously captured balances remain useful without making a paid verification request.
   const scrape = result.sources.find((s) => s.id === 'scrapecreators');
   const last = configs['provider:scrapecreators:v1']?.lastCheck;
@@ -331,99 +377,4 @@ export async function sourceUsageAction(input, user, overrides = {}) {
       origin: 'automatic',
     };
   return result;
-}
-
-async function readRequestEvents(connection, input = {}) {
-  const range = requestLogRange(input);
-  const startedAt = sql(
-    "value->'request'->>'startedAt'",
-    "JSON_UNQUOTE(JSON_EXTRACT(value,'$.request.startedAt'))",
-  );
-  const researchStartedAt = sql(
-    "r.response->'requestUsage'->>'startedAt'",
-    "JSON_UNQUOTE(JSON_EXTRACT(r.response,'$.requestUsage.startedAt'))",
-  );
-  const monitorStartedAt = sql(
-    "d.value->'response'->'requestUsage'->>'startedAt'",
-    "JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.response.requestUsage.startedAt'))",
-  );
-  const monitorRecord = sql(
-    accountingProjection("d.value->'response'"),
-    accountingProjection("JSON_EXTRACT(d.value,'$.response')", 'mysql'),
-  );
-  const monitorStep = sql(
-    "d.value->>'step'",
-    "JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.step'))",
-  );
-  const monitorStatus = sql(
-    "d.value->>'status'",
-    "JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.status'))",
-  );
-  const limit = Math.min(20_000, Math.max(100, Number(input.readLimit) || 5000));
-  const [directRows, researchRows, monitorRows] = await Promise.all([
-    connection.query(
-    `SELECT value FROM workspace_documents WHERE name LIKE 'source-usage:event:%' AND ${startedAt} >= $1 AND ${startedAt} < $2 ORDER BY ${startedAt} DESC LIMIT $3`,
-    [range.startAt, range.endAt, limit + 1],
-    ),
-    connection.query(
-      `SELECT r.job_id,r.step,r.status,r.paid_allowance,${sql(accountingProjection('r.response'), accountingProjection('r.response', 'mysql'))} AS record,COALESCE(${jsonText('j.input', 'kind')},'keyword_research') AS task,${jsonText('j.input', 'market')} AS market FROM research_requests r JOIN research_jobs j ON j.id=r.job_id WHERE ${researchStartedAt} >= $1 AND ${researchStartedAt} < $2 ORDER BY ${researchStartedAt} DESC LIMIT $3`,
-      [range.startAt, range.endAt, limit + 1],
-    ),
-    connection.query(
-      `SELECT d.name,${monitorStep} AS step,${monitorStatus} AS status,${monitorRecord} AS record FROM workspace_documents d WHERE d.name LIKE 'competitor:request:%' AND ${monitorStartedAt} >= $1 AND ${monitorStartedAt} < $2 ORDER BY ${monitorStartedAt} DESC LIMIT $3`,
-      [range.startAt, range.endAt, limit + 1],
-    ),
-  ]);
-  const directEvents = directRows.rows
-    .map((row) => {
-      try {
-        return requestLogFromEvent(
-          typeof row.value === 'string' ? JSON.parse(row.value) : row.value,
-        );
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
-  const researchEventsList = researchEvents(
-    researchRows.rows.map((row) => ({ ...row, id: `${row.job_id}:${row.step}` })),
-  )
-    .map((event) => requestLogFromEvent(event))
-    .filter(Boolean);
-  const monitorEvents = monitorRows.rows
-    .flatMap((row) => {
-      try {
-        const record =
-          typeof row.record === 'string' ? JSON.parse(row.record) : row.record;
-        const sourceId = requestSources(row.step, record)[0];
-        return requestLogFromEvent(
-          usageEvent(
-            {
-              id: row.name,
-              job_id: row.name.split(':').slice(3, -1).join(':'),
-              task: '定时监控',
-              step: row.step,
-              status: row.status,
-              market: 'ALL',
-              record,
-            },
-            sourceId,
-          ),
-        );
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
-  const events = [...directEvents, ...researchEventsList, ...monitorEvents].sort(
-    (a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id),
-  );
-  return {
-    events: events.slice(0, limit),
-    truncated:
-      directRows.rows.length > limit ||
-      researchRows.rows.length > limit ||
-      monitorRows.rows.length > limit ||
-      events.length > limit,
-  };
 }

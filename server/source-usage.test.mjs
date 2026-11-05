@@ -357,46 +357,55 @@ test('direct journal reserves before calling, settles once and retains failed un
   assert.equal(writes.at(-1).request.httpStatus, 429);
   assert.equal(writes.at(-1).request.retryAfterSeconds, 120);
 });
-test('request log action is admin-only and reads only bounded request metadata', async () => {
-  const response = await sourceUsageAction(
-    { action: 'server_source_request_log', days: 7, query: 'job-request' },
-    admin,
-    {
-      pool: {
-        query: async () => ({
-          rows: [
-            {
-              value: {
-                id: 'event-1:official_sites',
-                sourceId: 'official_sites',
-                jobId: 'job-request',
-                task: '独立站商品采集',
-                step: 'catalog',
-                market: 'US',
-                status: 'failed',
-                request: {
-                  host: 'shop.example',
-                  path: '/products',
-                  url: 'https://shop.example/products',
-                  startedAt: new Date().toISOString(),
-                  finishedAt: new Date().toISOString(),
-                  durationMs: 120,
-                  outcome: 'error',
-                  httpStatus: 429,
-                  rateLimited: true,
-                },
-              },
-            },
-          ],
-        }),
-      },
-    },
-  );
-  assert.equal(response.total, 1);
-  assert.equal(response.summary.rateLimited, 1);
-  assert.equal(response.entries[0].host, 'shop.example');
-  assert.equal(JSON.stringify(response).includes('cookie'), false);
+test('request log action shares compact usage events and excludes provider payloads', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(
+      'CREATE TABLE research_jobs(id text primary key,input jsonb); CREATE TABLE research_requests(job_id text,step text,status text,paid_allowance int,response jsonb); CREATE TABLE workspace_documents(name text primary key,value jsonb,revision bigint not null default 1)',
+    );
+    await db.query(
+      'INSERT INTO workspace_documents(name,value) VALUES($1,$2)',
+      [
+        'source-usage:event:fixture',
+        {
+          id: 'event-1:official_sites',
+          sourceId: 'official_sites',
+          jobId: 'job-request',
+          task: '独立站商品采集',
+          step: 'catalog',
+          market: 'US',
+          status: 'failed',
+          billing: 'unknown',
+          amount: null,
+          request: {
+            host: 'shop.example',
+            path: '/products',
+            url: 'https://shop.example/products',
+            startedAt: new Date(Date.now() - 1000).toISOString(),
+            finishedAt: new Date().toISOString(),
+            durationMs: 120,
+            outcome: 'error',
+            httpStatus: 429,
+            rateLimited: true,
+          },
+        },
+      ],
+    );
+    const response = await sourceUsageAction(
+      { action: 'server_source_request_log', days: 7, query: 'job-request' },
+      admin,
+      { pool: db },
+    );
+    assert.equal(response.total, 1);
+    assert.equal(response.summary.rateLimited, 1);
+    assert.equal(response.entries[0].host, 'shop.example');
+    assert.equal(JSON.stringify(response).includes('cookie'), false);
+    assert.equal(response.truncated, false);
+  } finally {
+    await db.close();
+  }
 });
+
 test('quota failures preserve prior snapshots and automatic refresh uses only account action', async () => {
   let saved;
   const old = { automatic: { remaining: 7, origin: 'automatic' } };

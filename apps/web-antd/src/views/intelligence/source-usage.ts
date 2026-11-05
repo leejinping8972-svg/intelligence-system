@@ -41,6 +41,8 @@ export interface UsageEntry {
   billing: 'cached' | 'confirmed' | 'partial' | 'unknown';
 }
 export interface SourceUsageSnapshot {
+  refreshing?: boolean;
+  refreshError?: string;
   sources: UsageSource[];
   entries: UsageEntry[];
   daily: Array<{
@@ -100,6 +102,8 @@ export interface RequestLogGroup {
   lastAt: string;
 }
 export interface RequestLogSnapshot {
+  refreshing?: boolean;
+  refreshError?: string;
   entries: RequestLogEntry[];
   total: number;
   page: number;
