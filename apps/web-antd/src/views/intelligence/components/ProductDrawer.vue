@@ -13,6 +13,7 @@ import {
   toggleFavorite,
 } from '../data';
 import ProductArt from './ProductArt.vue';
+import ProductAsin from './ProductAsin.vue';
 import ProductChineseName from './ProductChineseName.vue';
 import CollectionTime from './CollectionTime.vue';
 import { productCollectedAt } from '../resource-metadata';
@@ -68,6 +69,7 @@ function addMonitor() {
           <ProductText :text="product.brand" :translated="product.brandZh" />{{ marketName(product.market) }}
         </p>
         <h2 class="hci-resource-title"><ProductChineseName :product="product" /></h2>
+        <ProductAsin :product="product" />
         <p class="hci-subtle">最近采集：<CollectionTime :at="productCollectedAt(product)" /></p>
         <div style="display: flex; gap: 12px; margin: 14px 0">
           <Tag :color="product.reviewed ? 'green' : 'orange'">

@@ -334,13 +334,19 @@ async function exerciseReadModel(
   assert.equal(siteEvidence.hasIngredients, true);
   await pool.query('UPDATE research_keywords SET data=$2 WHERE natural_key=$1', ['key2', { ...keyword(2), seedTerm: keyword(0).term, source: 'Google搜索联想' }]);
   await putDocument('workspace_documents', 'business:products:metric-qa', {
-    id: 'metric-qa', title: 'Metric QA', market: 'US', sourceProvider: 'Sorftime', sourcePlatform: 'Amazon', sourceProductId: 'ASIN-QA',
+    id: 'metric-qa', title: 'Metric QA', market: 'US', sourceProvider: 'Sorftime', sourcePlatform: 'Amazon', sourceProductId: 'B000000001',
     benefits: [], ingredientInsights: [], sourceMetrics: { collectedAt: '2026-10-22T12:00:00Z' },
     sourceContent: { descriptions: ['complete source text'] },
-    decisionData: { series: [{ metric: 'sales_volume', provider: 'Sorftime', platform: 'Amazon', productId: 'ASIN-QA', market: 'US', collectedAt: '2026-10-22T12:00:00Z', period: 'day', points: [{ start: '2026-09-22', end: '2026-10-21', value: 60 }] }] },
+    decisionData: { series: [{ metric: 'sales_volume', provider: 'Sorftime', platform: 'Amazon', productId: 'B000000001', market: 'US', collectedAt: '2026-10-22T12:00:00Z', period: 'day', points: [{ start: '2026-09-22', end: '2026-10-21', value: 60 }] }] },
   });
   await drain();
   const projectedMetric = (await reads.list({ collection: 'products', search: 'Metric QA' })).rows[0];
+  assert.equal(projectedMetric.asin, 'B000000001');
+  // Old cached list rows have only sourceProductId. Reading supplies ASIN without
+  // rebuilding the projection or fetching the product from its paid provider.
+  await pool.query(`UPDATE workspace_read_rows SET payload=${sql("payload-'asin'", "JSON_REMOVE(payload,'$.asin')")} WHERE collection='products' AND id='metric-qa'`);
+  assert.equal((await reads.list({ collection: 'products', search: 'Metric QA' })).rows[0].asin, 'B000000001');
+  assert.equal((await reads.details({ collection: 'products', id: 'metric-qa' })).record.asin, 'B000000001');
   assert.equal(projectedMetric.coreSummary.periods[30].some((metric) => ['sales', 'dailySales'].includes(metric.key)), false);
   assert.equal(projectedMetric.decisionData, undefined);
   assert.deepEqual((await reads.details({ collection: 'keywords', id: 'k0' })).record.coreSummary.related.expansions, [{ term: keyword(2).term, source: 'Google搜索联想' }]);

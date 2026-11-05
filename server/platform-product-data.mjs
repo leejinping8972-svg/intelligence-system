@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { mergeResourceHistory } from './product-resource-domain.mjs';
+import { normalizeAsin, productAsin } from './product-asin.mjs';
 
 export const text = (value) =>
   typeof value === 'string' ? value.trim().slice(0, 12_000) : '';
@@ -253,13 +254,11 @@ export function normalizeAmazon(
   at = new Date().toISOString(),
   expectedAsin,
 ) {
-  const asin = String(
-    field(row, 'asin', 'Asin', 'ASIN') || expectedAsin || '',
-  ).toUpperCase();
+  const asin = normalizeAsin(field(row, 'asin', 'Asin', 'ASIN') || expectedAsin);
   if (
     !amazonHosts[market] ||
     !/^[A-Z0-9]{10}$/.test(asin) ||
-    (expectedAsin && asin !== expectedAsin)
+    (expectedAsin && asin !== normalizeAsin(expectedAsin))
   )
     return null;
   const title = text(
@@ -269,6 +268,8 @@ export function normalizeAmazon(
   const url = `https://${amazonHosts[market]}/dp/${asin}`;
   const context = sourceContext('Sorftime', market, at, url);
   const p = baseProduct(context, asin, row, title, url);
+  p.asin = asin;
+  p.collectionFields.push('asin');
   p.searchSubtitle = text(field(row, 'sub_title', 'subTitle', 'SubTitle'));
   const image = field(
     row,
@@ -415,14 +416,14 @@ export function normalizeAmazonContent(value, product, at) {
       (r) =>
         String(
           field(r, 'asin', 'ASIN', 'Asin') || product.sourceProductId,
-        ).toUpperCase() === product.sourceProductId,
+        ).trim().toUpperCase() === product.sourceProductId,
     ) ||
     value.data ||
     value.Data ||
     value;
   if (
     field(row, 'asin', 'ASIN', 'Asin') &&
-    String(field(row, 'asin', 'ASIN', 'Asin')).toUpperCase() !==
+    String(field(row, 'asin', 'ASIN', 'Asin')).trim().toUpperCase() !==
       product.sourceProductId
   )
     throw new Error('商品详情 ASIN 不一致，未混入其他商品');
@@ -473,6 +474,8 @@ export function normalizeAmazonContent(value, product, at) {
       rawFields: Object.fromEntries(['ingredients', 'Ingredients', 'servingSize', 'serving_size'].filter((key) => typeof row[key] === 'string').map((key) => [key, row[key]])),
     },
   };
+  const asin = productAsin(product);
+  if (asin) patch.asin = asin;
   const image = field(
     row,
     'mainImages',
@@ -527,6 +530,7 @@ export function normalizeAmazonContent(value, product, at) {
   patch.collectionFields = [
     ...new Set([
       ...(product.collectionFields || []),
+      ...(patch.asin ? ['asin'] : []),
       ...(patch.imageUrl ? ['image'] : []),
       ...(patch.claim ? ['description'] : []),
       ...(ingredient ? ['ingredients'] : []),
@@ -763,5 +767,7 @@ export function mergePlatformProduct(old, patch) {
     )
       merged.dataCompletion[key] = state;
   }
+  const asin = productAsin(merged);
+  if (asin) merged.asin = asin;
   return merged;
 }
