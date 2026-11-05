@@ -2,7 +2,7 @@
 import type { Task } from '../data';
 import type { TaskGroup } from '../task-list';
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import {
   Button,
@@ -33,6 +33,7 @@ import {
 import { fetchTaskPage } from '../task-page';
 
 const props = defineProps<{
+  active?: boolean;
   tasks: TaskGroup[];
   retrying: string;
   resuming?: string;
@@ -66,6 +67,9 @@ const remoteTotal = ref(0);
 const statusCounts = ref<Record<string, number>>({});
 const activeJobs = ref<Array<{ id: string; status: string }>>([]);
 let loadSequence = 0;
+let loadedRevision = '';
+let hasLoaded = false;
+let loadController: AbortController | undefined;
 
 const localRows = computed(() =>
   props.tasks.filter(
@@ -92,7 +96,11 @@ const visible = computed(() =>
 );
 
 async function loadRemote() {
-  if (!serverMode) return;
+  if (!serverMode || props.active === false) return;
+  const revision = cloudWorkspace.taskRevision;
+  loadController?.abort();
+  const controller = new AbortController();
+  loadController = controller;
   const sequence = ++loadSequence;
   loading.value = true;
   listError.value = '';
@@ -103,15 +111,17 @@ async function loadRemote() {
       statuses: status.value,
       search: search.value,
       market: state.market,
-    });
+    }, { signal: controller.signal });
     if (sequence !== loadSequence) return;
     remoteRows.value = groupTasks(result.tasks, state.market);
     remoteTotal.value = result.total;
     statusCounts.value = mergeTaskStatusCounts(result.statusCounts || {});
     activeJobs.value = result.activeJobs || [];
+    loadedRevision = revision;
+    hasLoaded = true;
     emit('update:total', result.total);
   } catch (error) {
-    if (sequence !== loadSequence) return;
+    if (sequence !== loadSequence || controller.signal.aborted) return;
     listError.value =
       error instanceof Error ? error.message : '任务列表读取失败';
     message.error(listError.value);
@@ -148,9 +158,18 @@ function resetFilters() {
 watch(
   () => cloudWorkspace.taskRevision,
   () => {
-    if (serverMode) void loadRemote();
+    if (serverMode && props.active !== false) void loadRemote();
   },
 );
+watch(() => props.active, active => {
+  if (active === false) {
+    loadController?.abort();
+    loadSequence++;
+    loading.value = false;
+  }
+  if (active && (!hasLoaded || loadedRevision !== cloudWorkspace.taskRevision)) void loadRemote();
+});
+onUnmounted(() => { loadController?.abort(); loadSequence++; });
 watch(view, (value) => {
   try {
     localStorage.setItem('hci-task-view', value);
@@ -231,7 +250,8 @@ const columns = [
     <span>同一后台任务的多个市场合并展示；进度为整项任务合计。</span>
   </div>
   <p v-if="listError" class="task-list-error" role="alert">{{ listError }}</p>
-  <Spin :spinning="loading">
+  <p v-if="loading && hasLoaded" class="hci-subtle" role="status">正在更新任务进度，当前列表可继续查看。</p>
+  <Spin :spinning="loading && !hasLoaded">
     <Table
       v-if="view === 'list'"
       :data-source="visible"

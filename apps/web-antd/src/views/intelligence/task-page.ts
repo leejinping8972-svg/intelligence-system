@@ -19,7 +19,7 @@ export async function fetchTaskPage(input: {
   statuses?: string[];
   search?: string;
   market?: MarketFilter;
-}) {
+}, options: { signal?: AbortSignal } = {}) {
   const statuses = input.statuses?.length
     ? expandTaskStatusFilters(input.statuses)
     : undefined;
@@ -29,7 +29,7 @@ export async function fetchTaskPage(input: {
     statuses,
     search: input.search?.trim() || undefined,
     market: input.market && input.market !== 'ALL' ? input.market : undefined,
-  });
+  }, options);
   return {
     ...result,
     statusCounts: mergeTaskStatusCounts(result.statusCounts),

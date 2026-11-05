@@ -33,7 +33,8 @@ import { serverMode, session } from '../session';
 import ProductDrawer from './ProductDrawer.vue';
 
 const router = useRouter();
-useCompetitorWorkspace();
+const props = defineProps<{ active?: boolean }>();
+useCompetitorWorkspace(() => props.active !== false);
 const busy = ref('');
 const kind = ref('ALL');
 const page = ref(1);

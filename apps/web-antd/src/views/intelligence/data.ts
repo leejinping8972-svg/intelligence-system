@@ -424,6 +424,7 @@ export interface Review {
   reason: string;
 }
 export interface Task {
+  canContinue?: boolean;
   sourceAnalysis?: { total: number; queued: number; running: number; completed: number; failed: number; cancelled: number; pending: number; processed: number };
   overview?: {
     status: string;

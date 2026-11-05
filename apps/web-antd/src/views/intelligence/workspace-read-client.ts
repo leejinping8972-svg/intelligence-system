@@ -16,6 +16,8 @@ interface Flight {
 }
 
 export const workspaceReadActions = new Set([
+  'server_monitor_workspace',
+  'server_task_page',
   'server_workspace_list',
   'server_workspace_overview',
   'server_workspace_facets',

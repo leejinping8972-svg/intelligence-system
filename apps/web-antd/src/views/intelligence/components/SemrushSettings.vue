@@ -96,7 +96,6 @@ async function configure(save: boolean) {
 }
 onMounted(() => {
   void load();
-  void refreshUsage();
 });
 onDeactivated(() => {
   apiKey.value = '';
@@ -168,6 +167,7 @@ onUnmounted(() => {
           >官方接入说明</a>
       </div>
     </Form>
+    <p class="hci-subtle">Semrush 额度在“资源消耗 → Semrush → 额度管理”中手动填写，系统不自动获取账户余额。</p>
     <div class="hci-provider-balance" role="status">
       <div>
         <span>系统已记录消耗积分</span>

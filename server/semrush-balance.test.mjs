@@ -44,72 +44,20 @@ test('redirects, permission errors, HTML and malformed responses are unknown, no
   });
   assert.ok(!JSON.stringify(failed).includes(key));
 });
-test('admin refresh caches balance; normal status reads only the cache without external requests', async () => {
+test('account balance actions never call Semrush or replace manual quota', async () => {
   const secret = randomBytes(32).toString('base64');
-  let stored = { ...encryptSemrushKey(key, secret), updatedAt: 'qa' };
-  let calls = 0;
+  const stored = { ...encryptSemrushKey(key, secret), lastBalance: { units: 4321 } };
   const io = {
     secret,
     read: async () => stored,
-    write: async (value) => {
-      stored = value;
-    },
-    balance: async () => {
-      calls++;
-      return {
-        units: 4321,
-        status: 'available',
-        checkedAt: '2026-10-20T00:00:00Z',
-      };
-    },
+    write: async () => { throw new Error('must not write'); },
+    balance: async () => { throw new Error('must not call provider'); },
   };
-  await assert.rejects(
-    () =>
-      semrushAction(
-        { action: 'server_semrush_balance' },
-        { role: 'researcher' },
-        io,
-      ),
-    /管理员/,
-  );
-  const result = await semrushAction(
-    { action: 'server_semrush_balance' },
-    { role: 'admin' },
-    io,
-  );
-  assert.equal(result.balance.units, 4321);
-  const cached = await semrushAction(
-    { action: 'server_semrush_status' },
-    { role: 'researcher' },
-    io,
-  );
-  assert.equal(cached.balance.units, 4321);
-  assert.equal(calls, 1);
-  assert.ok(!JSON.stringify(stored).includes(key));
-});
-test('refresh cannot overwrite a key saved while the request was pending', async () => {
-  const secret = randomBytes(32).toString('base64');
-  let stored = encryptSemrushKey(key, secret);
-  const next = encryptSemrushKey('different-synthetic-key', secret);
-  const io = {
-    secret,
-    read: async () => stored,
-    write: async () => {
-      throw new Error('must not write');
-    },
-    balance: async () => {
-      stored = next;
-      return { units: 12 };
-    },
-  };
-  await assert.rejects(
-    () =>
-      semrushAction(
-        { action: 'server_semrush_balance' },
-        { role: 'admin' },
-        io,
-      ),
-    /Key 已更换/,
-  );
-  assert.deepEqual(stored, next);
+  await assert.rejects(semrushAction({action:'server_semrush_balance'}, {role:'researcher'}, io), /管理员/);
+  const result = await semrushAction({action:'server_semrush_balance'}, {role:'admin'}, io);
+  assert.equal(result.manualOnly, true);
+  assert.equal(result.balance, null);
+  const status = await semrushAction({action:'server_semrush_status'}, {role:'admin'}, io);
+  assert.equal(status.balance, null);
+  assert.equal(stored.lastBalance.units, 4321);
 });

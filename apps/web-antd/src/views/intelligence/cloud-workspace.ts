@@ -64,8 +64,8 @@ function businessEntries() {
   return entries;
 }
 const applying = ref(false);
-const readMode = ref<'legacy' | 'paged' | 'tasks'>('paged');
-export function setWorkspaceReadMode(mode: 'legacy' | 'paged' | 'tasks') {
+const readMode = ref<'legacy' | 'monitor' | 'paged' | 'tasks'>('paged');
+export function setWorkspaceReadMode(mode: 'legacy' | 'monitor' | 'paged' | 'tasks') {
   if (readMode.value === mode) return;
   readMode.value = mode;
 }
@@ -290,7 +290,17 @@ export async function cloudRequest<T>(
         throw error;
       }
     }
-    return adminRequest<T>(action, input, timeout);
+    try {
+      return await (options.signal
+        ? adminRequest<T>(action, input, timeout, options.signal)
+        : adminRequest<T>(action, input, timeout));
+    } catch (error) {
+      if (error instanceof Error && error.name === 'TimeoutError')
+        throw new Error(action === 'server_resume_partial'
+          ? '继续采集请求超时，后台可能已接收；请刷新任务状态后确认，避免重复提交'
+          : '请求超时，请稍后刷新状态；已加载的内容会继续保留', { cause: error });
+      throw error;
+    }
   }
   const { researchApiUrl, researchAccessKey } = state.settings;
   if (!researchApiUrl || !researchAccessKey)
@@ -543,6 +553,7 @@ async function runCloudSync() {
   }
 }
 let pagedScope = '';
+let monitorRevision = '';
 async function runPagedSync() {
   if (clearing) return;
   cloudWorkspace.syncing = true;
@@ -553,6 +564,7 @@ async function runPagedSync() {
       pending.clear();
       businessKnown.clear();
       businessPending.clear();
+      monitorRevision = '';
       pagedScope = scope;
     }
     if (pending.size > 0) {
@@ -581,13 +593,17 @@ async function runPagedSync() {
         }
       }
     }
-    const result = await cloudRequest<{
+    const monitorSnapshot = readMode.value === 'monitor'
+      ? cloudRequest<{ revision: string; entries?: Array<{ key: string; value: object }>; products?: unknown[] }>('server_monitor_workspace', { revision: monitorRevision })
+      : Promise.resolve(undefined);
+    const [result, monitor] = await Promise.all([cloudRequest<{
       entries: Array<{ key: string; value: object }>;
       revisions: Record<string, string>;
       active: number;
       generatedAt: string;
       indexing: boolean;
-    }>('server_workspace_bootstrap');
+    }>('server_workspace_bootstrap'), monitorSnapshot]);
+    if (monitor?.products?.length) applyWorkspaceRecords('products', monitor.products);
     const taskSnapshot =
       readMode.value === 'tasks'
         ? await cloudRequest<{
@@ -610,6 +626,29 @@ async function runPagedSync() {
       ] as const)
         if (!businessKnown.has(key) && !businessPending.has(key))
           businessKnown.set(key, JSON.stringify(value));
+      if (monitor?.entries) {
+        for (const collection of ['monitors', 'audit'] as const) {
+          const incoming = monitor.entries.filter(entry => entry.key.startsWith(`${collection}:`));
+          for (const key of businessKnown.keys())
+            if (key.startsWith(`${collection}:`)) businessKnown.delete(key);
+          const values = new Map(incoming.map(entry => [entry.key, entry.value]));
+          for (const entry of incoming) businessKnown.set(entry.key, JSON.stringify(entry.value));
+          for (const [key, value] of businessPending)
+            if (key.startsWith(`${collection}:`)) {
+              if (value === null) values.delete(key);
+              else values.set(key, { ...values.get(key), ...(value as object) });
+            }
+          (state[collection] as unknown[]).splice(0, state[collection].length, ...values.values());
+        }
+        for (const entry of monitor.entries.filter(entry => entry.key.startsWith('legacyTasks:'))) {
+          const task = entry.value as Task;
+          const existing = state.tasks.find(item => item.id === task.id);
+          if (existing) Object.assign(existing, task);
+          else state.tasks.push(task);
+        }
+        monitorRevision = monitor.revision;
+      }
+      if (readMode.value === 'monitor') cloudWorkspace.taskRevision = result.revisions.tasks || '';
       if (taskSnapshot) {
         const tasks = taskSnapshot;
         if (tasks.tasks) {
@@ -711,11 +750,25 @@ async function doSubmitCloudResearch(
 }
 export async function cancelCloudJob(jobId: string) {
   await cloudRequest('server_cancel', { jobId });
-  await syncCloudWorkspace();
+  for (const task of state.tasks)
+    if (task.cloudJobId === jobId) task.status = 'cancelled';
+  cloudWorkspace.taskRevision = `action:${Date.now()}`;
+  void syncCloudWorkspace().catch(() => {});
 }
+const resumeFlights = new Map<string, Promise<unknown>>();
 export async function resumePartialCloudJob(jobId: string) {
-  await cloudRequest('server_resume_partial', { jobId });
-  await syncCloudWorkspace();
+  const existing = resumeFlights.get(jobId);
+  if (existing) return existing;
+  const flight = cloudRequest<{ status?: Task['status'] }>('server_resume_partial', { jobId }).then(result => {
+    for (const task of state.tasks)
+      if (task.cloudJobId === jobId) task.status = result.status || 'queued';
+    cloudWorkspace.taskRevision = `action:${Date.now()}`;
+    void syncCloudWorkspace().catch(() => {});
+    return result;
+  });
+  resumeFlights.set(jobId, flight);
+  void flight.finally(() => resumeFlights.delete(jobId)).catch(() => {});
+  return flight;
 }
 let enrichmentRequest: undefined | { signature: string; requestId: string };
 export async function submitCloudEnrichment(

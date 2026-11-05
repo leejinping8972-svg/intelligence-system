@@ -6,6 +6,7 @@ import {
   onMounted,
   onUnmounted,
   reactive,
+  watch,
 } from 'vue';
 
 import { cloudRequest } from './cloud-workspace';
@@ -47,10 +48,11 @@ export function refreshCompetitorWorkspace(
 }
 let consumers = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
-export function useCompetitorWorkspace() {
+export function useCompetitorWorkspace(enabled = () => true) {
   let active = false;
+  let visible = false;
   function start() {
-    if (active) return;
+    if (active || !enabled() || !visible) return;
     active = true;
     consumers++;
     void refreshCompetitorWorkspace();
@@ -65,9 +67,11 @@ export function useCompetitorWorkspace() {
       timer = undefined;
     }
   }
-  onMounted(start);
-  onActivated(start);
-  onDeactivated(stop);
+  const activate = () => { visible = true; start(); };
+  onMounted(activate);
+  onActivated(activate);
+  onDeactivated(() => { visible = false; stop(); });
   onUnmounted(stop);
+  watch(enabled, value => { if (value) start(); else stop(); });
   return competitorWorkspace;
 }

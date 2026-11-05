@@ -207,7 +207,7 @@ test('manual quota validates zeros, negatives and contradictory totals', () => {
     validateQuota({ sourceId: 'unknown', remaining: 0, total: null }),
   );
 });
-test('quota prefers usable account snapshots and permits explicit manual override', () => {
+test('Semrush always uses manual quota, including zero, over old automatic snapshots', () => {
   const quota = {
     manual: { remaining: 50, origin: 'manual' },
     automatic: { remaining: 0, origin: 'automatic' },
@@ -215,7 +215,7 @@ test('quota prefers usable account snapshots and permits explicit manual overrid
   assert.equal(
     summarizeUsage([], {}, { semrush: quota }, {}, now).sources[0].quota
       .remaining,
-    0,
+    50,
   );
   assert.equal(
     summarizeUsage(
@@ -406,7 +406,7 @@ test('request log action shares compact usage events and excludes provider paylo
   }
 });
 
-test('quota failures preserve prior snapshots and automatic refresh uses only account action', async () => {
+test('Semrush rejects account refresh and saves manual quota without provider calls', async () => {
   let saved;
   const old = { automatic: { remaining: 7, origin: 'automatic' } };
   const io = {
@@ -429,13 +429,10 @@ test('quota failures preserve prior snapshots and automatic refresh uses only ac
       return { balance: { status: 'unavailable', message: '无权限' } };
     },
   };
-  const result = await sourceUsageAction(
-    { action: 'server_source_quota_refresh', sourceId: 'semrush' },
-    admin,
-    io,
-  );
-  assert.equal(result.available, false);
-  assert.equal(saved.automatic.remaining, 7);
+  await assert.rejects(sourceUsageAction(
+    { action: 'server_source_quota_refresh', sourceId: 'semrush' }, admin, io,
+  ), /手动登记/);
+  assert.equal(saved, undefined);
   await sourceUsageAction(
     {
       action: 'server_source_quota_save',

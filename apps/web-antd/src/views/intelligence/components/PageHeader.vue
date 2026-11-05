@@ -17,7 +17,7 @@ const props = withDefaults(
     title: string;
     description: string;
     showMarket?: boolean;
-    mode?: 'legacy' | 'paged' | 'tasks';
+    mode?: 'legacy' | 'monitor' | 'paged' | 'tasks';
   }>(),
   { showMarket: true },
 );
@@ -75,7 +75,7 @@ watch(
     <RouterLink to="/settings">前往设置</RouterLink>
   </div>
   <div v-else-if="cloudWorkspace.error" class="hci-demo-note" role="alert">
-    云端保存尚未成功：{{ cloudWorkspace.error }}。本机缓存仍保留。
+    云端同步尚未完成：{{ cloudWorkspace.error }}。本机缓存仍保留。
   </div>
   <div
     v-else-if="cloudWorkspace.syncing && !cloudWorkspace.ready"

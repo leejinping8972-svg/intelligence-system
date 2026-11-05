@@ -228,8 +228,9 @@ export async function decorateAnalysisTasks(
 ) {
   const byId = new Map(jobs.map((job) => [job.id, job]));
   const results = [];
-  for (const task of tasks) {
+  for (let task of tasks) {
     const job = byId.get(task.cloudJobId);
+    if (job) task = { ...task, canContinue: (job.collection_status || job.status) === 'partial' || Boolean(job.checkpoint?.semBlocked) };
     const summary = analysisSummary(job?.input);
     if (!summary) {
       results.push(task);
