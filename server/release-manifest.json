@@ -1,47 +1,69 @@
 {
-  "title": "Sorftime新品、成分研究与立即运行修复",
+  "title": "商品采集时补齐字段与中文优先列表",
   "includedCommits": [
-    "79cd2ff3acfb54b1ba29c6c4831acf3f3eba678b",
-    "ef91e247432ea85c1d82f86178452a13424f6c67"
+    "8c42a60bc87ee2d019d582f1dfe03afc75bfb32f"
   ],
-  "sourceSha": "95e9738bc18a539eb46f4c0a7ea14d7ab849b04d",
+  "sourceSha": "8c42a60bc87ee2d019d582f1dfe03afc75bfb32f",
   "changes": [
-    "新品默认Sorftime真实类目查询，窗口内上架且来源月销量大于0，商品上限1000，保留Amazon/TikTok/Shopee不同站点和日期证据语义。",
-    "成分研究通过Sorftime，修复published_time及大小写字段、Reddit原文补取、无数据文本语义、过滤原因；讨论上限5000和分批分析。",
-    "修复编辑监控后立即运行的提交、反馈、跳转与幂等；保留历史任务和显式官方榜兼容路径。"
+    "新品与商品采集在保存前通过Sorftime补取详情/图片，再由AI提取成分、规格、卖点、品牌及中文名称；允许标题、描述和详情中的成分提及，保留来源销量与上架日期。",
+    "移除单独补全商品入口与所选周期销量、日均件数、资源口径/覆盖、配方与成分列，成分与剂量改为成分。",
+    "商品库、商品研究与详情中文优先，原文浅色小2px并限两行；缺失来源值不编造，已有值不因AI缺省清空。"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/DiscoveryMonitors.vue",
-    "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
+    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
+    "apps/web-antd/src/views/intelligence/components/EvidenceMetric.vue",
+    "apps/web-antd/src/views/intelligence/components/PlatformProductsDialog.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductChineseName.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductDecisionTags.vue",
     "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductHistory.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductText.vue",
+    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
     "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
+    "apps/web-antd/src/views/intelligence/product-decisions.ts",
+    "apps/web-antd/src/views/intelligence/product-research.vue",
     "apps/web-antd/src/views/intelligence/products.vue",
-    "server/OFFICIAL-NEW-RELEASES.md",
-    "server/SORFTIME-DISCOVERY.md",
-    "server/discovery-monitor-domain.mjs",
-    "server/discovery-monitor-form.browser.test.mjs",
+    "apps/web-antd/src/views/intelligence/use-core-list.ts",
     "server/discovery-monitor-store.mjs",
     "server/discovery-monitors.integration.test.mjs",
     "server/discovery-monitors.test.mjs",
-    "server/discovery-sorftime-v2.test.mjs",
+    "server/discovery-newness.mjs",
     "server/discovery-sorftime.mjs",
-    "server/official-new-release-domain.mjs",
+    "server/model.js",
     "server/official-new-release-runner.mjs",
-    "server/official-new-releases.mjs",
     "server/official-new-releases.test.mjs",
     "server/platform-product-data.mjs",
-    "server/source-usage-domain.mjs",
-    "server/store.mjs"
+    "server/platform-products-jobs.mjs",
+    "server/platform-products.test.mjs",
+    "server/product-intake-sorftime.mjs",
+    "server/product-intake.mjs",
+    "server/product-intake.test.mjs",
+    "server/product-list-sort.d.mts",
+    "server/product-list-sort.mjs",
+    "server/product-resource-engine.mjs",
+    "server/source-field-domain.mjs",
+    "server/source-field-store.mjs",
+    "server/store.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs",
+    "tests/core-list-metrics.test.ts"
   ],
-  "validation": [
-    "功能自测41/41、完整前端类型检查、独立开发构建及差异检查通过；立即运行此前Vue/Ant合成浏览器验收通过。",
-    "实际Sorftime MCP元数据及有界数据探针验证，原始真实数据/凭据不提交源码；生产任务未重放。",
-    "发布阶段按用户策略跳过重复测试、类型、lint、隔离数据库、界面验收、验证构建及CI等待。",
-    "无schema/迁移或新增依赖，完整数据库备份按用户策略跳过，保留队列/账本/数据保护和应用回退。"
+  "developmentValidation": [
+    "相关服务端专项/隔离集成测试通过",
+    "前端专项39项、类型检查、开发构建通过",
+    "桌面与390px合成展示通过，原文14px对12px、浅色、两行且无脚本错误",
+    "diff检查及新模块格式检查通过；整仓lint和提交钩子未执行"
   ],
-  "operator": "Codex",
-  "id": "20261104221152-adfd07f5",
-  "builtAt": "2026-11-04T22:11:52.296Z",
-  "sourceDigest": "adfd07f5aa02a7f83d5f89dc305739d98c1c125870e1a9d72f9520a400f64583"
+  "releaseValidation": "发布阶段重复验证、独立验证构建及CI等待按用户策略跳过",
+  "database": {
+    "schemaChange": false,
+    "migration": false,
+    "consistency": "skipped-by-user",
+    "fullBackup": "skipped-by-user-no-schema-change"
+  },
+  "preservePendingTasks": true,
+  "id": "20261105023934-168dc99e",
+  "builtAt": "2026-11-05T02:39:34.485Z",
+  "sourceDigest": "168dc99e8b23b9ebee26d967a837b9e676e01b35d7d548ed92bab74e2cda0bcd",
+  "operator": "Codex"
 }
