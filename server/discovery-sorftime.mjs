@@ -19,6 +19,8 @@ import {
   schemaValue,
 } from './product-resource-sorftime.mjs';
 
+import { previousListingWindow } from './product-pool-domain.mjs';
+
 function field(row, ...names) {
   const direct = directField(row, ...names);
   if (direct !== undefined) return direct;
@@ -210,10 +212,10 @@ function buildArguments(tool, request) {
       throw new Error('来源详情参数尚未适配');
   }
   const now = request.now || Date.now();
-  set(aliases.start, discoveryDay(now - (request.days - 1) * 86_400_000));
-  set(aliases.end, discoveryDay(now));
+  const window = request.completeDays ? previousListingWindow(request.days, now) : { start: discoveryDay(now - (request.days - 1) * 86400000), end: discoveryDay(now) };
+  if (!request.categoryLookup) { set(aliases.start, window.start); set(aliases.end, window.end); }
   if (request.requireSales && !request.categoryLookup) {
-    if (!set(['month_sale_volume_range_min', 'month_sale_count_min'], 1))
+    if (!set(['month_sale_volume_range_min', 'month_sale_count_min', 'sale_count_min'], 1))
       throw new Error('来源缺少已适配的销量筛选参数，未调用数据工具');
   }
   set(aliases.page, request.page || 1);
@@ -355,6 +357,7 @@ export function normalizeDiscoveryProduct(row, request, at) {
       };
   }
   if (!product) return;
+  if (request.nodeId && request.categoryName) product.sourceCategories = [`${product.sourcePlatform} · ${request.market} · ${request.categoryName} (${request.nodeId})`.slice(0, 180)];
   product.sourceMarket = request.channel === 'ali1688' ? 'CN' : request.market;
   product.market = targetMarket;
   if (['ali1688', 'walmart'].includes(platform)) {
@@ -391,6 +394,7 @@ export function normalizeDiscoveryProduct(row, request, at) {
       'month_sale_count',
       'monthly_sale_count',
       'monthlySales',
+      ...(request.channel === 'temu' ? ['sale_count'] : []),
       'month_sale_volume',
     ),
   );
@@ -411,6 +415,7 @@ export function normalizeDiscoveryProduct(row, request, at) {
             'month_sale_count',
             'monthly_sale_count',
             'monthlySales',
+            ...(request.channel === 'temu' ? ['sale_count'] : []),
             'month_sale_volume',
           ].includes(k),
         ),
@@ -420,18 +425,20 @@ export function normalizeDiscoveryProduct(row, request, at) {
     };
   }
   const dateKey = listingKeys.find((key) => field(raw, key) !== undefined);
-  const date =
-    product.decisionData?.listing?.date ||
-    sourceDate(field(raw, dateKey || ''));
+  const sourceListingDate = product.decisionData?.listing?.date || sourceDate(field(raw, dateKey || ''));
+  const hasListingDate = dateInWindow(sourceListingDate, 36_500, Date.parse(at));
   const exposureDate = sourceDate(field(raw, 'exposure_time'));
   if (exposureDate)
     product.resourceRaw = { ...product.resourceRaw, exposureDate };
-  if (dateInWindow(date, 36_500, Date.parse(at)))
+  const useExposure = !hasListingDate && platform === 'tiktok_shop' && dateInWindow(exposureDate, 36_500, Date.parse(at));
+  const date = useExposure ? exposureDate : sourceListingDate;
+  if (hasListingDate || useExposure)
     product.decisionData = {
       ...product.decisionData,
       listing: {
         date,
-        sourceField: dateKey || 'listingDate',
+        sourceField: useExposure ? 'exposure_time' : dateKey || 'listingDate',
+        dateBasis: useExposure ? 'exposure' : 'listing',
         provider: 'Sorftime',
         platform: product.sourcePlatform,
         market: product.market,

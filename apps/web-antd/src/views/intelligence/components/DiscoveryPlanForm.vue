@@ -19,8 +19,8 @@ import {
   Switch,
 } from 'ant-design-vue';
 
+import DiscoveryCategories from './DiscoveryCategories.vue';
 import { cloudRequest } from '../cloud-workspace';
-import { state } from '../data';
 import { defaultDiscoveryPlan, discoveryLabels } from '../discovery-monitors';
 import { serverMode, session } from '../session';
 
@@ -33,12 +33,13 @@ const emit = defineEmits<{ saved: []; submitted: [id: string] }>();
 const router = useRouter();
 const initial = defaultDiscoveryPlan(
   props.kind,
-  state.market === 'ALL' ? 'US' : state.market,
+  'US',
 );
 const form = reactive({
   ...initial,
   topics: String(initial.topics),
   officialBoardText: '',
+  categories: initial.categories || {},
 });
 const submittedId = ref('');
 const busy = ref(false);
@@ -59,7 +60,7 @@ const channelOptions = computed(() =>
             ['amazon', 'tiktok', 'shopee'].includes(s.id) &&
             (form.kind !== 'fbm_new' || s.id === 'amazon'),
         )
-        .map((s) => ({ label: s.name, value: s.id })),
+        .map((s) => ({ label: s.name, value: s.id, disabled: Boolean(s.markets?.length && !s.markets.includes(form.market)) })),
 );
 let requestId = '';
 let requestSignature = '';
@@ -119,6 +120,12 @@ watch(
   },
   { immediate: true },
 );
+watch(() => form.market, (market) => {
+  if (form.kind === 'ingredients') return;
+  form.channels = form.channels.filter(id => capabilities.value?.channels.find(c => c.id === id)?.markets?.includes(market));
+  form.sourceMarkets = Object.fromEntries(form.channels.map(id => [id, market]));
+  form.categories = {};
+});
 async function load() {
   loading.value = true;
   const kind = form.kind;
@@ -131,7 +138,7 @@ async function load() {
     capabilities.value = result;
     if (!props.plan && form.kind === 'regular_new')
       form.channels = capabilities.value.channels
-        .filter((c) => ['amazon', 'tiktok', 'shopee'].includes(c.id))
+        .filter((c) => ['amazon', 'tiktok', 'shopee'].includes(c.id) && c.markets?.includes(form.market))
         .map((c) => c.id);
     error.value = '';
   } catch (cause) {
@@ -155,6 +162,8 @@ async function submit(save: boolean) {
     const payload = {
       ...values,
       sourceMode: 'sorftime',
+      ...(form.kind !== 'ingredients' ? { days: 7, completeDays: true, frequency: 'daily', time: '00:00' } : {}),
+      categories: Object.fromEntries(form.channels.map(c => [c, (form.categories[c] || []).filter(item => item.market === (form.sourceMarkets?.[c] || form.market))])),
       officialBoardUrls:
         form.kind === 'ingredients'
           ? undefined
@@ -256,6 +265,7 @@ async function submit(save: boolean) {
       >
         <Select
           v-model:value="form.sourceMarkets![channel.id]"
+          :disabled="form.kind !== 'ingredients'"
           :options="
             (channel.markets?.length
               ? channel.markets
@@ -265,6 +275,11 @@ async function submit(save: boolean) {
         />
       </Form.Item>
     </div>
+    <template v-if="form.kind !== 'ingredients'">
+      <DiscoveryCategories v-model="form.categories" :channels="form.channels" :source-markets="form.sourceMarkets || {}" :market="form.market" />
+      <Form.Item label="仅保健品（默认开启）"><Switch v-model:checked="form.supplementOnly" /></Form.Item>
+      <p class="hci-subtle">美国站不包含Shopee；Temu接口已开放，但保健品类目样本暂未返回，当前不纳入默认监控。</p>
+    </template>
     <Form.Item v-if="form.kind === 'ingredients'" label="研究话题">
       <Input.TextArea v-model:value="form.topics" :rows="3" :maxlength="2000" />
     </Form.Item>
@@ -272,7 +287,7 @@ async function submit(save: boolean) {
       v-if="form.kind !== 'ingredients'"
       type="info"
       show-icon
-      message="通过Sorftime按保健品类目查询，保留所选日期范围内上架且来源报告销量大于0的商品。TikTok曝光日期仅用于查找候选，不能代替首次上架日期；日期或销量证据不足会显示跳过原因。"
+      message="每天北京时间00:00采集前7个完整自然日上架、Sorftime报告销量大于0的商品。未选类目时默认查保健品；TikTok缺上架日期时使用来源曝光日期，列表会说明替代口径；日期或销量均无证据时跳过。"
     />
     <div class="discovery-grid">
       <Form.Item
@@ -280,6 +295,7 @@ async function submit(save: boolean) {
       >
         <Select
           v-model:value="form.days"
+          :disabled="form.kind !== 'ingredients'"
           :options="
             (form.kind === 'ingredients'
               ? [1, 7, 30, 60, 90]
@@ -323,6 +339,7 @@ async function submit(save: boolean) {
         <Form.Item label="定时周期">
           <Select
             v-model:value="form.frequency"
+            :disabled="form.kind !== 'ingredients'"
             :options="[
               { value: 'daily', label: '每天' },
               { value: 'weekly', label: '每周' },
@@ -331,7 +348,7 @@ async function submit(save: boolean) {
           />
         </Form.Item>
         <Form.Item label="执行时间（北京时间）">
-          <Input v-model:value="form.time" type="time" />
+          <Input v-model:value="form.time" type="time" :disabled="form.kind !== 'ingredients'" />
         </Form.Item>
         <Form.Item v-if="form.frequency === 'weekly'" label="执行日期">
           <Select

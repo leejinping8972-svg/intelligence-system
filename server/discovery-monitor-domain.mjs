@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { previousListingWindow } from './product-pool-domain.mjs';
 import {
   officialBoards,
   officialBoardUrl,
@@ -98,10 +99,17 @@ export function discoveryPlan(input, scheduled = false) {
       '当前仅接入Amazon官方新品榜；其他平台未提供已验证的官方新品榜',
     );
   if (input.kind !== 'ingredients') {
-    if (channels.some((c) => !['amazon', 'tiktok', 'shopee'].includes(c)))
-      throw new Error('新品支持Amazon、TikTok Shop和Shopee');
+    if (channels.some((c) => !['amazon', 'tiktok', 'shopee', 'temu'].includes(c)))
+      throw new Error('新品支持Amazon、TikTok Shop、Shopee和Temu（以账户能力为准）');
     for (const channel of channels)
       sourceMarkets[channel] ||= channel === 'shopee' ? 'VN' : input.market;
+  }
+  const categories = {};
+  for (const channel of channels) {
+    const selected = input.categories?.[channel];
+    if (!selected) continue;
+    if (!Array.isArray(selected) || selected.length > 30 || selected.some(c => !/^\d+$/.test(c.id || '') || !/^[\da-f-]{36}$/i.test(c.receiptId || '') || !Array.isArray(c.path))) throw new Error('请选择来源返回的真实类目');
+    categories[channel] = selected;
   }
   const plan = {
     kind: input.kind,
@@ -111,7 +119,9 @@ export function discoveryPlan(input, scheduled = false) {
     sourceMarkets,
     topics,
     ...limits,
-    supplementOnly: true,
+    supplementOnly: input.supplementOnly !== false,
+    ...(Object.keys(categories).length ? { categories } : {}),
+    ...(input.completeDays === true ? { completeDays: true } : {}),
     ...(input.sourceMode === 'official_new_releases' &&
     input.kind !== 'ingredients'
       ? {
@@ -131,8 +141,8 @@ export function discoveryPlan(input, scheduled = false) {
   };
   if (scheduled) {
     const frequency =
-      input.frequency || (input.kind === 'ingredients' ? 'daily' : 'weekly');
-    const time = input.time || '09:00';
+      input.frequency || 'daily';
+    const time = input.time || (input.kind === 'ingredients' ? '09:00' : '00:00');
     const weekday = input.weekday ?? 1;
     const monthDay = input.monthDay ?? 1;
     if (
@@ -214,7 +224,10 @@ export function newProductEvidence(product, plan, now = Date.now()) {
     };
   }
   const date = product.decisionData?.listing?.date;
-  if (!dateInWindow(date, plan.days, now)) return;
+  if (plan.completeDays) {
+    const window = previousListingWindow(plan.days, now);
+    if (!dateInWindow(date, 36500, now) || date.slice(0, 10) < window.start || date.slice(0, 10) > window.end) return;
+  } else if (!dateInWindow(date, plan.days, now)) return;
   if (plan.requireSales && !(product.resourceRaw?.salesEvidence?.value > 0))
     return;
   const fulfillment = product.resourceRaw?.fulfillment;
@@ -231,11 +244,13 @@ export function newProductEvidence(product, plan, now = Date.now()) {
           ? discoveryKinds[plan.kind]
           : '新上架商品',
     listingDate: date,
+    dateBasis: product.decisionData?.listing?.dateBasis || 'listing',
     fulfillment: fulfillment || 'unknown',
     observedAt: new Date(now).toISOString(),
     evidenceUrl: product.sourceUrl || product.evidenceUrl,
     source: 'Sorftime',
     days: plan.days,
+    ...(plan.completeDays ? { window: previousListingWindow(plan.days, now) } : {}),
     ...(product.resourceRaw?.salesEvidence
       ? { salesEvidence: product.resourceRaw.salesEvidence }
       : {}),

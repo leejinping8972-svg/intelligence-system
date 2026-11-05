@@ -158,6 +158,7 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action?.startsWith('server_product_watch_')) return (await import('./product-watch-store.mjs')).productWatchAction(input, user);
   if (input.action?.startsWith('server_source_fields_'))
     return sourceFieldsAction(input, user);
   if (input.action?.startsWith('server_discovery_'))
@@ -873,6 +874,8 @@ const server = createServer(async (request, response) => {
               'server_core_rates',
               'server_discovery_capabilities',
               'server_discovery_snapshot',
+              'server_product_watch_config',
+              'server_product_watch_history',
               'server_keyword_views_delete',
               'server_keyword_views_list',
               'server_keyword_views_save',

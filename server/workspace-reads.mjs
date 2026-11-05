@@ -42,7 +42,7 @@ const listKeys = {
   keywords:
     'id term termZh batch market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
-    'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications',
+    'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications sourceCategories',
   sites:
     'id brand domain market platform type keyword keywordIds category mainProducts ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand brandZh market platform headline headlineZh copy copyZh sellingPointZh format productId status color archiveId pageId keywordIds query collectionBatches siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
@@ -142,6 +142,7 @@ export function projectRecord(collection, value) {
       : [source],
   );
   add('benefit', value.benefits);
+  if (collection === 'products') add('sourceCategory', value.sourceCategories);
   if (collection === 'products') add('listingDate', [productListingDate(value)]);
   if (collection === 'products')
     add(
@@ -741,6 +742,10 @@ export function createWorkspaceReads({
     if (collection === 'products') {
       const { from, to } = validateListingRange(input.listedFrom, input.listedTo);
       if (from || to) clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='listingDate'${from ? ` AND d.target>=${bind(from)}` : ''}${to ? ` AND d.target<=${bind(to)}` : ''})`);
+      if (['pool', 'existing'].includes(input.productPool)) {
+        const hasPool = sql("EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(r.payload->'newProductClassifications','[]'::jsonb)) e WHERE e->>'type' IN ('regular_new','fbm_new','new_listing'))", "(JSON_SEARCH(r.payload, 'one', 'regular_new', NULL, '$.newProductClassifications[*].type') IS NOT NULL OR JSON_SEARCH(r.payload, 'one', 'fbm_new', NULL, '$.newProductClassifications[*].type') IS NOT NULL OR JSON_SEARCH(r.payload, 'one', 'new_listing', NULL, '$.newProductClassifications[*].type') IS NOT NULL)");
+        clauses.push(input.productPool === 'pool' ? hasPool : `NOT (${hasPool})`);
+      }
       if (input.newProductType && input.newProductType !== 'ALL') {
         const type = bind(String(input.newProductType).slice(0, 32));
         clauses.push(
@@ -779,6 +784,7 @@ export function createWorkspaceReads({
     for (const name of ['source', 'benefit', 'ingredient', 'decision'])
       if (input[name] && input[name] !== 'ALL') relation(name, [input[name]]);
     relation('tag', input.tags?.slice(0, 30));
+    if (collection === 'products' && input.sourceCategory && input.sourceCategory !== 'ALL') relation('sourceCategory', [String(input.sourceCategory).slice(0,180)]);
     if (input.keywordId) {
       if (collection === 'ads') relation('keyword', [input.keywordId]);
       else
@@ -898,11 +904,11 @@ export function createWorkspaceReads({
     );
     const links = (
       await pool.query(
-        `SELECT l.relation,l.target FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE r.collection=$1${market.replace('market', 'r.market')} AND l.relation IN ('tag','source','benefit','ingredient') GROUP BY l.relation,l.target LIMIT 4000`,
+        `SELECT l.relation,l.target FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE r.collection=$1${market.replace('market', 'r.market')} AND l.relation IN ('tag','source','benefit','ingredient','sourceCategory') GROUP BY l.relation,l.target LIMIT 4000`,
         values,
       )
     ).rows;
-    for (const name of ['tag', 'source', 'benefit', 'ingredient'])
+    for (const name of ['tag', 'source', 'benefit', 'ingredient', 'sourceCategory'])
       result[name] = [
         ...new Set([
           ...(result[name] || []),

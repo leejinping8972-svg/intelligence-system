@@ -437,6 +437,13 @@ async function exerciseReadModel(
     });
   }
   await drain();
+  const poolProduct = (await reads.details({ collection: 'products', id: 'p12' })).record;
+  await putDocument('workspace_documents', 'business:products:p12', { ...poolProduct, sourceCategories: ['Amazon · US · Synthetic (123)'], newProductClassifications: [{ type: 'regular_new', listingDate: '2026-10-22' }] });
+  await drain();
+  assert.equal((await reads.list({ collection: 'products', productPool: 'pool' })).total, 1);
+  assert.equal((await reads.list({ collection: 'products', productPool: 'existing', sourceCategory: 'Amazon · US · Synthetic (123)' })).total, 0);
+  assert.equal((await reads.selection({ collection: 'products', productPool: 'pool', sourceCategory: 'Amazon · US · Synthetic (123)' })).count, 1);
+  assert.ok((await reads.facets({ collection: 'products' })).facets.sourceCategory.includes('Amazon · US · Synthetic (123)'));
   const currentProduct = (await reads.details({ collection: 'products', id: 'p10' })).record;
   await putDocument('workspace_documents', 'business:products:p10', { ...currentProduct, sourceProvider: 'Synthetic Provider', sourcePlatform: 'Amazon', currency: 'USD' });
   await drain();

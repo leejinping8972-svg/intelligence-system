@@ -49,7 +49,8 @@ defineProps<{ metric: EvidenceMetric }>();
       :aria-label="`${metric.label}：${metricText(metric)}，查看来源与口径`"
     >
       <ProductText v-if="metric.originalValue" :translated="metricText(metric)" :text="metric.originalValue" />
-      <span v-else class="core-metric-value">{{ metricText(metric) }}</span>
+      <span v-else class="core-metric-value">{{ metricText(metric) }} <span v-if="metric.key === 'listingDate'" class="date-help" aria-hidden="true">?</span></span>
+      <small v-if="metric.key === 'listingDate' && metric.period.includes('曝光')">曝光日期（替代上架）</small>
       <small v-if="metric.value !== null"
         >{{ metric.unit }} · {{ metricNatureLabels[metric.nature] }}</small
       >
@@ -58,6 +59,7 @@ defineProps<{ metric: EvidenceMetric }>();
   </Popover>
 </template>
 <style scoped>
+.date-help { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1px solid currentColor; border-radius:50%; font-size:11px; margin-left:3px; }
 .core-metric-cell {
   border: 0;
   background: transparent;

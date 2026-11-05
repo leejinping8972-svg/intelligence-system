@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { dailyNewProductPlan } from './product-pool-domain.mjs';
+import { assertResourceCategory } from './product-resource-service.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
 import { requireAdmin } from './auth.mjs';
@@ -27,6 +29,11 @@ const list = async (prefix, c = pool) =>
       [`${prefix}%`],
     )
   ).rows.map((r) => r.value);
+async function validateCategories(plan, connection) {
+  for (const [channel, categories] of Object.entries(plan.categories || {})) {
+    for (const category of categories) await assertResourceCategory({ mode: 'category', routeId: `${channel}-sorftime`, market: plan.sourceMarkets[channel] || plan.market, category }, connection);
+  }
+}
 export async function submitDiscovery(input, connection = pool) {
   const plan = discoveryPlan(input.plan || input);
   const requestId = input.requestId;
@@ -45,6 +52,7 @@ export async function submitDiscovery(input, connection = pool) {
       throw new Error('此编号已用于不同任务');
     return old;
   }
+  await validateCategories(plan, connection);
   const id = randomUUID();
   const value = {
     kind: 'discovery_monitor',
@@ -62,6 +70,7 @@ export async function submitDiscovery(input, connection = pool) {
       value,
       {
         submittedAt: new Date().toISOString(),
+        ...(plan.completeDays ? { asOf: input.asOf || Date.now() } : {}),
         logs: [],
         calls: 0,
         products: 0,
@@ -75,7 +84,7 @@ export async function submitDiscovery(input, connection = pool) {
 export async function discoveryAction(input, user) {
   if (input.action === 'server_discovery_snapshot')
     return {
-      plans: await list('discovery:monitor:'),
+      plans: (await list('discovery:monitor:')).map(dailyNewProductPlan),
       ingredients: await list('discovery:ingredient:'),
     };
   if (input.action === 'server_discovery_capabilities')
@@ -106,7 +115,8 @@ export async function discoveryAction(input, user) {
       return { jobId: job.id };
     }
     if (input.action === 'server_discovery_save') {
-      const plan = discoveryPlan(input.plan || input, true);
+      const plan = discoveryPlan(dailyNewProductPlan(input.plan || input), true);
+      await validateCategories(plan, c);
       const id = input.id || randomUUID();
       if (!/^[\da-f-]{36}$/i.test(id)) throw new Error('监控编号无效');
       const old = await read(`discovery:monitor:${id}`, c);
@@ -168,7 +178,8 @@ export async function tickDiscoveryMonitors(now = Date.now()) {
   try {
     held = await lock(c, 'monitor-config');
     if (!held) return;
-    for (const plan of await list('discovery:monitor:', c)) {
+    for (const savedPlan of await list('discovery:monitor:', c)) {
+      const plan = dailyNewProductPlan(savedPlan);
       const slot = scheduleSlot(plan, now);
       if (!slot) continue;
       if (plan.lastScheduleErrorSlot === slot) continue;
@@ -198,7 +209,7 @@ export async function tickDiscoveryMonitors(now = Date.now()) {
       )
         continue;
       const job = await submitDiscovery(
-        { requestId, plan, monitorId: plan.id },
+        { requestId, plan, monitorId: plan.id, asOf: now },
         c,
       );
       if (plan.lastJobId !== job.id)
@@ -250,6 +261,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
                 amazon: 'Supplements',
                 tiktok: 'Dietary Supplements',
                 shopee: 'Food Supplement',
+                temu: 'Dietary Supplements',
               }[channel]
             : channel === 'ali1688'
               ? '保健品'
@@ -269,6 +281,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
         : {}),
     })),
   );
+  if (!job.checkpoint.work) cp.work = cp.work.flatMap(w => plan.categories?.[w.channel]?.length ? plan.categories[w.channel].map(c => ({ ...w, categoryLookup: false, nodeId: c.id, categoryName: c.name })) : [w]);
   cp.pending ||= [];
   cp.covered ||= [];
   if (
@@ -309,7 +322,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
       try {
         const prepared = await prepareProductIntake(job, product, { ...io, isCancelled: cancelled }, { legacyAnalysisStep: `classify:${stableId(product.id)}` });
         cp.failures.push(...prepared.errors);
-        if (prepared.analysis?.supplement !== false) {
+        if (!plan.supplementOnly || prepared.analysis?.supplement !== false) {
           const evidence = newProductEvidence(prepared.product, plan, cp.asOf);
           if (evidence && !(await cancelled())) {
             await io.upsertProduct({
@@ -432,7 +445,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
             (result.products || []).filter(
               (p) =>
                 p.decisionData?.listing?.date &&
-                !dateInWindow(p.decisionData.listing.date, plan.days, cp.asOf),
+                !dateInWindow(p.decisionData.listing.date, plan.days, plan.completeDays ? cp.asOf - 86400000 : cp.asOf),
             ).length;
           if (missingDate || missingDelivery)
             cp.failures.push(

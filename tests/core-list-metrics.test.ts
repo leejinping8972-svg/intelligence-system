@@ -376,3 +376,12 @@ describe('core list evidence and unit boundaries', () => {
     expect(row['原始字段JSON']).toContain('250000');
   });
 });
+
+
+it('labels TikTok exposure fallback explicitly in the date metric and export evidence', () => {
+  const p = product({ market:'US', sourceProvider:'Sorftime', decisionData:{listing:{date:'2026-11-01',dateBasis:'exposure',sourceField:'exposure_time',provider:'Sorftime',platform:'TikTok Shop',market:'US',collectedAt:'2026-11-02T00:00:00Z',evidenceUrl:'https://www.tiktok.com/view/product/123'}} });
+  const row = get(productMetrics(p, 30), 'listingDate');
+  expect(row.label).toBe('曝光日期（替代上架）');
+  expect(row.period).toContain('曝光');
+  expect(row.reason).toContain('不等于实际上架');
+});

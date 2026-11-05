@@ -168,7 +168,7 @@ export interface IngredientInsight {
 }
 export interface Product {
   sourceMarket?: string;
-  newProductClassifications?: Array<{ type: string; label: string; listingDate?: string; rank?: number; fulfillment: string; observedAt: string; evidenceUrl: string; days?: number }>;
+  newProductClassifications?: Array<{ type: string; label: string; listingDate?: string; dateBasis?: 'exposure' | 'listing'; rank?: number; fulfillment: string; observedAt: string; evidenceUrl: string; days?: number }>;
   fieldAnalysis?: { status: 'pending' | 'analyzed'; fingerprint: string; analyzedAt?: string; fields?: Record<string, { sourceId: string; quote: string; relation: string; url: string }> };
   resourceEvidence?: ResourceProductEvidence;
   resourceHistory?: ResourceProductEvidence[];
@@ -251,6 +251,7 @@ export interface Product {
   dataCompletion?: ProductCompletion;
   sourceProvider?: string;
   sourcePlatform?: string;
+  sourceCategories?: string[];
   linkedSite?: { id: string; brand: string; domain: string; market: string } | null;
   sourceProductId?: string;
   sourceUrl?: string;

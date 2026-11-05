@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { runProductWatch, tickProductWatch } from './product-watch-store.mjs';
 import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { discoveryKinds, runDiscoveryMonitor, tickDiscoveryMonitors } from './discovery-monitor-store.mjs';
 import { runSourceFields } from './source-field-store.mjs';
@@ -37,10 +38,10 @@ export function jobTasks(job) {
   );
 }
 function projectKnownJob(job) {
-  if (['discovery_monitor', 'source_fields'].includes(job.input.kind)) return [{
+  if (['discovery_monitor', 'source_fields', 'product_watch'].includes(job.input.kind)) return [{
     id: `${job.id}:${job.input.market}`, cloudJobId: job.id, market: job.input.market,
     mode: 'live', stage: job.input.kind === 'source_fields' ? 'analysis' : 'products',
-    title: job.input.kind === 'source_fields' ? '云端 · 来源字段AI分析' : `云端 · ${discoveryKinds[job.input.plan.kind]}`,
+    title: job.input.kind === 'product_watch' ? '云端 · 商品持续监控' : job.input.kind === 'source_fields' ? '云端 · 来源字段AI分析' : `云端 · ${discoveryKinds[job.input.plan.kind]}`,
     status: job.cancelled ? 'cancelled' : job.status, created: job.checkpoint.submittedAt,
     steps: [...(job.checkpoint.logs || []), ...(job.checkpoint.failures || [])],
     requests: job.checkpoint.calls || 0,
@@ -603,6 +604,7 @@ async function runLane(signal, trends = false) {
         lostConnection = () => process.exit(1);
         connection.on('error', lostConnection);
         if (!trends) {
+          await tickProductWatch().catch((error) => console.error('Product watch scheduling unavailable:', error.code || error.name));
           await tickDiscoveryMonitors().catch((error) => console.error('Discovery scheduling unavailable:', error.code || error.name));
           await tickDailyDiscovery().catch((error) => {
             console.error(
@@ -631,6 +633,7 @@ async function runLane(signal, trends = false) {
             [next.id],
           );
           if (trends) await runTrendJob(next);
+          else if (next.input.kind === 'product_watch') await runProductWatch(next);
           else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next);
           else if (next.input.kind === 'source_fields') await runSourceFields(next);
           else if (
