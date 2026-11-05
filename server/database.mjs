@@ -6,6 +6,7 @@ import pg from 'pg';
 
 import { mysqlConnectionOptions } from './database-connection.mjs';
 import { decryptConfig } from './secrets.mjs';
+import { markUsageChanged, usageDocument } from './usage-changes.mjs';
 
 export const configPath =
   process.env.DATABASE_CONFIG_FILE || '/data/database.enc.json';
@@ -76,6 +77,7 @@ const advisoryLocks = new Map([
   ['public-content-runner', 89_761_031],
   ['runner', 89_761_016],
   ['source-fields-runner', 89_761_044],
+  ['usage-summary', 89_761_045],
   ['trend-runner', 89_761_019],
   ['workspace-reads', 89_761_036],
 ]);
@@ -115,6 +117,8 @@ export async function putDocument(
     ),
     [name, value],
   );
+  if (table === 'workspace_documents' && usageDocument(name))
+    await markUsageChanged(connection, engine);
 }
 export const currentDatabase = () => ({
   engine,

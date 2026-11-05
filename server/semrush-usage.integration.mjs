@@ -3,10 +3,14 @@ import { randomUUID } from 'node:crypto';
 
 import { putDocument } from './database.mjs';
 import { semrushUsage } from './semrush-usage.mjs';
+import { buildUsageSummary } from './usage-summary-worker.mjs';
+import { USAGE_SUMMARY_NAME } from './usage-changes.mjs';
 
 // Called by the explicitly isolated PostgreSQL/MySQL monitor integration only.
 export async function verifySemrushUsage(connection) {
   const options = { currentKeyId: 'usage-current-key', keyConfigured: true };
+  const saveSummary = async () => putDocument('workspace_documents', USAGE_SUMMARY_NAME, { ...await buildUsageSummary(connection), summaryVersion: 1 }, false, connection);
+  await saveSummary();
   const before = await semrushUsage(options, connection);
   const jobId = randomUUID();
   const input = {
@@ -87,6 +91,7 @@ export async function verifySemrushUsage(connection) {
     false,
     connection,
   );
+  await saveSummary();
   const after = await semrushUsage(options, connection);
   assert.equal(after.confirmedUnits - before.confirmedUnits, 215);
   assert.equal(after.cachedRecords - before.cachedRecords, 1);

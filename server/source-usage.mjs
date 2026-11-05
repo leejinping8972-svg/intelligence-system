@@ -17,10 +17,7 @@ import {
   createMonitorUsageReader,
   usageReadWithin,
 } from './source-usage-reader.mjs';
-import {
-  createUsageSnapshotReader,
-  USAGE_SNAPSHOT_NAME,
-} from './source-usage-snapshot.mjs';
+import { readSavedSourceUsage } from './usage-summary-store.mjs';
 import {
   requestFailed,
   requestLogFromEvent,
@@ -67,29 +64,6 @@ export async function readSourceEvents(connection = pool) {
   ];
   return [...new Map(events.map((e) => [e.id, e])).values()];
 }
-const cachedSourceSnapshot = createUsageSnapshotReader({
-  read: readSourceEvents,
-  load: async (connection) =>
-    (
-      await connection.query(
-        'SELECT value FROM workspace_documents WHERE name=$1',
-        [USAGE_SNAPSHOT_NAME],
-      )
-    ).rows[0]?.value,
-  save: (value, connection) =>
-    putDocument(
-      'workspace_documents',
-      USAGE_SNAPSHOT_NAME,
-      value,
-      false,
-      connection,
-    ),
-  onCacheError: (error) =>
-    console.warn(
-      'Source usage snapshot cache unavailable',
-      error.code || 'CACHE_UNAVAILABLE',
-    ),
-});
 const requestLogsBySnapshot = new WeakMap();
 function snapshotRequestLogs(events) {
   let logs = requestLogsBySnapshot.get(events);
@@ -124,7 +98,6 @@ export async function recordSourceCall(
     ),
   };
   await io.write(name, usageEvent(row, context.sourceId));
-  cachedSourceSnapshot.invalidate();
   let result;
   try {
     result = await callback();
@@ -140,7 +113,6 @@ export async function recordSourceCall(
         context.sourceId,
       ),
     );
-    cachedSourceSnapshot.invalidate();
     throw error;
   }
   await io.write(
@@ -155,7 +127,6 @@ export async function recordSourceCall(
       context.sourceId,
     ),
   );
-  cachedSourceSnapshot.invalidate();
   return result;
 }
 const QUOTA_PREFIX = 'source-usage:quota:';
@@ -168,7 +139,7 @@ export async function sourceUsageAction(input, user, overrides = {}) {
           events: await overrides.readEvents(connection, options),
           checkedAt: new Date().toISOString(),
         })
-      : cachedSourceSnapshot,
+      : readSavedSourceUsage,
     write: (name, value) => putDocument('provider_configs', name, value),
     semrush: semrushAction,
     fetcher: fetch,

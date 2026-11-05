@@ -6,6 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { migrateCredentials, readCredentials, saveBraveCredential } from './local-provider.mjs';
 import {
   contentEvents,
+  prepareUsageSummary,
   researchEvents,
   sourceCharge,
   summarizeUsage,
@@ -19,6 +20,10 @@ import {
   sourceUsageAction,
 } from './source-usage.mjs';
 import { collect, pool } from './store.mjs';
+import { putDocument } from './database.mjs';
+import { encodeUsageSnapshot } from './source-usage-snapshot.mjs';
+import { USAGE_SUMMARY_NAME } from './usage-changes.mjs';
+import { prepareSemrushSummary } from './semrush-usage.mjs';
 
 const admin = { id: 'qa', role: 'admin' };
 const now = new Date('2026-10-26T04:00:00Z');
@@ -62,7 +67,7 @@ test('research collection persists original request timing without exposing inte
     process.env.COLLECTOR_URL = 'https://collector.invalid';
     pool.query = async (statement, params) => {
       if (statement.startsWith('SELECT')) return { rows: cached ? [{ status: 'done', response: saved }] : [] };
-      if (statement.startsWith('INSERT')) { saved = params[3]; assert(saved.requestUsage.startedAt); }
+      if (statement.startsWith('INSERT INTO research_requests')) { saved = params[3]; assert(saved.requestUsage.startedAt); }
       if (statement.startsWith('UPDATE')) saved = params[2];
       return { rows: [] };
     };
@@ -92,7 +97,7 @@ test('interrupted research retains its original source and started timestamp', a
     process.env.COLLECTOR_URL = 'https://collector.invalid';
     pool.query = async (statement, params) => {
       if (statement.startsWith('SELECT')) return { rows: [] };
-      if (statement.startsWith('INSERT')) saved = params[3];
+      if (statement.startsWith('INSERT INTO research_requests')) saved = params[3];
       return { rows: [] };
     };
     globalThis.fetch = async () => { throw new Error('network'); };
@@ -391,6 +396,11 @@ test('request log action shares compact usage events and excludes provider paylo
         },
       ],
     );
+    const prepared = prepareUsageSummary(await readSourceEvents(db));
+    await putDocument('workspace_documents', USAGE_SUMMARY_NAME, {
+      ...await encodeUsageSnapshot({ events: prepared.events, checkedAt: new Date().toISOString() }),
+      summaryVersion: 1, aggregate: prepared.aggregate, semrush: prepareSemrushSummary([], []),
+    }, false, db);
     const response = await sourceUsageAction(
       { action: 'server_source_request_log', days: 7, query: 'job-request' },
       admin,

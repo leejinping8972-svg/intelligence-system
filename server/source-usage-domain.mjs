@@ -467,6 +467,29 @@ function usageIndex(events) {
   return index;
 }
 
+// Run on the write side. Store the numeric index and sorted, sanitized events
+// together; page reads only select already calculated totals/days.
+export function prepareUsageSummary(events) {
+  const index = usageIndex(events);
+  return {
+    events: index.ordered,
+    aggregate: {
+      sources: [...index.sources],
+      daily: [...index.daily].map(([day, sources]) => [day, [...sources]]),
+      undated: index.undated,
+    },
+  };
+}
+
+export function restoreUsageSummary(events, aggregate) {
+  usageIndexes.set(events, {
+    sources: new Map(aggregate.sources),
+    daily: new Map(aggregate.daily.map(([day, sources]) => [day, new Map(sources)])),
+    undated: aggregate.undated,
+    ordered: events,
+  });
+}
+
 export function summarizeUsage(
   events,
   configs,

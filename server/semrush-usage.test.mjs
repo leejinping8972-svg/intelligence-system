@@ -12,7 +12,7 @@ import {
   semrushKeyIdentifier,
 } from './semrush-config.mjs';
 import { collectSemrush } from './semrush-reports.mjs';
-import { semrushUsage, summarizeSemrushUsage } from './semrush-usage.mjs';
+import { prepareSemrushSummary, semrushUsage, summarizeSemrushUsage } from './semrush-usage.mjs';
 
 const request = (
   step,
@@ -165,30 +165,29 @@ test('admin refresh identifies the configured key locally without writing config
   assert.equal(calls, 1);
 });
 
-test('query only projects billing metadata and reads each original journal source once', async () => {
+test('Semrush reads only a saved summary; key rotation selects a saved group without rescanning journals', async () => {
   const statements = [];
-  const result = await semrushUsage(current, {
-    query: async (statement) => {
-      statements.push(statement);
-      assert.match(statement, /^SELECT/);
-      assert.doesNotMatch(
-        statement,
-        /INSERT|UPDATE|DELETE|provider_configs|SELECT \*/,
-      );
-      return {
-        rows: statement.includes('research_requests')
-          ? [
-              request('sem-metric:0', {
-                apiUnits: 20,
-                semrushKeyId: 'current-key',
-              }),
-            ]
-          : [],
-      };
-    },
-  });
+  const checkedAt = '2026-11-05T10:00:00Z';
+  const semrush = prepareSemrushSummary([
+    request('sem-metric:0', { apiUnits: 20, semrushKeyId: 'current-key' }),
+    request('sem-metric:1', { apiUnits: 50, semrushKeyId: 'old-key' }),
+    request('sem-metric:2', { apiUnits: 7 }),
+  ], []);
+  const connection = { query: async (statement) => {
+    statements.push(statement);
+    assert.match(statement, /^SELECT .* FROM workspace_documents WHERE name=\$1$/);
+    return { rows: [{ revision: 1, value: { summaryVersion: 1, aggregate: {}, semrush, checkedAt } }] };
+  } };
+  const result = await semrushUsage(current, connection);
   assert.equal(result.currentKey.confirmedUnits, 20);
-  assert.equal(statements.length, 2);
+  assert.equal(result.otherKeys.confirmedUnits, 50);
+  assert.equal(result.unassigned.confirmedUnits, 7);
+  assert.equal(result.checkedAt, checkedAt);
+  const rotated = await semrushUsage({ ...current, currentKeyId: 'old-key' }, connection);
+  assert.equal(rotated.currentKey.confirmedUnits, 50);
+  assert.equal(rotated.otherKeys.confirmedUnits, 20);
+  assert.equal(statements.length, 3);
+  assert.equal(JSON.stringify(result).includes('current-key'), false);
 });
 
 test('storage failure fails refresh instead of reporting a false zero or partial total', async () => {

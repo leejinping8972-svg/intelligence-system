@@ -8,6 +8,7 @@ import { createKeywordSaver } from './keyword-store.mjs';
 import { translateCollectedResult, translateCollectionRecords } from './collection-translation.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
+import { markUsageChanged } from './usage-changes.mjs';
 import {
   requestFailed,
   requestStarted,
@@ -66,6 +67,7 @@ export async function saveCheckpoint(job, checkpoint, status = 'running', connec
     "UPDATE research_jobs SET checkpoint=$2,status=CASE WHEN cancelled THEN 'cancelled' ELSE $3 END,updated_at=now() WHERE id=$1",
     [job.id, { ...checkpoint, updatedAt: new Date().toISOString() }, status],
   );
+  if (status !== 'running') await markUsageChanged(connection, engine);
 }
 export async function collect(job, step, request) {
   // The source response is committed first. A translation failure must never
@@ -256,6 +258,7 @@ async function collectRaw(job, step, request) {
       "UPDATE research_requests SET status='done',response=$3 WHERE job_id=$1 AND step=$2",
       [job.id, step, persistedResult],
     );
+    await markUsageChanged(pool, engine);
     const { semrushKeyId: _internalSemrushKeyId, requestUsage: _usage, ...publicResult } =
       persistedResult;
     return publicResult;
@@ -281,6 +284,7 @@ async function collectRaw(job, step, request) {
         },
       ],
     );
+    await markUsageChanged(pool, engine);
     throw error;
   }
 }
