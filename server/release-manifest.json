@@ -1,41 +1,62 @@
 {
-  "title": "Sorftime Amazon ASIN采集与商品展示",
-  "sourceSha": "316d17b786bb95a0e4507f12e0dc5d63deca85bf",
+  "title": "任务详情对象与用途重设计、任务执行后保存消耗统计",
+  "sourceSha": "8448d2c24530b18f0b473e5ef20dfc2b823ff0dc",
   "includedCommits": [
-    "316d17b786bb95a0e4507f12e0dc5d63deca85bf"
+    "83409cc9f44e7152af25f51e5e20d08abe46ac24",
+    "8234b1eb7d680259c9265759b7c73ae80582e08b"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ProductAsin.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
+    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
+    "apps/web-antd/src/views/intelligence/components/SemrushSettings.vue",
+    "apps/web-antd/src/views/intelligence/components/SourceUsageDashboard.vue",
+    "apps/web-antd/src/views/intelligence/components/TaskDetailPanel.vue",
+    "apps/web-antd/src/views/intelligence/components/TaskProgress.vue",
     "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "server/platform-product-data.mjs",
-    "server/product-asin.d.mts",
-    "server/product-asin.mjs",
-    "server/product-asin.test.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "apps/web-antd/src/views/intelligence/monitor.vue",
+    "apps/web-antd/src/views/intelligence/task-context.ts",
+    "apps/web-antd/src/views/intelligence/task-list.ts",
+    "server/database.mjs",
+    "server/index.mjs",
+    "server/runner.mjs",
+    "server/semrush-usage.integration.mjs",
+    "server/semrush-usage.mjs",
+    "server/semrush-usage.test.mjs",
+    "server/source-usage-domain.mjs",
+    "server/source-usage-snapshot.mjs",
+    "server/source-usage-snapshot.test.mjs",
+    "server/source-usage.mjs",
+    "server/source-usage.test.mjs",
+    "server/store.mjs",
+    "server/task-context.mjs",
+    "server/task-context.test.mjs",
+    "server/usage-changes.mjs",
+    "server/usage-summary-store.mjs",
+    "server/usage-summary-worker.mjs",
+    "server/usage-summary.test.mjs",
+    "tests/task-detail-context.test.ts",
+    "tests/usage-saved-ui.test.ts"
   ],
   "changes": [
-    "Sorftime Amazon关键词、资源及新品采集明确保存ASIN，详情和合并保留该字段，校验不同商品标识。",
-    "商品名称栏移除重复新品分类标签并显示ASIN，卡片与详情增加ASIN；已有商品从保存的Amazon标识直接展示，无需重新付费抓取。",
-    "商品分页和详情对旧缓存补充ASIN，不重建历史读模型，不改变来源调用计划。"
+    "任务列表和详情突出商品名称、ASIN、市场及任务用途，先展示结果和进展，执行日志与用量收起；销量核对任务展示归属校验后的回执。",
+    "任务与请求结束后后台预计算来源累计、逐日和Semrush按Key的消耗并持久保存；页面打开、刷新读取保存结果，不触发历史账本重扫。",
+    "Semrush配置自动展示已保存统计；资源页不在打开时自动查账户余额，手动登记即时生效，保留未知扣费、真实零、缓存去重及Key隔离。"
   ],
   "developmentValidation": [
-    "相关服务端56/56、隔离PGlite商品读模型4/4通过；Web完整类型检查、独立开发构建、新增模块定向ESLint、语法和diff检查通过。",
-    "未执行整仓lint、提交钩子、浏览器或正式用户界面验收；未调用真实来源/模型或执行历史付费回填。"
+    "任务详情新增服务端8项、前端13项、完整Web类型、独立构建、定向lint及桌面/390px合成浏览器验收通过；相关服务端21项20通过，旧投影快照失败在基线复现。",
+    "消耗汇总新增服务端7项（含隔离PGlite与实际worker状态SQL）及前端7项通过；相关服务端39项38通过，旧公共来源URL用例在基线复现；完整Web类型、独立构建、定向lint、语法/diff通过。"
   ],
   "releaseValidation": "发布重复测试、独立验证构建和CI等待按用户要求跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupMigration": false,
+    "startupDerivedSummary": true,
     "consistency": "skipped-by-user"
   },
   "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261105104700-a867a627",
-  "builtAt": "2026-11-05T10:47:00.556Z",
-  "sourceDigest": "a867a627adea01194a10d2e93bce4b62468f0e0ce678cdfff0a87a39a3d45581",
+  "id": "20261105114412-58605887",
+  "builtAt": "2026-11-05T11:44:12.523Z",
+  "sourceDigest": "58605887aedfb6339aeda7528deefe78d623e6e364c0d8f8cc4d0ac8fb9a027c",
   "operator": "Codex"
 }
