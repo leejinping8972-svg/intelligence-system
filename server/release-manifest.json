@@ -1,50 +1,66 @@
 {
-  "title": "列表切换超时与重复读取优化",
-  "sourceSha": "e24fdb4fd36755b962fb4e167ad0f4a961cf5133",
+  "title": "AI分析归入任务环节与关键词进度口径修正",
+  "sourceSha": "ae8f02b259fe57691028bca6782355a96f15f4a1",
   "includedCommits": [
-    "e24fdb4fd36755b962fb4e167ad0f4a961cf5133"
+    "ae8f02b259fe57691028bca6782355a96f15f4a1"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/session.ts",
+    "apps/web-antd/src/views/intelligence/competitor-monitor.ts",
+    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
+    "apps/web-antd/src/views/intelligence/components/TaskCollections.vue",
+    "apps/web-antd/src/views/intelligence/components/TaskProgress.vue",
+    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/keyword-jobs.ts",
+    "apps/web-antd/src/views/intelligence/keyword-task-summary.ts",
+    "apps/web-antd/src/views/intelligence/research.vue",
     "apps/web-antd/src/views/intelligence/workspace-queries.ts",
-    "apps/web-antd/src/views/intelligence/workspace-read-client.ts",
-    "server/workspace-read-latency.test.mjs",
+    "server/competitor-monitor-store.mjs",
+    "server/index.mjs",
+    "server/job-progress.mjs",
+    "server/keyword-expand-progress.test.mjs",
+    "server/keyword-metric-evidence.mjs",
+    "server/keyword-metric-evidence.test.mjs",
+    "server/runner.mjs",
+    "server/source-analysis-stage.mjs",
+    "server/source-analysis-stage.test.mjs",
+    "server/source-field-store.mjs",
+    "server/store.mjs",
+    "server/task-keyword-executions.mjs",
+    "server/task-keyword-executions.test.mjs",
+    "server/task-overview.mjs",
+    "server/task-page.mjs",
     "server/workspace-reads.mjs",
-    "tests/session-startup.test.ts",
-    "tests/workspace-queries.test.ts",
-    "tests/workspace-read-client.test.ts"
+    "server/workspace-reads.test.mjs",
+    "server/workspace-snapshot.mjs",
+    "tests/core-list-metrics.test.ts",
+    "tests/keyword-task-summary.test.ts",
+    "tests/task-progress-stages.test.ts",
+    "tests/workspace-queries.test.ts"
   ],
   "documentationFiles": [
-    "WORKSPACE_READ_PERFORMANCE.md"
+    "TASK_ANALYSIS_STAGES_DELIVERY.md"
   ],
   "changes": [
-    "列表、总览、筛选和初始化读取最多两个并发，相同用户相同请求共享，列表优先；切换或离开取消失效订阅。",
-    "删除下一页自动预取，保留用户/完整筛选缓存，后台超时保留已有内容并中文提示；无采集或保存自动重试。",
-    "服务端共享在途状态读取，计数与状态、当前页趋势与关联并行；完成状态不缓存，无数据库结构或任务执行变更。"
+    "来源字段AI分析归入明确所属采集任务/监控批次，保留内部执行、共享分析、请求账本和取消保护。",
+    "关键词发现与月搜索量分环节显示；按实际请求纠正旧检查点虚报，区分失败、未执行和结果待确认，不自动重试。",
+    "关键词顶部使用当前市场索引统计，提示使用真实任务累计词数；指标查询时间不冒用关键词获取时间，保留具体失败原因。"
   ],
   "developmentValidation": [
-    "前端35/35、服务端5/5通过，含合成PGlite集成；Web类型检查、独立完整构建、语法及diff检查通过。",
-    "新代码定向lint通过；全改动lint仍有原有问题，提交钩子未执行。",
-    "Edge合成18次切换并发上限2、超时保留内容、脚本错误0；合成查询15→11次，233→139ms，不代表线上速度。",
-    "真实用户网络连续切换待观察；曾见独立MySQL连接超时，未证明已解决全部网络波动。"
+    "服务端Node/PGlite 27/27，前端Vitest 42/42，含父子任务事务/共享取消和实际组件显示检查。",
+    "Web类型检查、独立完整构建、MJS语法、diff检查和新增核心模块定向ESLint通过。",
+    "未执行全仓lint、提交钩子、生产MySQL集成或正式账号界面验收；历史AI无可靠父关联不按时间猜配。"
   ],
-  "releaseValidation": "重复验证、验证构建及CI等待按用户策略跳过",
+  "releaseValidation": "发布重复验证、验证构建及CI等待按用户策略跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupMigration": false,
     "consistency": "skipped-by-user"
   },
-  "taskCancellation": {
-    "completedBeforeRelease": true,
-    "partialJobsCancelled": 115,
-    "resultsPreserved": true,
-    "activeJobsCancelled": 0
-  },
   "preservePendingTasks": true,
-  "id": "20261105070825-73087830",
-  "builtAt": "2026-11-05T07:08:25.033Z",
-  "sourceDigest": "73087830f54469262c526758343e54b3c2d7b57afd5721b55b66c1b08aeb0ea5",
+  "id": "20261105084948-c2d2f94e",
+  "builtAt": "2026-11-05T08:49:48.659Z",
+  "sourceDigest": "c2d2f94e4d3a935b9ee73dcb356e8a7bc55eee78ea0242fced4a6903e06d72bd",
   "operator": "Codex"
 }
