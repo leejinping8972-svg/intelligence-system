@@ -104,24 +104,31 @@ function proof(entry, sample) {
     ? { source, quote }
     : undefined;
 }
+function negatedIngredient(value, text) {
+  const escaped = value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:\\b(?:no|free from|without|does not contain)\\s+(?:added\\s+)?|不含|无添加)${escaped}|${escaped}[- ]free\\b`, 'i').test(text);
+}
 function ingredientValues(item, sample) {
   const source = sample.sources.find(s => s.id === item?.sourceId);
   if (!source) return;
   const text = source.text.toLowerCase();
-  const values = (Array.isArray(item.value) ? item.value : [item.value])
+  const candidates = (Array.isArray(item.value) ? item.value : [item.value])
     .map(v => clean(v, 2000))
     .flatMap(v => text.includes(v.toLowerCase()) ? [v] : v.split(/[,;；、\n]+/).map(v => v.trim()));
-  if (!values.length || values.some(v => !v || !text.includes(v.toLowerCase()))) return;
+  const indices = candidates.flatMap((v, i) => v && text.includes(v.toLowerCase()) && !negatedIngredient(v, source.text) ? [i] : []);
+  const values = indices.map(i => candidates[i]);
+  if (!values.length) return;
   const starts = values.map(v => text.indexOf(v.toLowerCase()));
   const end = Math.max(...values.map((v, i) => starts[i] + v.length));
   const cited = proof(item, sample);
-  return { values, source, quote: cited && values.every(v => cited.quote.toLowerCase().includes(v.toLowerCase())) ? cited.quote : source.text.slice(Math.min(...starts), end) };
+  return { values, indices, candidateCount: candidates.length, source, quote: cited && values.every(v => cited.quote.toLowerCase().includes(v.toLowerCase())) ? cited.quote : source.text.slice(Math.min(...starts), end) };
 }
 export function validateSourceFields(result, sample) {
   if (!Array.isArray(result?.fields) || result.fields.length > 30)
     throw new Error('AI字段结果格式无效');
   const evidence = {};
   const patch = {};
+  let ingredientMapping;
   for (const item of result.fields) {
     const mentioned = item.field === 'ingredient' ? ingredientValues(item, sample) : undefined;
     const p = mentioned || proof(item, sample);
@@ -141,10 +148,7 @@ export function validateSourceFields(result, sample) {
       continue;
     if (
       item.field === 'ingredient' &&
-      values.some((value) => {
-        const escaped = value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`(?:\\b(?:no|free from|without|does not contain)\\s+(?:added\\s+)?|不含|无添加)${escaped}|${escaped}[- ]free\\b`, 'i').test(p.source.text);
-      })
+      values.some(value => negatedIngredient(value, p.source.text))
     )
       continue;
     if (
@@ -159,6 +163,7 @@ export function validateSourceFields(result, sample) {
     patch[item.field] = arrayFields.has(item.field)
       ? values
       : values.join('; ');
+    if (item.field === 'ingredient') ingredientMapping = mentioned;
     evidence[item.field] = {
       sourceId: p.source.id,
       quote: p.quote,
@@ -175,7 +180,11 @@ export function validateSourceFields(result, sample) {
       const source = translated.field === 'ingredientZh' && translated.sourceId === evidence.ingredient?.sourceId
         ? { source: sample.sources.find(s => s.id === translated.sourceId), quote: evidence.ingredient.quote }
         : proof(translated, sample);
-      const values = (Array.isArray(translated.text) ? translated.text : [translated.text]).map(v => clean(v, 2000));
+      let values = (Array.isArray(translated.text) ? translated.text : [translated.text]).map(v => clean(v, 2000));
+      if (translated.field === 'ingredientZh' && ingredientMapping && ingredientMapping.indices.length < ingredientMapping.candidateCount) {
+        if (values.length !== ingredientMapping.candidateCount) continue;
+        values = ingredientMapping.indices.map(i => values[i]);
+      }
       if (!source || source.source.id !== allowed[translated.field] || !values.length || values.some(v => !v)) continue;
       const raw = translated.field.slice(0, -2);
       const original = raw === 'title' || raw === 'brand' && !patch.brand ? source.source.text : patch[raw];

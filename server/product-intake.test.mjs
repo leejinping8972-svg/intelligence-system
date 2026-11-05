@@ -134,7 +134,14 @@ test('ingredient lists and noncontiguous model quotes map to literal names in th
   assert.equal(result.patch.ingredientZh, '甘氨酸镁；双甘氨酸镁');
   assert.ok(sample.sources[0].text.includes(result.analysis.fields.ingredient.quote));
   const invented = validateSourceFields({ fields: [{ field: 'ingredient', value: 'Magnesium Glycinate; Creatine', sourceId: 'title', quote: sample.sources[0].text }] }, sample);
-  assert.equal(invented.patch.ingredient, undefined);
+  assert.equal(invented.patch.ingredient, 'Magnesium Glycinate');
+});
+
+test('a hallucinated or negated name does not discard other proven ingredients or retain its translation', () => {
+  const sample = sourceFieldSample('products', { title: 'Molecular Hydrogen Tablets without Melatonin' });
+  const result = validateSourceFields({ fields: [{ field: 'ingredient', value: ['Molecular Hydrogen', 'Magnesium', 'Melatonin'], sourceId: 'title', quote: 'Molecular Hydrogen', relation: 'mention' }], translations: [{ field: 'ingredientZh', text: ['分子氢', '镁', '褪黑素'], sourceId: 'title', quote: 'Molecular Hydrogen' }] }, sample);
+  assert.equal(result.patch.ingredient, 'Molecular Hydrogen');
+  assert.equal(result.patch.ingredientZh, '分子氢');
 });
 
 test('capture obtains details and content before AI, preserving usable fields when AI omits them', async () => {
