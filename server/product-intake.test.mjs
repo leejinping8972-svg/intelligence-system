@@ -127,6 +127,16 @@ test('negated ingredients and translations attached to the wrong source do not b
   assert.equal(result.patch.titleZh, undefined);
 });
 
+test('ingredient lists and noncontiguous model quotes map to literal names in the actual product source', () => {
+  const sample = sourceFieldSample('products', { title: 'Magnesium Glycinate Gummies with Chelated Magnesium Bisglycinate, without Melatonin' });
+  const result = validateSourceFields({ fields: [{ field: 'ingredient', value: 'Magnesium Glycinate; Magnesium Bisglycinate', sourceId: 'title', quote: 'Magnesium Glycinate, Magnesium Bisglycinate', relation: 'mention' }], translations: [{ field: 'ingredientZh', text: ['甘氨酸镁', '双甘氨酸镁'], sourceId: 'title', quote: 'Magnesium Glycinate, Magnesium Bisglycinate' }] }, sample);
+  assert.equal(result.patch.ingredient, 'Magnesium Glycinate; Magnesium Bisglycinate');
+  assert.equal(result.patch.ingredientZh, '甘氨酸镁；双甘氨酸镁');
+  assert.ok(sample.sources[0].text.includes(result.analysis.fields.ingredient.quote));
+  const invented = validateSourceFields({ fields: [{ field: 'ingredient', value: 'Magnesium Glycinate; Creatine', sourceId: 'title', quote: sample.sources[0].text }] }, sample);
+  assert.equal(invented.patch.ingredient, undefined);
+});
+
 test('capture obtains details and content before AI, preserving usable fields when AI omits them', async () => {
   const p = makeProduct(),
     calls = [];

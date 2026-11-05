@@ -37,6 +37,7 @@ export async function fieldAnalysisRequest(request, overrides = {}) {
   );
   return {
     ...validateSourceFields(response.result, request.sample),
+    ...(request.sample.kind === 'products' ? { fieldCandidates: response.result } : {}),
     usage: response.usage,
     model: response.model,
   };
