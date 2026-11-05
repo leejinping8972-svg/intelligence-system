@@ -42,7 +42,7 @@ const date = (v?: string) =>
 </script>
 <template>
   <section class="collection-details">
-    <h3>各项采集任务（{{ rows.length }}）</h3>
+    <h3>任务环节与逐项结果（{{ rows.length }}）</h3>
     <Alert
       v-if="!rows.length"
       type="info"

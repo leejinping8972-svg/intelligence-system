@@ -40,18 +40,18 @@ test('expansion progress uses discovery/Semrush counts instead of trend zeros', 
     },
   };
   const progress = jobProgress(job);
-  assert.equal(progress.phase, 'discovery');
+  assert.equal(progress.phase, 'blocked');
   assert.equal(progress.discovered, 10);
-  assert.equal(progress.processed, 10);
+  assert.equal(progress.processed, 4);
   assert.equal(progress.succeeded, 3);
   assert.equal(progress.failed, 1);
   const overview = taskOverview(job, { progress });
-  assert.equal(overview.total, 10);
-  assert.equal(overview.processed, 10);
+  assert.equal(overview.total, 11);
+  assert.equal(overview.processed, 5);
   assert.equal(overview.succeeded, 3);
   assert.equal(overview.failed, 1);
-  assert.equal(overview.remaining, 0);
-  assert.equal(overview.percent, 100);
+  assert.equal(overview.remaining, 6);
+  assert.equal(overview.percent, 45);
 });
 
 test('Semrush block stops metric loop without walking remaining keywords', async () => {
@@ -104,4 +104,6 @@ test('Semrush block stops metric loop without walking remaining keywords', async
   assert.match(job.checkpoint.logs.join('\n'), /跳过剩余/);
   assert.ok(job.checkpoint.metricIndex >= 1);
   assert.ok(job.checkpoint.metricIndex < job.checkpoint.keywords.length);
+  assert.ok(job.checkpoint.keywords[0].semrushCollection.finishedAt);
+  assert.equal(job.checkpoint.semBlockedError, 'Semrush HTTP 403');
 });

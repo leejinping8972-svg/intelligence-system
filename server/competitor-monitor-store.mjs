@@ -33,6 +33,7 @@ import { withQueueConfig } from './queue-config-lock.mjs';
 import { parallelItems } from './source-scheduler.mjs';
 import { requestFailed, requestStarted, requestSucceeded } from './request-log.mjs';
 import { saveKeyword } from './store.mjs';
+import { decorateMonitorAnalysis, withAnalysisTask } from './source-analysis-stage.mjs';
 
 import { westmonthChannelKey } from './westmonth-market.mjs';
 
@@ -102,7 +103,7 @@ export async function competitorAction(input, user) {
   if (input.action === 'server_competitor_overview') {
     const db = createMonitorStore();
     const targets = (await db.list(`${PREFIX}target:`)).map((row) => row.value);
-    const runs = (await db.list(`${PREFIX}run:`)).map((row) => row.value);
+    const runs = await decorateMonitorAnalysis((await db.list(`${PREFIX}run:`)).map((row) => row.value), pool);
     return {
       targets,
       runs: runs.map((run) => {
@@ -125,7 +126,7 @@ export async function competitorAction(input, user) {
     return {
       targets: (await db.list(`${PREFIX}target:`)).map((r) => r.value),
       configs: (await db.list(`${PREFIX}hot-config:`)).map((r) => r.value),
-      runs: (await db.list(`${PREFIX}run:`)).map((r) => r.value),
+      runs: await decorateMonitorAnalysis((await db.list(`${PREFIX}run:`)).map((r) => r.value), pool),
       rankings: (await db.list(`${PREFIX}ranking:`)).map((r) => r.value),
       events: (await db.list(`${PREFIX}event:`))
         .slice(0, 100)
@@ -300,7 +301,7 @@ export async function persistObservation(c, target, kind, item, event, at) {
       const { gateSourceFields } = await import('./source-field-domain.mjs');
       const { queueSourceFields } = await import('./source-field-store.mjs');
       observed = gateSourceFields(kind, old, observed, item);
-      await queueSourceFields(kind, observed, c);
+      await withAnalysisTask({ monitorId: target.id, day: dayKey(Date.parse(at)) }, () => queueSourceFields(kind, observed, c));
     }
     await archiveCoreEvidence(
       kind,

@@ -31,6 +31,15 @@ const product = (patch = {}) =>
 const get = (metrics: ReturnType<typeof productMetrics>, key: string) =>
   metrics.find((m) => m.key === key)!;
 describe('core metrics with database pagination', () => {
+  it('shows the metric attempt date independently of keyword discovery and does not invent old dates', () => {
+    const keyword = { id: 'k', term: 'curcumin', market: 'US', collectedAt: '2026-11-05T14:47:11Z', semrushCollection: { status: 'failed', message: '额度为0', finishedAt: at } } as Keyword;
+    const volume = get(keywordMetrics(keyword, 30), 'searchVolume');
+    expect(volume.collectedAt).toBe(at);
+    expect(volume.status).toBe('failed');
+    expect(volume.reason).toBe('额度为0');
+    delete keyword.semrushCollection!.finishedAt;
+    expect(get(keywordMetrics(keyword, 30), 'searchVolume').collectedAt).toBe('');
+  });
   it('omits removed product period columns even when older server summaries include them', () => {
     const metric = { ...get(productMetrics(product(), 30), 'sales'), value: 60, status: 'available' as const };
     const record = product({ listSummary: true, coreSummary: { periods: { 30: [metric] } } });

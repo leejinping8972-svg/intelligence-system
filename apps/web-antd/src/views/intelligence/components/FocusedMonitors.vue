@@ -260,6 +260,10 @@ function view(row: FocusedMonitorRow) {
           <p class="hci-subtle">
             {{ record.run.requests }}次请求 · {{ record.run.added || 0 }}项上新
           </p>
+          <p v-if="record.run.sourceAnalysis" class="hci-subtle">
+            AI分析：完成 {{ record.run.sourceAnalysis.completed }}/{{ record.run.sourceAnalysis.total }} ·
+            排队 {{ record.run.sourceAnalysis.queued }} · 执行中 {{ record.run.sourceAnalysis.running }} · 失败 {{ record.run.sourceAnalysis.failed }}
+          </p>
           <p v-for="text in record.run.errors" :key="text" class="hci-subtle">
             {{ text }}
           </p>

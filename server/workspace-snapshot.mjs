@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
 import { projectJobTasks } from './task-projection.mjs';
+import { decorateAnalysisTasks, visibleTaskSource } from './source-analysis-stage.mjs';
+import { decorateKeywordTasks } from './task-keyword-executions.mjs';
 
 const digest = (rows) =>
   createHash('sha256').update(JSON.stringify(rows)).digest('hex');
@@ -33,8 +35,8 @@ export async function workspaceSnapshot(
         ),
         pool.query(
           sql(
-            'SELECT id,updated_at,status,cancelled,md5(checkpoint::text) AS content_hash FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
-            'SELECT id,updated_at,status,cancelled,MD5(CAST(checkpoint AS CHAR CHARACTER SET utf8mb4)) AS content_hash FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
+            `SELECT id,updated_at,status,cancelled,md5(checkpoint::text || input::text) AS content_hash FROM ${visibleTaskSource(sql)} ORDER BY created_at DESC,id DESC LIMIT 200`,
+            `SELECT id,updated_at,status,cancelled,MD5(CONCAT(CAST(checkpoint AS CHAR CHARACTER SET utf8mb4),CAST(input AS CHAR CHARACTER SET utf8mb4))) AS content_hash FROM ${visibleTaskSource(sql)} ORDER BY created_at DESC,id DESC LIMIT 200`,
           ),
         ),
       ]);
@@ -78,13 +80,15 @@ export async function workspaceSnapshot(
       ? null
       : (async () => {
           const { rows } = await pool.query(
-            'SELECT * FROM research_jobs ORDER BY created_at DESC,id DESC LIMIT 200',
+            `SELECT * FROM ${visibleTaskSource(sql)} ORDER BY created_at DESC,id DESC LIMIT 200`,
           );
           const projected = rows.flatMap((job) =>
             projectJobTasks(job, jobTasks),
           );
+          const keywordTasks = await decorateKeywordTasks(projected, rows, pool);
+          const decorated = await decorateAnalysisTasks(keywordTasks, rows, pool, sql);
           result.tasks = (
-            decorateTasks ? await decorateTasks(projected, rows) : projected
+            decorateTasks ? await decorateTasks(decorated, rows) : decorated
           ).map(compactTask);
         })(),
   ]);

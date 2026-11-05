@@ -60,8 +60,8 @@ export const mysqlSchema = [
   `CREATE TABLE IF NOT EXISTS workspace_documents (name varchar(180) PRIMARY KEY, value json NOT NULL, revision integer NOT NULL DEFAULT 1)`,
 ];
 export const saveKeyword = createKeywordSaver({ pool, sql });
-export async function saveCheckpoint(job, checkpoint, status = 'running') {
-  await pool.query(
+export async function saveCheckpoint(job, checkpoint, status = 'running', connection = pool) {
+  await connection.query(
     "UPDATE research_jobs SET checkpoint=$2,status=CASE WHEN cancelled THEN 'cancelled' ELSE $3 END,updated_at=now() WHERE id=$1",
     [job.id, { ...checkpoint, updatedAt: new Date().toISOString() }, status],
   );

@@ -8,6 +8,7 @@ import {
   sourceFieldSample,
 } from './source-field-domain.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
+import { analysisMonitor, analysisTaskId, attachAnalysisMonitor, attachAnalysisParent, syncAnalysisStage } from './source-analysis-stage.mjs';
 
 function preserveAdTranslations(old, next) {
   const result = { ...next };
@@ -33,15 +34,13 @@ export async function queueSourceFields(
   const id = stableId(
     `source-fields-v1|${kind}|${value.id}|${sample.fingerprint}|${requestKey}`,
   );
-  if (
-    (
-      await connection.query(
-        'SELECT id FROM research_jobs WHERE request_id=$1',
-        [id],
-      )
-    ).rows.length
-  )
+  const existing = (await connection.query('SELECT id,input,status,cancelled FROM research_jobs WHERE request_id=$1 FOR UPDATE', [id])).rows[0];
+  value.fieldAnalysis.jobId = id;
+  if (existing) {
+    await attachAnalysisParent(connection, existing, analysisTaskId());
+    await attachAnalysisMonitor(connection, existing, analysisMonitor());
     return id;
+  }
   await connection.query(
     sql(
       'INSERT INTO research_jobs(id,request_id,input,checkpoint) VALUES($1,$2,$3,$4) ON CONFLICT(request_id) DO NOTHING',
@@ -66,10 +65,25 @@ export async function queueSourceFields(
       },
     ],
   );
+  const child = (await connection.query('SELECT id,input,status,cancelled FROM research_jobs WHERE request_id=$1 FOR UPDATE', [id])).rows[0];
+  await attachAnalysisParent(connection, child, analysisTaskId());
+  await attachAnalysisMonitor(connection, child, analysisMonitor());
   return id;
 }
 export async function runSourceFields(job, overrides = {}) {
   const io = { pool, collect, saveCheckpoint, putDocument, ...overrides };
+  const save = io.saveCheckpoint;
+  io.saveCheckpoint = async (savedJob, checkpoint, status = 'running') => {
+    const connection = await io.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      await save(savedJob, checkpoint, status, connection);
+      await syncAnalysisStage(job, io.pool, connection);
+      await connection.query('COMMIT');
+    } catch (error) { await connection.query('ROLLBACK').catch(() => {}); throw error; }
+    finally { connection.release(); }
+  };
+  await syncAnalysisStage(job, io.pool);
   const cp = { ...job.checkpoint, logs: [...(job.checkpoint.logs || [])] };
   try {
     if (job.cancelled) return;
@@ -117,6 +131,7 @@ export async function runSourceFields(job, overrides = {}) {
           ...patch,
           fieldAnalysis: {
             ...result.analysis,
+            jobId: job.id,
             model: result.model,
             sources: prepared?.product.fieldAnalysis.sources || job.input.sample.sources,
           },

@@ -39,7 +39,7 @@ const settle = async () => {
   await vi.advanceTimersByTimeAsync(300);
   await nextTick();
 };
-function setup() {
+function setup(market = ref('ALL')) {
   const filter = ref(''),
     page = ref(1),
     pageSize = ref(20);
@@ -49,7 +49,7 @@ function setup() {
     setup() {
       list = useWorkspaceList(
         'advertisers',
-        computed(() => ({ search: filter.value })),
+        computed(() => ({ search: filter.value, market: market.value })),
         page,
         pageSize,
       );
@@ -76,6 +76,21 @@ afterEach(() => {
 });
 
 describe('paged workspace queries', () => {
+  it('keeps current market summary separate from filter totals and clears it while switching market', async () => {
+    mock.request.mockImplementation(async (action, input) => action === 'server_workspace_facets' ? { facets: {} } : { ...result('visible',input.page), total:1, marketSummary:{total:841,priority:34,pending:700,selected:17} });
+    const market = ref('ALL');
+    const { list, filter } = setup(market);
+    await settle();
+    expect(list.total.value).toBe(1);
+    expect(list.marketSummary.value?.total).toBe(841);
+    filter.value = 'curcumin';
+    await settle();
+    expect(list.marketSummary.value?.total).toBe(841);
+    mock.request.mockImplementation((action) => action === 'server_workspace_facets' ? Promise.resolve({facets:{}}) : new Promise(()=>{}));
+    market.value = 'US';
+    await settle();
+    expect(list.marketSummary.value).toBeUndefined();
+  });
   it('downloads only the visible page after indexing completes', async () => {
     mock.request.mockImplementation(async (action, input) =>
       action === 'server_workspace_facets' ? { facets: {} } : { ...result('visible', input.page), indexing: false },

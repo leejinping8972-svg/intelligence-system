@@ -145,6 +145,7 @@ export interface CollectionState {
     | 'completed'
     | 'empty'
     | 'failed'
+    | 'not_started'
     | 'partial'
     | 'queued'
     | 'running';
@@ -416,6 +417,7 @@ export interface Review {
   reason: string;
 }
 export interface Task {
+  sourceAnalysis?: { total: number; queued: number; running: number; completed: number; failed: number; cancelled: number; pending: number; processed: number };
   overview?: {
     status: string;
     total: number;
@@ -562,6 +564,11 @@ export interface Task {
   created: string;
   steps: string[];
   progress?: {
+    expansionOnly?: boolean;
+    discoveryFailed?: number;
+    metricPending?: number;
+    metricUnknown?: number;
+    metricBlockReason?: string;
     asyncRetries?: boolean;
     succeeded?: number;
     retryPending?: number;

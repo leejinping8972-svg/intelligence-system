@@ -86,6 +86,8 @@ import {
 import { registerRelease, releaseHistory } from './release-history.mjs';
 import { reportPromptAction } from './report-prompts.mjs';
 import { jobTasks, runQueue } from './runner.mjs';
+import { cancelAnalysisChildren, decorateAnalysisTasks, visibleTaskSource } from './source-analysis-stage.mjs';
+import { decorateKeywordTasks } from './task-keyword-executions.mjs';
 import { semrushAction } from './semrush-config.mjs';
 import { submitSemrushSites } from './semrush-sites-store.mjs';
 import { siteFetchConfig } from './site-fetch-config.mjs';
@@ -379,10 +381,10 @@ async function api(input, user) {
       );
       return {
         tasks: await decorateSocialTasks(
-          jobTasks(rows[0]).map((task) => ({
+          await decorateAnalysisTasks((await decorateKeywordTasks(jobTasks(rows[0]), rows, pool)).map((task) => ({
             ...task,
             collections: taskCollections(rows[0], task, requests.rows),
-          })),
+          })), rows, pool, sql, true),
           rows,
           pool,
         ),
@@ -601,7 +603,7 @@ async function api(input, user) {
           'SELECT data FROM research_keywords ORDER BY updated_at DESC LIMIT 10000',
         ),
         pool.query(
-          'SELECT * FROM research_jobs ORDER BY created_at DESC LIMIT 200',
+          `SELECT * FROM ${visibleTaskSource(sql)} ORDER BY created_at DESC LIMIT 200`,
         ),
       ]);
       return {
@@ -609,7 +611,7 @@ async function api(input, user) {
           ...data,
           assessment: assessKeyword(data),
         })),
-        tasks: jobs.rows.flatMap(jobTasks),
+        tasks: await decorateAnalysisTasks(await decorateKeywordTasks(jobs.rows.flatMap(jobTasks), jobs.rows, pool), jobs.rows, pool, sql),
         generatedAt: new Date().toISOString(),
       };
     }
@@ -673,6 +675,7 @@ async function api(input, user) {
       );
       await cancelEnrichment(rows[0]);
       await cancelPlatformCompletion(rows[0]);
+      await cancelAnalysisChildren(input.jobId, pool, sql);
       return { cancelled: true };
     }
     case 'server_resume_partial': {

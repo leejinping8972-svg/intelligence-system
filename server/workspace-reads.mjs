@@ -13,6 +13,7 @@ import { scoreSite } from './site-scoring.mjs';
 import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
+import { keywordMetricEvidence } from './keyword-metric-evidence.mjs';
 import { productChineseName } from './product-names.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 import { compareProductValues, productSortKeys, productSortValue } from './product-list-sort.mjs';
@@ -282,6 +283,7 @@ export function createWorkspaceReads({
       return records.map((record) => ({ ...record, coreSummary: { ...record.coreSummary, related: map.get(record.id) } }));
     }
     if (collection === 'keywords') {
+      records = await keywordMetricEvidence(records, pool, sql);
       const terms = records.map((record) => normalizeTerm(record.term));
       const field = (name) => sql(`r.payload->>'${name}'`, `JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.${name}'))`);
       const expansions = (await pool.query(`SELECT r.market,l.target,${field('term')} AS term,${field('source')} AS source FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE l.collection='keywords' AND l.relation='seed' AND l.target IN (${slots})`, terms)).rows;
@@ -840,12 +842,16 @@ export function createWorkspaceReads({
       1,
       Math.min(1000000, Math.trunc(Number(input.page) || 1)),
     );
-    const [counted, current] = await Promise.all([
+    const [counted, current, marketSummary] = await Promise.all([
       pool.query(
         `SELECT COUNT(*) AS total FROM workspace_read_rows r WHERE ${query.where}`,
         query.values,
       ),
       status(),
+      query.collection === 'keywords' ? pool.query(
+        `SELECT COUNT(*) AS total,SUM(CASE WHEN grade IN ('A','B') THEN 1 ELSE 0 END) AS priority,SUM(CASE WHEN grade IS NULL OR grade='' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN review_status='selected' THEN 1 ELSE 0 END) AS selected FROM workspace_read_rows WHERE collection='keywords'${input.market && input.market !== 'ALL' ? ' AND market=$1' : ''}`,
+        input.market && input.market !== 'ALL' ? [input.market] : [],
+      ) : null,
     ]);
     const total = Number(counted.rows[0].total);
     page = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
@@ -888,13 +894,14 @@ export function createWorkspaceReads({
       const [trends, relations] = await Promise.all([
         withKeywordTrends(records), withRelations(query.collection, records),
       ]);
-      related = trends.map((record, index) => ({ ...record, coreSummary: relations[index].coreSummary }));
+      related = trends.map((record, index) => ({ ...record, semrushCollection: relations[index].semrushCollection, coreSummary: relations[index].coreSummary }));
     } else related = await withRelations(query.collection, records);
     return {
       rows: related,
       total,
       page,
       pageSize,
+      ...(marketSummary ? { marketSummary: Object.fromEntries(['total','priority','pending','selected'].map(key => [key, Number(marketSummary.rows[0]?.[key]) || 0])) } : {}),
       ...current,
     };
   }
