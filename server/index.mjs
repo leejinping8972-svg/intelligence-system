@@ -99,6 +99,8 @@ import { decorateSocialTasks } from './task-social-progress.mjs';
 import { westmonthSessionAction } from './westmonth-session.mjs';
 import { createWorkspaceReads } from './workspace-reads.mjs';
 import { workspaceSnapshot } from './workspace-snapshot.mjs';
+import { monitorWorkspace } from './monitor-workspace.mjs';
+import { resumePartialTask } from './task-resume.mjs';
 import { isWorkspaceSyncKey } from './workspace-sync-keys.mjs';
 import { youtubeAction } from './youtube-config.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -186,6 +188,9 @@ async function api(input, user) {
   if (input.action?.startsWith('server_market_collection_'))
     return marketResearchAction(input, user);
   switch (input.action) {
+    case 'server_monitor_workspace': {
+      return monitorWorkspace(input, { pool, sql });
+    }
     case 'server_manual_site_add': {
       return addManualSite(input);
     }
@@ -679,20 +684,7 @@ async function api(input, user) {
       return { cancelled: true };
     }
     case 'server_resume_partial': {
-      if (!uuid.test(input.jobId)) throw new Error('任务编号无效');
-      const { rows } = await pool.query(
-        'SELECT * FROM research_jobs WHERE id=$1',
-        [input.jobId],
-      );
-      const job = rows[0];
-      if (!job) throw new Error('任务不存在');
-      if (job.status !== 'partial')
-        throw new Error('仅未采集完的已停止任务可以继续');
-      await pool.query(
-        "UPDATE research_jobs SET cancelled=false,status='queued',updated_at=now() WHERE id=$1 AND status='partial'",
-        [input.jobId],
-      );
-      return { resumed: true, jobId: input.jobId };
+      return resumePartialTask(input.jobId, pool);
     }
     case 'server_clear_keywords': {
       requireAdmin(user);
@@ -889,6 +881,7 @@ const server = createServer(async (request, response) => {
               'server_task_detail',
               'server_task_estimate',
               'server_task_page',
+              'server_monitor_workspace',
               'server_task_research',
               'server_workspace_bootstrap',
               'server_workspace_delta',

@@ -201,7 +201,7 @@ export async function sourceUsageAction(input, user, overrides = {}) {
     await io.write(name, {
       ...old,
       manual,
-      preferManual: input.preferManual === true,
+      preferManual: input.sourceId === 'semrush' || input.preferManual === true,
     });
     return { saved: true };
   }

@@ -215,6 +215,38 @@ describe('workspace delta synchronization', () => {
 });
 
 describe('paged server workspace', () => {
+  it('monitor tabs read scoped records, reuse revisions and do not echo server data as edits', async () => {
+    mock.request.mockImplementation(async action => action === 'server_monitor_workspace'
+      ? { revision: 'b2', entries: [{key:'monitors:m1',value:{id:'m1',productId:'p1'}},{key:'audit:a1',value:{id:'a1',at:'now'}}], products:[{id:'p1',title:'Product',market:'US',brand:'Brand',listSummary:true}] }
+      : { entries: [], revisions:{tasks:'t2'}, active:1, generatedAt:'now' });
+    const cloud = await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    cloud.setWorkspaceReadMode('monitor');
+    await cloud.syncCloudWorkspace();
+    expect(mock.state.monitors).toHaveLength(1);
+    expect(mock.state.audit).toHaveLength(1);
+    expect(cloud.cloudWorkspace.taskRevision).toBe('t2');
+    mock.request.mockImplementation(async action => action === 'server_monitor_workspace'
+      ? {revision:'b2'} : {entries:[],revisions:{tasks:'t2'},active:1,generatedAt:'now'});
+    mock.request.mockClear();
+    await cloud.syncCloudWorkspace();
+    expect(mock.state.monitors).toHaveLength(1);
+    expect(mock.request.mock.calls.map(call => call[0]).sort()).toEqual(['server_monitor_workspace','server_workspace_bootstrap']);
+    expect(mock.request.mock.calls.find(call => call[0] === 'server_monitor_workspace')?.[1]).toEqual({revision:'b2'});
+  });
+  it('accepted resume succeeds even when its background refresh fails and shares double clicks', async () => {
+    const cloud = await setup();
+    let accept!: (value: unknown) => void;
+    mock.request.mockImplementation(action => action === 'server_resume_partial'
+      ? new Promise(resolve => { accept = resolve; })
+      : Promise.reject(new Error('refresh unavailable')));
+    const a = cloud.resumePartialCloudJob('j1');
+    const b = cloud.resumePartialCloudJob('j1');
+    expect(mock.request.mock.calls.filter(call => call[0] === 'server_resume_partial')).toHaveLength(1);
+    accept({status:'queued'});
+    await expect(a).resolves.toEqual({status:'queued'});
+    await expect(b).resolves.toEqual({status:'queued'});
+    expect(mock.state.tasks.every((task: any) => task.status === 'queued')).toBe(true);
+  });
   it('starts with configuration and revisions without downloading business collections', async () => {
     mock.request.mockImplementation(async () => ({ entries: [], revisions: { published: '1' }, active: 0, generatedAt: 'now', indexing: false }));
     const cloud = await import('../apps/web-antd/src/views/intelligence/cloud-workspace');

@@ -7,7 +7,7 @@ export const SOURCE_CATALOG = [
     config: 'provider:semrush:mcp:v1',
     description:
       '提供关键词搜索量、竞争难度和站点流量指标，用于关键词研究与独立站分析。',
-    automatic: true,
+    manualOnly: true,
   },
   {
     id: 'sorftime',
@@ -501,7 +501,7 @@ export function summarizeUsage(
       quota.automatic?.remaining !== undefined
         ? quota.automatic
         : null;
-    const chosen = quota.preferManual
+    const chosen = source.manualOnly || quota.preferManual
       ? quota.manual
       : auto
         ? {
@@ -534,9 +534,9 @@ export function summarizeUsage(
       undated: total?.undated || 0,
       quota: chosen || null,
       manualQuota: quota.manual || null,
-      preferManual: quota.preferManual === true,
+      preferManual: source.manualOnly || quota.preferManual === true,
       quotaMessage:
-        quota.message ||
+        (source.manualOnly ? '额度由你手动登记，不自动获取账户余额' : quota.message) ||
         (source.automatic
           ? '支持账户余额查询'
           : '未提供可用的免费余额接口，可手动登记'),

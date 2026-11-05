@@ -11,6 +11,7 @@ import {
   Drawer,
   Empty,
   message,
+  Pagination,
   Spin,
   Tabs,
 } from 'ant-design-vue';
@@ -95,9 +96,9 @@ async function resumeResource(task: Task) {
       'server_product_resource_resume',
       { jobId: task.cloudJobId },
     );
-    await syncCloudWorkspace();
+    void syncCloudWorkspace().catch(() => {});
     if (selected.value?.cloudJobId === task.cloudJobId)
-      await showDetails(selected.value);
+      void showDetails(selected.value);
     message.success('已恢复同一任务，仅继续尚未执行步骤');
   } catch (error) {
     message.error(error instanceof Error ? error.message : '恢复任务失败');
@@ -112,7 +113,7 @@ async function continuePartial(task: Task) {
   try {
     await resumePartialCloudJob(task.cloudJobId);
     if (selected.value?.cloudJobId === task.cloudJobId)
-      await showDetails(selected.value);
+      void showDetails(selected.value);
     message.success('已重新入队，将从未完成部分继续采集');
   } catch (error) {
     message.error(error instanceof Error ? error.message : '继续采集失败');
@@ -240,11 +241,14 @@ const auditRows = computed(() =>
     (e) => state.market === 'ALL' || e.market === state.market,
   ),
 );
+const auditPage = ref(1);
+watch(() => state.market, () => { auditPage.value = 1; });
+const visibleAudit = computed(() => auditRows.value.slice((auditPage.value - 1) * 20, auditPage.value * 20));
 </script>
 <template>
   <main class="hci-page">
     <PageHeader
-      :mode="tab === 'tasks' ? 'tasks' : 'legacy'"
+      mode="monitor"
       :title="
         tab === 'monitors'
           ? '跟踪计划'
@@ -279,9 +283,10 @@ const auditRows = computed(() =>
         <Tabs.TabPane key="monitors" tab="重点监控">
           <ProductWatchPanel ref="productWatch" />
           <DiscoveryMonitors ref="discoveryMonitors" />
-          <FocusedMonitors />
+          <FocusedMonitors :active="tab === 'monitors'" />
 </Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${taskTotal}）`">
           <ResearchTaskList
+            :active="tab === 'tasks'"
             :tasks="tasks"
             :retrying="retrying"
             :resuming="resuming"
@@ -307,7 +312,7 @@ const auditRows = computed(() =>
             description="收藏、审核或修改监控后，会在这里留下记录"
           />
           <div
-            v-for="event in auditRows"
+            v-for="event in visibleAudit"
             :key="event.id"
             class="hci-market-row"
           >
@@ -317,6 +322,7 @@ const auditRows = computed(() =>
             </div>
             <span class="hci-subtle">{{ event.at }}</span>
           </div>
+          <Pagination v-if="auditRows.length > 20" v-model:current="auditPage" :total="auditRows.length" :page-size="20" :show-size-changer="false" />
         </Tabs.TabPane>
       </Tabs>
     </section>

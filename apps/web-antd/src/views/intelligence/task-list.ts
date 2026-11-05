@@ -45,7 +45,7 @@ export function expandTaskStatusFilters(statuses: string[]) {
 }
 
 export function partialTaskCanContinue(task: Task) {
-  if (task.status !== 'partial' || task.readOnly) return false;
+  if (task.status !== 'partial' || task.readOnly || task.canContinue === false) return false;
   if ((task.overview?.remaining ?? 0) > 0) return true;
   const collection = task.researchProgress || task.collectionProgress;
   if (
