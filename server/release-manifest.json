@@ -1,55 +1,28 @@
 {
-  "title": "AI分析归入任务环节与关键词进度口径修正",
-  "sourceSha": "ae8f02b259fe57691028bca6782355a96f15f4a1",
+  "title": "来源字段AI分析独立并发队列",
+  "sourceSha": "feb4ed8bf6b88758e150a6977dc052f959da2579",
   "includedCommits": [
-    "ae8f02b259fe57691028bca6782355a96f15f4a1"
+    "feb4ed8bf6b88758e150a6977dc052f959da2579"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/competitor-monitor.ts",
-    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
-    "apps/web-antd/src/views/intelligence/components/TaskCollections.vue",
-    "apps/web-antd/src/views/intelligence/components/TaskProgress.vue",
-    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/keyword-jobs.ts",
-    "apps/web-antd/src/views/intelligence/keyword-task-summary.ts",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/workspace-queries.ts",
-    "server/competitor-monitor-store.mjs",
-    "server/index.mjs",
-    "server/job-progress.mjs",
-    "server/keyword-expand-progress.test.mjs",
-    "server/keyword-metric-evidence.mjs",
-    "server/keyword-metric-evidence.test.mjs",
+    "deploy/server/drain-queue.mjs",
+    "server/database.mjs",
     "server/runner.mjs",
-    "server/source-analysis-stage.mjs",
-    "server/source-analysis-stage.test.mjs",
-    "server/source-field-store.mjs",
-    "server/store.mjs",
-    "server/task-keyword-executions.mjs",
-    "server/task-keyword-executions.test.mjs",
-    "server/task-overview.mjs",
-    "server/task-page.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs",
-    "server/workspace-snapshot.mjs",
-    "tests/core-list-metrics.test.ts",
-    "tests/keyword-task-summary.test.ts",
-    "tests/task-progress-stages.test.ts",
-    "tests/workspace-queries.test.ts"
+    "server/source-analysis-queue.mjs",
+    "server/source-analysis-queue.test.mjs"
   ],
   "documentationFiles": [
-    "TASK_ANALYSIS_STAGES_DELIVERY.md"
+    "SOURCE_ANALYSIS_CONCURRENCY.md"
   ],
   "changes": [
-    "来源字段AI分析归入明确所属采集任务/监控批次，保留内部执行、共享分析、请求账本和取消保护。",
-    "关键词发现与月搜索量分环节显示；按实际请求纠正旧检查点虚报，区分失败、未执行和结果待确认，不自动重试。",
-    "关键词顶部使用当前市场索引统计，提示使用真实任务累计词数；指标查询时间不冒用关键词获取时间，保留具体失败原因。"
+    "来源字段AI分析从普通采集拆出，默认最多3项同时执行；普通采集、趋势和AI分析可以同时推进。",
+    "普通runner在SQL选择时排除source_fields，独立互斥锁防止执行器重叠；取消、冷却和未确认请求防重放规则保留。",
+    "发布排空增加source-fields-runner锁，本批采用23项持续队列互斥；全部分析请求结束后才释放调度锁。"
   ],
   "developmentValidation": [
-    "服务端Node/PGlite 27/27，前端Vitest 42/42，含父子任务事务/共享取消和实际组件显示检查。",
-    "Web类型检查、独立完整构建、MJS语法、diff检查和新增核心模块定向ESLint通过。",
-    "未执行全仓lint、提交钩子、生产MySQL集成或正式账号界面验收；历史AI无可靠父关联不按时间猜配。"
+    "Node/PGlite 30/30通过，覆盖三项同时执行、互斥/取消竞争、冷却、错误时等待其他请求结束及父任务/商品分析账本。",
+    "新增核心模块定向ESLint、MJS语法与diff通过；无前端改动，不重复运行无关Web验证构建。",
+    "没有调用真实模型/来源，未新增收费任务或自动重试；真实吞吐以正式观察为准。"
   ],
   "releaseValidation": "发布重复验证、验证构建及CI等待按用户策略跳过",
   "database": {
@@ -58,9 +31,10 @@
     "startupMigration": false,
     "consistency": "skipped-by-user"
   },
+  "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261105084948-c2d2f94e",
-  "builtAt": "2026-11-05T08:49:48.659Z",
-  "sourceDigest": "c2d2f94e4d3a935b9ee73dcb356e8a7bc55eee78ea0242fced4a6903e06d72bd",
+  "id": "20261105090853-ef0bbcae",
+  "builtAt": "2026-11-05T09:08:53.583Z",
+  "sourceDigest": "ef0bbcae33a77d35d2656a75fffc8591547ae2775e38229a33fb226d9cc24e15",
   "operator": "Codex"
 }
