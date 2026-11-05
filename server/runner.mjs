@@ -7,6 +7,7 @@ import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { discoveryKinds, runDiscoveryMonitor, tickDiscoveryMonitors } from './discovery-monitor-store.mjs';
 import { runSourceFields } from './source-field-store.mjs';
 import { withAnalysisTask } from './source-analysis-stage.mjs';
+import { runSourceAnalysisQueue, sourceAnalysisFilter } from './source-analysis-queue.mjs';
 import { lock, sql, unlock } from './database.mjs';
 import {
   KEYWORD_EXPANSION_FETCH_CAP,
@@ -625,8 +626,8 @@ async function runLane(signal, trends = false) {
         }
         const { rows } = await pool.query(
           sql(
-            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND COALESCE(checkpoint->>'trendQueueVersion','0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(checkpoint->>'nextRunAt','0') AS BIGINT) <= $1 ORDER BY updated_at LIMIT 20`,
-            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.trendQueueVersion')),'0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.nextRunAt')),'0') AS UNSIGNED) <= $1 ORDER BY updated_at LIMIT 20`,
+            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND ${sourceAnalysisFilter(sql, false)} AND COALESCE(checkpoint->>'trendQueueVersion','0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(checkpoint->>'nextRunAt','0') AS BIGINT) <= $1 ORDER BY updated_at LIMIT 20`,
+            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND ${sourceAnalysisFilter(sql, false)} AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.trendQueueVersion')),'0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.nextRunAt')),'0') AS UNSIGNED) <= $1 ORDER BY updated_at LIMIT 20`,
           ),
           [Date.now()],
         );
@@ -640,7 +641,6 @@ async function runLane(signal, trends = false) {
           if (trends) await runTrendJob(next);
           else if (next.input.kind === 'product_watch') await runProductWatch(next);
           else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next);
-          else if (next.input.kind === 'source_fields') await runSourceFields(next);
           else if (
             ['ad_analysis', 'consumer_research', 'evidence_analysis'].includes(
               next.input.kind,
@@ -676,5 +676,9 @@ async function runLane(signal, trends = false) {
 }
 
 export async function runQueue(signal) {
-  await Promise.all([runLane(signal), runLane(signal, true)]);
+  await Promise.all([runLane(signal), runLane(signal, true), runSourceAnalysisQueue(signal, {
+    pool, sql, lock, unlock,
+    run: job => withAnalysisTask(job.id, () => runSourceFields(job)),
+    onError: error => console.error('AI analysis queue unavailable:', error.code || error.name),
+  })]);
 }

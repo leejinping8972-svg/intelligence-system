@@ -75,6 +75,7 @@ const advisoryLocks = new Map([
   ['monitor-config', 89_761_039],
   ['public-content-runner', 89_761_031],
   ['runner', 89_761_016],
+  ['source-fields-runner', 89_761_044],
   ['trend-runner', 89_761_019],
   ['workspace-reads', 89_761_036],
 ]);

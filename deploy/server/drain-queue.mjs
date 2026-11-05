@@ -1,5 +1,5 @@
 // Run in a separate compose one-off container, mounted /release and /app.
-// Hold both runner session locks across the API restart; never kill collectors.
+// Hold all runner session locks across the API restart; never kill collectors.
 import { access, writeFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -14,6 +14,7 @@ connection.on('error', () => process.exit(1));
 try {
   for (const name of [
     'runner',
+    'source-fields-runner',
     'trend-runner',
     'competitor-runner',
     'hotwords-runner',
@@ -29,7 +30,7 @@ try {
     held.push(name);
   }
   await writeFile(`${prefix}.ready`, new Date().toISOString(), { mode: 0o600 });
-  console.log('In-flight jobs drained; both queue lanes locked');
+  console.log('In-flight jobs drained; all queue lanes locked');
   while (true) {
     try {
       await access(`${prefix}.release`);
