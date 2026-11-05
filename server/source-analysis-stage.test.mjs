@@ -192,6 +192,7 @@ test('worker completion and failure update their parent atomically, including ow
         { fieldAnalysis: { fingerprint: id, status: 'pending' } },
       ]);
       await runSourceFields(dispatched, {
+        translate: async (_kind, records) => records,
         pool,
         saveCheckpoint,
         collect: async () => {

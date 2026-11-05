@@ -15,6 +15,7 @@ import {
 } from './platform-product-completion.mjs';
 import { mergePlatformProduct } from './platform-product-data.mjs';
 import { prepareProductIntake } from './product-intake.mjs';
+import { translateCollectionRecords } from './collection-translation.mjs';
 import { publicProductUrl } from './product-public-enrichment.mjs';
 import {
   archiveResourceEvidence,
@@ -210,6 +211,7 @@ export async function submitPlatformProducts(input, context = {}) {
   }
 }
 export async function upsertProduct(patch) {
+  [patch] = await translateCollectionRecords('products', [patch]);
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -533,6 +535,7 @@ export async function runPlatformProducts(job, overrides = {}) {
     collect,
     saveCheckpoint,
     upsertProduct,
+    translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'product-translation' }),
     upsertContent: upsertResourceContent,
     readProduct,
     linkKeyword,

@@ -15,6 +15,7 @@ import {
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
+import ProductText from './components/ProductText.vue';
 import SourceFieldsButton from './components/SourceFieldsButton.vue';
 import CollectionTime from './components/CollectionTime.vue';
 import { collectionTimeOrder, siteCollectedAt } from './resource-metadata';
@@ -346,7 +347,7 @@ const columns = [
               class="hci-link"
               @click="selected = state.sites.find((s) => s.id === record.id)"
             >
-              <span class="hci-clamp-2">{{ record.brand }}</span>
+              <ProductText :text="record.brand" :translated="record.brandZh" />
             </button>
             <div class="hci-subtle">
               {{ record.domain }}
@@ -373,7 +374,7 @@ const columns = [
           ><template v-if="column.key === 'collectedAt'">
               <CollectionTime :at="siteCollectedAt(record)" />
           </template><template v-if="column.key === 'mainProducts'">
-            <CompactTags :items="record.mainProducts" label="主要产品" /> </template
+            <ProductText :text="record.mainProducts.join('；')" :translated="record.mainProductsZh?.join('；')" /> </template
           ><template v-if="column.key === 'ownership'">
             <Tag
               :color="

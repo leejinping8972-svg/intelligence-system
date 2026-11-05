@@ -41,11 +41,11 @@ const listKeys = {
   advertisers:
     'id pageId market name nameZh adId adIds adCount active stopped siteIds domains collectedAt dataNature',
   keywords:
-    'id term termZh batch market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
+    'id term termZh batch market category source growth seedTerm seedTermZh collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
     'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications sourceCategories',
   sites:
-    'id brand domain market platform type keyword keywordIds category mainProducts ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
+    'id brand brandZh domain market platform type keyword keywordIds category categoryZh description descriptionZh mainProducts mainProductsZh ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand brandZh market platform headline headlineZh copy copyZh sellingPointZh format productId status color archiveId pageId keywordIds query collectionBatches siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
 };
 export function projectRecord(collection, value) {
@@ -184,12 +184,15 @@ export function projectRecord(collection, value) {
     value.query,
     value.pageId,
     value.category,
+    value.categoryZh,
+    value.descriptionZh,
     value.ownershipBackground,
     value.size,
     value.form,
     value.claim,
     value.ingredient,
     ...(value.mainProducts || []),
+    ...(value.mainProductsZh || []),
     ...(value.benefits || []),
     ...(value.ingredientInsights || []).flatMap((item) => [
       item.name,

@@ -67,7 +67,7 @@ import {
   resolveSelection,
 } from './keyword-selection';
 import { emptyScoreFilter, matchesScore } from './resource-list';
-import { adminRequest, serverMode, session } from './session';
+import { serverMode } from './session';
 import { keywordSourceStatus } from './site-discovery';
 import { useCoreList } from './use-core-list';
 import { useWorkspaceList } from './workspace-queries';
@@ -282,78 +282,14 @@ const rows = computed(() =>
       }))
     : localRows.value,
 );
-const translatedTerms = reactive<Record<string, string>>({});
-const translationError = ref('');
-const translationUsage = ref(0);
-let translating = false;
 function chineseText(term?: string, saved?: string) {
   if (!term) return '';
   return (
     saved?.trim() ||
-    translatedTerms[term] ||
     keywordChineseName({ term, termZh: '' }) ||
-    (translating ? '翻译中' : '待翻译')
+    '中文待补齐'
   );
 }
-function translationTerms() {
-  return [
-    ...new Set(
-      rows.value
-        .flatMap((record) => [
-          ...(record.termZh ? [] : [record.term]),
-          record.seedTerm || '',
-          ...(record.trendRelatedTop || []).map((item) => item.query),
-          ...(record.trendRelatedRising || []).map((item) => item.query),
-        ])
-        .filter(
-          (term) =>
-            term && !/[\p{Script=Han}]/u.test(term) && !translatedTerms[term],
-        ),
-    ),
-  ];
-}
-async function translateVisible(force = false) {
-  if (
-    !serverMode ||
-    !session.user ||
-    translating ||
-    (translationError.value && !force)
-  )
-    return;
-  translating = true;
-  translationError.value = '';
-  try {
-    while (true) {
-      const terms = translationTerms().slice(0, 40);
-      if (terms.length === 0) break;
-      const result = await adminRequest<{
-        items: { term: string; termZh: string }[];
-        pending?: number;
-        usage?: { total_tokens?: number };
-      }>(
-        'server_keyword_translations',
-        { terms, keywordIds: rows.value.map((record) => record.id) },
-        100_000,
-      );
-      if (result.items.length === 0) break;
-      for (const item of result.items) translatedTerms[item.term] = item.termZh;
-      translationUsage.value += result.usage?.total_tokens || 0;
-      if (result.pending) break;
-    }
-  } catch (error) {
-    translationError.value =
-      error instanceof Error ? error.message : '自动翻译失败';
-  } finally {
-    translating = false;
-  }
-}
-watch(
-  [rows, () => session.user?.role],
-  () => {
-    void translateVisible();
-  },
-  { immediate: true },
-);
 const selection = computed(() =>
   resolveSelection(selectedIds.value, selectionSnapshots.value, state.keywords),
 );
@@ -1037,23 +973,6 @@ function saveMetrics() {
           标为排除
         </Button>
       </div>
-      <div
-        v-if="translationError"
-        class="keyword-translation-status"
-        role="alert"
-      >
-        自动翻译未完成：{{ translationError }}
-        <Button type="link" size="small" @click="translateVisible(true)">
-          重试
-        </Button>
-      </div>
-      <div
-        v-else-if="translationUsage"
-        class="keyword-translation-status hci-subtle"
-        role="status"
-      >
-        本次自动翻译 {{ translationUsage }} tokens，模型用量已记入资源消耗
-      </div>
       <Alert
         v-if="selection.missing.length"
         type="warning"
@@ -1120,7 +1039,7 @@ function saveMetrics() {
               v-if="record.seedTerm && record.seedTerm !== record.term"
               class="keyword-seed"
             >
-              种子 {{ chineseText(record.seedTerm) }}
+              种子 {{ chineseText(record.seedTerm, record.seedTermZh) }}
               <span class="hci-subtle">{{ record.seedTerm }}</span>
             </p>
           </template>
@@ -1465,7 +1384,7 @@ function saveMetrics() {
         </h2>
         <p class="hci-subtle">{{ detail.term }}</p>
         <p v-if="detail.seedTerm && detail.seedTerm !== detail.term">
-          种子 {{ chineseText(detail.seedTerm) }}
+          种子 {{ chineseText(detail.seedTerm, detail.seedTermZh) }}
           <span class="hci-subtle">{{ detail.seedTerm }}</span>
         </p>
         <p class="hci-subtle">
@@ -1720,11 +1639,6 @@ function saveMetrics() {
   padding: 4px 0;
   margin: 0 !important;
   border-top: 1px solid var(--hci-border, #e6ebee);
-}
-
-.keyword-translation-status {
-  padding: 2px 0 4px;
-  font-size: 11px;
 }
 
 .keyword-original {

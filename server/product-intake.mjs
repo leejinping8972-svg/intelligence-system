@@ -61,7 +61,7 @@ export async function prepareProductIntake(job, original, io, options = {}) {
     product.fieldAnalysis.status === 'analyzed' &&
     product.fieldAnalysis.fingerprint === sample.fingerprint
   )
-    return { product, analysis: product.fieldAnalysis, errors };
+    return { product: io.translate ? (await io.translate('products', [product]))[0] : product, analysis: product.fieldAnalysis, errors };
   if (await io.isCancelled?.()) return { product, errors, cancelled: true };
   try {
     const result = await request(
@@ -88,6 +88,7 @@ export async function prepareProductIntake(job, original, io, options = {}) {
         sources: sample.sources,
       },
     };
+    if (io.translate) [product] = await io.translate('products', [product]);
     return { product, analysis: product.fieldAnalysis, errors };
   } catch (error) {
     errors.push(`AI：${String(error.message).slice(0, 350)}`);

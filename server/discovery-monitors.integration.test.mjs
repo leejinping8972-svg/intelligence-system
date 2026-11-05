@@ -22,6 +22,8 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
   };
   const hook = registerHooks({
     resolve(specifier, context, next) {
+      if (specifier === './collection-translation.mjs')
+        return { shortCircuit: true, url: `data:text/javascript,${encodeURIComponent('export const translateCollectionRecords = async (_kind, records) => records; export const translateCollectedResult = async result => result;')}` };
       if (context.parentURL?.endsWith('/store.mjs') && specifier === './product-intake-sorftime.mjs')
         return { shortCircuit: true, url: `data:text/javascript,${encodeURIComponent('export const productIntakeSource = () => ({empty:true,providerCalls:0,usage:{requests:0,sorftimeCalls:0}});')}` };
       if (

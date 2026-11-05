@@ -251,6 +251,7 @@ function harness(input, handler) {
   let job = { id: randomUUID(), input, checkpoint: {} },
     cancelled = false;
   const io = {
+    translate: async (_kind, records) => records,
     now: () => Date.parse(at),
     isCancelled: async () => cancelled,
     readProduct: async (id) => docs.get(id),
@@ -407,6 +408,7 @@ test('persisted in-flight checkpoint resumes without consuming request allowance
   let saved;
   const docs = new Map();
   await runPlatformProducts(job, {
+    translate: async (_kind, records) => records,
     collect: async (_job, _step, request) => request.sources[0] === 'field_analysis'
       ? { patch: {}, analysis: { status: 'analyzed', fingerprint: request.sample.fingerprint } }
       : request.sources[0] === 'product_intake_source' ? {} : { products: [amz()], cached: true },

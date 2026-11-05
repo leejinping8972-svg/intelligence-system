@@ -8,6 +8,7 @@ import {
   sourceFieldSample,
 } from './source-field-domain.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
+import { translateCollectionRecords } from './collection-translation.mjs';
 import { analysisMonitor, analysisTaskId, attachAnalysisMonitor, attachAnalysisParent, syncAnalysisStage } from './source-analysis-stage.mjs';
 
 function preserveAdTranslations(old, next) {
@@ -71,7 +72,7 @@ export async function queueSourceFields(
   return id;
 }
 export async function runSourceFields(job, overrides = {}) {
-  const io = { pool, collect, saveCheckpoint, putDocument, ...overrides };
+  const io = { pool, collect, saveCheckpoint, putDocument, translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'field-analysis-translation' }), ...overrides };
   const save = io.saveCheckpoint;
   io.saveCheckpoint = async (savedJob, checkpoint, status = 'running') => {
     const connection = await io.pool.connect();
@@ -102,6 +103,9 @@ export async function runSourceFields(job, overrides = {}) {
     } else result = await io.collect(job, 'field-analysis', {
       sources: ['field_analysis'], sample: job.input.sample,
     });
+    // Extraction may add new category/ingredient/claim fields. Translate these
+    // before the write, while retaining the source request journal on failure.
+    [result.patch] = await io.translate(job.input.targetKind, [result.patch]);
     const c = await io.pool.connect();
     try {
       await c.query('BEGIN');

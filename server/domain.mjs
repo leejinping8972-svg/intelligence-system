@@ -30,6 +30,7 @@ export const keywordFields = new Set([
   'reviewNote',
   'reviewStatus',
   'seedTerm',
+  'seedTermZh',
   'semrushCollection',
   'series',
   'siteCollection',

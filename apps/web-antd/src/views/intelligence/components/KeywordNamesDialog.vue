@@ -31,8 +31,6 @@ async function translate() {
   try {
     const result = await adminRequest<{
       items: { id: string; termZh: string }[];
-      model: string;
-      usage: { total_tokens?: number };
     }>(
       'server_keyword_names',
       { ids: draft.value.map((item) => item.id) },
@@ -42,7 +40,7 @@ async function translate() {
       const row = draft.value.find((entry) => entry.id === item.id);
       if (row) row.termZh = item.termZh;
     }
-    resultInfo.value = `${result.model} · ${result.usage.total_tokens === undefined ? '服务商未返回用量' : `${result.usage.total_tokens} tokens`}，请校对后保存`;
+    resultInfo.value = '中文名称已准备好，请校对后保存';
   } catch (error) {
     errorMessage.value =
       error instanceof Error ? error.message : '翻译失败，未自动重试';

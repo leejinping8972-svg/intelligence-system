@@ -17,6 +17,7 @@ import { runOfficialNewReleases } from './official-new-release-runner.mjs';
 import { discoverySorftime } from './discovery-sorftime.mjs';
 import { upsertProduct } from './platform-products-jobs.mjs';
 import { prepareProductIntake } from './product-intake.mjs';
+import { translateCollectionRecords } from './collection-translation.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 
 const read = async (name, c = pool) =>
@@ -237,6 +238,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     collect,
     saveCheckpoint,
     upsertProduct,
+    translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'product-translation' }),
     read,
     putDocument,
     now: Date.now,

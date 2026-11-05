@@ -83,6 +83,7 @@ export interface Keyword {
   growth: null | number;
   series: number[];
   seedTerm?: string;
+  seedTermZh?: string;
   collectedAt?: string;
   metrics?: KeywordMetrics;
   assessment?: KeywordAssessment;
@@ -134,6 +135,7 @@ export interface TrendRegion {
 }
 export interface TrendRelatedQuery {
   query: string;
+  queryZh?: string;
   value: null | number;
   formattedValue: string;
   breakout?: boolean;
@@ -316,6 +318,11 @@ export interface SiteAssessment {
   }[];
 }
 export interface Site {
+  brandZh?: string;
+  categoryZh?: string;
+  description?: string;
+  descriptionZh?: string;
+  mainProductsZh?: string[];
   coreEvidence?: CoreEvidence;
   coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   listSummary?: boolean;

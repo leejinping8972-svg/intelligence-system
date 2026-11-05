@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { freshTranslation } from './collection-translation-domain.mjs';
 
 const clean = (v, limit = 4000) =>
   typeof v === 'string' ? v.trim().slice(0, limit) : '';
@@ -265,6 +266,7 @@ export function pendingSourceFields(kind, value) {
   // Source values remain usable while AI is pending or a response omits a field.
   if (kind === 'products') return result;
   for (const key of fields[kind]) {
+    if (freshTranslation(value, key)) continue;
     if (arrayFields.has(key)) result[key] = [];
     else if (key === 'ingredient')
       result[key] = '平台未返回可核验配方（待AI分析）';
@@ -272,10 +274,9 @@ export function pendingSourceFields(kind, value) {
     else result[key] = '';
   }
   if (kind === 'ads') {
-    delete result.brandZh;
-    delete result.headlineZh;
-    delete result.copyZh;
-    delete result.sellingPointZh;
+    for (const field of ['brand', 'headline', 'copy'])
+      if (!freshTranslation(value, field)) delete result[`${field}Zh`];
+    if (!freshTranslation(value, 'headline') && !freshTranslation(value, 'copy')) delete result.sellingPointZh;
   }
   if (kind === 'products') {
     result.ingredientInsights = [];

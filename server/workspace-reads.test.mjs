@@ -5,6 +5,14 @@ import { createWorkspaceReads, projectRecord } from './workspace-reads.mjs';
 import { readReportSummaries } from './report-read-summaries.mjs';
 
 const pgSql = (postgres) => postgres;
+test('keyword list projection includes collected seed and related query translations', () => {
+  const { data } = projectRecord('keywords', {
+    id: 'translated-keyword', term: 'maltitol powder', termZh: '麦芽糖醇粉', seedTerm: 'Maltitol', seedTermZh: '麦芽糖醇', source: 'synthetic', series: [],
+    trendRelatedTop: [{ query: 'maltitol gummies', queryZh: '麦芽糖醇软糖', value: 100 }],
+  });
+  assert.equal(data.seedTermZh, '麦芽糖醇');
+  assert.equal(data.trendRelatedTop[0].queryZh, '麦芽糖醇软糖');
+});
 test('list truncation preserves complete emoji at JSON and SQL column boundaries', () => {
   const emoji = '\uD83D\uDC8A';
   const ad = projectRecord('ads', {

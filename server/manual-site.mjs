@@ -9,6 +9,7 @@ import { lock, pool, putDocument, sql, unlock } from './database.mjs';
 import { fetchPublicPage, landingUrl } from './safe-web.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { recordSourceCall } from './source-usage.mjs';
+import { translateCollectionRecords } from './collection-translation.mjs';
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 export function validateManualSite(input) {
@@ -71,9 +72,24 @@ export async function addManualSite(input, overrides = {}) {
       throw new Error('提交编号已用于其他站点或采集选项');
     return previous.result;
   }
-  const page = await io.fetchPage(value.url, 0, ['text/html'], { allowedDomain: value.domain });
-  const at = io.now();
-  const profile = manualSiteProfile(page, value, at);
+  const sourceName = `manual-site:source:${value.requestId}`;
+  const source = (await io.pool.query('SELECT value FROM workspace_documents WHERE name=$1', [sourceName])).rows[0]?.value;
+  if (source && Object.keys(value).some((field) => source.input?.[field] !== value[field])) throw new Error('提交编号已用于其他站点或采集选项');
+  const at = source?.at || io.now();
+  const rawProfile = source?.profile || manualSiteProfile(await io.fetchPage(value.url, 0, ['text/html'], { allowedDomain: value.domain }), value, at);
+  if (!source) await io.putDocument('workspace_documents', sourceName, { input: value, at, profile: rawProfile });
+  const existing = (await io.pool.query(sql(
+    "SELECT value FROM workspace_documents WHERE name LIKE 'business:sites:%' AND value->>'market'=$1 AND lower(regexp_replace(value->>'domain','^www\\.','','i'))=$2",
+    "SELECT value FROM workspace_documents WHERE name LIKE 'business:sites:%' AND JSON_UNQUOTE(JSON_EXTRACT(value,'$.market'))=$1 AND REGEXP_REPLACE(LOWER(JSON_UNQUOTE(JSON_EXTRACT(value,'$.domain'))),'^www[.]','')=$2",
+  ), [value.market, value.domain])).rows[0]?.value;
+  const translatedFields = ['brandZh', 'categoryZh', 'descriptionZh', 'mainProductsZh', 'collectionTranslation'];
+  const [profile] = await (overrides.translate || translateCollectionRecords)('sites', [{ ...rawProfile,
+    ...Object.fromEntries(translatedFields.filter((field) => existing?.[field] !== undefined).map((field) => [field, existing[field]])),
+    brand: existing?.brand || rawProfile.brand,
+    description: existing?.description || rawProfile.description,
+    category: existing?.category || rawProfile.category,
+    mainProducts: [...new Set([...(existing?.sourceContent?.rawMainProducts || existing?.mainProducts || []), ...rawProfile.mainProducts])],
+  }]);
   const c = await io.pool.connect();
   let held = false;
   try {
@@ -82,7 +98,7 @@ export async function addManualSite(input, overrides = {}) {
     await c.query('BEGIN');
     const replay = await readReceipt(c);
     if (replay) {
-      if (JSON.stringify(replay.input) !== JSON.stringify(value)) throw new Error('提交编号已用于其他站点或采集选项');
+      if (Object.keys(value).some((field) => replay.input?.[field] !== value[field])) throw new Error('提交编号已用于其他站点或采集选项');
       await c.query('COMMIT');
       return replay.result;
     }
@@ -92,11 +108,18 @@ export async function addManualSite(input, overrides = {}) {
     ), [value.market, value.domain])).rows.map((row) => row.value);
     if (matches.length > 1) throw new Error('该市场已有多个同域名站点，请先合并重复记录');
     const old = matches[0];
+    for (const field of ['brand', 'category', 'description', 'mainProducts'])
+      if (old && JSON.stringify(old[field]) !== JSON.stringify(existing?.[field]))
+        throw new Error('站点资料已被其他操作更新，请重新提交');
     const site = { ...profile, ...old, lastCollectedAt: at,
       sources: [...new Set([...(old?.sources || []), ...profile.sources])],
       signals: [...new Set([...(old?.signals || []), ...profile.signals])],
-      mainProducts: [...new Set([...(old?.mainProducts || []), ...profile.mainProducts])],
+      mainProducts: profile.mainProducts,
     };
+    // These translations describe the exact profile prepared before the
+    // transaction, including newly discovered products on an existing site.
+    for (const field of translatedFields)
+      if (profile[field] !== undefined) site[field] = profile[field];
     if (!old?.description) site.description = profile.description;
     if (!old?.platform || old.platform === '其他') site.platform = profile.platform;
     site.assessment = scoreSite(site);
