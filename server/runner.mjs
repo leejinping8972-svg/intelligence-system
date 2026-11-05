@@ -31,12 +31,18 @@ import { resourceResumeAllowed } from './product-resource-domain.mjs';
 import { runSemrushSitesJob } from './semrush-sites-store.mjs';
 import { collect, pool, saveCheckpoint, saveKeyword, usage } from './store.mjs';
 import { taskOverview } from './task-overview.mjs';
+import { taskContext } from './task-context.mjs';
 import { projectJobTasks } from './task-projection.mjs';
 import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   return projectJobTasks(job, projectKnownJob).map((task) =>
-    task.readOnly ? task : { ...task, overview: taskOverview(job, task) },
+    task.readOnly ? task : {
+      ...task,
+      ...(job.input.manualSalesVerification ? { title: `云端 · 商品销量核对 · ${label[task.market] || '市场未记录'}` } : {}),
+      context: taskContext(job),
+      overview: taskOverview(job, task),
+    },
   );
 }
 function projectKnownJob(job) {

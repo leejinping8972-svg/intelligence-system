@@ -31,17 +31,13 @@ import FocusedMonitors from './components/FocusedMonitors.vue';
 import NewMonitorDialog from './components/NewMonitorDialog.vue';
 import PageHeader from './components/PageHeader.vue';
 import ResearchTaskList from './components/ResearchTaskList.vue';
-import TaskCollections from './components/TaskCollections.vue';
-import TaskProgress from './components/TaskProgress.vue';
-import { audit, marketName, state } from './data';
+import TaskDetailPanel from './components/TaskDetailPanel.vue';
+import { audit, state } from './data';
 import { resourceTaskCanResume } from './product-resources';
 import { serverMode } from './session';
 import {
   groupTasks,
   partialTaskCanContinue,
-  taskStatus,
-  taskStatuses,
-  taskSummary,
 } from './task-list';
 const route = useRoute();
 const router = useRouter();
@@ -195,13 +191,6 @@ watch(
   },
   { immediate: true },
 );
-function isLiveTask(task: Task) {
-  return (
-    task.mode === 'live' ||
-    task.title.includes('真实研究') ||
-    task.title.includes('独立站发现')
-  );
-}
 function run(task: Task) {
   const original = state.tasks.find((t) => t.id === task.id);
   if (original) task = original;
@@ -328,7 +317,7 @@ const visibleAudit = computed(() => auditRows.value.slice((auditPage.value - 1) 
     </section>
     <Drawer
       :open="!!selected"
-      title="研究任务详情"
+      title="任务详情"
       width="min(960px, 100vw)"
       @close="
         selected = undefined;
@@ -348,38 +337,8 @@ const visibleAudit = computed(() => auditRows.value.slice((auditPage.value - 1) 
           重新读取详情
         </Button>
         <Spin v-if="detailsLoading" tip="正在读取任务详情" />
-        <p class="hci-subtle">
-          覆盖市场：{{
-            selected.markets
-              .map((market) =>
-                market === 'ALL' ? '市场未记录' : marketName(market),
-              )
-              .join(' / ')
-          }}；进度为整项任务合计。
-        </p>
-        <h2 style="font-size: 22px">{{ selected.title }}</h2>
-        <p class="hci-subtle" style="margin: 12px 0">
-          {{ selected.created }} ·
-          {{ taskStatuses[taskStatus(selected)]?.label }}
-        </p>
-        <Alert
-          v-if="selected.overview?.reason"
-          type="warning"
-          show-icon
-          :message="selected.overview.reason"
-        />
-        <p class="hci-evidence">
-          {{ taskSummary(selected).label }}<br />{{
-            taskSummary(selected).result
-          }}
-        </p>
-        <TaskCollections :task="selected" />
-        <details>
-          <summary style="margin-top: 20px; cursor: pointer">
-            查看本轮汇总与用量
-          </summary>
-          <TaskProgress :task="selected" />
-        </details>
+        <TaskDetailPanel :key="selected.id" :task="selected">
+          <template #actions>
         <Button
           v-if="selected.cloudJobId && resourceTaskCanResume(selected)"
           :loading="resuming === selected.cloudJobId"
@@ -428,34 +387,8 @@ const visibleAudit = computed(() => auditRows.value.slice((auditPage.value - 1) 
         >
           仅重试未完成趋势
         </Button>
-        <details>
-          <summary style="margin: 24px 0 12px; cursor: pointer">
-            任务级执行记录
-          </summary>
-          <div
-            v-for="(step, i) in selected.steps"
-            :key="i"
-            class="hci-market-row"
-          >
-            <span class="hci-market-code">{{ i + 1 }}</span><span style="flex: 1">{{ step }}</span>
-          </div>
-        </details>
-        <div v-if="selected.readOnly" class="hci-evidence">
-          当前展示已保存的任务摘要，原任务和检查点保留。
-        </div>
-        <div
-          v-else-if="selected.researchProgress?.resource"
-          class="hci-evidence"
-        >
-          本任务按已配置的资源路径执行。请求、累计预留与已确认用量分别记录；缺少回执的费用需人工核实。
-        </div>
-        <div v-else-if="isLiveTask(selected)" class="hci-evidence">
-          本任务已调用已配置的真实采集服务。上方步骤会保留实际返回数量、失败原因和限流状态；外部费用以任务配置为准。
-        </div>
-        <div v-else class="hci-evidence">
-          本任务仅模拟工作流，没有向第三方平台发出请求，也没有产生真实研究结果或费用。
-        </div>
-        <Button @click="router.push('/research')"> 返回关键词研究 </Button>
+          </template>
+        </TaskDetailPanel>
       </template>
     </Drawer>
   </main>

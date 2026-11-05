@@ -31,6 +31,7 @@ import {
   taskTitle,
 } from '../task-list';
 import { fetchTaskPage } from '../task-page';
+import { taskObjectSummary } from '../task-context';
 
 const props = defineProps<{
   active?: boolean;
@@ -78,7 +79,7 @@ const localRows = computed(() =>
         status.value.includes(taskStatus(t)) ||
         (status.value.includes('completed') &&
           t.status === 'awaiting_review')) &&
-      `${taskTitle(t)} ${t.cloudJobId || t.id}`
+      `${taskTitle(t)} ${taskObjectSummary(t)} ${(t.context?.objects || []).map(object => object.sourceId || object.id).join(" ")} ${t.cloudJobId || t.id}`
         .toLowerCase()
         .includes(search.value.toLowerCase().trim()),
   ),
@@ -271,6 +272,8 @@ const columns = [
             >
               {{ taskTitle(task) }}
             </Button>
+            <div class="task-object-name" :title="taskObjectSummary(task)">{{ taskObjectSummary(task) }}</div>
+            <div v-if="task.context?.objects[0]?.sourceId" class="task-object-identifier">{{ task.context.objects[0]?.identifierLabel || "来源编号" }} {{ task.context.objects[0]?.sourceId }}</div>
             <div class="task-id">
               {{ task.cloudJobId || task.id }}
             </div>
@@ -339,7 +342,7 @@ const columns = [
                 模拟执行
 </Button><Button
                 v-if="
-                  !task.readOnly &&
+                  !task.readOnly && !task.context?.verificationOnly &&
                   [
                     'failed',
                     'cancelled',
@@ -382,6 +385,8 @@ const columns = [
             {{ taskStatuses[taskStatus(task)]?.label }}
           </Tag>
         </div>
+        <p class="task-object-name">{{ taskObjectSummary(task) }}</p>
+        <p v-if="task.context?.objects[0]?.sourceId" class="task-object-identifier">{{ task.context.objects[0]?.identifierLabel || "来源编号" }} {{ task.context.objects[0]?.sourceId }}</p>
         <div class="task-card-meta">
           <span>{{
             task.markets
@@ -434,7 +439,7 @@ const columns = [
             模拟执行
 </Button><Button
             v-if="
-              !task.readOnly &&
+              !task.readOnly && !task.context?.verificationOnly &&
               ['failed', 'cancelled', 'completed', 'awaiting_review'].includes(
                 task.status,
               )
@@ -475,6 +480,8 @@ const columns = [
   />
 </template>
 <style scoped>
+.task-object-name { margin: 6px 0 3px; max-width: 350px; color: var(--hci-ink, #25323b); font-size: 13px; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.task-object-identifier { margin: 3px 0; color: var(--hci-muted, #667085); font-size: 12px; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
 .task-toolbar {
   display: flex;
   flex-wrap: wrap;

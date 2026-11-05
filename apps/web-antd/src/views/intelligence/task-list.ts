@@ -66,6 +66,7 @@ export function partialTaskCanContinue(task: Task) {
 }
 
 export function taskTitle(task: Task) {
+  if (task.context?.title) return task.context.title;
   return task.title
     .replace(/^云端\s*·\s*/, '')
     .replace(/\s*·\s*(美国|墨西哥|越南|市场未记录)$/, '');
@@ -114,7 +115,9 @@ export function taskSummary(task: Task): {
       result: [
         o.reason,
         `${succeeded}失败/受限 ${o.failed} · 待完成 ${o.remaining}`,
-        task.researchProgress
+        task.context?.verificationOnly
+          ? '仅核对，未更新商品库'
+          : task.researchProgress
           ? `商品 ${task.researchProgress.products} · 证据 ${task.researchProgress.evidence}`
           : '',
       ]

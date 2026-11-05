@@ -96,6 +96,7 @@ import { sourceFieldsAction } from './source-field-store.mjs';
 import { sourceUsageAction } from './source-usage.mjs';
 import { migrate, pool, saveKeyword } from './store.mjs';
 import { decorateSocialTasks } from './task-social-progress.mjs';
+import { decorateTaskContexts } from './task-context.mjs';
 import { westmonthSessionAction } from './westmonth-session.mjs';
 import { createWorkspaceReads } from './workspace-reads.mjs';
 import { workspaceSnapshot } from './workspace-snapshot.mjs';
@@ -327,7 +328,7 @@ async function api(input, user) {
         pool,
         sql,
         jobTasks,
-        decorateTasks: (tasks, jobs) => decorateSocialTasks(tasks, jobs, pool),
+        decorateTasks: async (tasks, jobs) => decorateTaskContexts(await decorateSocialTasks(tasks, jobs, pool), jobs, pool),
         scoreSite,
         isWorkspaceSyncKey,
         readVersions: async () => (await workspaceReads.status()).revisions,
@@ -385,14 +386,14 @@ async function api(input, user) {
         [input.jobId],
       );
       return {
-        tasks: await decorateSocialTasks(
+        tasks: await decorateTaskContexts(await decorateSocialTasks(
           await decorateAnalysisTasks((await decorateKeywordTasks(jobTasks(rows[0]), rows, pool)).map((task) => ({
             ...task,
             collections: taskCollections(rows[0], task, requests.rows),
           })), rows, pool, sql, true),
           rows,
           pool,
-        ),
+        ), rows, pool, { detail: true }),
       };
     }
     case 'server_task_page': {
@@ -401,7 +402,7 @@ async function api(input, user) {
         pool,
         sql,
         jobTasks,
-        decorateTasks: (tasks, jobs) => decorateSocialTasks(tasks, jobs, pool),
+        decorateTasks: async (tasks, jobs) => decorateTaskContexts(await decorateSocialTasks(tasks, jobs, pool), jobs, pool),
       });
     }
     case 'server_workspace_sync': {
