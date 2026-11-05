@@ -2,6 +2,7 @@ const markets = new Set(['MX', 'US', 'VN']);
 const names = { US: '美国', MX: '墨西哥', VN: '越南', ALL: '市场未记录' };
 const kinds = new Set([
   'discovery_monitor',
+  'product_watch',
   'source_fields',
   'ad_analysis',
   'ads',

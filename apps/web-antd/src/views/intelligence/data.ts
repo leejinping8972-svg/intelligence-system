@@ -251,6 +251,7 @@ export interface Product {
   dataCompletion?: ProductCompletion;
   sourceProvider?: string;
   sourcePlatform?: string;
+  sourceCategories?: string[];
   linkedSite?: { id: string; brand: string; domain: string; market: string } | null;
   sourceProductId?: string;
   sourceUrl?: string;

@@ -10,6 +10,7 @@ import { Button, Form, message, Modal, Select, Switch } from 'ant-design-vue';
 import { monitorProduct, state } from '../data';
 import CompetitorWatchPanel from './CompetitorWatchPanel.vue';
 import DailyDiscoveryPlan from './DailyDiscoveryPlan.vue';
+import ProductWatchPanel from './ProductWatchPanel.vue';
 import DiscoveryPlanForm from './DiscoveryPlanForm.vue';
 import KeywordTrendsControl from './KeywordTrendsControl.vue';
 import MarketCollectionDialog from './MarketCollectionDialog.vue';
@@ -39,8 +40,8 @@ const discoveryKind = computed(() =>
     : undefined,
 );
 const options = [
-  { value: 'fbm_new', label: '每周监控1 · FBM新品' },
-  { value: 'regular_new', label: '每周监控2 · 常规新品' },
+  { value: 'fbm_new', label: '每日新品 · FBM' },
+  { value: 'regular_new', label: '每日新品 · 常规' },
   { value: 'ingredients', label: '成分研究' },
   { value: 'site', label: '独立站上新与变化' },
   { value: 'advertiser', label: '广告主素材变化' },
@@ -48,7 +49,8 @@ const options = [
   { value: 'hotwords', label: 'Semrush热门词' },
   { value: 'trends', label: '关键词与社交趋势' },
   { value: 'market', label: '国家市场采集计划' },
-  { value: 'product', label: '商品监控' },
+  { value: 'product_watch', label: '商品持续监控' },
+  { value: 'product', label: '原商品关注' },
 ];
 </script>
 <template>
@@ -80,6 +82,7 @@ const options = [
       "
       @submitted="open = false"
     />
+    <ProductWatchPanel v-else-if="kind === 'product_watch'" embedded @saved="saved" />
     <CompetitorWatchPanel
       v-else-if="kind === 'site' || kind === 'advertiser'"
       :key="kind"

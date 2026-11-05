@@ -4,6 +4,7 @@ export const discoveryLabels = {
   regular_new: '常规新品',
   ingredients: '成分研究',
 };
+export interface DiscoveryCategory { id: string; name: string; path: string[]; receiptId: string; market: string; }
 export interface DiscoveryPlan {
   id?: string;
   kind: DiscoveryKind;
@@ -11,6 +12,9 @@ export interface DiscoveryPlan {
   days: number;
   channels: string[];
   sourceMarkets?: Record<string, string>;
+  categories?: Record<string, DiscoveryCategory[]>;
+  completeDays?: boolean;
+  supplementOnly?: boolean;
   sourceMode?: 'official_new_releases' | 'sorftime';
   requireSales?: boolean;
   requireListingDate?: boolean;
@@ -63,7 +67,10 @@ export const defaultDiscoveryPlan = (
 ): DiscoveryPlan => ({
   kind,
   market,
-  days: 30,
+  days: kind === 'ingredients' ? 30 : 7,
+  completeDays: kind !== 'ingredients',
+  supplementOnly: true,
+  categories: {},
   sourceMode: 'sorftime',
   channels: kind === 'ingredients' ? ['reddit', 'quora'] : ['amazon'],
   sourceMarkets: {},
@@ -71,8 +78,8 @@ export const defaultDiscoveryPlan = (
     kind === 'ingredients'
       ? 'dietary supplements\nnew supplement ingredients'
       : '',
-  frequency: kind === 'ingredients' ? 'daily' : 'weekly',
-  time: '09:00',
+  frequency: 'daily',
+  time: kind === 'ingredients' ? '09:00' : '00:00',
   weekday: 1,
   monthDay: 1,
   enabled: false,

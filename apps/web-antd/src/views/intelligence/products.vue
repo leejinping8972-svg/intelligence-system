@@ -16,6 +16,8 @@ import {
   Select,
   Table,
   Tag,
+  Tabs,
+  Popover,
 } from 'ant-design-vue';
 
 import {
@@ -48,6 +50,7 @@ import { useFilteredSelection } from './resource-list';
 import { productCollectedAt } from './resource-metadata';
 import { useCoreList } from './use-core-list';
 const core = useCoreList('products');
+import { inNewProductPool, NEW_PRODUCT_RULES } from '../../../../../server/product-pool-domain.mjs';
 import type { Product } from './data';
 
 import FormulaInsights from './components/FormulaInsights.vue';
@@ -97,12 +100,15 @@ function tableChange(pagination: unknown, filters: unknown, sorter: any) {
 }
 const failedImages = ref(new Set<string>());
 const category = ref('ALL');
+const sourceCategory = ref('ALL');
+const sourceCategoryOptions = computed(() => [{ label: '全部来源类目', value: 'ALL' }, ...(serverMode ? remote.facets.value.sourceCategory || [] : [...new Set(filteredProducts.value.flatMap(p => p.sourceCategories || []))]).map(value => ({ label: value, value }))]);
 const favorites = ref(false);
 const benefitFilter = ref('ALL');
 const ingredientFilter = ref('ALL');
 const decisionFilter = ref('ALL');
 const newness = ref('ALL');
 const newProductType = ref('ALL');
+const productPool = ref('existing');
 const newProductTypeOptions = [
   { label: '全部新品类型', value: 'ALL' },
   { label: 'FBM新品', value: 'fbm_new' },
@@ -138,12 +144,14 @@ const remote = useWorkspaceList<Product>(
     market: state.market,
     search: search.value,
     category: category.value,
+    sourceCategory: sourceCategory.value,
     favorite: favorites.value,
     benefit: benefitFilter.value,
     ingredient: ingredientFilter.value,
     decision: decisionFilter.value,
     newness: newness.value,
     newProductType: newProductType.value,
+    productPool: productPool.value,
     provider: sourceFilter.value,
     productPlatform: platformFilter.value,
     siteLinked: siteLinked.value,
@@ -269,6 +277,7 @@ const rows = computed(() =>
             .includes(search.value.toLowerCase()) &&
           matchesListingRange(p, listedRange.value[0], listedRange.value[1]) &&
           (category.value === 'ALL' || p.category === category.value) &&
+          (sourceCategory.value === 'ALL' || p.sourceCategories?.includes(sourceCategory.value)) &&
           (benefitFilter.value === 'ALL' ||
             p.benefits.includes(benefitFilter.value)) &&
           (ingredientFilter.value === 'ALL' ||
@@ -294,6 +303,7 @@ const rows = computed(() =>
                   : discoveryDecision(p, 'product').isNew
                     ? 'yes'
                     : 'no') === newness.value)) &&
+          (productPool.value === 'pool' ? inNewProductPool(p) : !inNewProductPool(p)) &&
           (newProductType.value === 'ALL' ||
             (p.newProductClassifications || []).some(
               (item) => item.type === newProductType.value,
@@ -396,12 +406,14 @@ watch(
     search,
     listedRange,
     category,
+    sourceCategory,
     favorites,
     benefitFilter,
     ingredientFilter,
     decisionFilter,
     newness,
     newProductType,
+    productPool,
     sourceFilter,
     platformFilter,
     siteLinked,
@@ -508,6 +520,11 @@ async function exportProducts() {
 </script>
 <template>
   <main class="hci-page">
+    <Tabs v-model:active-key="productPool" @change="newProductType = 'ALL'; sourceCategory = 'ALL'; page = 1">
+      <Tabs.TabPane key="existing" tab="商品库" />
+      <Tabs.TabPane key="pool"><template #tab><span>新品池 <Popover :content="NEW_PRODUCT_RULES" :trigger="['hover', 'focus', 'click']" :overlay-style="{ maxWidth: '420px' }"><button type="button" aria-label="新品池数据获取条件" style="border:1px solid currentColor; border-radius:50%; width:18px; height:18px; font-size:12px; line-height:16px" @click.stop>?</button></Popover></span></template></Tabs.TabPane>
+    </Tabs>
+    <p v-if="productPool === 'pool'" class="hci-subtle">保留历史入池商品，类型、上架时间与来源见列表；每日价格和销量变化在商品详情“持续观察趋势”查看。</p>
     <PageHeader
       title="商品情报库"
       description="从配方、规格到市场定位，建立可追溯的商品认知。"
@@ -551,7 +568,7 @@ async function exportProducts() {
           option-filter-prop="label"
           aria-label="按关联关键词筛选商品"
           style="min-width: 240px"
-        /><Select
+        /><Select v-if="productPool === 'pool'" v-model:value="sourceCategory" :options="sourceCategoryOptions" show-search option-filter-prop="label" aria-label="按Sorftime来源类目筛选" style="min-width:240px" /><Select
           v-model:value="category"
           show-search
           option-filter-prop="label"

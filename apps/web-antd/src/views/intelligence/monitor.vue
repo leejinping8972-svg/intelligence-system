@@ -24,6 +24,7 @@ import {
   syncCloudWorkspace,
 } from './cloud-workspace';
 import { refreshCompetitorWorkspace } from './competitor-workspace';
+import ProductWatchPanel from './components/ProductWatchPanel.vue';
 import DiscoveryMonitors from './components/DiscoveryMonitors.vue';
 import FocusedMonitors from './components/FocusedMonitors.vue';
 import NewMonitorDialog from './components/NewMonitorDialog.vue';
@@ -45,8 +46,10 @@ const route = useRoute();
 const router = useRouter();
 const tab = ref('tasks');
 const selected = ref<TaskGroup>();
+const productWatch = ref<InstanceType<typeof ProductWatchPanel>>();
 const discoveryMonitors = ref<InstanceType<typeof DiscoveryMonitors>>();
 function monitorSaved() {
+  void productWatch.value?.refresh();
   void discoveryMonitors.value?.refresh();
   void refreshCompetitorWorkspace(true);
 }
@@ -274,6 +277,7 @@ const auditRows = computed(() =>
     <section class="hci-panel">
       <Tabs v-model:active-key="tab">
         <Tabs.TabPane key="monitors" tab="重点监控">
+          <ProductWatchPanel ref="productWatch" />
           <DiscoveryMonitors ref="discoveryMonitors" />
           <FocusedMonitors />
 </Tabs.TabPane><Tabs.TabPane key="tasks" :tab="`研究任务（${taskTotal}）`">

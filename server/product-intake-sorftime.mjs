@@ -19,6 +19,7 @@ export function intakeSourceWork(product) {
       Amazon: ['detail', 'content'],
       'TikTok Shop': ['detail'],
       Shopee: ['detail', 'content'],
+      Temu: ['detail'],
     }[product.sourcePlatform] || []
   ).map((op) => ({ op }));
 }
@@ -37,6 +38,7 @@ export async function productIntakeSource(request, overrides = {}) {
       Amazon: 'amazon',
       'TikTok Shop': 'tiktok',
       Shopee: 'shopee',
+      Temu: 'temu',
     }[p.sourcePlatform];
     const name =
       channel === 'amazon'

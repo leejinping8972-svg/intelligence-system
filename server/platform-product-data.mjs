@@ -691,6 +691,7 @@ export function mergePlatformProduct(old, patch) {
     'sourceEvidence',
     'imageUrls',
     'newProductClassifications',
+    'sourceCategories',
   ])
     merged[key] = [
       ...new Map(

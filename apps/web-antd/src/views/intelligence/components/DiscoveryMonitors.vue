@@ -100,9 +100,9 @@ defineExpose({ refresh: load });
               ? `近${record.days}天讨论`
               : record.sourceMode === 'official_new_releases'
                 ? '官方新品榜'
-                : `近${record.days}天上架 · 有销量`
+                : `前${record.days}个完整自然日上架 · 有销量`
           }}
-          · 保健品
+          · {{ record.supplementOnly === false ? '所选类目' : '保健品' }}
         </p>
         <p v-if="record.lastScheduleError" class="text-red-600">
           {{ record.lastScheduleError }}

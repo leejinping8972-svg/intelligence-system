@@ -21,6 +21,7 @@ import ProductText from './ProductText.vue';
 import { productDataSource } from '../product-decisions';
 import PublicContentLauncher from './PublicContentLauncher.vue';
 import CoreMetricsPanel from './CoreMetricsPanel.vue';
+import ProductWatchHistory from './ProductWatchHistory.vue';
 import ProductResourceEvidence from './ProductResourceEvidence.vue';
 const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
@@ -83,6 +84,7 @@ function addMonitor() {
       <Button type="primary" @click="emit('close'); router.push({ path: '/product-research', query: { product: product.id } })">进入商品研究</Button>
       <a v-for="item in product.newProductClassifications" :key="item.type + item.observedAt" :href="item.evidenceUrl" target="_blank" rel="noopener noreferrer"><Tag color="green">{{item.label}}{{item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.listingDate}` : ''}}</Tag></a>
       <Tabs>
+        <Tabs.TabPane v-if="product.newProductClassifications?.length" key="product-watch" tab="持续观察趋势"><ProductWatchHistory :product-id="product.id" /></Tabs.TabPane>
         <Tabs.TabPane v-if="product.fieldAnalysis" key="field-analysis" tab="AI字段证据"><p>{{product.fieldAnalysis.status === 'pending' ? '待AI分析' : 'AI已分析'}} {{product.fieldAnalysis.analyzedAt}}</p><dl class="hci-detail-grid"><template v-for="(evidence,field) in product.fieldAnalysis.fields" :key="field"><dt>{{field}}</dt><dd><blockquote>{{evidence.quote}}</blockquote><a :href="evidence.url" target="_blank" rel="noreferrer">来源原文</a></dd></template></dl></Tabs.TabPane>
         <Tabs.TabPane v-if="product.resourceEvidence" key="resource-evidence" tab="资源路径与排名证据"><ProductResourceEvidence :evidence="product.resourceEvidence" :history="product.resourceHistory" :product-id="product.id" /></Tabs.TabPane>
         <Tabs.TabPane key="core-evidence" tab="销售、价格与数据证据"><CoreMetricsPanel kind="products" :record="product" /></Tabs.TabPane>

@@ -32,7 +32,9 @@ export function taskOverview(job, task) {
   let succeeded = null;
   let total = count(c?.total);
   let waiting = count(c?.waiting);
-  if (cp.personaProgress) {
+  if (input.kind === 'product_watch') {
+    total = cp.total || 0; processed = cp.index || 0; succeeded = cp.succeeded || 0; failed = cp.failures?.length || 0; waiting = 0;
+  } else if (cp.personaProgress) {
     ({ total, processed, succeeded, failed } = cp.personaProgress);
   } else if (p) {
     total = count(p.total || input.limit);
