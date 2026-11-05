@@ -1,34 +1,18 @@
-# 关键词列表设计验收
+# Task detail design QA
 
-- Source visual truth: `C:/Users/79031/AppData/Local/Temp/codex-clipboard-7ab967b4-ff65-491c-bd43-5fbdf4fbbcf5.png`
-- Implementation: `.artifacts/keyword-list-desktop.png`; mobile: `.artifacts/keyword-list-mobile.png`
-- Combined full-view comparison: `.artifacts/keyword-list-comparison.png` (left: source; right: implementation)
-- Viewport/state: desktop 1920 x 910 CSS px, 1x density; both source and implementation are 1920 x 910 px. The source uses live data and an active job, while the implementation uses six explicitly synthetic records and no active job. The combined image scales both to 960 x 455 px for layout comparison; full-resolution images were used to inspect copy and typography.
+- Source visual truth: user screenshot C:/Users/79031/AppData/Local/Temp/codex-clipboard-a3086f62-87b7-452e-8870-f6d739156c12.png; approved redesign brief in the current chat. The user explicitly approved proceeding without generated visual alternatives.
+- Implementation: .artifacts/task-detail-desktop.png; .artifacts/task-detail-mobile.png. Browser-rendered actual ResearchTaskList/TaskDetailPanel with synthetic data; no production accounts or paid requests.
+- Comparison: .artifacts/task-detail-comparison.png, source and implementation drawer crops in the same image. Desktop source/implementation 1920×910 CSS/pixels at density1; focused crop 960×910. Narrow screen 390×844.
+- State: completed single product verification; additional batch expansion and missing historical context covered by component tests; product drawer and usage disclosure verified in browser.
 
-## Findings
+Intentional differences: the approved redesign replaces the generic title with a specific purpose, adds product/ASIN identity above results, displays saved comparison evidence, and moves logs behind disclosures. The previous screenshot is a before-state, not a mock to reproduce pixel for pixel. Dates and product values in the local preview are explicitly synthetic.
 
-No actionable P0-P2 visual issue remains for the requested layout. The header summary is one compact band, filter/period/saved-view controls occupy two rows, and six synthetic rows fit in the first desktop viewport. Search volume and both related-query columns precede the trend columns. The four trends are the last data columns before actions.
+Typography: existing application font family with 14px body, 24px task heading, 18px object title, and secondary metadata; narrow-screen headings wrap. Spacing/layout: same960px desktop drawer and full-width narrow drawer; section dividers and measured vertical spacing replace repeated alerts. Colors/tokens: existing hci foreground, muted, border, paper and accent variables; semantic status comes from existing taskStatuses. Images: use only a saved product image when available; no fabricated product thumbnail added. Copy: clear purpose and object identity, actual zero values preserved, verify-only notice explicit, no unrelated Semrush/keyword CTA in the verification detail.
 
-The live-data source and synthetic preview differ in metric contents, so trend values and populated related-query cells cannot be compared visually in this capture. A separate browser check of the related-query component showed both popovers with Chinese primary names and muted original terms, including all returned items. Real production data and a paid translation request were not used for QA.
+Comparison history: the first preview harness retained the application bootstrap loading layer; corrected in the ignored preview harness and recaptured. Temporary screenshot captured during drawer motion was discarded in favor of a stable desktop capture. No product-code P0/P1/P2 findings remain. The product drawer opened from the preview uses the existing component and its existing missing-image fallback; that component was not redesigned.
 
-## Fidelity Surfaces
+Primary interactions tested: expand resource usage; open/close the corresponding product drawer; open a batch task and expand its18objects; close and reopen the task drawer. Browser error logs:0. Tests also check legacy context, collapse defaults, and Beijing timestamps.
 
-- Typography: retained the product's existing font, weight, and blue link hierarchy; original phrases use smaller muted text. No clipped Chinese labels were seen in the desktop capture.
-- Spacing/layout: compact summary, controls, table cells, and row rhythm remove the large gaps visible in the source. The 390 px mobile capture keeps controls accessible and the table horizontally scrollable.
-- Colors/tokens: existing product colors and semantic status styles remain in use; the summary uses the established paper and border tokens.
-- Image quality/assets: this is a data table; no image asset was added or replaced.
-- Copy/content: removed the redundant “中文参考” label. Keyword, seed, and related-query translation use Chinese first with the original below when a Chinese name is available.
-
-## Interaction Checks
-
-The local preview showed working search and period selection, with no browser script errors. Both related-query popovers opened and showed the complete synthetic Chinese/original pairs. The screenshot does not prove translated names from the live AI provider, persisted cache behavior, or populated trend rendering.
-
-## Implementation Checklist
-
-- [x] Compact filter and summary layout.
-- [x] Chinese-first keyword, seed, and related-query presentation.
-- [x] Search volume and related queries before the four trend columns.
-- [x] Denser desktop table and responsive mobile controls.
-- [ ] Verify a paid model response and production data after integration in an authorized environment.
+Final limitations: real authenticated production data and paid collection flows were not exercised. Actual tasks without saved target information retain an explicit missing-context message.
 
 final result: passed

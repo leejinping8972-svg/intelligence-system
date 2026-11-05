@@ -424,6 +424,36 @@ export interface Review {
   reason: string;
 }
 export interface Task {
+  context?: {
+    kind: string;
+    title: string;
+    purpose: string;
+    objectLabel: string;
+    objectCount: number | null;
+    objects: Array<{
+      kind: string;
+      id: string;
+      label: string;
+      original?: string;
+      sourceId?: string;
+      identifierLabel?: string;
+      platform?: string;
+      market?: string;
+      imageUrl?: string;
+    }>;
+    hasMore: boolean;
+    scope: string;
+    verificationOnly: boolean;
+    destination?: { path: string; label: string };
+    result?: {
+      summary: string;
+      metrics: Array<{ label: string; value: string; previous?: string }>;
+      at: string;
+      provider: string;
+      notice: string;
+      usage: Array<{ label: string; value: number }>;
+    };
+  };
   canContinue?: boolean;
   sourceAnalysis?: { total: number; queued: number; running: number; completed: number; failed: number; cancelled: number; pending: number; processed: number };
   overview?: {
