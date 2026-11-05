@@ -115,7 +115,7 @@ export async function discoveryAction(input, user) {
       return { jobId: job.id };
     }
     if (input.action === 'server_discovery_save') {
-      const plan = discoveryPlan(dailyNewProductPlan(input.plan || input), true);
+      const plan = discoveryPlan(dailyNewProductPlan({ ...(input.plan || input), scheduleConfigVersion: 1 }), true);
       await validateCategories(plan, c);
       const id = input.id || randomUUID();
       if (!/^[\da-f-]{36}$/i.test(id)) throw new Error('监控编号无效');
@@ -125,6 +125,7 @@ export async function discoveryAction(input, user) {
       const value = {
         ...old,
         ...plan,
+        ...(plan.kind !== 'ingredients' ? { scheduleConfigVersion: 1 } : {}),
         id,
         updatedAt: new Date().toISOString(),
         lastScheduleError: '',

@@ -47,6 +47,13 @@ const loading = ref(false);
 const error = ref('');
 const capabilities = ref<DiscoveryCapabilities>();
 const canEdit = computed(() => serverMode && session.user?.role === 'admin');
+const collectionRule = computed(() => {
+  const cycle = form.frequency === 'weekly'
+    ? `每周${['日', '一', '二', '三', '四', '五', '六'][form.weekday]}`
+    : form.frequency === 'monthly' ? `每月${form.monthDay}日` : '每天';
+  const start = props.scheduled ? `${cycle}北京时间${form.time}采集` : '本次采集';
+  return `${start}执行日前${form.days}个完整自然日上架、Sorftime报告销量大于0的商品。未选类目时默认查保健品；TikTok缺上架日期时使用来源曝光日期，列表会说明替代口径；缺少日期或销量证据时跳过。`;
+});
 const channelOptions = computed(() =>
   form.kind === 'ingredients'
     ? (capabilities.value?.social || []).map((s) => ({
@@ -162,7 +169,7 @@ async function submit(save: boolean) {
     const payload = {
       ...values,
       sourceMode: 'sorftime',
-      ...(form.kind !== 'ingredients' ? { days: 7, completeDays: true, frequency: 'daily', time: '00:00' } : {}),
+      ...(form.kind !== 'ingredients' ? { completeDays: true } : {}),
       categories: Object.fromEntries(form.channels.map(c => [c, (form.categories[c] || []).filter(item => item.market === (form.sourceMarkets?.[c] || form.market))])),
       officialBoardUrls:
         form.kind === 'ingredients'
@@ -287,7 +294,7 @@ async function submit(save: boolean) {
       v-if="form.kind !== 'ingredients'"
       type="info"
       show-icon
-      message="每天北京时间00:00采集前7个完整自然日上架、Sorftime报告销量大于0的商品。未选类目时默认查保健品；TikTok缺上架日期时使用来源曝光日期，列表会说明替代口径；日期或销量均无证据时跳过。"
+      :message="collectionRule"
     />
     <div class="discovery-grid">
       <Form.Item
@@ -295,7 +302,7 @@ async function submit(save: boolean) {
       >
         <Select
           v-model:value="form.days"
-          :disabled="form.kind !== 'ingredients'"
+          id="discovery-days"
           :options="
             (form.kind === 'ingredients'
               ? [1, 7, 30, 60, 90]
@@ -332,14 +339,14 @@ async function submit(save: boolean) {
       通过Sorftime查询Reddit、Quora，按来源发布时间筛选；Reddit仅有摘要时补取帖子原文。帖子上限5000；实际数量受话题、页数、来源返回和时间筛选影响。扩大时间范围或页数会增加来源请求。
     </p>
     <p v-if="scheduled" class="hci-subtle">
-      立即运行使用当前填写的设置；更改每日监控请另点“保存监控”。
+      立即运行使用当前填写的采集条件；更改定时监控请另点“保存监控”。
     </p>
     <template v-if="scheduled">
       <div class="discovery-grid">
         <Form.Item label="定时周期">
           <Select
             v-model:value="form.frequency"
-            :disabled="form.kind !== 'ingredients'"
+            id="discovery-frequency"
             :options="[
               { value: 'daily', label: '每天' },
               { value: 'weekly', label: '每周' },
@@ -348,11 +355,12 @@ async function submit(save: boolean) {
           />
         </Form.Item>
         <Form.Item label="执行时间（北京时间）">
-          <Input v-model:value="form.time" type="time" :disabled="form.kind !== 'ingredients'" />
+          <Input id="discovery-time" v-model:value="form.time" type="time" />
         </Form.Item>
         <Form.Item v-if="form.frequency === 'weekly'" label="执行日期">
           <Select
             v-model:value="form.weekday"
+            id="discovery-weekday"
             :options="
               ['周日', '周一', '周二', '周三', '周四', '周五', '周六'].map(
                 (label, value) => ({ label, value }),
@@ -361,7 +369,7 @@ async function submit(save: boolean) {
           />
         </Form.Item>
         <Form.Item v-if="form.frequency === 'monthly'" label="每月日期">
-          <InputNumber v-model:value="form.monthDay" :min="1" :max="28" />
+          <InputNumber id="discovery-month-day" v-model:value="form.monthDay" :min="1" :max="28" />
         </Form.Item>
       </div>
       <Form.Item label="启用监控">

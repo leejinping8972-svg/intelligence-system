@@ -23,6 +23,7 @@ test('US discovery categories, daily watch controls and honest trend display on 
       if(action==='server_discovery_capabilities') return {channels:[{id:'amazon',name:'Amazon',markets:['US','MX']},{id:'tiktok',name:'TikTok Shop',markets:['US','VN']},{id:'shopee',name:'Shopee',markets:['VN']}],social:[]};
       if(action==='server_product_resource_categories')return {categories:[{id:'123',name:'Synthetic Vitamins',path:['123'],receiptId:'11111111-1111-4111-a111-111111111111',market:'US'}]};
       if(action==='server_discovery_save')return {plan:input.plan};
+      if(action==='server_discovery_submit')return {jobId:'synthetic-job'};
       if(action==='server_product_watch_config')return {config:{market:'US',enabled:false,time:'01:00'}};
       if(action==='server_product_watch_save')return {config:input};
       if(action==='server_product_watch_history')return {snapshots:[{day:'2026-11-03',at:'2026-11-03T01:00:00Z',price:20,currency:'USD',monthlySales:50,status:'completed'},{day:'2026-11-04',at:'2026-11-04T01:00:00Z',status:'failed',reason:'来源暂无数据'},{day:'2026-11-05',at:'2026-11-05T01:00:00Z',price:18,currency:'USD',monthlySales:60,status:'completed',changes:[{field:'title',before:'Old name',after:'New name'}]}],dailySales:[{date:'2026-11-03',value:3},{date:'2026-11-04',value:null},{date:'2026-11-05',value:4,partial:true}]};
@@ -91,6 +92,28 @@ test('US discovery categories, daily watch controls and honest trend display on 
     assert.equal(saved.completeDays, true);
     assert.deepEqual(saved.channels, ['amazon', 'tiktok']);
     assert.equal(saved.categories.amazon[0].id, '123');
+    async function choose(id,label){await page.locator(id).focus();await page.locator(id).press('ArrowDown');await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByText(label,{exact:true}).click();}
+    await choose('#discovery-days','近30天');
+    await choose('#discovery-frequency','每周');
+    await choose('#discovery-weekday','周五');
+    await page.locator('#discovery-time').fill('09:35');
+    await page.getByText(/每周五北京时间09:35采集执行日前30个完整自然日/).waitFor();
+    await page.getByRole('button',{name:'保存监控',exact:true}).first().click();
+    await page.waitForFunction(()=>window.calls.filter(c=>c.action==='server_discovery_save').length===2);
+    const weekly=await page.evaluate(()=>window.calls.filter(c=>c.action==='server_discovery_save').at(-1).input.plan);
+    assert.equal(weekly.days,30);assert.equal(weekly.frequency,'weekly');assert.equal(weekly.weekday,5);assert.equal(weekly.time,'09:35');
+    await choose('#discovery-frequency','每月');
+    await page.locator('#discovery-month-day').fill('12');
+    await page.locator('#discovery-month-day').blur();
+    await page.getByText(/每月12日北京时间09:35采集执行日前30个完整自然日/).waitFor();
+    await page.getByRole('button',{name:'保存监控',exact:true}).first().click();
+    await page.waitForFunction(()=>window.calls.filter(c=>c.action==='server_discovery_save').length===3,{},{timeout:5000}).catch(async e=>{console.log(await page.evaluate(()=>({calls:window.calls,text:document.body.innerText})));throw e;});
+    const monthly=await page.evaluate(()=>window.calls.filter(c=>c.action==='server_discovery_save').at(-1).input.plan);
+    assert.equal(monthly.frequency,'monthly');assert.equal(monthly.monthDay,12);
+    await page.getByRole('button',{name:'按当前设置立即运行',exact:true}).click();
+    await page.waitForFunction(()=>window.calls.some(c=>c.action==='server_discovery_submit'));
+    const manual=await page.evaluate(()=>window.calls.find(c=>c.action==='server_discovery_submit').input.plan);
+    assert.equal(manual.days,30);assert.equal(manual.completeDays,true);
     await page.locator('.watch-panel').getByRole('switch').click();
     await page
       .locator('.watch-panel')

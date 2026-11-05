@@ -126,6 +126,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           channels: ['amazon'],
           sourceMarkets: { amazon: 'US' },
           topics: ['dietary supplements', 'vitamins'],
+          days: 30,
           frequency: 'weekly',
           weekday: 5,
           time: '09:00',
@@ -137,10 +138,21 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
             admin,
           )
         ).plan;
+        assert.equal(saved.days, 30);
+        assert.equal(saved.frequency, 'weekly');
+        assert.equal(saved.time, '09:00');
+        assert.equal(saved.scheduleConfigVersion, 1);
+        const snapshot = await discoveryAction({ action: 'server_discovery_snapshot' }, admin);
+        assert.deepEqual(snapshot.plans.find(p => p.id === saved.id), { ...saved, categories: {} });
+        await tickDiscoveryMonitors(Date.parse('2026-10-29T01:00:00Z'));
+        await tickDiscoveryMonitors(Date.parse('2026-10-30T00:59:00Z'));
+        assert.equal((await pool.query('SELECT * FROM research_jobs')).rows.length, 0);
         await tickDiscoveryMonitors(Date.parse('2026-10-30T01:00:00Z'));
         await tickDiscoveryMonitors(Date.parse('2026-10-30T01:05:00Z'));
         const jobs = (await pool.query('SELECT * FROM research_jobs')).rows;
         assert.equal(jobs.length, 1);
+        assert.equal(jobs[0].input.plan.days, 30);
+        assert.equal(jobs[0].input.plan.completeDays, true);
         assert.deepEqual(jobs[0].input.plan.topics, []);
         assert.equal(jobs[0].input.plan.sourceMarkets.amazon, 'US');
         assert.equal(jobs[0].input.plan.sourceMode, 'sorftime');
@@ -149,7 +161,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           {
             action: 'server_discovery_save',
             id: saved.id,
-            plan: { ...input, topics: 'changed' },
+            plan: { ...input, days: 60, topics: 'changed' },
           },
           admin,
         );
@@ -159,6 +171,8 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           1,
         );
         const storedJob = await getJob(jobs[0].id);
+        assert.equal(storedJob.input.plan.days, 30, 'saving new settings must not rewrite a frozen job');
+        assert.equal((await read(`discovery:monitor:${saved.id}`)).days, 60);
         const reordered = {
           ...storedJob.input,
           plan: Object.fromEntries(
@@ -191,6 +205,21 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         assert.equal(await read(`discovery:monitor:${saved.id}`), undefined);
       },
     );
+
+    await t.test('FBM monthly schedule persists its day and time and produces the selected window', async () => {
+      const saved = (await discoveryAction({action:'server_discovery_save',plan:{kind:'fbm_new',market:'US',channels:['amazon'],days:90,frequency:'monthly',monthDay:12,time:'15:30',enabled:true}},admin)).plan;
+      assert.equal(saved.days,90);
+      const snapshot=await discoveryAction({action:'server_discovery_snapshot'},admin);
+      assert.deepEqual(snapshot.plans.find(p=>p.id===saved.id),{...saved,categories:{}});
+      const count=async()=>(await pool.query("SELECT * FROM research_jobs WHERE input->>'monitorId'=$1",[saved.id])).rows;
+      await tickDiscoveryMonitors(Date.parse('2026-11-11T15:30:00+08:00'));
+      await tickDiscoveryMonitors(Date.parse('2026-11-12T15:29:00+08:00'));
+      assert.equal((await count()).length,0);
+      await tickDiscoveryMonitors(Date.parse('2026-11-12T15:30:00+08:00'));
+      await tickDiscoveryMonitors(Date.parse('2026-11-12T16:00:00+08:00'));
+      const jobs=await count();assert.equal(jobs.length,1);assert.equal(jobs[0].input.plan.days,90);
+      await discoveryAction({action:'server_discovery_delete',id:saved.id},admin);
+    });
 
     await t.test(
       'capture clears guessed formula, queues exactly once, applies cited analysis and reuses journal after restart',
