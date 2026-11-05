@@ -565,7 +565,15 @@ export function createWorkspaceReads({
       });
     return flight;
   }
-  async function status() {
+  let statusFlight;
+  function status() {
+    // Concurrent list, overview and bootstrap responses share the same read.
+    // Completed results are not cached, so subsequent writes stay visible.
+    if (statusFlight) return statusFlight;
+    statusFlight = readStatus().finally(() => { statusFlight = undefined; });
+    return statusFlight;
+  }
+  async function readStatus() {
     const [versions, dirty] = await Promise.all([
       pool.query('SELECT collection,revision FROM workspace_read_versions'),
       pool.query('SELECT kind FROM workspace_read_dirty LIMIT 1'),
@@ -832,14 +840,14 @@ export function createWorkspaceReads({
       1,
       Math.min(1000000, Math.trunc(Number(input.page) || 1)),
     );
-    const total = Number(
-      (
-        await pool.query(
-          `SELECT COUNT(*) AS total FROM workspace_read_rows r WHERE ${query.where}`,
-          query.values,
-        )
-      ).rows[0].total,
-    );
+    const [counted, current] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) AS total FROM workspace_read_rows r WHERE ${query.where}`,
+        query.values,
+      ),
+      status(),
+    ]);
+    const total = Number(counted.rows[0].total);
     page = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
     const sortColumn =
       input.sort === 'collectedAt'
@@ -875,12 +883,19 @@ export function createWorkspaceReads({
           ? { ...r.payload, productCount: Number(r.product_count) }
           : r.payload,
       );
+    let related;
+    if (query.collection === 'keywords') {
+      const [trends, relations] = await Promise.all([
+        withKeywordTrends(records), withRelations(query.collection, records),
+      ]);
+      related = trends.map((record, index) => ({ ...record, coreSummary: relations[index].coreSummary }));
+    } else related = await withRelations(query.collection, records);
     return {
-      rows: await withRelations(query.collection, query.collection === 'keywords' ? await withKeywordTrends(records) : records),
+      rows: related,
       total,
       page,
       pageSize,
-      ...(await status()),
+      ...current,
     };
   }
   async function facets(input) {

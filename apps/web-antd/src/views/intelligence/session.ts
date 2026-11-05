@@ -44,6 +44,7 @@ export async function adminRequest<T = Record<string, unknown>>(
   action: string,
   input: Record<string, unknown> = {},
   timeout = 30_000,
+  signal?: AbortSignal,
 ): Promise<T> {
   const revision = sessionRevision;
   const response = await fetch('/api', {
@@ -51,7 +52,9 @@ export async function adminRequest<T = Record<string, unknown>>(
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ ...input, action }),
-    signal: AbortSignal.timeout(timeout),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(timeout)])
+      : AbortSignal.timeout(timeout),
   });
   const body = await response.text();
   let result: Record<string, unknown> | null = null;

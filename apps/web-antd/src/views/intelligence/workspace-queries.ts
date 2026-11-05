@@ -36,13 +36,13 @@ interface CachedPage {
   at: number;
 }
 const cache = new Map<string, CachedPage>();
-const flights = new Map<string, Promise<PageResult<unknown>>>();
 function keyOf(input: object) {
   return JSON.stringify([session.user?.id, input]);
 }
 async function requestPage<T>(
   input: object,
   force = false,
+  signal?: AbortSignal,
 ): Promise<PageResult<T>> {
   const key = keyOf(input);
   const cached = cache.get(key);
@@ -53,24 +53,17 @@ async function requestPage<T>(
     cached.value.revisions.published === cloudWorkspace.publishedRevision
   )
     return cached.value as PageResult<T>;
-  let flight = flights.get(key);
-  if (!flight) {
-    flight = cloudRequest<PageResult<unknown>>(
-      'server_workspace_list',
-      input as Record<string, unknown>,
-    )
-      .then((value) => {
-        cache.delete(key);
-        cache.set(key, { value, at: Date.now() });
-        while (cache.size > 20) cache.delete(cache.keys().next().value!);
-        return value;
-      })
-      .finally(() => {
-        flights.delete(key);
-      });
-    flights.set(key, flight);
-  }
-  return flight as Promise<PageResult<T>>;
+  return cloudRequest<PageResult<T>>(
+    'server_workspace_list',
+    input as Record<string, unknown>,
+    { signal, priority: 'foreground' },
+  ).then((value) => {
+    signal?.throwIfAborted();
+    cache.delete(key);
+    cache.set(key, { value, at: Date.now() });
+    while (cache.size > 20) cache.delete(cache.keys().next().value!);
+    return value;
+  });
 }
 export function useWorkspaceList<T extends { id: string }>(
   collection: ReadCollection,
@@ -88,6 +81,7 @@ export function useWorkspaceList<T extends { id: string }>(
   let active = true,
     sequence = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let controller: AbortController | undefined;
   let facetScope = '',
     displayedKey = '',
     loadedKey = '';
@@ -111,6 +105,12 @@ export function useWorkspaceList<T extends { id: string }>(
     const requested = input.value;
     const requestedKey = keyOf(requested);
     const cached = cache.get(requestedKey);
+    if (displayedKey !== requestedKey || controller?.signal.aborted) {
+      controller?.abort();
+      controller = new AbortController();
+    }
+    controller ||= new AbortController();
+    const signal = controller.signal;
     if (!cached && displayedKey !== requestedKey) {
       rows.value = [];
       total.value = 0;
@@ -123,7 +123,7 @@ export function useWorkspaceList<T extends { id: string }>(
     }
     loading.value = !cached && loadedKey !== requestedKey;
     try {
-      const result = await requestPage<T>(requested, force);
+      const result = await requestPage<T>(requested, force, signal);
       if (ticket !== sequence || !active) return;
       rows.value = hydrate(result.rows);
       total.value = result.total;
@@ -140,6 +140,7 @@ export function useWorkspaceList<T extends { id: string }>(
         void cloudRequest<{ facets: Record<string, any[]> }>(
           'server_workspace_facets',
           { collection, market: query.value.market },
+          { signal, priority: 'background' },
         )
           .then((value) => {
             if (facetScope === scope) facets.value = value.facets;
@@ -148,15 +149,6 @@ export function useWorkspaceList<T extends { id: string }>(
             if (facetScope === scope) facetScope = '';
           });
       }
-      if (
-        !result.indexing &&
-        result.page * result.pageSize < result.total &&
-        flights.size < 2 &&
-        document.visibilityState !== 'hidden'
-      )
-        void requestPage({ ...requested, page: result.page + 1 }).catch(
-          () => {},
-        );
     } catch (cause) {
       if (ticket === sequence)
         error.value = cause instanceof Error ? cause.message : '列表读取失败';
@@ -192,6 +184,7 @@ export function useWorkspaceList<T extends { id: string }>(
   const stop = () => {
     active = false;
     sequence += 1;
+    controller?.abort();
     if (timer) clearTimeout(timer);
     loading.value = false;
   };
@@ -287,18 +280,30 @@ export function useOverviewSnapshot() {
     indexing = ref(false);
   let active = true,
     sequence = 0;
+  let controller: AbortController | undefined;
+  let scope = '';
   async function reload() {
     if (!serverMode || !active) return;
     const ticket = ++sequence;
     const key = keyOf({ market: state.market });
+    if (key !== scope || controller?.signal.aborted) {
+      controller?.abort();
+      controller = new AbortController();
+      scope = key;
+    }
+    controller ||= new AbortController();
     snapshot.value = overviewCache.get(key);
-    loading.value = true;
+    loading.value = !snapshot.value;
     try {
       const result = await cloudRequest<{
         snapshot: OverviewSnapshot | null;
         indexing: boolean;
         error?: string;
-      }>('server_workspace_overview', { market: state.market });
+      }>(
+        'server_workspace_overview',
+        { market: state.market },
+        { signal: controller.signal, priority: 'background' },
+      );
       if (ticket !== sequence || !active) return;
       if (result.snapshot) {
         snapshot.value = result.snapshot;
@@ -324,6 +329,8 @@ export function useOverviewSnapshot() {
   const stop = () => {
     active = false;
     sequence += 1;
+    controller?.abort();
+    loading.value = false;
   };
   onDeactivated(stop);
   onUnmounted(stop);
