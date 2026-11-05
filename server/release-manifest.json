@@ -1,58 +1,24 @@
 {
-  "title": "美国新品池与商品持续监控",
-  "sourceSha": "0184507e39acdd5ab07fb430db0039f6ccc32852",
+  "title": "新品监控支持编辑日期范围、周期和时间",
+  "sourceSha": "daa05385b8d056aa0c08740b9f27f7d6198deb49",
   "includedCommits": [
-    "6d967df2838f1726f9b5d98ed14bb7c3b0bd52c6",
-    "4709669da2dec91b46562aed613337775d99907e"
+    "daa05385b8d056aa0c08740b9f27f7d6198deb49"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/DiscoveryCategories.vue",
-    "apps/web-antd/src/views/intelligence/components/DiscoveryMonitors.vue",
     "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
-    "apps/web-antd/src/views/intelligence/components/EvidenceMetric.vue",
-    "apps/web-antd/src/views/intelligence/components/NewMonitorDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductWatchHistory.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductWatchPanel.vue",
-    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
-    "apps/web-antd/src/views/intelligence/monitor.vue",
-    "apps/web-antd/src/views/intelligence/product-decisions.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "server/discovery-monitor-domain.mjs",
     "server/discovery-monitor-store.mjs",
-    "server/discovery-newness.mjs",
-    "server/discovery-sorftime-v2.test.mjs",
-    "server/discovery-sorftime.mjs",
-    "server/index.mjs",
-    "server/platform-product-data.mjs",
-    "server/product-intake-sorftime.mjs",
-    "server/product-pool-domain.d.mts",
+    "server/discovery-monitors.integration.test.mjs",
     "server/product-pool-domain.mjs",
-    "server/product-pool.browser.test.mjs",
-    "server/product-watch-domain.mjs",
-    "server/product-watch-sorftime.mjs",
-    "server/product-watch-store.mjs",
-    "server/product-watch.integration.test.mjs",
-    "server/product-watch.test.mjs",
-    "server/runner.mjs",
-    "server/store.mjs",
-    "server/task-overview.mjs",
-    "server/task-projection.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs",
-    "tests/core-list-metrics.test.ts"
+    "server/product-pool.browser.test.mjs"
   ],
   "changes": [
-    "商品库新增新品池和条件说明，区分常规/FBM及来源类目；新品定时轮次每天北京时间00:00采集前7个完整自然日内且来源销量大于0的商品。",
-    "TikTok优先上架日期，缺失时用来源曝光日期并在日期旁明确解释。",
-    "独立商品持续监控（首次关闭、默认01:00），保存每日资料/价格/月销量快照与Amazon逐日销量，提供趋势和资料变化。",
-    "保留同日幂等、未知请求保护、按市场分页，缺失不补零；Temu保健品暂未开放、Shopee无美国站。"
+    "常规/FBM监控可编辑近7/30/60/90天、每天/每周/每月和北京时间，默认7天/每天/00:00，说明随表单变化。",
+    "保存与调度尊重自定义条件，旧监控首次重新保存前保持当前生效设置；已冻结任务和同日幂等保留。"
   ],
   "developmentValidation": [
-    "主功能48项Node/PGlite及2项浏览器测试、Web类型检查、独立开发构建、核心模块lint通过",
-    "TikTok跟进24项Node、24项Vitest、日期问号浏览器交互、Web类型检查及独立构建通过"
+    "35项Node/PGlite专项通过",
+    "浏览器日期/周月周期/时间/保存/立即运行交互通过",
+    "Web类型检查、独立前端构建、diff检查通过"
   ],
   "releaseValidation": "重复验证、验证构建及CI等待按用户策略跳过",
   "database": {
@@ -61,8 +27,8 @@
     "consistency": "skipped-by-user"
   },
   "preservePendingTasks": true,
-  "id": "20261105035256-423e7b67",
-  "builtAt": "2026-11-05T03:52:56.440Z",
-  "sourceDigest": "423e7b67325b53ba1aafd7164ed5c8f883756016af1ddd6f006760f8d83713f2",
+  "id": "20261105041903-43b585e6",
+  "builtAt": "2026-11-05T04:19:03.716Z",
+  "sourceDigest": "43b585e677b85c23336c946eb0a51759f7bb847fd3f9f32cbcdc1d02ed22deb6",
   "operator": "Codex"
 }
