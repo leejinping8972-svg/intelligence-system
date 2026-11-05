@@ -1,8 +1,8 @@
 {
   "title": "商品成分多名称引用兼容修正",
-  "sourceSha": "80b718f18e62990468b58cfbb07b14a9c21e3f9b",
+  "sourceSha": "fe398b9d6f8a8bcf19347bd457780ab88140e797",
   "includedCommits": [
-    "80b718f18e62990468b58cfbb07b14a9c21e3f9b"
+    "fe398b9d6f8a8bcf19347bd457780ab88140e797"
   ],
   "files": [
     "server/source-field-domain.mjs",
@@ -10,11 +10,11 @@
     "server/product-intake.test.mjs"
   ],
   "changes": [
-    "成分支持AI返回多个名称拼接或非连续摘录，逐一匹配同一商品指定来源的实际文本后生成连续证据，避免有成分却被丢弃。",
+    "AI成分数组中逐项保留来源确实出现的名称，剔除未出现和否定的项，并按相同下标保留中文；不再因某个错误项丢弃整组正确成分。",
     "强化标题成分必须提取的提示，保留商品AI候选结果用于已知成功请求的修正恢复，未出现和否定成分仍拒绝。"
   ],
   "developmentValidation": [
-    "39项相关服务端专项与隔离集成通过",
+    "40项相关服务端专项与隔离集成通过",
     "git diff检查通过；本批无前端改动"
   ],
   "releaseValidation": "重复验证、验证构建及CI等待按用户策略跳过",
@@ -24,8 +24,8 @@
     "consistency": "skipped-by-user"
   },
   "preservePendingTasks": true,
-  "id": "20261105025705-12e7f82a",
-  "builtAt": "2026-11-05T02:57:05.255Z",
-  "sourceDigest": "12e7f82a85da09e0d12d388e5bc1b8f910e096f77606f099e2a2cdbc2db51817",
+  "id": "20261105030817-5d8bc653",
+  "builtAt": "2026-11-05T03:08:17.145Z",
+  "sourceDigest": "5d8bc6537dd4fbd74770984a62629d0765e3f773ce1fc94f1b866fb9b257bd5f",
   "operator": "Codex"
 }
