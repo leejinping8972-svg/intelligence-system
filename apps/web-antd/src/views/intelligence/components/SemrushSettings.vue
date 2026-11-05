@@ -45,17 +45,20 @@ interface UsageTotals {
 const usage = ref<null | Usage>(null);
 const usageBusy = ref(false);
 const usageError = ref('');
+let usageGeneration = 0;
 async function refreshUsage() {
-  if (usageBusy.value || session.user?.role !== 'admin') return;
+  if (session.user?.role !== 'admin') return;
+  const generation = ++usageGeneration;
   usageBusy.value = true;
   usageError.value = '';
   try {
-    usage.value = await adminRequest<Usage>('server_semrush_usage');
+    const result = await adminRequest<Usage>('server_semrush_usage');
+    if (generation === usageGeneration) usage.value = result;
   } catch (error) {
-    usageError.value =
+    if (generation === usageGeneration) usageError.value =
       error instanceof Error ? error.message : '消耗记录读取失败';
   } finally {
-    usageBusy.value = false;
+    if (generation === usageGeneration) usageBusy.value = false;
   }
 }
 const status = ref<Connection>({
@@ -82,6 +85,8 @@ async function configure(save: boolean) {
     if (save) {
       apiKey.value = '';
       message.success('Key 已加密保存');
+      usage.value = null;
+      void refreshUsage();
     } else {
       if (status.value.ready) message.success('MCP 握手及关键词工具发现通过');
       else message.warning(status.value.message);
@@ -96,6 +101,7 @@ async function configure(save: boolean) {
 }
 onMounted(() => {
   void load();
+  void refreshUsage();
 });
 onDeactivated(() => {
   apiKey.value = '';
@@ -176,14 +182,14 @@ onUnmounted(() => {
             ? usage.currentKey.confirmedUnits.toLocaleString('zh-CN')
             : '—'
         }}</strong>
-        <small>当前 Key 的 Semrush API units · 仅已确认扣费</small>
+        <small>当前 Key 的 Semrush API units · 已保存的确认消耗</small>
       </div>
       <Button
         :loading="usageBusy"
         :disabled="session.user?.role !== 'admin'"
         @click="refreshUsage"
       >
-        刷新消耗记录
+        刷新已保存统计
       </Button>
       <template v-if="usage">
         <p class="hci-subtle">
@@ -215,7 +221,7 @@ onUnmounted(() => {
         <p class="hci-subtle">
           仅统计系统从本功能上线后记录并能归属当前 Key 的请求；更换 Key 后，旧
           Key 的消耗会移入“其他
-          Key”。上线前的历史记录无法回溯归属，单列“未归属历史”。统计截至
+          Key”。上线前的历史记录无法回溯归属，单列“未归属历史”。任务执行后自动汇总保存，页面读取已保存结果。统计截至
           {{
             new Date(usage.checkedAt).toLocaleString('zh-CN', {
               hour12: false,
@@ -259,7 +265,7 @@ onUnmounted(() => {
     />
     <p class="hci-subtle" style="margin-top: 12px">
       研究数据固定连接官方地址
-      https://mcp.semrush.com/v2/mcp；消耗统计来自系统保存的任务请求日志，不查询外部余额。Key
+      https://mcp.semrush.com/v2/mcp；消耗统计读取任务执行后保存的汇总，不查询外部余额。Key
       不回传浏览器或记录到日志。如提供方指定了其他 MCP
       地址，请先核对授权。数据是否返回由该词在目标国家的收录情况及账户权限决定；缺项不会伪造为0。
     </p>

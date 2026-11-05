@@ -244,17 +244,7 @@ onDeactivated(stopLoading);
 onActivated(() => {
   if (loader.signal?.aborted) void load();
 });
-onMounted(async () => {
-  if (!(await load())) return;
-  const mountedSignal = loader.signal;
-  let quotaChanged = false;
-  for (const source of data.value?.sources || []) {
-    if (mountedSignal?.aborted) return;
-    if (source.automatic && source.configured && !source.quota)
-      quotaChanged = (await refreshQuota(source, true)) || quotaChanged;
-  }
-  if (quotaChanged && !mountedSignal?.aborted) await load();
-});
+onMounted(() => { void load(); });
 </script>
 
 <template>
@@ -273,18 +263,19 @@ onMounted(async () => {
             全部市场 · 账户额度 · 北京时间 ·
             {{
               data?.checkedAt
-                ? `更新于 ${usageTime(data.checkedAt)}`
+                ? `已保存统计 · ${usageTime(data.checkedAt)}`
                 : error ? '读取失败' : '正在读取'
             }}
           <span v-if="busy && data"> · 正在更新</span>
           </p>
         </div>
-        <Tooltip title="刷新系统消耗记录">
+        <Tooltip title="读取最新保存的统计">
 <Button :loading="busy" aria-label="刷新消耗记录" @click="load(true)">
 <template #icon><RefreshIcon /></template>
 </Button>
 </Tooltip>
       </div>
+      <p class="hci-subtle">任务执行后自动更新消耗统计；页面显示已保存结果，余额按最近一次登记或账户快照显示。</p>
       <Alert
         v-if="error"
         :message="error"

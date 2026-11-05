@@ -3,6 +3,8 @@ import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import process from 'node:process';
+import { startUsageSummaryWorker, updateUsageSummary } from './usage-summary-worker.mjs';
+import { markUsageChanged } from './usage-changes.mjs';
 
 import { serveAdMedia } from './ad-media.mjs';
 import { adminSsoConfig } from './admin-sso-config.mjs';
@@ -28,6 +30,7 @@ import { dailyDiscoveryAction } from './daily-discovery.mjs';
 import { databaseAction, maintenance } from './database-admin.mjs';
 import {
   currentDatabase,
+  engine,
   lock,
   putDocument,
   sql,
@@ -157,6 +160,7 @@ const sso = createAdminSso({
   signIn: adminSsoSignIn,
 });
 const controller = new AbortController();
+startUsageSummaryWorker(controller.signal, () => maintenance ? false : updateUsageSummary());
 void refreshWorkspaceReads();
 void runQueue(controller.signal);
 void runContentQueue(controller.signal);
@@ -707,6 +711,7 @@ async function api(input, user) {
           "DELETE FROM workspace_documents WHERE name LIKE 'business:%' AND name NOT IN ('business:branding:main','business:preferences:main')",
         );
         await connection.query('COMMIT');
+        await markUsageChanged(connection, engine);
         return { cleared: true };
       } catch (error) {
         await connection.query('ROLLBACK');

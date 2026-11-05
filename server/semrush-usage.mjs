@@ -1,4 +1,5 @@
-import { pool, sql } from './database.mjs';
+import { pool } from './database.mjs';
+import { readSavedUsage } from './usage-summary-store.mjs';
 
 // Read original journals, never checkpoints, keyword metrics or cached provider
 // documents: those repeat the same charge when a task is resumed or re-scored.
@@ -152,16 +153,64 @@ export async function semrushUsage(
   { currentKeyId = null, keyConfigured = false } = {},
   connection = pool,
 ) {
-  const [research, monitor] = await Promise.all([
-    connection.query(
-      sql(usageQueries.research.postgres, usageQueries.research.mysql),
-    ),
-    connection.query(
-      sql(usageQueries.monitor.postgres, usageQueries.monitor.mysql),
-    ),
-  ]);
-  return summarizeSemrushUsage(research.rows, monitor.rows, new Date(), {
+  const saved = await readSavedUsage(connection);
+  return selectSemrushSummary(saved.semrush, saved.checkedAt, {
     currentKeyId,
     keyConfigured,
   });
+}
+
+// Key fingerprints stay on the server. Group once after writes, then select the
+// current key even if configuration changed since the last paid task.
+export function prepareSemrushSummary(research, monitor) {
+  const all = summarizeSemrushUsage(research, monitor);
+  const groups = new Map();
+  for (const row of [...research, ...monitor]) {
+    const key = row.record?.semrushKeyId;
+    if (!key) continue;
+    const group = groups.get(key) || { research: [], monitor: [] };
+    group[row.name ? 'monitor' : 'research'].push(row);
+    groups.set(key, group);
+  }
+  return {
+    byKey: [...groups].map(([key, rows]) => [key,
+      summarizeSemrushUsage(rows.research, rows.monitor, new Date(), { currentKeyId: key }).currentKey,
+    ]),
+    unassigned: all.unassigned,
+    cachedRecords: all.cachedRecords,
+    unclassifiedRecords: all.unclassifiedRecords,
+    firstRecordedAt: all.firstRecordedAt,
+  };
+}
+
+export function selectSemrushSummary(saved, checkedAt, { currentKeyId = null, keyConfigured = false } = {}) {
+  let currentKey = emptyTotals();
+  const otherKeys = emptyTotals();
+  for (const [key, totals] of saved.byKey) {
+    if (currentKeyId && key === currentKeyId) currentKey = totals;
+    else {
+      for (const field of ['confirmedUnits', 'confirmedRecords', 'unknownRecords', 'cachedRecords'])
+        otherKeys[field] += totals[field];
+      for (const group of otherKeys.breakdown) {
+        const row = totals.breakdown.find((item) => item.id === group.id);
+        for (const field of ['confirmedUnits', 'confirmedRecords', 'unknownRecords'])
+          group[field] += row[field];
+      }
+    }
+  }
+  return {
+    currentKey,
+    otherKeys,
+    unassigned: saved.unassigned,
+    keyConfigured,
+    currentKeyAvailable: Boolean(currentKeyId),
+    confirmedUnits: currentKey.confirmedUnits,
+    confirmedRecords: currentKey.confirmedRecords,
+    unknownRecords: currentKey.unknownRecords,
+    cachedRecords: saved.cachedRecords,
+    unclassifiedRecords: saved.unclassifiedRecords,
+    firstRecordedAt: saved.firstRecordedAt,
+    checkedAt,
+    breakdown: currentKey.breakdown,
+  };
 }
