@@ -259,7 +259,7 @@ test('official runner recovers embedded details, classifies supplements and neve
   const r = runner(job, async (_j, _step, req) => {
     if (req.sources[0] === 'field_analysis')
       return {
-        analysis: { supplement: req.sample.title !== 'Never' },
+        analysis: { supplement: req.sample.title !== 'Never', status: 'analyzed' },
         patch: {},
         model: 'synthetic',
       };
@@ -284,7 +284,7 @@ test('official runner stops at the candidate limit and honors cancellation befor
   };
   const r = runner(job, async (_j, _s, req) =>
     req.sources[0] === 'field_analysis'
-      ? { analysis: { supplement: true }, patch: {} }
+      ? { analysis: { supplement: true, status: 'analyzed' }, patch: {} }
       : parseOfficialBoard(
           board(
             [1, 2],
@@ -436,7 +436,7 @@ test('30-day product runs read every official detail and filter old/missing date
     };
     const r = runner(job, async (_j, _s, req) => {
       if (req.sources[0] === 'field_analysis')
-        return { patch: {}, analysis: { supplement: true } };
+        return { patch: {}, analysis: { supplement: true, status: 'analyzed' } };
       if (req.op !== 'detail') return parseOfficialBoard(board([1, 2, 3]), req);
       const date =
         req.asin === asin(1)

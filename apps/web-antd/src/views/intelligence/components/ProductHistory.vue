@@ -134,7 +134,7 @@ const chart = computed(() => {
       </Table>
     </template>
     <p v-else class="hci-subtle">
-      尚无有效历史。上方逐项显示是否已经请求、空返回或失败原因；可点击补全商品数据。
+      尚无有效历史。上方逐项显示是否已经请求、空返回或失败原因；后续采集会继续保存来源返回的数据。
     </p>
   </section>
 </template>

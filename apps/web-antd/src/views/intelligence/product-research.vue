@@ -12,11 +12,12 @@ import { productDataSource } from './product-decisions';
 import { reportStatus } from './consumer-reports';
 import PageHeader from './components/PageHeader.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
-import ProductCompletionDialog from './components/ProductCompletionDialog.vue';
 import ConsumerReportDialog from './components/ConsumerReportDialog.vue';
 import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import ProductChineseName from './components/ProductChineseName.vue';
+import ProductText from './components/ProductText.vue';
 const route = useRoute(), router = useRouter();
 const query = ref(typeof route.query.q === 'string' ? route.query.q : '');
 const page = ref(1), pageSize = ref(20);
@@ -60,16 +61,16 @@ const site = computed(() => state.sites.find(s => s.id === product.value?.siteId
         <div class="hci-panel-head"><h2>市场候选商品</h2><span class="hci-subtle">{{ serverMode ? remote.total.value : rows.length }} 条</span></div>
         <Alert v-if="remote.error.value" type="error" :message="remote.error.value" />
         <Table size="small" row-key="id" :loading="remote.loading.value" :data-source="rows" :scroll="{ x: 610 }" :columns="[{ title: '商品 / 市场', key: 'product', width: 250 }, { title: '平台', dataIndex: 'sourcePlatform', width: 100 }, { title: '价格', key: 'price', width: 100 }, { title: '操作', key: 'actions', width: 90 }]" :pagination="{ current: page, pageSize, total: serverMode ? remote.total.value : rows.length, onChange: p => page = p }">
-          <template #bodyCell="{ column, record }"><template v-if="column.key === 'product'"><strong>{{ record.title }}</strong><p class="hci-subtle">{{ marketName(record.market) }} · {{ record.brand }}</p></template><span v-else-if="column.key === 'price'">{{ money(record.price, record.currency) }}</span><Button v-else-if="column.key === 'actions'" size="small" :type="selectedId === record.id ? 'primary' : 'default'" @click="choose(record.id)">{{ selectedId === record.id ? '研究中' : '研究此品' }}</Button></template>
+          <template #bodyCell="{ column, record }"><template v-if="column.key === 'product'"><strong><ProductChineseName :product="record as Product" /></strong><p class="hci-subtle">{{ marketName(record.market) }}</p><ProductText :text="record.brand" :translated="record.brandZh" /></template><span v-else-if="column.key === 'price'">{{ money(record.price, record.currency) }}</span><Button v-else-if="column.key === 'actions'" size="small" :type="selectedId === record.id ? 'primary' : 'default'" @click="choose(record.id)">{{ selectedId === record.id ? '研究中' : '研究此品' }}</Button></template>
         </Table>
       </section>
       <section class="hci-panel product-research-detail">
         <Alert v-if="error" type="error" :message="error" show-icon />
         <Empty v-if="!product" description="选择左侧商品，查看价格、销量、证据和关联报告" />
         <template v-else>
-          <div class="hci-panel-head"><div><h2>{{ product.title }}</h2><p>{{ product.brand }} · {{ marketName(product.market) }} · {{ product.sourcePlatform || '平台未记录' }} · {{ product.sourceProvider || productDataSource(product) }}</p></div><Button @click="detailsOpen = true">完整详情</Button></div>
+          <div class="hci-panel-head"><div><h2><ProductChineseName :product="product" /></h2><ProductText :text="product.brand" :translated="product.brandZh" /><p>{{ marketName(product.market) }} · {{ product.sourcePlatform || '平台未记录' }} · {{ product.sourceProvider || productDataSource(product) }}</p></div><Button @click="detailsOpen = true">完整详情</Button></div>
           <ProductDecisionTags :product="product" />
-          <div class="hci-toolbar"><ProductCompletionDialog :product-ids="[product.id]" /><ConsumerReportDialog :product-ids="[product.id]" :site-ids="product.siteId ? [product.siteId] : []" :initial-market="product.market" :initial-query="query || product.title" label="研究消费者需求" @submitted="select(product.id)" /><RouterLink :to="{ path: '/monitor', query: { tab: 'monitors' } }">跟踪计划</RouterLink></div>
+          <div class="hci-toolbar"><ConsumerReportDialog :product-ids="[product.id]" :site-ids="product.siteId ? [product.siteId] : []" :initial-market="product.market" :initial-query="query || product.title" label="研究消费者需求" @submitted="select(product.id)" /><RouterLink :to="{ path: '/monitor', query: { tab: 'monitors' } }">跟踪计划</RouterLink></div>
           <Tabs><Tabs.TabPane key="metrics" tab="销售与价格证据"><CoreMetricsPanel v-if="!busy" kind="products" :record="product" /></Tabs.TabPane><Tabs.TabPane key="reports" tab="消费者报告与审核"><Empty v-if="!reports.length" description="暂无关联报告，可发起消费者需求研究" /><div v-for="report in reports" :key="report.id" class="research-report-row"><RouterLink :to="'/consumer-insights/reports/' + report.id">{{ report.title }}</RouterLink><Tag>{{ reportStatus(report.status) }}</Tag></div></Tabs.TabPane><Tabs.TabPane key="resources" tab="关联资料"><p>独立站：{{ site?.domain || product.siteId || '未关联' }}</p><RouterLink v-if="product.siteId" :to="{ path: '/sites', query: { site: product.siteId } }">查看关联独立站</RouterLink><p class="hci-subtle">候选检索结果不自动归为同款，来源未提供的数据保持未知。</p></Tabs.TabPane></Tabs>
         </template>
       </section>

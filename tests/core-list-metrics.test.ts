@@ -31,11 +31,11 @@ const product = (patch = {}) =>
 const get = (metrics: ReturnType<typeof productMetrics>, key: string) =>
   metrics.find((m) => m.key === key)!;
 describe('core metrics with database pagination', () => {
-  it('preserves complete period evidence without sending source histories in each page', () => {
+  it('omits removed product period columns even when older server summaries include them', () => {
     const metric = { ...get(productMetrics(product(), 30), 'sales'), value: 60, status: 'available' as const };
     const record = product({ listSummary: true, coreSummary: { periods: { 30: [metric] } } });
-    expect(get(coreMetrics('products', record, 30), 'sales').value).toBe(60);
-    expect(get(coreMetrics('products', record, 90), 'sales').value).toBeNull();
+    expect(get(coreMetrics('products', record, 30), 'sales')).toBeUndefined();
+    expect(get(coreMetrics('products', record, 90), 'sales')).toBeUndefined();
   });
   it('uses server market totals and expansion evidence instead of a partial browser cache', () => {
     const site = { id: 's', market: 'US', domain: 'example.test', coreSummary: { related: { products: 120, ads: 31 } } } as Site;
@@ -366,11 +366,11 @@ describe('core list evidence and unit boundaries', () => {
       expect(get(metrics, 'searchVolume').value).toBeNull();
     }
   });
-  it('exports every period, metadata, unknown reasons, raw fields and observations', () => {
+  it('exports source metadata and raw fields without removed product period metrics', () => {
     const row = coreExport('products', product());
-    expect(row['30天_sales_值']).toBe('');
-    expect(row['90天_sales_状态']).toBe('待积累');
-    expect(row['365天_sales_单位']).toBe('件');
+    expect(row).not.toHaveProperty('30天_sales_值');
+    expect(row).not.toHaveProperty('90天_sales_状态');
+    expect(row).not.toHaveProperty('365天_sales_单位');
     expect(row['priceOriginal_值']).toBe(250000);
     expect(row['priceOriginal_市场']).toBe('VN');
     expect(row['原始字段JSON']).toContain('250000');

@@ -128,7 +128,7 @@ const resourceInput = computed<ResourceDiscoveryInput>(() => ({
   salesWindowDays: resourceForm.salesWindowDays,
   ranking: resourceForm.ranking,
   maxProducts: resourceForm.maxProducts,
-  includeDetails: resourceForm.includeDetails,
+  includeDetails: false,
   includeHistory: resourceForm.includeHistory,
   researchCategory: resourceForm.researchCategory,
   websiteDomain:
@@ -667,14 +667,9 @@ async function submitResource() {
                   }}
                 </template>
               </Alert>
-              <Form.Item label="可用补全">
+              <Form.Item label="采集附加资料">
                 <div class="resource-completion-options">
-                  <Checkbox
-                    v-model:checked="resourceForm.includeDetails"
-                    :disabled="!resourceSupports(resourceRoute, 'detail')"
-                  >
-                    商品详情
-                  </Checkbox>
+                  <span>商品详情、素材和AI字段整理随本次采集自动完成</span>
                   <Checkbox
                     v-model:checked="resourceForm.includeHistory"
                     :disabled="!resourceSupports(resourceRoute, 'history')"
@@ -915,14 +910,6 @@ async function submitResource() {
                 :max="1000"
               />
             </Form.Item>
-
-            <Form.Item label="商品详情补全数量上限">
-              <InputNumber
-                v-model:value="form.maxDetailProducts"
-                :min="0"
-                :max="1000"
-              />
-            </Form.Item>
             <Form.Item label="Semrush 每词商家数上限">
               <InputNumber
                 v-model:value="form.maxDomains"
@@ -932,29 +919,17 @@ async function submitResource() {
               />
             </Form.Item>
           </div>
-          <Form.Item label="补全范围">
-            <Checkbox v-model:checked="form.completeAll">
-              补全全部已发现商品（会显著增加请求）
-            </Checkbox>
-            ><Checkbox v-model:checked="form.enrich">
-              商品详情与图片/属性 </Checkbox
-            ><Checkbox v-model:checked="form.trend">
-              ASIN月销量、大类排名与评论数历史
-            </Checkbox>
-          </Form.Item>
+
         </Form>
         <p class="hci-subtle">
           {{ parsedTerms.length }} 个词；基础发现参考约
           {{ expected }}
-          次数据请求；过滤不相关商品可能追加翻页。发现与补全共用
-          按商品数与页数采集；默认最多补全
-          {{ form.maxDetailProducts }}
-          件，勾选“补全全部”后按商品逐件处理。相同查询优先复用缓存。
+          次数据请求；过滤不相关商品可能追加翻页。每件商品会在本次采集中获取可用详情和素材，并由AI提取字段及中文翻译。
         </p>
         <p class="hci-subtle">
           Sorftime 与 TikTok Shop 消耗现有平台额度，Semrush 按报告行消耗 API
           units；次数、credits 和 units 不是同一单位。TikTok
-          销量只保存为采集时点累计快照。不会购买额度；缺历史、配方或剂量时记录平台返回情况，可在商品库再次补全。
+          销量只保存为采集时点累计快照。未返回的数据保留缺失状态，不会自动购买额度。
         </p>
       </Tabs.TabPane>
     </Tabs>

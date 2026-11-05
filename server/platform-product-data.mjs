@@ -309,6 +309,7 @@ export function normalizeAmazon(
       'monthSalesVolume',
       'MonthSalesVolume',
       'monthly_sale_volume',
+      'monthly_sales_volume',
     ],
     reportedSales: ['salesVolume', 'SalesVolume'],
     salesRank: ['bsr', 'Bsr', 'rank', 'Rank'],
@@ -654,6 +655,8 @@ export function mergePlatformProduct(old, patch) {
     firstSeenAt: old.firstSeenAt || patch.firstSeenAt,
   };
   const resetFields = ['pending', 'analyzed'].includes(patch.fieldAnalysis?.status);
+  for (const key of ['title', 'brand', 'category', 'form', 'size', 'ingredient', 'claim', 'benefits'])
+    if (patch[key] !== undefined && JSON.stringify(patch[key]) !== JSON.stringify(old[key]) && !patch[`${key}Zh`]) delete merged[`${key}Zh`];
   if (old.resourceEvidence || patch.resourceEvidence) merged.resourceHistory = mergeResourceHistory(old, patch);
   if (!patch.siteId && old.siteId) merged.siteId = old.siteId;
   for (const key of [
@@ -700,6 +703,14 @@ export function mergePlatformProduct(old, patch) {
   merged.sourceEvidence = merged.sourceEvidence.slice(-100);
   merged.newProductClassifications = [...new Map(merged.newProductClassifications.map((v) => [`${v.type}|${v.listingDate}|${v.days}|${v.evidenceUrl || ""}`, v])).values()].slice(-30);
   merged.sourceMetrics = { ...old.sourceMetrics, ...patch.sourceMetrics };
+  merged.sourceContent = {
+    ...old.sourceContent, ...patch.sourceContent,
+    attributes: { ...old.sourceContent?.attributes, ...patch.sourceContent?.attributes },
+    productInfo: { ...old.sourceContent?.productInfo, ...patch.sourceContent?.productInfo },
+    rawFields: { ...old.sourceContent?.rawFields, ...patch.sourceContent?.rawFields },
+  };
+  for (const key of ['descriptions', 'aPlusImages'])
+    merged.sourceContent[key] = [...new Set([...(old.sourceContent?.[key] || []), ...(patch.sourceContent?.[key] || [])])];
   if ((old.sourceMetrics?.soldRaw || old.sourceMetrics?.soldCount !== undefined || old.sourcePlatform === 'TikTok Shop' && old.sourceMetrics?.reportedSales !== undefined) && !patch.sourceMetrics?.soldRaw && patch.sourceMetrics?.soldCount === undefined && patch.sourceMetrics?.reportedSales === undefined)
     merged.sourceMetrics.soldCollectedAt = old.sourceMetrics.soldCollectedAt || old.sourceMetrics.collectedAt;
   if (old.sourceContent?.sellingPoints?.length && !patch.sourceContent?.sellingPoints?.length)

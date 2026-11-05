@@ -14,6 +14,7 @@ import {
   unsupportedCompletion,
 } from './platform-product-completion.mjs';
 import { mergePlatformProduct } from './platform-product-data.mjs';
+import { prepareProductIntake } from './product-intake.mjs';
 import { publicProductUrl } from './product-public-enrichment.mjs';
 import {
   archiveResourceEvidence,
@@ -29,7 +30,7 @@ import { collect, saveCheckpoint } from './store.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 export function validatePlatformProducts(input) {
   if (!uuid.test(input.requestId || '')) throw new Error('缺少有效提交编号');
-  if (input.resourceDiscovery === true) return validateResourceInput(input);
+  if (input.resourceDiscovery === true) return { ...validateResourceInput(input), productIntakeVersion: 2 };
   const seeds = [
     ...new Set(
       String(input.terms || '')
@@ -56,6 +57,7 @@ export function validatePlatformProducts(input) {
     throw new Error('请选择 Sorftime、Semrush 或 TikTok Shop 来源');
   const value = {
     kind: 'platform_products',
+    productIntakeVersion: 2,
     seeds,
     market: input.market,
     markets: [input.market],
@@ -795,7 +797,10 @@ export async function runPlatformProducts(job, overrides = {}) {
               (k) => k.term.toLowerCase() === w.term.toLowerCase(),
             );
             const keywordIds = keywords.map((k) => k.id);
-            await io.upsertProduct({ ...p, keywordIds, queryTerms: [w.term] });
+            const prepared = await prepareProductIntake(job, { ...p, keywordIds, queryTerms: [w.term] }, io);
+            cp.logs.push(...prepared.errors);
+            cp.failures += prepared.errors.length;
+            await io.upsertProduct(prepared.product);
             for (const keyword of keywords)
               await io.linkKeyword(keyword, [p.id]);
             if (!existing) cp.productIds.push(p.id);
@@ -803,7 +808,7 @@ export async function runPlatformProducts(job, overrides = {}) {
             if (v.completeAll && w.provider === 'sorftime') {
               if (!cp.detailIds.includes(p.id)) {
                 cp.detailIds.push(p.id);
-                const planned = productCompletionWork(p, v, w.term);
+                const planned = productCompletionWork(p, { ...v, enrich: v.productIntakeVersion === 2 ? false : v.enrich }, w.term);
                 if (planned.length === 0 && (v.enrich || v.trend)) {
                   const state = unsupportedCompletion(
                     p,
@@ -832,7 +837,7 @@ export async function runPlatformProducts(job, overrides = {}) {
               cp.detailIds.length < v.maxDetailProducts
             ) {
               cp.detailIds.push(p.id);
-              if (v.enrich)
+              if (v.enrich && v.productIntakeVersion !== 2)
                 for (const op of [
                   ...(p.sourceMetrics?.rating === undefined ||
                   !p.decisionData?.listing
@@ -880,7 +885,10 @@ export async function runPlatformProducts(job, overrides = {}) {
           if (result.patch) patch = { ...patch, ...result.patch };
           if (result.series?.points.length)
             patch.decisionData = { series: [result.series] };
-          await io.upsertProduct(patch);
+          const prepared = await prepareProductIntake(job, mergePlatformProduct(product, patch), io, { sourceDetails: false });
+          cp.logs.push(...prepared.errors);
+          cp.failures += prepared.errors.length;
+          await io.upsertProduct(prepared.product);
           await setCompletion(
             w,
             result.empty && result.patch?.publicDataEvidence?.errors?.length

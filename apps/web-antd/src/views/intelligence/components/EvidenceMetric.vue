@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Popover } from 'ant-design-vue';
+import ProductText from './ProductText.vue';
 import type { EvidenceMetric } from '../core-list-metrics';
 import {
   metricNatureLabels,
@@ -47,7 +48,8 @@ defineProps<{ metric: EvidenceMetric }>();
       type="button"
       :aria-label="`${metric.label}：${metricText(metric)}，查看来源与口径`"
     >
-      <span class="core-metric-value">{{ metricText(metric) }}</span>
+      <ProductText v-if="metric.originalValue" :translated="metricText(metric)" :text="metric.originalValue" />
+      <span v-else class="core-metric-value">{{ metricText(metric) }}</span>
       <small v-if="metric.value !== null"
         >{{ metric.unit }} · {{ metricNatureLabels[metric.nature] }}</small
       >

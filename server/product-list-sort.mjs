@@ -9,6 +9,7 @@ export function productCollectionTime(product) {
 }
 
 export function displayedSalesOrder(metrics = {}) {
+  if (typeof metrics.monthlySales === 'number' && Number.isFinite(metrics.monthlySales) && metrics.monthlySales >= 0) return metrics.monthlySales;
   if (metrics.soldRaw) {
     const match = /^(\d+(?:\.\d+)?)\s*([kKmM万亿]?)\+?$/.exec(String(metrics.soldRaw).trim().replaceAll(',', ''));
     if (!match) return null;

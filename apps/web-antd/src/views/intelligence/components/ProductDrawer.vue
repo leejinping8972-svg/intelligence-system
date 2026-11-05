@@ -17,7 +17,7 @@ import ProductChineseName from './ProductChineseName.vue';
 import CollectionTime from './CollectionTime.vue';
 import { productCollectedAt } from '../resource-metadata';
 import ProductDecisionTags from './ProductDecisionTags.vue';
-import ProductCompletionDialog from './ProductCompletionDialog.vue';
+import ProductText from './ProductText.vue';
 import { productDataSource } from '../product-decisions';
 import PublicContentLauncher from './PublicContentLauncher.vue';
 import CoreMetricsPanel from './CoreMetricsPanel.vue';
@@ -64,10 +64,9 @@ function addMonitor() {
       />
       <div class="hci-resource-heading">
         <p class="hci-product-brand">
-          {{ product.brand }} · {{ marketName(product.market) }}
+          <ProductText :text="product.brand" :translated="product.brandZh" />{{ marketName(product.market) }}
         </p>
-        <h2 class="hci-resource-title">{{ product.title }}</h2>
-        <ProductChineseName :product="product" />
+        <h2 class="hci-resource-title"><ProductChineseName :product="product" /></h2>
         <p class="hci-subtle">最近采集：<CollectionTime :at="productCollectedAt(product)" /></p>
         <div style="display: flex; gap: 12px; margin: 14px 0">
           <Tag :color="product.reviewed ? 'green' : 'orange'">
@@ -82,7 +81,6 @@ function addMonitor() {
         </div>
       </div></div>
       <Button type="primary" @click="emit('close'); router.push({ path: '/product-research', query: { product: product.id } })">进入商品研究</Button>
-      <ProductCompletionDialog :product-ids="[product.id]" compact />
       <a v-for="item in product.newProductClassifications" :key="item.type + item.observedAt" :href="item.evidenceUrl" target="_blank" rel="noopener noreferrer"><Tag color="green">{{item.label}}{{item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.listingDate}` : ''}}</Tag></a>
       <Tabs>
         <Tabs.TabPane v-if="product.fieldAnalysis" key="field-analysis" tab="AI字段证据"><p>{{product.fieldAnalysis.status === 'pending' ? '待AI分析' : 'AI已分析'}} {{product.fieldAnalysis.analyzedAt}}</p><dl class="hci-detail-grid"><template v-for="(evidence,field) in product.fieldAnalysis.fields" :key="field"><dt>{{field}}</dt><dd><blockquote>{{evidence.quote}}</blockquote><a :href="evidence.url" target="_blank" rel="noreferrer">来源原文</a></dd></template></dl></Tabs.TabPane>
@@ -192,12 +190,12 @@ function addMonitor() {
         <Tabs.TabPane key="decisions" tab="商品决策标签">
           <ProductDecisionTags :product="product" details />
         </Tabs.TabPane>
-        <Tabs.TabPane key="details" tab="配方与规格">
+        <Tabs.TabPane key="details" tab="成分与规格">
           <dl class="hci-detail-grid">
             <dt>包装规格</dt>
-            <dd>{{ product.size }}</dd>
+            <dd><ProductText :text="product.size" :translated="product.sizeZh" /></dd>
             <dt>剂型</dt>
-            <dd>{{ product.form }}</dd>
+            <dd><ProductText :text="product.form" :translated="product.formZh" /></dd>
             <dt>原币种标价</dt>
             <dd class="hci-price">
               {{
@@ -206,13 +204,11 @@ function addMonitor() {
                   : '价格待获取'
               }}
             </dd>
-            <dt>成分原文</dt>
-            <dd>{{ product.ingredient }}</dd>
-            <dt>每份剂量</dt>
-            <dd>{{ product.dose }}</dd>
+            <dt>成分</dt>
+            <dd><ProductText :text="product.ingredient" :translated="product.ingredientZh" /></dd>
             <dt>竞品宣称</dt>
             <dd>
-              {{ product.claim }}
+              <ProductText :text="product.claim" :translated="product.claimZh" />
               <div class="hci-subtle">营销宣称示例，不代表科学验证的功效</div>
             </dd>
             <dt>采集完整度</dt>
@@ -226,11 +222,11 @@ function addMonitor() {
           <h3 class="hci-section-heading">{{ product.sourceProvider ? '平台商品卖点原文' : '官网功效卖点提取' }}</h3>
           <div class="hci-compact-tags" style="margin: 12px 0">
             <Tag
-              v-for="benefit in product.benefits"
+              v-for="(benefit, index) in product.benefits"
               :key="benefit"
               color="green"
             >
-              {{ benefit }}
+              <ProductText :text="benefit" :translated="product.benefitsZh?.[index]" />
             </Tag>
           </div>
           <div class="hci-evidence">

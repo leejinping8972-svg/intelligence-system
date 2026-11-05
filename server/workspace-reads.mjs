@@ -42,7 +42,7 @@ const listKeys = {
   keywords:
     'id term termZh batch market category source growth seedTerm collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
-    'id title titleZh publicDataEvidence brand market category form size price currency ingredient dose claim benefits benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications',
+    'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications',
   sites:
     'id brand domain market platform type keyword keywordIds category mainProducts ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand brandZh market platform headline headlineZh copy copyZh sellingPointZh format productId status color archiveId pageId keywordIds query collectionBatches siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
@@ -848,9 +848,10 @@ export function createWorkspaceReads({
       const field = (path) => sql(`r.payload${path.split('.').map((part) => `->'${part}'`).join('')}`, `JSON_EXTRACT(r.payload,'$.${path}')`);
       const pairs = [
         "'price'", field('price'), "'market'", field('market'), "'lastCollectedAt'", field('lastCollectedAt'),
-        "'sourceMetrics'", sql('jsonb_build_object', 'JSON_OBJECT') + `('collectedAt',${field('sourceMetrics.collectedAt')},'soldRaw',${field('sourceMetrics.soldRaw')},'soldCount',${field('sourceMetrics.soldCount')})`,
+        "'sourceMetrics'", sql('jsonb_build_object', 'JSON_OBJECT') + `('collectedAt',${field('sourceMetrics.collectedAt')},'soldRaw',${field('sourceMetrics.soldRaw')},'soldCount',${field('sourceMetrics.soldCount')},'monthlySales',${field('sourceMetrics.monthlySales')})`,
         "'sourceContent'", sql('jsonb_build_object', 'JSON_OBJECT') + `('collectedAt',${field('sourceContent.collectedAt')})`,
         "'decisionData'", field('decisionData'),
+        ...['sourcePlatform', 'sourceProvider', 'sourceMarket', 'sourceUrl', 'evidenceUrl'].flatMap(key => [`'${key}'`, field(key)]),
       ];
       const metadata = (await pool.query(`SELECT r.id,${sql('jsonb_build_object', 'JSON_OBJECT')}(${pairs.join(',')}) AS sort_data FROM workspace_read_rows r WHERE ${query.where}`, query.values)).rows;
       const ordered = metadata.map((row) => ({ id: row.id, value: productSortValue(typeof row.sort_data === 'string' ? JSON.parse(row.sort_data) : row.sort_data, input.sort) }))

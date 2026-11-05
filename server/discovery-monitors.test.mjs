@@ -339,7 +339,7 @@ test('Reddit/Quora use observed search_name and reddit_id/quora_id; dates are fi
     [],
   );
 });
-test('Special Ingredients coconut oil and serving size cannot become a formula or dose', () => {
+test('Special Ingredients can supply mentioned ingredients; serving size is not a dose', () => {
   const p = normalizeAmazon(
     { asin: 'B000000001', title: 'Prebiotic Fiber Gummies' },
     'US',
@@ -379,12 +379,13 @@ test('Special Ingredients coconut oil and serving size cannot become a formula o
     },
     sample,
   );
-  assert.deepEqual(result.patch, {});
+  assert.equal(result.patch.ingredient, 'Coconut Oil');
+  assert.equal(result.patch.dose, undefined);
   const pending = pendingSourceFields('products', {
     ...p,
     ingredient: 'Coconut Oil',
   });
-  assert.equal(withFormulaIntelligence(pending).formula.status, 'unknown');
+  assert.equal(pending.ingredient, 'Coconut Oil');
 });
 test('AI mapping requires exact source ID, contiguous quote, formula role, ingredient amount and no negation', () => {
   const p = {
@@ -476,7 +477,7 @@ test('ingredient findings only include cited, dated records and deduplicate ment
   assert.equal(result[0].mentions.length, 1);
 });
 
-test('source marketplaces remain explicit and analyzed omissions clear previously guessed semantic fields', async () => {
+test('source marketplaces remain explicit and AI omissions preserve collected fields', async () => {
   const s = client(
     [tool('product_search', { amz_site: country, attribute_name: string })],
     { data: [{ asin: 'B000000001', title: 'Dietary supplement' }] },
@@ -518,8 +519,8 @@ test('source marketplaces remain explicit and analyzed omissions clear previousl
     },
     cleared,
   );
-  assert.doesNotMatch(merged.ingredient, /Coconut/);
-  assert.deepEqual(merged.ingredientInsights, []);
+  assert.equal(merged.ingredient, 'Coconut Oil');
+  assert.equal(merged.dose, '2 gummies');
 });
 
 test('multi-channel first pass and AI processing continue beyond the legacy call cap', async () => {

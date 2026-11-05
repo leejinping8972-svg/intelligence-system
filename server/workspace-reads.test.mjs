@@ -328,7 +328,7 @@ async function exerciseReadModel(
   });
   await drain();
   const projectedMetric = (await reads.list({ collection: 'products', search: 'Metric QA' })).rows[0];
-  assert.equal(projectedMetric.coreSummary.periods[30].find((metric) => metric.key === 'sales').value, 60);
+  assert.equal(projectedMetric.coreSummary.periods[30].some((metric) => ['sales', 'dailySales'].includes(metric.key)), false);
   assert.equal(projectedMetric.decisionData, undefined);
   assert.deepEqual((await reads.details({ collection: 'keywords', id: 'k0' })).record.coreSummary.related.expansions, [{ term: keyword(2).term, source: 'Google搜索联想' }]);
   const fullExport = await reads.exportRecords({ collection: 'products', ids: ['metric-qa', 'p0'] });

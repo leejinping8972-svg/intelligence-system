@@ -1,5 +1,17 @@
 // Pure rules shared by API persistence and the UI. Observation dates never prove launch dates.
 const DAY = 86_400_000;
+export function productListingEvidence(item) {
+  const listing = item.decisionData?.listing;
+  if (!listing || (listing.platform && listing.market)) return listing;
+  // Older discovery writes omitted context while retaining the same source identity.
+  if (listing.provider !== 'Sorftime' || item.sourceProvider !== 'Sorftime' ||
+      !item.sourcePlatform || !listing.sourceMarket ||
+      listing.sourceMarket !== (item.sourceMarket || item.market) ||
+      listing.evidenceUrl !== (item.sourceUrl || item.evidenceUrl) ||
+      (listing.platform && listing.platform !== item.sourcePlatform) ||
+      (listing.market && listing.market !== item.market)) return listing;
+  return { ...listing, platform: listing.platform || item.sourcePlatform, market: listing.market || item.market };
+}
 export function validDiscoveryDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value))
     return undefined;
@@ -19,7 +31,7 @@ export function discoveryDecision(item, kind, now = Date.now()) {
     observed !== undefined &&
     Date.parse(first) <= now &&
     now - observed < 8 * DAY;
-  const listing = item.decisionData?.listing;
+  const listing = productListingEvidence(item);
   const isProduct = kind === 'product';
   const date = isProduct ? listing?.date : item.startDate;
   const source = isProduct ? listing?.provider : item.source;

@@ -257,6 +257,13 @@ export interface Product {
   id: string;
   title: string;
   titleZh?: string;
+  brandZh?: string;
+  categoryZh?: string;
+  formZh?: string;
+  sizeZh?: string;
+  ingredientZh?: string;
+  claimZh?: string;
+  benefitsZh?: string[];
   brand: string;
   market: Market;
   category: string;

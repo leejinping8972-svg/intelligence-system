@@ -433,6 +433,8 @@ export function normalizeDiscoveryProduct(row, request, at) {
         date,
         sourceField: dateKey || 'listingDate',
         provider: 'Sorftime',
+        platform: product.sourcePlatform,
+        market: product.market,
         collectedAt: at,
         evidenceUrl: product.sourceUrl,
         sourceMarket: product.sourceMarket || request.market,

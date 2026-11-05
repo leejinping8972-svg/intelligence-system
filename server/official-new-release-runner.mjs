@@ -3,12 +3,9 @@ import {
   newProductEvidence,
   stableId,
 } from './discovery-monitor-domain.mjs';
-import {
-  pendingSourceFields,
-  sourceFieldSample,
-} from './source-field-domain.mjs';
+import { prepareProductIntake } from './product-intake.mjs';
 
-// One journaled request per runner turn. Frozen pre-migration jobs retain their old runner.
+// Each product's source and AI requests are journaled before it is saved.
 export async function runOfficialNewReleases(job, io) {
   const plan = job.input.plan;
   const cp = structuredClone(job.checkpoint);
@@ -78,27 +75,18 @@ export async function runOfficialNewReleases(job, io) {
         else cp.skipped.fulfillmentUnknown++;
       } else {
         const p = item.product;
-        const sample = sourceFieldSample('products', p);
-        const result = await io.collect(job, `classify:${stableId(p.id)}`, {
-          sources: ['field_analysis'],
-          sample,
-        });
-        if (result.analysis.supplement && !(await cancelled())) {
+        const prepared = await prepareProductIntake(job, p, { ...io, isCancelled: cancelled }, { detailLoaded: true, legacyAnalysisStep: `classify:${stableId(p.id)}` });
+        cp.failures.push(...prepared.errors);
+        if (prepared.analysis?.supplement !== false && !(await cancelled())) {
           const evidence = newProductEvidence(p, plan, cp.asOf);
           if (evidence) {
             await io.upsertProduct({
-              ...pendingSourceFields('products', p),
-              ...result.patch,
-              fieldAnalysis: {
-                ...result.analysis,
-                model: result.model,
-                sources: sample.sources,
-              },
+              ...prepared.product,
               newProductClassifications: [evidence],
             });
             cp.products++;
           }
-        } else if (!result.analysis.supplement) cp.skipped.notSupplement++;
+        } else if (prepared.analysis?.supplement === false) cp.skipped.notSupplement++;
       }
     } else if (cp.work.length && cp.seen.length < plan.maxProducts) {
       const work = cp.work.shift();

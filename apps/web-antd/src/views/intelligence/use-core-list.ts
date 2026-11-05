@@ -12,9 +12,7 @@ const presets: Record<CoreKind, Array<[string, string]>> = {
   products: [
     ['priceOriginal', '原币价格'],
     ['priceUsd', '美元对比价'],
-    ['sales', '所选周期销量'],
-    ['dailySales', '日均件数'],
-    ['ingredients', '成分与剂量'],
+    ['ingredients', '成分'],
     ['claim', '品牌宣称'],
   ],
   sites: [

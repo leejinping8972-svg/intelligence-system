@@ -497,14 +497,16 @@ var publicEvidenceReasons = {
   product_response_mismatch: "\u8FD4\u56DE\u9875\u9762\u4E0E\u8BF7\u6C42\u5546\u54C1\u4E0D\u4E00\u81F4",
   invalid_product_json: "\u5B98\u7F51\u5546\u54C1\u6570\u636E\u683C\u5F0F\u65E0\u6CD5\u8BC6\u522B",
   conflicting_public_values: "\u516C\u5F00\u6765\u6E90\u5B57\u6BB5\u76F8\u4E92\u51B2\u7A81\uFF0C\u9700\u6838\u5B9E",
-  request_limit: "\u8BF7\u6C42\u9884\u7B97\u5DF2\u7528\u5B8C\uFF0C\u672A\u5B8C\u6210\u5B57\u6BB5\u6838\u9A8C"
+  request_limit: "\u8BF7\u6C42\u9884\u7B97\u5DF2\u7528\u5B8C\uFF0C\u672A\u5B8C\u6210\u5B57\u6BB5\u6838\u9A8C",
+  page_limit: "\u8FBE\u5230\u9875\u9762\u4E0A\u9650\uFF0C\u672A\u5B8C\u6210\u5B57\u6BB5\u6838\u9A8C",
+  redirect_limit: "\u9875\u9762\u8FDE\u7EED\u8DF3\u8F6C\u8FC7\u591A\uFF0C\u672A\u5B8C\u6210\u5B57\u6BB5\u6838\u9A8C"
 };
 function publicEvidenceReason(reason) {
   return publicEvidenceReasons[reason] || "\u672A\u53D6\u5F97\u53EF\u6838\u9A8C\u7684\u516C\u5F00\u5B57\u6BB5";
 }
 function publicEvidenceStatus(reason) {
   if (reason === "not_publicly_provided") return "not_disclosed";
-  if (reason === "request_limit") return "budget_limited";
+  if (["request_limit", "page_limit"].includes(reason)) return "budget_limited";
   if (reason === "unsupported_product_url") return "unsupported";
   if (["rate_limited", "request_failed", "product_redirect_mismatch", "product_response_mismatch", "invalid_product_json"].includes(reason)) return "failed";
   return "unverified";
@@ -512,6 +514,12 @@ function publicEvidenceStatus(reason) {
 
 // server/discovery-newness.mjs
 var DAY2 = 864e5;
+function productListingEvidence(item) {
+  const listing = item.decisionData?.listing;
+  if (!listing || listing.platform && listing.market) return listing;
+  if (listing.provider !== "Sorftime" || item.sourceProvider !== "Sorftime" || !item.sourcePlatform || !listing.sourceMarket || listing.sourceMarket !== (item.sourceMarket || item.market) || listing.evidenceUrl !== (item.sourceUrl || item.evidenceUrl) || listing.platform && listing.platform !== item.sourcePlatform || listing.market && listing.market !== item.market) return listing;
+  return { ...listing, platform: listing.platform || item.sourcePlatform, market: listing.market || item.market };
+}
 function validDiscoveryDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value))
     return void 0;
@@ -525,7 +533,7 @@ function discoveryDecision(item, kind, now = Date.now()) {
   const first = item.discovery?.firstSeenAt || item.firstSeenAt;
   const observed = validDiscoveryDate(first);
   const recentDiscovery = observed !== void 0 && Date.parse(first) <= now && now - observed < 8 * DAY2;
-  const listing = item.decisionData?.listing;
+  const listing = productListingEvidence(item);
   const isProduct = kind === "product";
   const date2 = isProduct ? listing?.date : item.startDate;
   const source = isProduct ? listing?.provider : item.source;
@@ -645,7 +653,8 @@ function productSales(p, days) {
     const points = s.points.filter(
       (v) => !v.partial && validNumber(v.value) && Number.isFinite(Date.parse(v.start)) && Number.isFinite(Date.parse(v.end)) && v.end >= v.start
     ).toSorted((a, b) => a.start.localeCompare(b.start));
-    let cursor = bounds.start, total = 0;
+    let cursor = bounds.start;
+    let total = 0;
     for (const point of points) {
       const next = isoDay(Date.parse(`${point.end}T00:00:00Z`) + DAY3);
       if (point.start !== cursor || next > bounds.end) continue;
@@ -709,7 +718,7 @@ function productSales(p, days) {
   if (sales.value === null && completion)
     sales = {
       ...sales,
-      status: ["done", "completed", "collected"].includes(completion.status) ? "accumulating" : missingStatus(completion.status, completion.message),
+      status: ["collected", "completed", "done"].includes(completion.status) ? "accumulating" : missingStatus(completion.status, completion.message),
       reason: `${completion.message}\uFF1B${sales.reason}`
     };
   const daily = metric(
@@ -729,7 +738,8 @@ function productSales(p, days) {
   return [sales, daily];
 }
 function productMetrics(p, days, context = {}) {
-  const meta = productMeta(p), sm = p.sourceMetrics;
+  const meta = productMeta(p);
+  const sm = p.sourceMetrics;
   const fieldTime = (key) => p.coreEvidence?.fieldUpdatedAt?.[key] || meta.collectedAt;
   const fx = context.fx || p.coreEvidence?.fx;
   const price = p.price > 0 || p.collectionFields?.includes("price") ? p.price : null;
@@ -747,9 +757,27 @@ function productMetrics(p, days, context = {}) {
   const publicCompletion = p.dataCompletion?.public_detail;
   const missingPublicMetric = (field) => {
     const evidence = publicEvidence?.[field];
-    if (publicCompletion && ["queued", "running", "failed", "unknown", "cancelled", "unsupported"].includes(publicCompletion.status) && (!publicEvidence || Date.parse(publicCompletion.at || "") >= Date.parse(publicEvidence.checkedAt)))
-      return { status: missingStatus(publicCompletion.status, publicCompletion.message), reason: publicCompletion.message, collectedAt: publicCompletion.at || "" };
-    return evidence ? { status: publicEvidenceStatus(evidence.reason), reason: publicEvidenceReason(evidence.reason), collectedAt: publicEvidence.checkedAt } : {};
+    if (publicCompletion && [
+      "cancelled",
+      "failed",
+      "queued",
+      "running",
+      "unknown",
+      "unsupported"
+    ].includes(publicCompletion.status) && (!publicEvidence || Date.parse(publicCompletion.at || "") >= Date.parse(publicEvidence.checkedAt)))
+      return {
+        status: missingStatus(
+          publicCompletion.status,
+          publicCompletion.message
+        ),
+        reason: publicCompletion.message,
+        collectedAt: publicCompletion.at || ""
+      };
+    return evidence ? {
+      status: publicEvidenceStatus(evidence.reason),
+      reason: publicEvidenceReason(evidence.reason),
+      collectedAt: publicEvidence.checkedAt
+    } : {};
   };
   const result = [
     ...productSales(p, days),
@@ -767,8 +795,8 @@ function productMetrics(p, days, context = {}) {
     metric(
       p,
       "cumulativeSold",
-      sm?.soldPeriod === "unspecified" ? "\u5B98\u7F51\u5C55\u793A\u9500\u91CF" : sm?.soldProvider ? "\u5B98\u7F51\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E" : "\u5E73\u53F0\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E",
-      raw || (validNumber(sold) ? sold : null),
+      validNumber(sm?.monthlySales) ? "\u6765\u6E90\u6708\u9500\u91CF" : sm?.soldPeriod === "unspecified" ? "\u5B98\u7F51\u5C55\u793A\u9500\u91CF" : sm?.soldProvider ? "\u5B98\u7F51\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E" : "\u5E73\u53F0\u7D2F\u8BA1\u5C55\u793A\u5DF2\u552E",
+      validNumber(sm?.monthlySales) ? sm.monthlySales : raw || (validNumber(sold) ? sold : null),
       "\u4EF6",
       {
         ...meta,
@@ -776,10 +804,10 @@ function productMetrics(p, days, context = {}) {
         platform: sm?.soldPlatform || meta.platform,
         evidenceUrl: sm?.soldEvidenceUrl || meta.evidenceUrl,
         collectedAt: sm?.soldCollectedAt || meta.collectedAt,
-        period: sm?.soldPeriod === "unspecified" ? "\u5B98\u7F51\u5C55\u793A\uFF1B\u7EDF\u8BA1\u5468\u671F\u672A\u660E\u786E\uFF1B\u5F53\u524D\u5FEB\u7167" : "\u7D2F\u8BA1\u8D77\u7B97\u65E5\u672A\u77E5\uFF1B\u5F53\u524D\u5FEB\u7167",
+        period: validNumber(sm?.monthlySales) ? "\u6765\u6E90\u6708\u5EA6\u53E3\u5F84" : sm?.soldPeriod === "unspecified" ? "\u5B98\u7F51\u5C55\u793A\uFF1B\u7EDF\u8BA1\u5468\u671F\u672A\u660E\u786E\uFF1B\u5F53\u524D\u5FEB\u7167" : "\u7D2F\u8BA1\u8D77\u7B97\u65E5\u672A\u77E5\uFF1B\u5F53\u524D\u5FEB\u7167",
         precision: sm?.soldPrecision || "\u672A\u77E5",
-        reason: raw || validNumber(sold) ? (sm?.soldPeriod === "unspecified" ? "\u4FDD\u7559\u5B98\u7F51\u5C55\u793A\u539F\u6587\u53CA\u52A0\u53F7\uFF0C\u4E0D\u63A8\u7B97\u7CBE\u786E\u9500\u91CF\u6216\u5468\u671F\u9500\u91CF" : "\u7D2F\u8BA1\u5C55\u793A\u4E0D\u7B49\u4E8E\u5468\u671F\u9500\u91CF\u6216\u51C0\u6210\u4EA4") + (sm?.soldSourceField ? "\uFF1B\u6765\u6E90\u5B57\u6BB5\uFF1A" + sm.soldSourceField : "") : "\u6765\u6E90\u672A\u8FD4\u56DE\u660E\u786E\u7684\u7D2F\u8BA1\u552E\u51FA\u4EF6\u6570",
-        ...!raw && !validNumber(sold) ? missingPublicMetric("sold") : {}
+        reason: validNumber(sm?.monthlySales) ? "\u6765\u6E90\u62A5\u544A\u6708\u9500\u91CF\uFF1BAmazon\u4E3A\u7B2C\u4E09\u65B9\u4F30\u7B97" : raw || validNumber(sold) ? (sm?.soldPeriod === "unspecified" ? "\u4FDD\u7559\u5B98\u7F51\u5C55\u793A\u539F\u6587\u53CA\u52A0\u53F7\uFF0C\u4E0D\u63A8\u7B97\u7CBE\u786E\u9500\u91CF\u6216\u5468\u671F\u9500\u91CF" : "\u7D2F\u8BA1\u5C55\u793A\u4E0D\u7B49\u4E8E\u5468\u671F\u9500\u91CF\u6216\u51C0\u6210\u4EA4") + (sm?.soldSourceField ? "\uFF1B\u6765\u6E90\u5B57\u6BB5\uFF1A" + sm.soldSourceField : "") : "\u6765\u6E90\u672A\u8FD4\u56DE\u660E\u786E\u7684\u7D2F\u8BA1\u552E\u51FA\u4EF6\u6570",
+        ...!validNumber(sm?.monthlySales) && !raw && !validNumber(sold) ? missingPublicMetric("sold") : {}
       }
     ),
     metric(
@@ -804,20 +832,38 @@ function productMetrics(p, days, context = {}) {
       reason: usdReason,
       precision: fx ? `1 USD = ${rate} ${p.currency}` : void 0
     }),
-    metric(p, "priceOriginal", "\u539F\u5E01\u4EF7\u683C", price, p.currency, {
-      ...meta,
-      collectedAt: fieldTime("price"),
-      period: "\u5F53\u524D\u62A5\u4EF7\uFF1B\u7A0E\u8D39/\u8FD0\u8D39\u662F\u5426\u5305\u542B\u672A\u77E5"
-    }),
+    metric(
+      p,
+      "priceOriginal",
+      p.priceEvidence?.kind === "discount" ? "\u539F\u5E01\u4EF7\u683C\uFF08\u6298\u540E\u4EF7\uFF09" : "\u539F\u5E01\u4EF7\u683C",
+      price,
+      p.currency,
+      {
+        ...meta,
+        collectedAt: fieldTime("price"),
+        period: "\u5F53\u524D\u62A5\u4EF7\uFF1B\u7A0E\u8D39/\u8FD0\u8D39\u662F\u5426\u5305\u542B\u672A\u77E5",
+        ...price === null && p.catalogEvidenceUrl?.includes("westmonth.com") ? {
+          reason: "\u897F\u4E4B\u6708\u63A5\u53E3\u672A\u8FD4\u56DE\u6298\u540E\u4EF7\uFF0C\u8BF7\u5728\u6570\u636E\u6E90\u4E0E\u8BBE\u7F6E\u68C0\u67E5\u767B\u5F55\u4F1A\u8BDD\u540E\u8865\u5168\u5546\u54C1",
+          status: "not_disclosed"
+        } : {},
+        ...p.priceEvidence?.kind === "discount" ? {
+          source: p.priceEvidence.provider,
+          collectedAt: p.priceEvidence.collectedAt,
+          evidenceUrl: p.priceEvidence.evidenceUrl,
+          reason: "\u91C7\u7528\u5B98\u7F51\u6298\u540E\u4EF7\uFF1B\u6307\u5BFC\u4EF7\u4E0D\u4F5C\u4E3A\u5F53\u524D\u4EF7\u683C"
+        } : {}
+      }
+    ),
     metric(
       p,
       "spec",
       "\u89C4\u683C / \u5242\u578B",
-      meaningful(p.size) ? `${p.size} / ${p.form}` : null,
+      meaningful(p.size) ? `${p.sizeZh || p.size} / ${p.formZh || p.form}` : null,
       "\u539F\u6587",
       {
         ...meta,
         collectedAt: fieldTime("size"),
+        originalValue: p.sizeZh || p.formZh ? `${p.size} / ${p.form}` : "",
         nature: "platform_display",
         period: "\u5F53\u524D\u5546\u54C1\u6807\u7B7E"
       }
@@ -825,20 +871,22 @@ function productMetrics(p, days, context = {}) {
     metric(
       p,
       "ingredients",
-      "\u6210\u5206\u4E0E\u6BCF\u4EFD\u5242\u91CF",
-      meaningful(p.ingredient) ? `${p.ingredient}\uFF1B${p.dose || "\u5242\u91CF\u672A\u77E5"}` : null,
+      "\u6210\u5206",
+      meaningful(p.ingredient) ? p.ingredientZh || p.ingredient : null,
       "\u539F\u6587",
       {
         ...meta,
         collectedAt: fieldTime("ingredient"),
-        reason: p.coreEvidence?.fieldUpdatedAt?.dose ? `\u5242\u91CF\u5B57\u6BB5\u91C7\u96C6\u65F6\u95F4 ${p.coreEvidence.fieldUpdatedAt.dose}` : "\u5242\u91CF\u5B57\u6BB5\u91C7\u96C6\u65F6\u95F4\u672A\u5355\u72EC\u8BB0\u5F55",
+        originalValue: p.ingredientZh ? p.ingredient : "",
+        reason: "\u4ECE\u5546\u54C1\u6807\u9898\u3001\u63CF\u8FF0\u6216\u8BE6\u60C5\u63D0\u53D6\u7684\u6210\u5206",
         nature: p.collectionFields?.includes("ingredients") || p.formula?.status === "verified" ? "platform_display" : "unknown",
         period: "\u5F53\u524D\u5546\u54C1\u6807\u7B7E"
       }
     ),
-    metric(p, "claim", "\u54C1\u724C\u529F\u6548\u5BA3\u79F0", p.claim || null, "\u539F\u6587", {
+    metric(p, "claim", "\u54C1\u724C\u529F\u6548\u5BA3\u79F0", p.claimZh || p.claim || null, "\u6587\u672C", {
       ...meta,
       collectedAt: fieldTime("claim"),
+      originalValue: p.claimZh ? p.claim : "",
       nature: "brand_claim",
       period: "\u5F53\u524D\u54C1\u724C\u63CF\u8FF0",
       reason: p.claim ? "\u54C1\u724C\u8868\u8FF0\uFF0C\u4E0D\u4EE3\u8868\u5DF2\u9A8C\u8BC1\u7597\u6548" : "\u672A\u83B7\u53D6\u54C1\u724C\u5BA3\u79F0"
@@ -847,11 +895,12 @@ function productMetrics(p, days, context = {}) {
       p,
       "sellingPoints",
       "\u5356\u70B9",
-      p.sourceContent?.sellingPoints?.join("\uFF1B") || p.benefits?.join("\uFF1B") || null,
+      p.benefitsZh?.join("\uFF1B") || p.sourceContent?.sellingPoints?.join("\uFF1B") || p.benefits?.join("\uFF1B") || null,
       "\u6587\u672C",
       {
         ...meta,
         collectedAt: fieldTime("benefits"),
+        originalValue: p.benefitsZh?.length ? p.benefits?.join("\uFF1B") : "",
         nature: sellingNature,
         period: "\u5F53\u524D\u5546\u54C1\u63CF\u8FF0",
         reason: p.sourceContent?.sellingPoints?.length ? "\u6765\u6E90\u660E\u786E\u8FD4\u56DE\u7684\u5356\u70B9\u539F\u6587\uFF0C\u4E0D\u4EE3\u8868\u7597\u6548\u9A8C\u8BC1" : p.benefitEvidence || "\u672A\u8BB0\u5F55\u5F52\u7EB3\u4F9D\u636E"
@@ -878,7 +927,8 @@ function productMetrics(p, days, context = {}) {
   const snapshots = (p.coreEvidence?.history || []).filter(
     (s) => s.market === p.market && s.scope === p.sourceProductId && s.source === meta.source && s.soldPrecision === "exact" && validNumber(s.sold)
   );
-  const a = snapshots[0], b = snapshots.at(-1);
+  const a = snapshots[0];
+  const b = snapshots.at(-1);
   if (a && b && a.at !== b.at) {
     const reset = snapshots.some(
       (s, i) => s.sold < (snapshots[i - 1]?.sold ?? s.sold)
@@ -969,7 +1019,8 @@ function siteMetrics(s, context = {}) {
   const comparable = history.filter(
     (h) => h.market === s.market && h.source === m?.source && validNumber(h.organicTraffic)
   );
-  const a = comparable.at(-2), b = comparable.at(-1);
+  const a = comparable.at(-2);
+  const b = comparable.at(-1);
   result.push(
     metric(
       s,
@@ -991,9 +1042,7 @@ function siteMetrics(s, context = {}) {
   const ads = (context.complete === false ? void 0 : context.ads)?.filter(
     (a2) => a2.market === s.market && a2.siteIds?.includes(s.id)
   );
-  const products = (context.complete === false ? void 0 : context.products)?.filter(
-    (p) => p.market === s.market && p.siteId === s.id
-  );
+  const products = (context.complete === false ? void 0 : context.products)?.filter((p) => p.market === s.market && p.siteId === s.id);
   const observed = {
     ...meta,
     source: "\u7CFB\u7EDF\u5173\u8054\u8BB0\u5F55",
@@ -1010,23 +1059,17 @@ function siteMetrics(s, context = {}) {
       status: adCount !== void 0 ? "available" : "unverified",
       reason: "\u89C2\u5BDF\u6570\u91CF\u4E0D\u4EE3\u8868\u76C8\u5229\u6216\u5168\u91CF\u6295\u653E"
     }),
-    metric(
-      s,
-      "linkedProducts",
-      "\u5546\u54C1\u8986\u76D6",
-      productCount ?? null,
-      "\u4EF6\u5DF2\u4FDD\u5B58",
-      {
-        ...observed,
-        status: productCount !== void 0 ? "available" : "unverified",
-        reason: "\u5DF2\u4FDD\u5B58\u5546\u54C1\u8986\u76D6\uFF0C\u4E0D\u662F\u5168\u7AD9\u5546\u54C1\u603B\u6570"
-      }
-    )
+    metric(s, "linkedProducts", "\u5546\u54C1\u8986\u76D6", productCount ?? null, "\u4EF6\u5DF2\u4FDD\u5B58", {
+      ...observed,
+      status: productCount !== void 0 ? "available" : "unverified",
+      reason: "\u5DF2\u4FDD\u5B58\u5546\u54C1\u8986\u76D6\uFF0C\u4E0D\u662F\u5168\u7AD9\u5546\u54C1\u603B\u6570"
+    })
   );
   const uses = [];
   if (related?.hasIngredients ?? products?.some((p) => meaningful(p.ingredient)))
     uses.push("\u914D\u65B9\u53C2\u8003\uFF1A\u6709\u5173\u8054\u5546\u54C1\u6210\u5206\u539F\u6587");
-  if (related?.hasPrices ?? products?.some((p) => p.price > 0)) uses.push("\u4EF7\u683C\u53C2\u8003\uFF1A\u6709\u516C\u5F00\u5546\u54C1\u62A5\u4EF7");
+  if (related?.hasPrices ?? products?.some((p) => p.price > 0))
+    uses.push("\u4EF7\u683C\u53C2\u8003\uFF1A\u6709\u516C\u5F00\u5546\u54C1\u62A5\u4EF7");
   if (related?.hasCreatives ?? ads?.some((a2) => a2.imageUrls?.length || a2.videoUrls?.length))
     uses.push("\u7D20\u6750\u53C2\u8003\uFF1A\u6709\u53EF\u56DE\u67E5\u5173\u8054\u5E7F\u544A");
   if (s.evidenceUrl || s.domain) uses.push("\u843D\u5730\u9875\u53C2\u8003\uFF1A\u6709\u516C\u5F00\u7AD9\u70B9\u94FE\u63A5");
@@ -1101,10 +1144,10 @@ function adMetrics(a, context = {}) {
     metric(
       a,
       "sellingPoints",
-      "\u7D20\u6750\u5356\u70B9\u539F\u6587",
-      a.headline || a.copy || null,
-      "\u539F\u6587",
-      { ...meta, nature: "brand_claim" }
+      "\u7D20\u6750\u5356\u70B9\u4E2D\u6587",
+      a.sellingPointZh || null,
+      "\u4E2D\u6587\u8BD1\u6587",
+      { ...meta, nature: "brand_claim", reason: a.sellingPointZh ? "\u5E7F\u544A\u4E3B\u539F\u6587\u7684\u4E2D\u6587\u8BD1\u6587\uFF0C\u4E0D\u4EE3\u8868\u7597\u6548\u5DF2\u9A8C\u8BC1\uFF1B\u539F\u6587\u89C1\u5E7F\u544A\u8BE6\u60C5" : "\u5C1A\u65E0\u7ECF\u6765\u6E90\u6838\u5BF9\u7684\u4E2D\u6587\u8BD1\u6587\uFF0C\u53EF\u9009\u4E2D\u5E7F\u544A\u4F7F\u7528AI\u6574\u7406\u5B57\u6BB5" }
     ),
     metric(
       a,
@@ -1143,24 +1186,6 @@ function adMetrics(a, context = {}) {
       { ...meta, nature: "system_observation" }
     )
   ];
-  for (const [key, label, unit] of [
-    ["spend", "\u5E7F\u544A\u82B1\u8D39", "\u539F\u5E01"],
-    ["impressions", "\u66DD\u5149", "\u6B21"],
-    ["clicks", "\u70B9\u51FB", "\u6B21"],
-    ["purchases", "\u8D2D\u4E70", "\u8BA2\u5355"],
-    ["roas", "ROAS", "\u500D"]
-  ]) {
-    const supported = a.coreEvidence?.metrics?.find(
-      (v) => v.key === key && v.market === a.market && v.source && v.nature !== "unknown"
-    );
-    result.push(
-      supported || metric(a, key, label, null, unit, {
-        ...meta,
-        status: "unsupported",
-        reason: "\u5F53\u524D\u516C\u5F00\u6765\u6E90\u672A\u63D0\u4F9B\u53EF\u6838\u9A8C\u7ECF\u8425\u6307\u6807"
-      })
-    );
-  }
   const history = a.coreEvidence?.history || [];
   result.push(
     metric(
@@ -1228,7 +1253,8 @@ function keywordMetrics(k, days, context = {}) {
       status: trend.change === null ? "accumulating" : "available"
     })
   ];
-  const top = k.trendRelatedTop, rising = k.trendRelatedRising;
+  const rising = k.trendRelatedRising;
+  const top = k.trendRelatedTop;
   for (const [key, label, list] of [
     ["relatedTop", "\u70ED\u95E8\u76F8\u5173\u67E5\u8BE2", top],
     ["relatedRising", "\u4E0A\u5347\u76F8\u5173\u67E5\u8BE2", rising]
@@ -1330,7 +1356,7 @@ function coreMetrics(kind, record, days = 30, context = {}) {
   let metrics;
   switch (kind) {
     case "products": {
-      metrics = productMetrics(record, days, context);
+      metrics = productMetrics(record, days, context).filter((metric2) => !["sales", "dailySales"].includes(metric2.key));
       break;
     }
     case "sites": {
@@ -1346,6 +1372,7 @@ function coreMetrics(kind, record, days = 30, context = {}) {
     }
   }
   for (const summary of record.coreSummary?.periods?.[days] || []) {
+    if (kind === "products" && ["sales", "dailySales"].includes(summary.key)) continue;
     const index = metrics.findIndex((item) => item.key === summary.key);
     if (index < 0) metrics.push(summary);
     else metrics[index] = summary;
@@ -2310,7 +2337,7 @@ function productDecisions(product, now = Date.now()) {
     );
     const states = steps.map(([, value]) => value);
     let label = stale ? "\u8D8B\u52BF\u6570\u636E\u8FC7\u65E7" : "\u8D8B\u52BF\u672A\u8BF7\u6C42";
-    let reason = stale ? "\u5386\u53F2\u6570\u636E\u5DF2\u8D85\u8FC7\u65F6\u6548\u7A97\u53E3\uFF0C\u6682\u4E0D\u7528\u4E8E\u5F53\u524D\u8D8B\u52BF\u5224\u65AD\u3002" : "\u8BE5\u5546\u54C1\u5C1A\u672A\u5B8C\u6210\u5386\u53F2\u8BF7\u6C42\uFF1B\u53EF\u5728\u5546\u54C1\u5E93\u70B9\u51FB\u8865\u5168\u5546\u54C1\u6570\u636E\u3002";
+    let reason = stale ? "\u5386\u53F2\u6570\u636E\u5DF2\u8D85\u8FC7\u65F6\u6548\u7A97\u53E3\uFF0C\u6682\u4E0D\u7528\u4E8E\u5F53\u524D\u8D8B\u52BF\u5224\u65AD\u3002" : "\u8BE5\u5546\u54C1\u5C1A\u672A\u5B8C\u6210\u5386\u53F2\u8BF7\u6C42\uFF1B\u5546\u54C1\u91C7\u96C6\u65F6\u4F1A\u81EA\u52A8\u6574\u7406\u53EF\u7528\u8D44\u6599\u3002";
     if (states.some((s) => ["queued", "running"].includes(s.status))) {
       label = "\u8D8B\u52BF\u8865\u5168\u4E2D";
       reason = "\u5DF2\u8FDB\u5165\u540E\u53F0\u8865\u5168\u961F\u5217\uFF0C\u5173\u95ED\u9875\u9762\u540E\u7EE7\u7EED\u6267\u884C\u3002";

@@ -45,6 +45,7 @@ export interface EvidenceMetric {
   nature: MetricNature;
   evidenceUrl: string;
   precision?: string;
+  originalValue?: string;
 }
 export interface CoreSnapshot {
   at: string;
@@ -412,12 +413,12 @@ export function productMetrics(
     metric(
       p,
       'cumulativeSold',
-      sm?.soldPeriod === 'unspecified'
+      validNumber(sm?.monthlySales) ? '来源月销量' : sm?.soldPeriod === 'unspecified'
         ? '官网展示销量'
         : sm?.soldProvider
           ? '官网累计展示已售'
           : '平台累计展示已售',
-      raw || (validNumber(sold) ? sold : null),
+      validNumber(sm?.monthlySales) ? sm.monthlySales : raw || (validNumber(sold) ? sold : null),
       '件',
       {
         ...meta,
@@ -426,18 +427,18 @@ export function productMetrics(
         evidenceUrl: sm?.soldEvidenceUrl || meta.evidenceUrl,
         collectedAt: sm?.soldCollectedAt || meta.collectedAt,
         period:
-          sm?.soldPeriod === 'unspecified'
+          validNumber(sm?.monthlySales) ? '来源月度口径' : sm?.soldPeriod === 'unspecified'
             ? '官网展示；统计周期未明确；当前快照'
             : '累计起算日未知；当前快照',
         precision: sm?.soldPrecision || '未知',
         reason:
-          raw || validNumber(sold)
+          validNumber(sm?.monthlySales) ? '来源报告月销量；Amazon为第三方估算' : raw || validNumber(sold)
             ? (sm?.soldPeriod === 'unspecified'
                 ? '保留官网展示原文及加号，不推算精确销量或周期销量'
                 : '累计展示不等于周期销量或净成交') +
               (sm?.soldSourceField ? '；来源字段：' + sm.soldSourceField : '')
             : '来源未返回明确的累计售出件数',
-        ...(!raw && !validNumber(sold) ? missingPublicMetric('sold') : {}),
+        ...(!validNumber(sm?.monthlySales) && !raw && !validNumber(sold) ? missingPublicMetric('sold') : {}),
       },
     ),
     metric(
@@ -496,11 +497,12 @@ export function productMetrics(
       p,
       'spec',
       '规格 / 剂型',
-      meaningful(p.size) ? `${p.size} / ${p.form}` : null,
+      meaningful(p.size) ? `${p.sizeZh || p.size} / ${p.formZh || p.form}` : null,
       '原文',
       {
         ...meta,
         collectedAt: fieldTime('size'),
+        originalValue: p.sizeZh || p.formZh ? `${p.size} / ${p.form}` : '',
         nature: 'platform_display',
         period: '当前商品标签',
       },
@@ -508,17 +510,16 @@ export function productMetrics(
     metric(
       p,
       'ingredients',
-      '成分与每份剂量',
+      '成分',
       meaningful(p.ingredient)
-        ? `${p.ingredient}；${p.dose || '剂量未知'}`
+        ? p.ingredientZh || p.ingredient
         : null,
       '原文',
       {
         ...meta,
         collectedAt: fieldTime('ingredient'),
-        reason: p.coreEvidence?.fieldUpdatedAt?.dose
-          ? `剂量字段采集时间 ${p.coreEvidence.fieldUpdatedAt.dose}`
-          : '剂量字段采集时间未单独记录',
+        originalValue: p.ingredientZh ? p.ingredient : '',
+        reason: '从商品标题、描述或详情提取的成分',
         nature:
           p.collectionFields?.includes('ingredients') ||
           p.formula?.status === 'verified'
@@ -527,9 +528,10 @@ export function productMetrics(
         period: '当前商品标签',
       },
     ),
-    metric(p, 'claim', '品牌功效宣称', p.claim || null, '原文', {
+    metric(p, 'claim', '品牌功效宣称', p.claimZh || p.claim || null, '文本', {
       ...meta,
       collectedAt: fieldTime('claim'),
+      originalValue: p.claimZh ? p.claim : '',
       nature: 'brand_claim',
       period: '当前品牌描述',
       reason: p.claim ? '品牌表述，不代表已验证疗效' : '未获取品牌宣称',
@@ -538,13 +540,14 @@ export function productMetrics(
       p,
       'sellingPoints',
       '卖点',
-      p.sourceContent?.sellingPoints?.join('；') ||
+      p.benefitsZh?.join('；') || p.sourceContent?.sellingPoints?.join('；') ||
         p.benefits?.join('；') ||
         null,
       '文本',
       {
         ...meta,
         collectedAt: fieldTime('benefits'),
+        originalValue: p.benefitsZh?.length ? p.benefits?.join('；') : '',
         nature: sellingNature,
         period: '当前商品描述',
         reason: p.sourceContent?.sellingPoints?.length
@@ -1082,7 +1085,7 @@ export function coreMetrics(
   let metrics: EvidenceMetric[];
   switch (kind) {
     case 'products': {
-      metrics = productMetrics(record as Product, days, context);
+      metrics = productMetrics(record as Product, days, context).filter(metric => !['sales', 'dailySales'].includes(metric.key));
       break;
     }
     case 'sites': {
@@ -1098,6 +1101,7 @@ export function coreMetrics(
     }
   }
   for (const summary of record.coreSummary?.periods?.[days] || []) {
+    if (kind === 'products' && ['sales', 'dailySales'].includes(summary.key)) continue;
     const index = metrics.findIndex((item) => item.key === summary.key);
     if (index < 0) metrics.push(summary);
     else metrics[index] = summary;

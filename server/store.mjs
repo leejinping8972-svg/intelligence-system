@@ -144,6 +144,8 @@ export async function collect(job, step, request) {
       : await import('./local-provider.mjs');
     const response = request.sources?.includes('official_new_releases')
       ? Response.json(await (await import('./official-new-releases.mjs')).officialNewReleases(request))
+      : request.sources?.includes('product_intake_source')
+      ? Response.json(await (await import('./product-intake-sorftime.mjs')).productIntakeSource(request))
       : request.sources?.includes('discovery_sorftime')
       ? Response.json(await (await import('./discovery-sorftime.mjs')).discoverySorftime(request))
       : request.sources?.includes('field_analysis')

@@ -1,6 +1,6 @@
 type ProductSortRecord = {
   lastCollectedAt?: string;
-  sourceMetrics?: { collectedAt?: string; soldRaw?: string; soldCount?: number };
+  sourceMetrics?: { collectedAt?: string; soldRaw?: string; soldCount?: number; monthlySales?: number };
   sourceContent?: { collectedAt?: string };
 };
 export const productSortKeys: string[];

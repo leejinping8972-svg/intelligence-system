@@ -4,7 +4,6 @@ import { Button, Modal, Tag } from 'ant-design-vue';
 import type { Product } from '../data';
 import ProductHistory from './ProductHistory.vue';
 import DiscoveryTag from './DiscoveryTag.vue';
-import ProductCompletionDialog from './ProductCompletionDialog.vue';
 import {
   PRODUCT_DECISION_RULES,
   PRODUCT_DECISION_VERSION,
@@ -101,7 +100,7 @@ const safeLink = (value?: string) => {
       {{ PRODUCT_DECISION_RULES }}
     </p>
     <ProductHistory :product="product" />
-    <ProductCompletionDialog :product-ids="[product.id]" compact />
+
     <Button style="margin-top: 16px" @click="open = false">关闭</Button>
   </Modal>
 </template>

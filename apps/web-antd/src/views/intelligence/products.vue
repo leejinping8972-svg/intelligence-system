@@ -29,12 +29,11 @@ import {
 } from '../../../../../server/product-listing.mjs';
 import { productChineseName } from '../../../../../server/product-names.mjs';
 import CollectionTime from './components/CollectionTime.vue';
-import CompactTags from './components/CompactTags.vue';
-import CoreListControls from './components/CoreListControls.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import PageHeader from './components/PageHeader.vue';
 import ProductArt from './components/ProductArt.vue';
 import ProductChineseName from './components/ProductChineseName.vue';
+import ProductText from './components/ProductText.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
 import ProductResourceEvidence from './components/ProductResourceEvidence.vue';
 import SelectionBar from './components/SelectionBar.vue';
@@ -49,12 +48,10 @@ import { useFilteredSelection } from './resource-list';
 import { productCollectedAt } from './resource-metadata';
 import { useCoreList } from './use-core-list';
 const core = useCoreList('products');
-const { period: corePeriod } = core;
 import type { Product } from './data';
 
 import FormulaInsights from './components/FormulaInsights.vue';
 import PlatformProductsDialog from './components/PlatformProductsDialog.vue';
-import ProductCompletionDialog from './components/ProductCompletionDialog.vue';
 import ProductDecisionTags from './components/ProductDecisionTags.vue';
 import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 import {
@@ -366,16 +363,12 @@ const tableColumns = computed(() =>
         width: 110,
       },
       { title: '美元对比价', key: 'core:priceUsd', width: 116 },
-      { title: '展示销量', key: 'core:cumulativeSold', width: 100 },
-      { title: '所选周期销量', key: 'core:sales', width: 110 },
-      { title: '日均件数', key: 'core:dailySales', width: 100 },
+      { title: '销量', key: 'core:cumulativeSold', width: 110 },
       { title: '上架时间', key: 'core:listingDate', width: 112 },
       { title: '规格 / 剂型', key: 'spec', width: 125 },
-      { title: '配方与成分', key: 'ingredient', width: 190 },
-      { title: '成分与剂量', key: 'core:ingredients', width: 180 },
+      { title: '成分', key: 'core:ingredients', width: 180 },
       { title: '品牌宣称', key: 'core:claim', width: 150 },
       { title: '卖点', key: 'core:sellingPoints', width: 160 },
-      { title: '资源口径 / 覆盖', key: 'resourceEvidence', width: 220 },
       { title: '市场 / 品类', key: 'category', width: 90 },
       { title: '采集时间（北京时间）', key: 'collectedAt', width: 150 },
       { title: '数据来源', key: 'provider', width: 110 },
@@ -522,15 +515,6 @@ async function exportProducts() {
       <FormulaInsights />
       <PlatformProductsDialog />
       <SourceFieldsButton kind="products" :ids="bulkIds" />
-      <ProductCompletionDialog
-        :product-ids="rows.map((p) => p.id)"
-        :total="serverMode ? remote.total.value : undefined"
-        :resolve-product-ids="
-          serverMode
-            ? async () => (await remote.selectAll()).map((p) => p.id)
-            : undefined
-        "
-      />
       <Button :disabled="!rows.length" @click="exportProducts">
         {{
           bulkIds.length ? `导出所选（${bulkIds.length}）` : '导出商品'
@@ -702,11 +686,6 @@ async function exportProducts() {
       @all="selectAll"
       @clear="clear"
     >
-      <ProductCompletionDialog
-        v-if="bulkIds.length"
-        :product-ids="bulkIds"
-        :compact="bulkIds.length === 1"
-      />
     </SelectionBar>
     <div v-if="viewMode === 'cards'" class="hci-product-grid">
       <article
@@ -747,27 +726,21 @@ async function exportProducts() {
         </button>
         <div class="hci-product-content">
           <div class="hci-product-brand">
-            {{ product.brand }} · {{ product.market }}
+            <ProductText :text="product.brand" :translated="product.brandZh" />
           </div>
           <button
             class="hci-product-title hci-clamp-2"
             @click="selected = product.id"
           >
-            {{ product.title }}
+            <ProductChineseName :product="product" />
           </button>
-          <ProductChineseName :product="product" />
-          <p class="hci-subtle">{{ product.size }} · {{ product.form }}</p>
+          <ProductText :text="`${product.size} · ${product.form}`" :translated="product.sizeZh || product.formZh ? `${product.sizeZh || product.size} · ${product.formZh || product.form}` : ''" />
           <p class="hci-subtle">
             采集：<CollectionTime :at="productCollectedAt(product)" />
           </p>
           <ProductDecisionTags :product="product" />
-          <ProductResourceEvidence
-            v-if="product.resourceEvidence"
-            :evidence="product.resourceEvidence"
-            compact
-          />
           <div class="hci-product-meta">
-            <Tag>{{ product.category }}</Tag><Tag :color="product.reviewed ? 'green' : 'orange'">
+            <Tag>{{ product.categoryZh || product.category }}</Tag><Tag :color="product.reviewed ? 'green' : 'orange'">
               {{
                 product.reviewed
                   ? '已核验示例'
@@ -776,13 +749,10 @@ async function exportProducts() {
                     : '待审核'
               }}
             </Tag>
-            <Tag v-if="product.collectionFields?.length" color="blue">
-              已采集 {{ product.collectionFields.length }}/7 项
-            </Tag>
           </div>
           <div class="hci-product-insights">
             <div>
-              <span>展示销量</span><EvidenceMetric
+              <span>销量</span><EvidenceMetric
                 :metric="core.metric(product, 'core:cumulativeSold')"
               />
             </div>
@@ -793,18 +763,11 @@ async function exportProducts() {
             </div>
             <div>
               <span>功效卖点</span>
-              <CompactTags
-                :items="product.benefits"
-                label="商品功效卖点"
-                color="green"
-              />
+              <ProductText :text="product.benefits.join('；')" :translated="product.benefitsZh?.join('；')" />
             </div>
             <div>
-              <span>成分分析</span>
-              <b v-if="product.ingredientInsights.length">{{
-                product.ingredientInsights.map((item) => item.name).join(' · ')
-              }}</b>
-              <span v-else class="hci-subtle">来源未提供明确配方，待补充</span>
+              <span>成分</span>
+              <ProductText :text="product.ingredient" :translated="product.ingredientZh" />
             </div>
           </div>
           <button
@@ -850,7 +813,6 @@ async function exportProducts() {
         </div>
       </article>
     </div>
-    <CoreListControls v-model:period="corePeriod" kind="products" />
     <Table
       v-if="viewMode === 'list'"
       :loading="remote.loading.value"
@@ -897,10 +859,9 @@ async function exportProducts() {
                 class="product-name-link"
                 @click="selected = record.id"
               >
-                {{ record.title }}
+                <ProductChineseName :product="record as Product" />
               </Button>
-              <ProductChineseName :product="record as Product" />
-              <p class="hci-subtle">{{ record.brand }}</p>
+              <ProductText :text="record.brand" :translated="record.brandZh" />
               <Tag
                 v-for="item in record.newProductClassifications"
                 :key="item.type + item.observedAt"
@@ -940,18 +901,11 @@ async function exportProducts() {
         <template v-else-if="column.key === 'category'">
           {{ marketName(record.market) }}
           <p>
-            <Tag>{{ record.category }}</Tag>
+            <ProductText :text="record.category" :translated="record.categoryZh" />
           </p>
         </template>
         <template v-else-if="column.key === 'spec'">
-          {{ record.size }}
-          <p class="hci-subtle">{{ record.form }}</p>
-        </template>
-        <template v-else-if="column.key === 'ingredient'">
-          <p class="product-list-ingredient">{{ record.ingredient }}</p>
-          <Tag :color="record.reviewed ? 'green' : 'orange'">
-            {{ record.reviewed ? '已核验' : '待审核' }}
-          </Tag>
+          <ProductText :text="`${record.size} · ${record.form}`" :translated="record.sizeZh || record.formZh ? `${record.sizeZh || record.size} · ${record.formZh || record.form}` : ''" />
         </template>
         <template v-else-if="column.key === 'platform'">
           {{ productPlatform(record as Product) }}
@@ -975,9 +929,6 @@ async function exportProducts() {
             }}
           </Button>
           <span v-if="!record.siteId" class="hci-subtle">未关联</span>
-          <p class="hci-subtle">
-            已采集 {{ record.collectionFields?.length || 0 }}/7 项
-          </p>
         </template>
         <template v-else-if="column.key === 'resourceEvidence'">
           <ProductResourceEvidence
@@ -1039,14 +990,13 @@ async function exportProducts() {
       </div>
       <div class="hci-comparison">
         <div v-for="p in comparison" :key="p.id">
-          <h3>{{ p.title }}</h3>
-          <ProductChineseName :product="p" />
-          <p>{{ p.brand }} · {{ marketName(p.market) }}</p>
+          <h3><ProductChineseName :product="p" /></h3>
+          <ProductText :text="p.brand" :translated="p.brandZh" /><p>{{ marketName(p.market) }}</p>
           <p class="hci-price">
             {{ p.price > 0 ? money(p.price, p.currency) : '价格待获取' }}
           </p>
-          <p>{{ p.size }}</p>
-          <p>{{ p.ingredient }}</p>
+          <ProductText :text="p.size" :translated="p.sizeZh" />
+          <ProductText :text="p.ingredient" :translated="p.ingredientZh" />
           <p>{{ p.dose }}</p>
           <p>{{ p.claim }}（竞品宣称示例）</p>
           <Button size="small" @click="toggleCompare(p.id)">移除对比</Button>

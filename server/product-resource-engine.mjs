@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { prepareProductIntake } from './product-intake.mjs';
 
 import {
   decorateResourceProduct,
@@ -148,6 +149,32 @@ export async function runProductResourceDiscovery(job, io) {
     dirtyCompletion.clear();
   };
   const log = (message) => { cp.logs.push(message); cp.logs = cp.logs.slice(-300); };
+  const intakeIo = {
+    ...io,
+    beforeIntake: async (step, request) => {
+      if (cp.intakeReservations?.[step]) return;
+      const cost = { requests: request.sources.includes('product_intake_source') ? 4 : 1, sorftimeCalls: request.sources.includes('product_intake_source') ? 1 : 0, providerCalls: request.sources.includes('product_intake_source') ? 1 : 0 };
+      for (const [key, value] of Object.entries(cost)) {
+        const maximum = plan.budget?.[key];
+        if (Number.isFinite(maximum) && cp.reserved[key] + value > maximum) throw Error('本次采集预算不足，已保留抓到的商品资料');
+      }
+      (cp.intakeReservations ||= {})[step] = cost;
+      for (const [key, value] of Object.entries(cost)) cp.reserved[key] += value;
+      await io.saveCheckpoint(job, cp, 'running');
+    },
+    afterIntake: async (step, request, result) => {
+      cp.intakeUsage ||= {};
+      if (cp.intakeUsage[step]) return;
+      cp.intakeUsage[step] = true;
+      const usage = { ...result.usage, modelTokens: result.usage?.modelTokens || 0 };
+      for (const key of budgetKeys) {
+        const value = usage[key] ?? (key === 'requests' ? 1 : 0);
+        if (Number.isFinite(value)) { cp.reserved[key] += value - (cp.intakeReservations?.[step]?.[key] || 0); cp.confirmedUsage[key] += value; }
+      }
+      cp.requests += usage.requests ?? 1;
+      await io.saveCheckpoint(job, cp, 'running');
+    },
+  };
   const addWork = (work) => {
     const key = workKey(work);
     if (!cp.work.some((item) => workKey(item) === key)) cp.work.push(work);
@@ -315,7 +342,10 @@ export async function runProductResourceDiscovery(job, io) {
       query: work.term, category: work.category, discoveryOrigin,
       coverage: { scope: 'collected_sample', complete: false, pages: cp.discoveryPages, publicPages: cp.publicPages },
     });
-    await io.upsertProduct(patch);
+    const prepared = job.input.productIntakeVersion === 2 ? await prepareProductIntake(job, patch, intakeIo) : { product: patch, errors: [] };
+    cp.failures += prepared.errors.length;
+    for (const message of prepared.errors) log(message);
+    await io.upsertProduct(prepared.product);
     cp.identityIds[productIdentity] = id;
     if (!cp.productIds.includes(id)) cp.productIds.push(id);
     pageIdentities.push(productIdentity);
@@ -343,7 +373,7 @@ export async function runProductResourceDiscovery(job, io) {
   if (product) {
     const patch = { ...product, ...result.product, ...result.patch, id: product.id };
     if (result.series) patch.decisionData = { ...patch.decisionData, series: [result.series] };
-    await io.upsertProduct(decorateResourceProduct(patch, evidencePlan, {
+    const decorated = decorateResourceProduct(patch, evidencePlan, {
       jobId: job.id, collectedAt: at, query: work.term,
       discoveryOrigin,
       coverage: { scope: 'collected_sample', complete: false, pages: cp.discoveryPages, publicPages: cp.publicPages },
@@ -351,7 +381,11 @@ export async function runProductResourceDiscovery(job, io) {
         status: result.unsupported ? 'unsupported' : result.empty ? 'not_indexed' : 'observed',
         message: result.message || '未返回字段保持未知',
       } },
-    }));
+    });
+    const prepared = job.input.productIntakeVersion === 2 ? await prepareProductIntake(job, decorated, intakeIo, { sourceDetails: false }) : { product: decorated, errors: [] };
+    cp.failures += prepared.errors.length;
+    for (const message of prepared.errors) log(message);
+    await io.upsertProduct(prepared.product);
     setCompletion(work, result.empty ? 'not_found' : result.unsupported ? 'unsupported' : 'completed', result.message || '已保存真实来源字段，未返回字段保留未知', at);
   }
   const leadRecords = (result.leads || []).map((lead) => typeof lead === 'string' ? { url: lead } : lead).filter((lead) => lead?.url).slice(0, 100);

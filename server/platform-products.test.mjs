@@ -265,6 +265,8 @@ function harness(input, handler) {
     },
     collect: async (j, step, r) => {
       calls.push({ step, request: r });
+      if (r.sources[0] === 'field_analysis') return { patch: { titleZh: '肌酸软糖' }, analysis: { status: 'analyzed', fingerprint: r.sample.fingerprint, supplement: true } };
+      if (r.sources[0] === 'product_intake_source') return {};
       return handler(r);
     },
   };
@@ -333,7 +335,8 @@ test('one word obtains both platforms, no website crawler, then enriches exact A
   assert.equal(h.job.checkpoint.semrushUnits, 50);
   assert.equal(h.docs.get(amz().id).decisionData.series[0].points.length, 2);
   assert.equal(h.links.length, 2);
-  assert.ok(h.calls.every((c) => c.request.sources[0] === 'platform_products'));
+  assert.ok(h.calls.every((c) => ['platform_products', 'product_intake_source', 'field_analysis'].includes(c.request.sources[0])));
+  assert.equal(h.docs.get(amz().id).titleZh, '肌酸软糖');
 });
 test('legacy request ceiling does not truncate product enrichment', async () => {
   const h = harness(
@@ -344,7 +347,7 @@ test('legacy request ceiling does not truncate product enrichment', async () => 
         : { domains: ['shop.example.com'], apiUnits: 20 },
   );
   await h.run();
-  assert.equal(h.calls.length, 5);
+  assert.equal(h.calls.filter(c => c.request.sources[0] === 'platform_products').length, 4);
   assert.equal(h.docs.size, 1);
   assert.equal(h.job.status, 'completed');
 });
@@ -375,9 +378,10 @@ test('cancelled task issues no additional request and preserves products', async
     products: [amz()],
   }));
   await runPlatformProducts(h.job, h.io);
+  const callsBeforeCancel = h.calls.length;
   h.cancel();
   await h.run();
-  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls.length, callsBeforeCancel);
   assert.equal(h.docs.size, 1);
   assert.equal(h.job.status, 'cancelled');
 });
@@ -403,7 +407,9 @@ test('persisted in-flight checkpoint resumes without consuming request allowance
   let saved;
   const docs = new Map();
   await runPlatformProducts(job, {
-    collect: async () => ({ products: [amz()], cached: true }),
+    collect: async (_job, _step, request) => request.sources[0] === 'field_analysis'
+      ? { patch: {}, analysis: { status: 'analyzed', fingerprint: request.sample.fingerprint } }
+      : request.sources[0] === 'product_intake_source' ? {} : { products: [amz()], cached: true },
     readProduct: async () => null,
     upsertProduct: async (p) => docs.set(p.id, p),
     linkKeyword: async () => {},

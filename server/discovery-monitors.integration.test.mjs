@@ -22,6 +22,8 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
   };
   const hook = registerHooks({
     resolve(specifier, context, next) {
+      if (context.parentURL?.endsWith('/store.mjs') && specifier === './product-intake-sorftime.mjs')
+        return { shortCircuit: true, url: `data:text/javascript,${encodeURIComponent('export const productIntakeSource = () => ({empty:true,providerCalls:0,usage:{requests:0,sorftimeCalls:0}});')}` };
       if (
         context.parentURL?.endsWith('/store.mjs') &&
         specifier === './official-new-releases.mjs'
@@ -211,7 +213,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
         await upsertProduct(product);
         const pending = await readProduct(product.id);
         assert.equal(pending.fieldAnalysis.status, 'pending');
-        assert.doesNotMatch(pending.ingredient, /Coconut/);
+        assert.equal(pending.ingredient, 'Coconut Oil');
         const id = await queueSourceFields('products', pending);
         assert.equal(await queueSourceFields('products', pending), id);
         await runSourceFields(await getJob(id));
@@ -259,10 +261,7 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           (await readProduct('qa-inulin')).fieldAnalysis.status,
           'pending',
         );
-        assert.doesNotMatch(
-          (await readProduct('qa-inulin')).ingredient,
-          /^Inulin$/,
-        );
+        assert.equal((await readProduct('qa-inulin')).ingredient, 'Inulin');
         const id = await queueSourceFields('products', pending);
         await runSourceFields(await getJob(id), {
           collect: async () => {

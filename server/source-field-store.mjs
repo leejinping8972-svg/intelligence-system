@@ -2,6 +2,7 @@ import { requireAdmin } from './auth.mjs';
 import { lock, pool, putDocument, sql, unlock } from './database.mjs';
 import { stableId } from './discovery-monitor-domain.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
+import { prepareProductIntake } from './product-intake.mjs';
 import {
   pendingSourceFields,
   sourceFieldSample,
@@ -57,6 +58,7 @@ export async function queueSourceFields(
         markets: [value.market],
         seeds: [],
         sample,
+        ...(kind === 'products' ? { productIntakeVersion: 2 } : {}),
       },
       {
         submittedAt: new Date().toISOString(),
@@ -72,9 +74,19 @@ export async function runSourceFields(job, overrides = {}) {
   try {
     if (job.cancelled) return;
     cp.calls = 1;
-    const result = await io.collect(job, 'field-analysis', {
-      sources: ['field_analysis'],
-      sample: job.input.sample,
+    let result;
+    let prepared;
+    if (job.input.targetKind === 'products' && job.input.productIntakeVersion === 2) {
+      const unknown = (await io.pool.query("SELECT status,error FROM research_requests WHERE job_id=$1 AND step='field-analysis' AND status<>'done' LIMIT 1", [job.id])).rows[0];
+      if (unknown) throw Error(unknown.error || '上次分析结果未知，不重复请求');
+      const current = (await io.pool.query('SELECT value FROM workspace_documents WHERE name=$1', [`business:products:${job.input.targetId}`])).rows[0]?.value;
+      if (!current || current.fieldAnalysis?.fingerprint !== job.input.sample.fingerprint)
+        return io.saveCheckpoint(job, { ...cp, logs: [...cp.logs, '来源已更新或商品已删除，未覆盖新资料'] }, 'completed');
+      prepared = await prepareProductIntake(job, current, { ...io, isCancelled: async () => (await io.pool.query('SELECT cancelled FROM research_jobs WHERE id=$1', [job.id])).rows[0]?.cancelled });
+      cp.logs.push(...prepared.errors);
+      result = { patch: prepared.product, analysis: prepared.product.fieldAnalysis, model: prepared.product.fieldAnalysis.model };
+    } else result = await io.collect(job, 'field-analysis', {
+      sources: ['field_analysis'], sample: job.input.sample,
     });
     const c = await io.pool.connect();
     try {
@@ -106,9 +118,12 @@ export async function runSourceFields(job, overrides = {}) {
           fieldAnalysis: {
             ...result.analysis,
             model: result.model,
-            sources: job.input.sample.sources,
+            sources: prepared?.product.fieldAnalysis.sources || job.input.sample.sources,
           },
         };
+        if (prepared) {
+          for (const key of ['favorite', 'reviewed', 'firstSeenAt', 'siteId', 'keywordIds', 'newProductClassifications']) updated[key] = value[key];
+        }
         if (job.input.targetKind === 'products')
           updated = withFormulaIntelligence(updated);
         await io.putDocument('workspace_documents', name, updated, false, c);
@@ -126,7 +141,7 @@ export async function runSourceFields(job, overrides = {}) {
     await io.saveCheckpoint(
       job,
       { ...cp, finishedAt: new Date().toISOString() },
-      'completed',
+      prepared?.errors.length ? 'partial' : 'completed',
     );
   } catch (error) {
     cp.logs.push(String(error.message).slice(0, 600));

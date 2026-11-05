@@ -14,10 +14,7 @@ import {
 import { runOfficialNewReleases } from './official-new-release-runner.mjs';
 import { discoverySorftime } from './discovery-sorftime.mjs';
 import { upsertProduct } from './platform-products-jobs.mjs';
-import {
-  pendingSourceFields,
-  sourceFieldSample,
-} from './source-field-domain.mjs';
+import { prepareProductIntake } from './product-intake.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 
 const read = async (name, c = pool) =>
@@ -310,23 +307,13 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
       const product = cp.pending.shift();
       cp.calls++;
       try {
-        const sample = sourceFieldSample('products', product);
-        const analyzed = await io.collect(
-          job,
-          `classify:${stableId(product.id)}`,
-          { sources: ['field_analysis'], sample },
-        );
-        if (analyzed.analysis.supplement) {
-          const evidence = newProductEvidence(product, plan, cp.asOf);
+        const prepared = await prepareProductIntake(job, product, { ...io, isCancelled: cancelled }, { legacyAnalysisStep: `classify:${stableId(product.id)}` });
+        cp.failures.push(...prepared.errors);
+        if (prepared.analysis?.supplement !== false) {
+          const evidence = newProductEvidence(prepared.product, plan, cp.asOf);
           if (evidence && !(await cancelled())) {
             await io.upsertProduct({
-              ...pendingSourceFields('products', product),
-              ...analyzed.patch,
-              fieldAnalysis: {
-                ...analyzed.analysis,
-                model: analyzed.model,
-                sources: sample.sources,
-              },
+              ...prepared.product,
               newProductClassifications: [evidence],
             });
             cp.products++;

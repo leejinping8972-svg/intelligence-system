@@ -42,7 +42,7 @@ const columns = [
     <div class="hci-panel-head">
       <h3>数据与来源</h3>
       <Select
-        v-if="kind === 'products' || kind === 'keywords'"
+        v-if="kind === 'keywords'"
         v-model:value="period"
         aria-label="详情统计周期"
         :options="

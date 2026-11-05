@@ -425,7 +425,7 @@ export function productDecisions(
     let label = stale ? '趋势数据过旧' : '趋势未请求';
     let reason = stale
       ? '历史数据已超过时效窗口，暂不用于当前趋势判断。'
-      : '该商品尚未完成历史请求；可在商品库点击补全商品数据。';
+      : '该商品尚未完成历史请求；商品采集时会自动整理可用资料。';
     if (states.some((s) => ['queued', 'running'].includes(s.status))) {
       label = '趋势补全中';
       reason = '已进入后台补全队列，关闭页面后继续执行。';
