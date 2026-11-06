@@ -71,10 +71,7 @@ export async function productWatchAction(input, user) {
         [`product-watch:observation:${stableId(input.productId)}:%`],
       )
     ).rows.map((r) => r.value);
-    return {
-      ...watchTrends(rows),
-      latest: await read(`product-watch:latest:${input.productId}`),
-    };
+    return watchTrends(rows);
   }
   if (!['MX', 'US', 'VN'].includes(input.market))
     throw new Error('请选择监控市场');
