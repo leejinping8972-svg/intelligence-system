@@ -1,34 +1,57 @@
 {
-  "title": "商品趋势历史接口去除无用查询",
-  "sourceSha": "74df4a11480685cf1d73957961ce1d1f48b1131c",
-  "includedCommits": [
-    "74df4a11480685cf1d73957961ce1d1f48b1131c"
+  "title": "广告、商品、独立站关键词关联与直接检索建库",
+  "changes": [
+    "四类业务列表显示关联关键词并支持跳转筛选",
+    "关键词列表显示关联广告、商品、独立站数量并支持跳转筛选",
+    "直接关键词检索先幂等写入关键词库，不抓扩展词和趋势",
+    "启动时一次性回填历史业务关键词关联并补建缺失关键词"
   ],
   "files": [
-    "server/product-watch-store.mjs"
+    "apps/web-antd/src/views/intelligence/ads.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "server/ads-provider.mjs",
+    "server/combined-discovery.mjs",
+    "server/keyword-associations.mjs",
+    "server/keyword-associations.test.mjs",
+    "server/market-jobs.mjs",
+    "server/market-jobs.test.mjs",
+    "server/platform-products-jobs.mjs",
+    "server/product-resource-engine.mjs",
+    "server/semrush-sites-store.mjs",
+    "server/semrush-sites.mjs",
+    "server/store.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
-  "changes": [
-    "商品趋势历史接口继续读取最近90条已保存观测记录。",
-    "移除前端未使用的 product-watch:latest 单条读取，趋势请求从两次数据库读取降为一次。",
-    "保留后台监控使用 product-watch:latest 做前后观测对比的逻辑。"
+  "developmentVerification": {
+    "knownGap": "定向oxlint未通过，输出为既有存量文件告警，未记为通过",
+    "diff": "git diff --check",
+    "frontend": "Web类型检查、生产构建",
+    "server": "相关专项90/90"
+  },
+  "releaseSkipped": [
+    "发布阶段重复验证",
+    "独立验证构建",
+    "CI等待",
+    "数据库一致性核对按用户要求跳过"
   ],
-  "developmentValidation": [
-    "商品监控单测5/5通过。",
-    "Node语法检查、git diff --check和趋势领域口径校验通过。",
-    "商品监控PGlite集成测试在本功能树与未修改基线均于既有 partial/completed 断言失败。"
+  "operator": "Codex",
+  "id": "20261106152052-34e94492",
+  "builtAt": "2026-11-06T15:20:52.017Z",
+  "sourceDigest": "34e94492523df4bb39f446733944d4dd5618270e5c3e79e612d5c469c8ff3c2c",
+  "sourceSha": "f9a48e0497f95e47e9f5610227b2c706d7c5763e",
+  "includedCommits": [
+    "f9a48e0497f95e47e9f5610227b2c706d7c5763e"
   ],
-  "releaseValidation": "发布阶段重复测试、独立验证构建和CI等待按用户要求跳过",
   "database": {
     "schemaChange": false,
-    "migration": false,
-    "startupMigration": false,
+    "migration": true,
+    "startupDataBackfill": true,
+    "backupStatus": "required-before-cutover",
     "consistency": "skipped-by-user"
   },
-  "queueLeases": 23,
-  "preservePendingTasks": true,
-  "expectedPreviousSha": "316a1ee9be478647141d8877bf890f61f544e3db",
-  "id": "20261106070830-1117b45f",
-  "builtAt": "2026-11-06T07:08:30.127Z",
-  "sourceDigest": "1117b45faea5a40664909aa86b996d622d47ef9673b2f75c95375c18e2af7fa9",
-  "operator": "Codex"
+  "releaseValidation": "发布阶段重复验证、独立验证构建和CI等待按用户策略跳过；数据库一致性核对按用户要求跳过"
 }
