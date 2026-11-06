@@ -1,62 +1,48 @@
 {
-  "title": "任务详情对象与用途重设计、任务执行后保存消耗统计",
-  "sourceSha": "8448d2c24530b18f0b473e5ef20dfc2b823ff0dc",
+  "title": "列表更新故障隔离、采集翻译恢复与任务停止原因修复",
+  "sourceSha": "ed02cd70253375b5561ba7127f885ebaffc23c75",
   "includedCommits": [
-    "83409cc9f44e7152af25f51e5e20d08abe46ac24",
-    "8234b1eb7d680259c9265759b7c73ae80582e08b"
+    "6c805bdbd3691b9f54412ea2f44a4750c7345693"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
-    "apps/web-antd/src/views/intelligence/components/SemrushSettings.vue",
-    "apps/web-antd/src/views/intelligence/components/SourceUsageDashboard.vue",
-    "apps/web-antd/src/views/intelligence/components/TaskDetailPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/TaskProgress.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/monitor.vue",
-    "apps/web-antd/src/views/intelligence/task-context.ts",
-    "apps/web-antd/src/views/intelligence/task-list.ts",
-    "server/database.mjs",
-    "server/index.mjs",
-    "server/runner.mjs",
-    "server/semrush-usage.integration.mjs",
-    "server/semrush-usage.mjs",
-    "server/semrush-usage.test.mjs",
-    "server/source-usage-domain.mjs",
-    "server/source-usage-snapshot.mjs",
-    "server/source-usage-snapshot.test.mjs",
-    "server/source-usage.mjs",
-    "server/source-usage.test.mjs",
-    "server/store.mjs",
-    "server/task-context.mjs",
-    "server/task-context.test.mjs",
-    "server/usage-changes.mjs",
-    "server/usage-summary-store.mjs",
-    "server/usage-summary-worker.mjs",
-    "server/usage-summary.test.mjs",
-    "tests/task-detail-context.test.ts",
-    "tests/usage-saved-ui.test.ts"
+    "server/collection-translation-domain.mjs",
+    "server/collection-translation-recovery.mjs",
+    "server/collection-translation.integration.test.mjs",
+    "server/collection-translation.mjs",
+    "server/collection-translation.test.mjs",
+    "server/discovery-ai.mjs",
+    "server/job-progress.mjs",
+    "server/keyword-metric-evidence.mjs",
+    "server/keyword-metric-evidence.test.mjs",
+    "server/monitor-recovery.test.mjs",
+    "server/semrush-reports.mjs",
+    "server/task-keyword-executions.test.mjs",
+    "server/task-overview.mjs",
+    "server/task-stop-reason.mjs",
+    "server/workspace-projection-writes.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "changes": [
-    "任务列表和详情突出商品名称、ASIN、市场及任务用途，先展示结果和进展，执行日志与用量收起；销量核对任务展示归属校验后的回执。",
-    "任务与请求结束后后台预计算来源累计、逐日和Semrush按Key的消耗并持久保存；页面打开、刷新读取保存结果，不触发历史账本重扫。",
-    "Semrush配置自动展示已保存统计；资源页不在打开时自动查账户余额，手动登记即时生效，保留未知扣费、真实零、缓存去重及Key隔离。"
+    "列表按集合独立事务轮转更新，索引关系按数据库相等规则处理重复；异常记录保留旧结果，其他记录继续更新并按列表提示。",
+    "采集翻译回复在校验前持久保存，保留有效项与具体失败原因，支持重启恢复；旧未知付费请求保留防重放，不自动重译或续跑。",
+    "任务详情正确显示失败数组、数量及当前停止原因；Semrush当前错误优先，明确无数据与无法识别报告分开处理。"
   ],
   "developmentValidation": [
-    "任务详情新增服务端8项、前端13项、完整Web类型、独立构建、定向lint及桌面/390px合成浏览器验收通过；相关服务端21项20通过，旧投影快照失败在基线复现。",
-    "消耗汇总新增服务端7项（含隔离PGlite与实际worker状态SQL）及前端7项通过；相关服务端39项38通过，旧公共来源URL用例在基线复现；完整Web类型、独立构建、定向lint、语法/diff通过。"
+    "最终列表/翻译/原因核心34项、关键词相关4项通过；前轮含enrichment核心45项通过。新模块定向ESLint、17个MJS语法及diff检查通过。",
+    "列表读取COUNT查询次数旧测试在未修改基线同样失败，已保留证据；未执行真实MySQL隔离集成、全仓lint或正式账户界面验收。无前端改动，不执行Web类型与开发构建。"
   ],
   "releaseValidation": "发布重复测试、独立验证构建和CI等待按用户要求跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupMigration": false,
-    "startupDerivedSummary": true,
     "consistency": "skipped-by-user"
   },
   "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261105114412-58605887",
-  "builtAt": "2026-11-05T11:44:12.523Z",
-  "sourceDigest": "58605887aedfb6339aeda7528deefe78d623e6e364c0d8f8cc4d0ac8fb9a027c",
+  "id": "20261106011312-25fec91d",
+  "builtAt": "2026-11-06T01:13:12.334Z",
+  "sourceDigest": "25fec91d4730bb7f25b89028acf127fc3c6314955d4994aa268d6bc24f24c0f8",
   "operator": "Codex"
 }
