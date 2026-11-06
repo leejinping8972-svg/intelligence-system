@@ -4,7 +4,8 @@
     "四类业务列表显示关联关键词并支持跳转筛选",
     "关键词列表显示关联广告、商品、独立站数量并支持跳转筛选",
     "直接关键词检索先幂等写入关键词库，不抓扩展词和趋势",
-    "启动时一次性回填历史业务关键词关联并补建缺失关键词"
+    "启动时一次性回填历史业务关键词关联并补建缺失关键词",
+    "兼容正式 MySQL：明确限定 workspace_read_dirty.revision 的重复键更新列"
   ],
   "files": [
     "apps/web-antd/src/views/intelligence/ads.vue",
@@ -30,7 +31,8 @@
     "knownGap": "定向oxlint未通过，输出为既有存量文件告警，未记为通过",
     "diff": "git diff --check",
     "frontend": "Web类型检查、生产构建",
-    "server": "相关专项90/90"
+    "server": "相关专项90/90",
+    "mysqlCompatibilityFix": "node --check server/store.mjs；定向 oxlint 仍为既有存量告警"
   },
   "releaseSkipped": [
     "发布阶段重复验证",
@@ -41,7 +43,8 @@
   "operator": "Codex",
   "sourceSha": "f9a48e0497f95e47e9f5610227b2c706d7c5763e",
   "includedCommits": [
-    "f9a48e0497f95e47e9f5610227b2c706d7c5763e"
+    "f9a48e0497f95e47e9f5610227b2c706d7c5763e",
+    "941632bc4a7856938fe1b3f36f097d221a067cdd"
   ],
   "database": {
     "schemaChange": false,
@@ -51,7 +54,7 @@
     "consistency": "skipped-by-user"
   },
   "releaseValidation": "发布阶段重复验证、独立验证构建和CI等待按用户策略跳过；数据库一致性核对按用户要求跳过",
-  "id": "20261106175443-34e94492",
-  "builtAt": "2026-11-06T17:54:43.141Z",
-  "sourceDigest": "34e94492523df4bb39f446733944d4dd5618270e5c3e79e612d5c469c8ff3c2c"
+  "id": "20261106194051-ce3945f0",
+  "builtAt": "2026-11-06T19:40:51.912Z",
+  "sourceDigest": "ce3945f015f918769aaf2e5ec7b00e5333db5b8aeef64380c1df78b85ba9b56f"
 }
