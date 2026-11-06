@@ -1,36 +1,19 @@
 {
-  "title": "列表更新故障隔离、采集翻译恢复与任务停止原因修复",
-  "sourceSha": "ed02cd70253375b5561ba7127f885ebaffc23c75",
+  "title": "修复关键词无数据回复误阻断并恢复停止任务",
+  "sourceSha": "806a5733aca4f0f49308998153b48d8e39d14a1d",
   "includedCommits": [
-    "6c805bdbd3691b9f54412ea2f44a4750c7345693"
+    "bdf037f435cb848d8079a3e2a2a8e49532ff8a02"
   ],
   "files": [
-    "server/collection-translation-domain.mjs",
-    "server/collection-translation-recovery.mjs",
-    "server/collection-translation.integration.test.mjs",
-    "server/collection-translation.mjs",
-    "server/collection-translation.test.mjs",
-    "server/discovery-ai.mjs",
-    "server/job-progress.mjs",
-    "server/keyword-metric-evidence.mjs",
-    "server/keyword-metric-evidence.test.mjs",
-    "server/monitor-recovery.test.mjs",
     "server/semrush-reports.mjs",
-    "server/task-keyword-executions.test.mjs",
-    "server/task-overview.mjs",
-    "server/task-stop-reason.mjs",
-    "server/workspace-projection-writes.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "server/task-restart.test.mjs"
   ],
   "changes": [
-    "列表按集合独立事务轮转更新，索引关系按数据库相等规则处理重复；异常记录保留旧结果，其他记录继续更新并按列表提示。",
-    "采集翻译回复在校验前持久保存，保留有效项与具体失败原因，支持重启恢复；旧未知付费请求保留防重放，不自动重译或续跑。",
-    "任务详情正确显示失败数组、数量及当前停止原因；Semrush当前错误优先，明确无数据与无法识别报告分开处理。"
+    "明确识别Semrush no_data错误包，将该词记为无数据后继续处理后续词；其他上游错误和未知格式继续安全停止。",
+    "本批受控恢复保留原任务、原请求和检查点；已确认结束的旧翻译缓存归档后修复，不重放结果未知请求。"
   ],
   "developmentValidation": [
-    "最终列表/翻译/原因核心34项、关键词相关4项通过；前轮含enrichment核心45项通过。新模块定向ESLint、17个MJS语法及diff检查通过。",
-    "列表读取COUNT查询次数旧测试在未修改基线同样失败，已保留证据；未执行真实MySQL隔离集成、全仓lint或正式账户界面验收。无前端改动，不执行Web类型与开发构建。"
+    "相关11项Node测试、修复专项复测、JS语法及diff检查通过；未执行全仓lint/前端类型/开发构建（无前端变更）。"
   ],
   "releaseValidation": "发布重复测试、独立验证构建和CI等待按用户要求跳过",
   "database": {
@@ -41,8 +24,8 @@
   },
   "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261106011312-25fec91d",
-  "builtAt": "2026-11-06T01:13:12.334Z",
-  "sourceDigest": "25fec91d4730bb7f25b89028acf127fc3c6314955d4994aa268d6bc24f24c0f8",
+  "id": "20261106021427-ab5292c5",
+  "builtAt": "2026-11-06T02:14:27.403Z",
+  "sourceDigest": "ab5292c57765b63007bee5256fd73cd47ae1654c73244d8e804bbd4f1a1214de",
   "operator": "Codex"
 }
