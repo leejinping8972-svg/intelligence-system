@@ -15,6 +15,7 @@ import {
 } from './collection-translation.mjs';
 import { mergePlatformProduct } from './platform-product-data.mjs';
 import { gateSourceFields } from './source-field-domain.mjs';
+import { translationBatchKey } from './collection-translation-recovery.mjs';
 
 function harness() {
   const stored = new Map();
@@ -32,6 +33,7 @@ function harness() {
       return new Map(items.map((item) => [item.key, stored.get(item.key)]));
     },
     write: async (key, value) => stored.set(key, value),
+    readBatch: async (owner) => stored.get(translationBatchKey(owner)),
     request: async (items) => {
       calls.push(items);
       return {
@@ -294,10 +296,10 @@ test('incomplete model output fails collection and cannot be retried automatical
   );
   await assert.rejects(
     translateCollectionRecords('keywords', [{ term: 'unknown' }], h.io),
-    /未确认/,
+    /校验失败/,
   );
   assert.equal(h.calls.length, 1);
-  assert.equal(h.stored.get(translationKey('unknown')).status, 'started');
+  assert.equal(h.stored.get(translationKey('unknown')).status, 'invalid');
 });
 
 test('unknown previous translation does not make a new model request', async () => {
@@ -388,4 +390,86 @@ test('cancellation stops before claiming or charging another translation batch',
   );
   assert.equal(h.stored.size, 0);
   assert.equal(h.calls.length, 0);
+});
+
+test('valid rows in an incomplete batch remain reusable while invalid rows show a known validation failure', async () => {
+  const h = harness();
+  h.io.request = async (items) => {
+    h.calls.push(items);
+    return { result: { items: [{ id: items[0].key, text: '已完成的译文' }] } };
+  };
+  await assert.rejects(translateCollectionRecords('keywords', [{ term: 'good' }, { term: 'bad' }], h.io), /数量不完整/);
+  const [good] = await translateCollectionRecords('keywords', [{ term: 'good' }], h.io);
+  assert.equal(good.termZh, '已完成的译文');
+  await assert.rejects(translateCollectionRecords('keywords', [{ term: 'bad' }], h.io), /已返回但校验失败/);
+  assert.equal(h.calls.length, 1);
+  const invalid = h.stored.get(translationKey('bad'));
+  assert.equal(invalid.status, 'invalid');
+  assert.equal(h.stored.get(translationBatchKey(invalid.owner)).result.items[0].text, '已完成的译文');
+});
+
+test('a restart after a cache write failure recovers the saved response without a second model call', async () => {
+  const h = harness();
+  const write = h.io.write;
+  let failed = false;
+  h.io.write = async (key, value) => {
+    if (!failed && value.status === 'complete') { failed = true; throw Error('synthetic cache write failed'); }
+    return write(key, value);
+  };
+  await assert.rejects(translateCollectionRecords('keywords', [{ term: 'recoverable' }], h.io), /cache write failed/);
+  const [record] = await translateCollectionRecords('keywords', [{ term: 'recoverable' }], h.io);
+  assert.equal(record.termZh, '中文recoverable');
+  assert.equal(h.calls.length, 1);
+});
+
+test('saved raw short-ID output can be recovered and cannot be assigned by array position', async () => {
+  const h = harness();
+  const item = { key: translationKey('recover raw'), text: 'recover raw' };
+  h.stored.set(item.key, { status: 'started', owner: 'saved-raw' });
+  h.stored.set(translationBatchKey('saved-raw'), { status: 'received', items: [item], raw: '{"items":[{"id":"t1","text":"已保存译文"}]}' });
+  const [record] = await translateCollectionRecords('keywords', [{ term: item.text }], h.io);
+  assert.equal(record.termZh, '已保存译文');
+  assert.equal(h.calls.length, 0);
+  h.stored.set(item.key, { status: 'started', owner: 'wrong-id' });
+  h.stored.set(translationBatchKey('wrong-id'), { status: 'received', items: [item], raw: '{"items":[{"id":"unrelated","text":"不能错配的译文"}]}' });
+  await assert.rejects(translateCollectionRecords('keywords', [{ term: item.text }], h.io), /缺少对应译文/);
+  assert.equal(h.calls.length, 0);
+});
+
+test('unchanged brand identity is allowed only in its own cache, not as an untranslated title', async () => {
+  const h = harness();
+  h.io.request = async (items) => {
+    h.calls.push(items);
+    return { result: { items: items.map((item) => ({ id: item.key, text: item.allowOriginal ? item.text : '中文名称' })) } };
+  };
+  const [product] = await translateCollectionRecords('products', [{ brand: 'SyntheticBrand', title: 'SyntheticBrand' }], h.io);
+  assert.equal(product.brandZh, 'SyntheticBrand');
+  assert.equal(product.titleZh, '中文名称');
+  assert.equal(h.calls[0].length, 2);
+});
+
+test('a saved invalid legacy brand response is classified without another paid request', async () => {
+  const h = harness();
+  const item = { key: translationKey('Legacy Brand'), text: 'Legacy Brand' };
+  h.stored.set(item.key, { status: 'started', owner: 'legacy-received' });
+  h.stored.set(translationBatchKey('legacy-received'), { status: 'received', items: [item], raw: '{"items":[]}' });
+  h.io.read = async (items) => new Map(items.map((entry) => [entry.key, h.stored.get(entry.key) || { ...h.stored.get(item.key), cacheKey: item.key }]));
+  await assert.rejects(translateCollectionRecords('products', [{ brand: item.text }], h.io), /已返回但校验失败.*缺少对应译文/);
+  assert.equal(h.stored.get(item.key).status, 'invalid');
+  assert.equal(h.calls.length, 0);
+});
+
+test('recovery recognizes malformed or truncated saved output without accepting it or charging again', async () => {
+  for (const [raw, finishReason, reason] of [
+    ['not JSON', 'stop', /JSON格式无法识别/],
+    ['{"items":[{"id":"t1","text":"部分译文"}]}', 'length', /输出上限/],
+  ]) {
+    const h = harness();
+    const item = { key: translationKey('incomplete saved output'), text: 'incomplete saved output' };
+    h.stored.set(item.key, { status: 'started', owner: 'saved-incomplete' });
+    h.stored.set(translationBatchKey('saved-incomplete'), { status: 'received', items: [item], raw, finishReason });
+    await assert.rejects(translateCollectionRecords('keywords', [{ term: item.text }], h.io), reason);
+    assert.equal(h.stored.get(item.key).status, 'invalid');
+    assert.equal(h.calls.length, 0);
+  }
 });

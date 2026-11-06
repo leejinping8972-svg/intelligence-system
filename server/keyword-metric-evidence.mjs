@@ -28,9 +28,7 @@ export async function keywordMetricEvidence(records, pool, sql) {
   const owners = new Map();
   for (const row of rows) {
     const owner = owners.get(row.id) || {
-      reason: /ERROR\s*132|API UNITS BALANCE IS ZERO/i.test(row.logs || '')
-        ? 'Semrush API额度为0（ERROR 132）'
-        : row.block_error || row.blocked || '',
+      reason: row.block_error || row.blocked || '',
       attempts: new Map(),
     };
     if (row.keyword_id) owner.attempts.set(row.keyword_id, row);
