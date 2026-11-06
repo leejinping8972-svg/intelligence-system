@@ -1,21 +1,23 @@
 {
-  "title": "修复广告模板占位符和品牌标题翻译阻断",
-  "sourceSha": "b42bf9b1a50ff244e88b91feb35addca19f47eb7",
+  "title": "商品趋势历史接口去除无用查询",
+  "sourceSha": "74df4a11480685cf1d73957961ce1d1f48b1131c",
   "includedCommits": [
-    "78f9570d7dcea8888e78b030f72e3eff6283aacf"
+    "74df4a11480685cf1d73957961ce1d1f48b1131c"
   ],
   "files": [
-    "server/collection-translation-domain.mjs",
-    "server/collection-translation.test.mjs"
+    "server/product-watch-store.mjs"
   ],
   "changes": [
-    "来源未填充的纯模板占位符保留原文，不发送无意义翻译；标题与广告主品牌完全相同则复用品牌译文，不编造中文品牌。",
-    "本批受控恢复保留原任务、原请求和检查点；已确认结束的旧翻译缓存归档后修复，不重放结果未知请求。"
+    "商品趋势历史接口继续读取最近90条已保存观测记录。",
+    "移除前端未使用的 product-watch:latest 单条读取，趋势请求从两次数据库读取降为一次。",
+    "保留后台监控使用 product-watch:latest 做前后观测对比的逻辑。"
   ],
   "developmentValidation": [
-    "相关32项Node测试、修复专项复测、JS语法及diff检查通过；未执行全仓lint/前端类型/开发构建（无前端变更）。"
+    "商品监控单测5/5通过。",
+    "Node语法检查、git diff --check和趋势领域口径校验通过。",
+    "商品监控PGlite集成测试在本功能树与未修改基线均于既有 partial/completed 断言失败。"
   ],
-  "releaseValidation": "发布重复测试、独立验证构建和CI等待按用户要求跳过",
+  "releaseValidation": "发布阶段重复测试、独立验证构建和CI等待按用户要求跳过",
   "database": {
     "schemaChange": false,
     "migration": false,
@@ -24,8 +26,9 @@
   },
   "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261106025120-1ea43d92",
-  "builtAt": "2026-11-06T02:51:20.219Z",
-  "sourceDigest": "1ea43d92a1c7214e978f389b0def9ed661f867221b4f49a2025d1e1cee6fed5a",
+  "expectedPreviousSha": "316a1ee9be478647141d8877bf890f61f544e3db",
+  "id": "20261106070830-1117b45f",
+  "builtAt": "2026-11-06T07:08:30.127Z",
+  "sourceDigest": "1117b45faea5a40664909aa86b996d622d47ef9673b2f75c95375c18e2af7fa9",
   "operator": "Codex"
 }
