@@ -125,6 +125,16 @@ const keywordOptions = computed(() => [
       value: keyword.id,
     }))),
 ]);
+function keywordLabel(id: string) {
+  const option = keywordOptions.value.find((item) => item.value === id);
+  return option?.label?.split(' · ')[0] || id;
+}
+function siteKeywords(site: Site) {
+  return (site.keywordIds || []).map((id) => ({ id, label: keywordLabel(id) }));
+}
+function openKeyword(id: string) {
+  void router.push({ path: '/research', query: { keywordId: id } });
+}
 const collectedCount = computed(
   () => rows.value.filter((site) => site.dataNature === 'collected').length,
 );
@@ -142,6 +152,13 @@ watch(
       await nextTick();
     }
     selected.value = site;
+  },
+  { immediate: true },
+);
+watch(
+  () => route.query.keywordId,
+  (value) => {
+    keywordFilter.value = typeof value === 'string' ? value : '';
   },
   { immediate: true },
 );
@@ -220,6 +237,7 @@ watch([search, platform, category, ownership, keywordFilter, source, scoreFilter
 });
 const columns = [
   { title: '品牌 / 独立站', key: 'brand', width: 220 },
+  { title: '关联关键词', key: 'keywords', width: 190 },
   { title: '市场', key: 'market', width: 90 },
   { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[], sorter: serverMode ? true : (a: Site, b: Site) => collectionTimeOrder(siteCollectedAt(a)) - collectionTimeOrder(siteCollectedAt(b)) },
   {
@@ -265,15 +283,13 @@ const columns = [
         导出
       </Button>
     </PageHeader>
-    <div v-if="route.query.keyword || linkedKeyword" class="hci-demo-note">
-      <b>研究上下文</b>{{ linkedKeyword?.term || route.query.keyword }} ·
+    <div v-if="route.query.keywordId || linkedKeyword" class="hci-demo-note">
+      <b>关键词关联筛选</b>{{ linkedKeyword?.term || keywordLabel(String(route.query.keywordId || '')) }} ·
       {{
-        linkedKeyword
-          ? '仅显示已关联站点。'
-          : '当前展示候选站点，具体关联需人工核验。'
+        '仅显示已关联站点。'
       }}
       <button
-        v-if="linkedKeyword"
+        v-if="route.query.keywordId || linkedKeyword"
         class="hci-link"
         style="margin-left: 12px"
         @click="router.replace('/sites')"
@@ -371,6 +387,16 @@ const columns = [
             </div> </template
           ><template v-if="column.key === 'market'">
             <Tag>{{ marketName(record.market) }}</Tag> </template
+          ><template v-if="column.key === 'keywords'">
+            <Button
+              v-for="item in siteKeywords(record as Site)"
+              :key="item.id"
+              type="link"
+              size="small"
+              @click="openKeyword(item.id)"
+            >{{ item.label }}</Button>
+            <span v-if="!record.keywordIds?.length" class="hci-subtle">未关联</span>
+          </template
           ><template v-if="column.key === 'collectedAt'">
               <CollectionTime :at="siteCollectedAt(record)" />
           </template><template v-if="column.key === 'mainProducts'">

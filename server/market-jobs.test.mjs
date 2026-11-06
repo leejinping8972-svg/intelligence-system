@@ -36,7 +36,7 @@ test('normalizes nested Meta snapshots, deduplicates IDs and rejects platform de
   assert.equal(data.ads[0].copy, 'Gummies');
   assert.equal(data.ads[0].status, '投放中');
   assert.equal(normalizeAds({ searchResults: [] }, r).creditsCharged, null);
-  assert.deepEqual(normalizeAds({ searchResults: [raw] }, { ...r, direct: true }).ads[0].keywordIds, []);
+  assert.deepEqual(normalizeAds({ searchResults: [raw] }, { ...r, direct: true }).ads[0].keywordIds, ['kw']);
   assert.throws(() => normalizeAds({}, r), /searchResults/);
 });
 test('public landing requests reject local and mapped addresses; non-http links are discarded', () => {
@@ -152,7 +152,7 @@ test('ad landing evidence must pass storefront validation', async () => {
     html: '<title>Brand</title><script type="application/ld+json">{"@type":"Product","name":"Creatine Gummies"}</script><button>Add to cart</button>',
     url: 'https://example.com/',
   }));
-  assert.deepEqual(directSite.keywordIds, []);
+  assert.deepEqual(directSite.keywordIds, ['k']);
 });
 test('validates task bounds and rejects duplicate selected IDs', () => {
   assert.equal(

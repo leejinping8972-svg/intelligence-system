@@ -29,7 +29,7 @@ const collections = new Set([
   'advertisers',
   'insightReports',
 ]);
-const MODEL_VERSION = 'workspace-reads-v6-product-reference';
+const MODEL_VERSION = 'workspace-reads-v7-keyword-associations';
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
@@ -45,7 +45,7 @@ const listKeys = {
   keywords:
     'id term termZh batch market category source growth seedTerm seedTermZh collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
-    'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications sourceCategories',
+    'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId keywordIds color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications sourceCategories',
   sites:
     'id brand brandZh domain market platform type keyword keywordIds category categoryZh description descriptionZh mainProducts mainProductsZh ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand brandZh market platform headline headlineZh copy copyZh sellingPointZh format productId status color archiveId pageId keywordIds query collectionBatches siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
@@ -303,8 +303,12 @@ export function createWorkspaceReads({
       records = await keywordMetricEvidence(records, pool, sql);
       const terms = records.map((record) => normalizeTerm(record.term));
       const field = (name) => sql(`r.payload->>'${name}'`, `JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.${name}'))`);
-      const expansions = (await pool.query(`SELECT r.market,l.target,${field('term')} AS term,${field('source')} AS source FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE l.collection='keywords' AND l.relation='seed' AND l.target IN (${slots})`, terms)).rows;
-      return records.map((record) => ({ ...record, coreSummary: { ...record.coreSummary, related: { expansions: expansions.filter((item) => item.market === record.market && item.target === normalizeTerm(record.term) && normalizeTerm(item.term) !== normalizeTerm(record.term)).map((item) => ({ term: item.term, source: item.source || '' })) } } }));
+      const [expansions, counts] = await Promise.all([
+        pool.query(`SELECT r.market,l.target,${field('term')} AS term,${field('source')} AS source FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE l.collection='keywords' AND l.relation='seed' AND l.target IN (${slots})`, terms),
+        pool.query(`SELECT l.target,${sql('SUM(CASE WHEN l.collection=\'ads\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)', 'SUM(CASE WHEN l.collection=\'ads\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)')} AS ads,${sql('SUM(CASE WHEN l.collection=\'products\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)', 'SUM(CASE WHEN l.collection=\'products\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)')} AS products,${sql('SUM(CASE WHEN l.collection=\'sites\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)', 'SUM(CASE WHEN l.collection=\'sites\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)')} AS sites FROM workspace_read_links l WHERE l.target IN (${slots}) AND l.relation='keyword' GROUP BY l.target`, records.map((record) => record.id)),
+      ]);
+      const countMap = new Map(counts.rows.map((item) => [item.target, { ads: Number(item.ads) || 0, products: Number(item.products) || 0, sites: Number(item.sites) || 0 }]));
+      return records.map((record) => ({ ...record, relatedCounts: countMap.get(record.id) || { ads: 0, products: 0, sites: 0 }, coreSummary: { ...record.coreSummary, related: { expansions: expansions.rows.filter((item) => item.market === record.market && item.target === normalizeTerm(record.term) && normalizeTerm(item.term) !== normalizeTerm(record.term)).map((item) => ({ term: item.term, source: item.source || '' })) } } }));
     }
     return records;
   }
@@ -784,10 +788,10 @@ export function createWorkspaceReads({
     relation('tag', input.tags?.slice(0, 30));
     if (collection === 'products' && input.sourceCategory && input.sourceCategory !== 'ALL') relation('sourceCategory', [String(input.sourceCategory).slice(0,180)]);
     if (input.keywordId) {
-      if (collection === 'ads') relation('keyword', [input.keywordId]);
+      if (collection === 'keywords') clauses.push(`r.id=${bind(input.keywordId)}`);
       else
         clauses.push(
-          `EXISTS(SELECT 1 FROM workspace_read_links k WHERE k.collection='keywords' AND k.id=${bind(input.keywordId)} AND k.relation=${bind(collection)} AND k.target=r.id)`,
+          `(EXISTS(SELECT 1 FROM workspace_read_links k WHERE k.collection=r.collection AND k.id=r.id AND k.relation='keyword' AND k.target=${bind(input.keywordId)}) OR EXISTS(SELECT 1 FROM workspace_read_links k WHERE k.collection='keywords' AND k.id=${bind(input.keywordId)} AND k.relation=${bind(collection)} AND k.target=r.id))`,
         );
     }
     if (collection === 'ads' && input.linkedSite)
@@ -805,7 +809,7 @@ export function createWorkspaceReads({
         `%${String(input.search).normalize('NFKC').trim().toLowerCase().slice(0, 200).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`,
       );
       clauses.push(
-        `(r.search_text LIKE ${search} ESCAPE '!' OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.id WHERE l.collection='keywords' AND l.relation=r.collection AND l.target=r.id AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_rows s WHERE s.collection='sites' AND s.id=r.site_id AND s.search_text LIKE ${search} ESCAPE '!'))`,
+        `(r.search_text LIKE ${search} ESCAPE '!' OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.target WHERE l.collection=r.collection AND l.id=r.id AND l.relation='keyword' AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.id WHERE l.collection='keywords' AND l.relation=r.collection AND l.target=r.id AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_rows s WHERE s.collection='sites' AND s.id=r.site_id AND s.search_text LIKE ${search} ESCAPE '!'))`,
       );
     }
     return { collection, values, where: clauses.join(' AND ') };

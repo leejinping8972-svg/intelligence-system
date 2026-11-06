@@ -189,7 +189,7 @@ export function normalizeAds(payload, record, at = new Date().toISOString()) {
             : '未知',
       color: '',
       productId: '',
-      keywordIds: record.direct ? [] : [record.id],
+      keywordIds: record.id ? [record.id] : [],
       query: record.term,
       landingUrls: [...new Set(links)],
       imageUrls: [...new Set(images)],

@@ -337,7 +337,10 @@ export async function runProductResourceDiscovery(job, io) {
     if (!previousId && cp.productIds.length >= plan.maxProducts) break;
     const variantId = candidate.sourceVariantId || candidate.resourceRaw?.variantId;
     const id = previousId || (variantId ? `${candidate.id}-variant-${digest(String(variantId)).slice(0, 12)}` : candidate.id);
-    const patch = decorateResourceProduct({ ...candidate, id }, evidencePlan, {
+    const keywordIds = (job.input.keywordRecords || [])
+      .filter((item) => item.term?.toLowerCase() === work.term?.toLowerCase())
+      .map((item) => item.id);
+    const patch = decorateResourceProduct({ ...candidate, id, ...(keywordIds.length ? { keywordIds } : {}) }, evidencePlan, {
       jobId: job.id, collectedAt: at, sourceRank: candidate.resourceRaw?.sourceRank,
       query: work.term, category: work.category, discoveryOrigin,
       coverage: { scope: 'collected_sample', complete: false, pages: cp.discoveryPages, publicPages: cp.publicPages },

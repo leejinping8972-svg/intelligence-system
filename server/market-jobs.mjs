@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { pool, lock, unlock, putDocument, sql } from './database.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 import { readKeyword, patchCollection } from './enrichment-jobs.mjs';
@@ -15,6 +15,7 @@ import { observeDiscovery } from './discovery-newness.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
 import { appendCoreEvidence, archiveCoreEvidence, exactProductLinks } from './core-evidence.mjs';
 import { translateCollectionRecords } from './collection-translation.mjs';
+import { ensureDirectKeywords } from './keyword-associations.mjs';
 const readDoc = async (key) =>
   (
     await pool.query('SELECT value FROM workspace_documents WHERE name=$1', [
@@ -34,10 +35,15 @@ export async function mergeBusiness(key, patch, options = {}) {
           [`business:${key}`],
         )
       ).rows[0]?.value || {};
-    if (options.evidenceOnlyIfExists && old.id) patch = {
-      sources: patch.sources, sourceEvidence: patch.sourceEvidence,
-      lastCollectedAt: Date.parse(patch.lastCollectedAt || '') > Date.parse(old.lastCollectedAt || '1970-01-01') ? patch.lastCollectedAt : old.lastCollectedAt,
-    };
+    if (options.evidenceOnlyIfExists && old.id) {
+      const keywordIds = patch.keywordIds;
+      patch = {
+        sources: patch.sources,
+        sourceEvidence: patch.sourceEvidence,
+        lastCollectedAt: Date.parse(patch.lastCollectedAt || '') > Date.parse(old.lastCollectedAt || '1970-01-01') ? patch.lastCollectedAt : old.lastCollectedAt,
+      };
+      if (Array.isArray(keywordIds)) patch.keywordIds = keywordIds;
+    }
     let value = { ...old, ...patch };
     const kind = key.split(':')[0];
     if (['products', 'sites', 'ads'].includes(kind) && !options.evidenceOnlyIfExists) {
@@ -219,11 +225,11 @@ export async function submitMarketJob(input, context = {}) {
           : { id: r.id, domain: r.domain, market: r.market, term: r.brand },
       );
     }
-    for (const term of v.terms) {
-      const id = `direct:${v.market}:${createHash('sha256').update(term.toLocaleLowerCase()).digest('hex').slice(0, 24)}`;
-      if (active.some((j) => j.input.kind === 'ads' && j.input.records?.some((record) => record.id === id)))
-        throw new Error(`检索词「${term}」已有后台任务，请勿重复提交`);
-      records.push({ id, term, market: v.market, direct: true });
+    const directKeywords = await ensureDirectKeywords({ connection: c, sql, terms: v.terms, market: v.market });
+    for (const keyword of directKeywords) {
+      if (active.some((j) => j.input.kind === 'ads' && j.input.records?.some((record) => record.id === keyword.id)))
+        throw new Error(`检索词「${keyword.term}」已有后台任务，请勿重复提交`);
+      records.push({ id: keyword.id, term: keyword.term, market: v.market, direct: true });
     }
     let pageId;
     if (v.adId) {
@@ -349,7 +355,7 @@ export async function verifyAdSite(url, r, ad, fetchPage = fetchPublicPage) {
     lastCollectedAt: new Date().toISOString(),
     dataNature: 'collected',
     sources: ['Meta 广告库 / ScrapeCreators'],
-    keywordIds: r.direct ? [] : [r.id],
+    keywordIds: r.id ? [r.id] : [],
     sourceEvidence: [
       {
         source: 'Meta 广告库 / ScrapeCreators',
@@ -516,7 +522,7 @@ export async function runMarketJob(job, overrides = {}) {
                             keyword: r.term,
                           },
                         ],
-                        keywordIds: r.direct ? [] : [r.id],
+                        keywordIds: r.id ? [r.id] : [],
                       }
                     : await io.verifyAdSite(url, r, ad);
                 await io.mergeBusiness(`sites:${site.id}`, site);

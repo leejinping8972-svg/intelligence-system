@@ -3,11 +3,12 @@ import process from 'node:process';
 import { ssoSchema } from './admin-sso-store.mjs';
 import { platformLinkSchema } from './platform-link-store.mjs';
 import { identitySchema } from './identity-store.mjs';
-import { engine, pool, sql } from './database.mjs';
+import { engine, lock, pool, putDocument, sql, unlock } from './database.mjs';
 import { createKeywordSaver } from './keyword-store.mjs';
 import { translateCollectedResult, translateCollectionRecords } from './collection-translation.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
+import { reconcileKeywordAssociations } from './keyword-associations.mjs';
 import { markUsageChanged } from './usage-changes.mjs';
 import {
   requestFailed,
@@ -43,6 +44,42 @@ export async function migrate() {
   `);
   for (const statement of authSchema) await pool.query(statement);
   await migrateWorkspaceReads(pool, engine);
+  await reconcileAssociationsOnce();
+}
+
+async function reconcileAssociationsOnce() {
+  const connection = await pool.connect();
+  let locked = false;
+  try {
+    locked = await lock(connection, 'workspace-reads');
+    if (!locked) return;
+    const marker = (await connection.query(
+      "SELECT value FROM workspace_documents WHERE name='read:keyword-associations-v1'",
+    )).rows[0]?.value;
+    if (marker?.completedAt) return;
+    await connection.query('BEGIN');
+    const result = await reconcileKeywordAssociations({ connection, sql, putDocument });
+    await connection.query(
+      sql(
+        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'keywords',natural_key FROM research_keywords ON CONFLICT(kind,source_key) DO UPDATE SET revision=workspace_read_dirty.revision+1",
+        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'keywords',natural_key FROM research_keywords ON DUPLICATE KEY UPDATE revision=revision+1",
+      ),
+    );
+    await connection.query(
+      sql(
+        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'business',name FROM workspace_documents WHERE name LIKE 'business:%' ON CONFLICT(kind,source_key) DO UPDATE SET revision=workspace_read_dirty.revision+1",
+        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'business',name FROM workspace_documents WHERE name LIKE 'business:%' ON DUPLICATE KEY UPDATE revision=revision+1",
+      ),
+    );
+    await putDocument('workspace_documents', 'read:keyword-associations-v1', { completedAt: new Date().toISOString(), ...result }, false, connection);
+    await connection.query('COMMIT');
+  } catch (error) {
+    await connection.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    if (locked) await unlock(connection, 'workspace-reads');
+    connection.release();
+  }
 }
 export const authSchema = [
   ssoSchema,

@@ -157,7 +157,7 @@ const remote = useWorkspaceList<Product>(
     productPlatform: platformFilter.value,
     siteLinked: siteLinked.value,
     siteId: siteFilter.value,
-    keywordId: keywordFilter.value || route.query.keyword,
+    keywordId: keywordFilter.value || route.query.keywordId,
     listedFrom: listedRange.value[0],
     listedTo: listedRange.value[1],
   })),
@@ -193,8 +193,16 @@ const keywordOptions = computed(() => [
           value: keyword.id,
         }))),
 ]);
+function keywordLabel(id: string) {
+  const option = keywordOptions.value.find((item) => item.value === id);
+  return option?.label?.split(' · ')[0] || id;
+}
 const linkedKeyword = computed(() =>
-  state.keywords.find((item) => item.id === route.query.keyword),
+  state.keywords.find((item) => item.id === route.query.keywordId),
+);
+const linkedKeywordText = computed(() => linkedKeyword.value?.term || keywordLabel(String(route.query.keywordId || '')));
+const linkedProductCount = computed(() =>
+  serverMode ? remote.total.value : linkedKeyword.value?.productIds.length || 0,
 );
 const benefitOptions = computed(() => [
   { label: '全部功效卖点', value: 'ALL' },
@@ -226,6 +234,13 @@ watch(
     siteFilter.value = String(v || '');
     const site = state.sites.find((s) => s.id === v);
     if (site) state.market = site.market;
+  },
+  { immediate: true },
+);
+watch(
+  () => route.query.keywordId,
+  (value) => {
+    keywordFilter.value = typeof value === 'string' ? value : '';
   },
   { immediate: true },
 );
@@ -364,6 +379,7 @@ const tableColumns = computed(() =>
   core
     .columns([
       { title: '商品', key: 'product', width: 240, fixed: 'left' as const },
+      { title: '关联关键词', key: 'keywords', width: 190 },
       { title: '平台', key: 'platform', width: 100 },
       { title: '关联独立站', key: 'source', width: 165 },
       { title: '决策标签', key: 'decisions', width: 160 },
@@ -421,7 +437,7 @@ watch(
     siteFilter,
     keywordFilter,
     () => state.market,
-    () => route.query.keyword,
+    () => route.query.keywordId,
   ],
   () => {
     page.value = 1;
@@ -545,9 +561,9 @@ async function exportProducts() {
         对比商品（{{ comparison.length }}/3）
       </Button>
     </PageHeader>
-    <div v-if="linkedKeyword" class="hci-demo-note">
-      <b>关键词关联筛选</b>{{ linkedKeyword.term }} · 当前显示
-      {{ linkedKeyword.productIds.length }} 个已关联商品。
+    <div v-if="route.query.keywordId || linkedKeyword" class="hci-demo-note">
+      <b>关键词关联筛选</b>{{ linkedKeywordText }} · 当前显示
+      {{ linkedProductCount }} 个已关联商品。
       <button
         class="hci-link"
         style="margin-left: 12px"
@@ -753,6 +769,17 @@ async function exportProducts() {
             <ProductChineseName :product="product" />
           </button>
           <ProductAsin :product="product" />
+          <div class="hci-subtle">
+            关联关键词：
+            <Button
+              v-for="id in product.keywordIds || []"
+              :key="id"
+              type="link"
+              size="small"
+              @click="router.push({ path: '/research', query: { keywordId: id } })"
+            >{{ keywordLabel(id) }}</Button>
+            <span v-if="!product.keywordIds?.length">未关联</span>
+          </div>
           <ProductText :text="`${product.size} · ${product.form}`" :translated="product.sizeZh || product.formZh ? `${product.sizeZh || product.size} · ${product.formZh || product.form}` : ''" />
           <p class="hci-subtle">
             采集：<CollectionTime :at="productCollectedAt(product)" />
@@ -887,6 +914,18 @@ async function exportProducts() {
         </template>
         <template v-else-if="column.key === 'collectedAt'">
           <CollectionTime :at="productCollectedAt(record)" />
+        </template>
+        <template v-else-if="column.key === 'keywords'">
+          <Button
+            v-for="id in record.keywordIds || []"
+            :key="id"
+            type="link"
+            size="small"
+            @click="router.push({ path: '/research', query: { keywordId: id } })"
+          >
+            {{ keywordLabel(id) }}
+          </Button>
+          <span v-if="!record.keywordIds?.length" class="hci-subtle">未关联</span>
         </template>
         <template v-else-if="column.key === 'decisions'">
           <ProductDecisionTags :product="record as Product" />
