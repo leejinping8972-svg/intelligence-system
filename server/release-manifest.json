@@ -1,19 +1,19 @@
 {
-  "title": "修复关键词无数据回复误阻断并恢复停止任务",
-  "sourceSha": "806a5733aca4f0f49308998153b48d8e39d14a1d",
+  "title": "修复广告模板占位符和品牌标题翻译阻断",
+  "sourceSha": "b42bf9b1a50ff244e88b91feb35addca19f47eb7",
   "includedCommits": [
-    "bdf037f435cb848d8079a3e2a2a8e49532ff8a02"
+    "78f9570d7dcea8888e78b030f72e3eff6283aacf"
   ],
   "files": [
-    "server/semrush-reports.mjs",
-    "server/task-restart.test.mjs"
+    "server/collection-translation-domain.mjs",
+    "server/collection-translation.test.mjs"
   ],
   "changes": [
-    "明确识别Semrush no_data错误包，将该词记为无数据后继续处理后续词；其他上游错误和未知格式继续安全停止。",
+    "来源未填充的纯模板占位符保留原文，不发送无意义翻译；标题与广告主品牌完全相同则复用品牌译文，不编造中文品牌。",
     "本批受控恢复保留原任务、原请求和检查点；已确认结束的旧翻译缓存归档后修复，不重放结果未知请求。"
   ],
   "developmentValidation": [
-    "相关11项Node测试、修复专项复测、JS语法及diff检查通过；未执行全仓lint/前端类型/开发构建（无前端变更）。"
+    "相关32项Node测试、修复专项复测、JS语法及diff检查通过；未执行全仓lint/前端类型/开发构建（无前端变更）。"
   ],
   "releaseValidation": "发布重复测试、独立验证构建和CI等待按用户要求跳过",
   "database": {
@@ -24,8 +24,8 @@
   },
   "queueLeases": 23,
   "preservePendingTasks": true,
-  "id": "20261106021427-ab5292c5",
-  "builtAt": "2026-11-06T02:14:27.403Z",
-  "sourceDigest": "ab5292c57765b63007bee5256fd73cd47ae1654c73244d8e804bbd4f1a1214de",
+  "id": "20261106025120-1ea43d92",
+  "builtAt": "2026-11-06T02:51:20.219Z",
+  "sourceDigest": "1ea43d92a1c7214e978f389b0def9ed661f867221b4f49a2025d1e1cee6fed5a",
   "operator": "Codex"
 }
