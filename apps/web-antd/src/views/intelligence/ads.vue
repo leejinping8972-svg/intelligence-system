@@ -26,7 +26,7 @@ import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
 const core = useCoreList('ads');
 const displayMode = ref('list');
-const adColumns = [{ title: '广告主 / 素材', key: 'brand', width: 290, fixed: 'left' as const }, { title: '抓取批次', key: 'batch', width: 140 }, { title: '市场', key: 'market', width: 90 }, { title: '平台', key: 'platform', dataIndex: 'platform', width: 100 }, { title: '数据来源', key: 'source', dataIndex: 'source', width: 150 }, { title: '操作', key: 'actions', width: 100, fixed: 'right' as const }];
+const adColumns = [{ title: '广告主 / 素材', key: 'brand', width: 290, fixed: 'left' as const }, { title: '关联关键词', key: 'keywords', width: 190 }, { title: '抓取批次', key: 'batch', width: 140 }, { title: '市场', key: 'market', width: 90 }, { title: '平台', key: 'platform', dataIndex: 'platform', width: 100 }, { title: '数据来源', key: 'source', dataIndex: 'source', width: 150 }, { title: '操作', key: 'actions', width: 100, fixed: 'right' as const }];
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
 import AdsResearchPanel from './components/AdsResearchPanel.vue';
@@ -53,6 +53,7 @@ const search = ref(''),
   error = ref('');
 const platformFilter = ref('ALL'), sourceFilter = ref('ALL'), batchFilter = ref('');
 const linkedProduct = ref<string>(), linkedSite = ref<string>();
+const keywordFilter = ref<string>();
 const productSearch = ref(''), siteSearch = ref('');
 const platformOptions = computed(() => [{ label: '全部平台', value: 'ALL' }, ...(serverMode ? remote.facets.value.platform || [] : [...new Set(state.ads.map(a => a.platform))]).map(value => ({label: value, value}))]);
 const sourceOptions = computed(() => [{ label: '全部数据来源', value: 'ALL' }, ...(serverMode ? remote.facets.value.source || [] : [...new Set(state.ads.map(a => a.source).filter(Boolean))]).map(value => ({label: value, value}))]);
@@ -68,6 +69,7 @@ watch(() => [route.query.tab, route.query.report], () => {
   }
 }, { immediate: true });
 watch(() => route.query.site, value => { linkedSite.value = typeof value === 'string' ? value : undefined; }, { immediate: true });
+watch(() => route.query.keywordId, value => { keywordFilter.value = typeof value === 'string' ? value : undefined; }, { immediate: true });
 watch(() => route.query.pageId, (value) => {
   if (value) { search.value = String(value); status.value = 'ALL'; newness.value = 'ALL'; }
 }, { immediate: true });
@@ -80,11 +82,10 @@ const form = reactive({
   maxSites: 10,
   adStatus: 'ACTIVE',
 });
-const keywords = computed(() => serverMode ? (remote.facets.value.keywords || []).filter((k) => k.reviewStatus === 'selected').map((k) => ({ ...k, id: k.value })) :
-  state.keywords.filter(
-    (k) => k.reviewStatus === 'selected' && inMarket(k.market),
-  ),
-);
+const keywordOptions = computed(() => serverMode ? (remote.facets.value.keywords || []).map((k) => ({ ...k, id: k.value })) :
+  state.keywords.map((k) => ({ ...k, value: k.id, label: `${k.term} · ${k.market}` })));
+const keywords = computed(() => keywordOptions.value.filter((k) => k.reviewStatus === 'selected'));
+const allKeywords = computed(() => serverMode ? keywordOptions.value : state.keywords.map((k) => ({ ...k, id: k.id, value: k.id, label: `${k.term} · ${k.market}` })));
 const rows = computed(() => serverMode ? remote.rows.value :
   state.ads
     .filter(
@@ -100,8 +101,7 @@ const rows = computed(() => serverMode ? remote.rows.value :
         (newness.value === 'ALL' ||
           (newness.value === 'discovered' ? discoveryDecision(a, 'ad').recentDiscovery
             : String(discoveryDecision(a, 'ad').isNew === null ? 'unknown' : discoveryDecision(a, 'ad').isNew ? 'yes' : 'no') === newness.value)) &&
-        (!route.query.keywordId ||
-          a.keywordIds?.includes(String(route.query.keywordId))) &&
+        (!keywordFilter.value || a.keywordIds?.includes(keywordFilter.value)) &&
         (!linkedSite.value || a.siteIds?.includes(linkedSite.value)) &&
         (!linkedProduct.value || a.productId === linkedProduct.value),
     )
@@ -114,7 +114,7 @@ const rows = computed(() => serverMode ? remote.rows.value :
 const page = ref(1);
 const pageSize = ref(20);
 const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.market, search: search.value,
-  enabled: viewTab.value !== 'advertisers', platform: platformFilter.value, source: sourceFilter.value, batch: batchFilter.value, status: status.value, newness: newness.value, keywordId: route.query.keywordId, linkedSite: linkedSite.value, linkedProduct: linkedProduct.value,
+  enabled: viewTab.value !== 'advertisers', platform: platformFilter.value, source: sourceFilter.value, batch: batchFilter.value, status: status.value, newness: newness.value, keywordId: keywordFilter.value || route.query.keywordId, linkedSite: linkedSite.value, linkedProduct: linkedProduct.value,
 })), page, pageSize);
 const productLookup = useWorkspaceList<Product>('products', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: productSearch.value })), ref(1), ref(50));
 const siteLookup = useWorkspaceList<Site>('sites', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: siteSearch.value })), ref(1), ref(50));
@@ -130,10 +130,20 @@ watch(() => selected.value?.id, async (id) => {
   } catch (cause) { message.error((cause as Error).message); }
 });
 const adResearch = ref<InstanceType<typeof AdsResearchPanel>>();
-watch([search, status, newness, platformFilter, sourceFilter, batchFilter, linkedProduct, linkedSite, () => state.market, () => route.query], () => { page.value = 1; clear(); });
+watch([search, status, newness, platformFilter, sourceFilter, batchFilter, linkedProduct, linkedSite, keywordFilter, () => state.market, () => route.query], () => { page.value = 1; clear(); });
 watch([keywordInput, () => form.market, () => form.batch, () => form.maxPages, () => form.maxAds, () => form.maxSites, () => form.adStatus], () => {
   pendingRequest = '';
 });
+function keywordLabel(id: string) {
+  const value = allKeywords.value.find((item) => item.id === id || item.value === id);
+  return value?.term || value?.label || id;
+}
+function adKeywords(ad: Ad) {
+  return (ad.keywordIds || []).map((id) => ({ id, label: keywordLabel(id) }));
+}
+function openKeyword(id: string) {
+  void router.push({ path: '/research', query: { keywordId: id } });
+}
 function fillLinkedTerms() {
   if (!keywordIds.value.length || keywordInput.value.trim()) return;
   const linked = keywordIds.value.map((id) => keywords.value.find((keyword) => keyword.id === id)).filter((keyword) => !!keyword);
@@ -242,6 +252,7 @@ async function exportAds() {
         />
         <Select v-model:value="platformFilter" :options="platformOptions" show-search option-filter-prop="label" aria-label="按广告平台筛选" />
         <Select v-model:value="sourceFilter" :options="sourceOptions" show-search option-filter-prop="label" aria-label="按广告数据来源筛选" />
+        <Select v-model:value="keywordFilter" :options="allKeywords" :loading="remote.loading.value" show-search option-filter-prop="label" allow-clear placeholder="关联关键词" aria-label="按关联关键词筛选广告" />
         <Select v-model:value="linkedProduct" :options="productOptions" :loading="productLookup.loading.value" show-search :filter-option="serverMode ? false : undefined" option-filter-prop="label" allow-clear placeholder="关联商品" aria-label="检索关联商品" @search="value => productSearch = value" />
         <Select v-model:value="linkedSite" :options="siteOptions" :loading="siteLookup.loading.value" show-search :filter-option="serverMode ? false : undefined" option-filter-prop="label" allow-clear placeholder="关联独立站" aria-label="检索关联独立站" @search="value => siteSearch = value" />
         <Select v-model:value="newness" :options="discoveryFilters" aria-label="广告新旧标签" />
@@ -260,6 +271,7 @@ async function exportAds() {
         <template #bodyCell="{column,record}">
           <EvidenceMetric v-if="String(column.key).startsWith('core:')" :metric="core.metric(record as Ad,column.key)" />
           <template v-else-if="column.key === 'brand'"><Button type="link" class="ad-brand-link" @click="selected = record as Ad">{{ chineseFirst(record.brandZh, record.brand, '广告主待识别') }}</Button><p v-if="showOriginal(record.brandZh, record.brand)" class="hci-subtle hci-clamp-2">{{ record.brand }}</p><p class="hci-clamp-2">{{ chineseFirst(record.headlineZh, record.headline, '来源未提供素材标题') }}</p><p v-if="showOriginal(record.headlineZh, record.headline)" class="hci-subtle hci-clamp-2">{{ record.headline }}</p></template>
+          <template v-else-if="column.key === 'keywords'"><Button v-for="item in adKeywords(record as Ad)" :key="item.id" type="link" size="small" @click="openKeyword(item.id)">{{ item.label }}</Button><span v-if="!record.keywordIds?.length" class="hci-subtle">未关联</span></template>
           <template v-else-if="column.key === 'batch'">{{ record.collectionBatches?.join('；') || '未标记' }}</template>
           <template v-else-if="column.key === 'market'">{{ marketName(record.market) }}</template>
           <Button v-else-if="column.key === 'actions'" size="small" @click="selected = record as Ad">详情</Button>
@@ -286,6 +298,7 @@ async function exportAds() {
               {{ marketName(ad.market) }} · 平台：{{ ad.platform || '未记录' }} · 来源：{{ ad.source || '人工导入' }} ·
               {{ time(ad.lastCollectedAt || ad.firstSeenAt) }} · 批次：{{ ad.collectionBatches?.join('、') || '未标记' }}
             </p>
+             <div class="hci-subtle">关联关键词：<Button v-for="item in adKeywords(ad)" :key="item.id" type="link" size="small" @click="openKeyword(item.id)">{{ item.label }}</Button><span v-if="!ad.keywordIds?.length">未关联</span></div>
             <div class="hci-toolbar">
               <Button size="small" @click="selected = ad">查看详情</Button
               ><a

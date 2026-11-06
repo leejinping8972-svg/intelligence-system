@@ -124,6 +124,7 @@ export interface Keyword {
   favorite: boolean;
   productIds: string[];
   siteIds: string[];
+  relatedCounts?: { ads: number; products: number; sites: number };
   updatedAt?: string;
   dataNature?: 'collected' | 'demo' | 'imported';
 }
@@ -293,6 +294,7 @@ export interface Product {
   benefitEvidence: string;
   ingredientInsights: IngredientInsight[];
   siteId: string;
+  keywordIds?: string[];
   color: string;
   imageUrl?: string;
   collectionFields?: string[];

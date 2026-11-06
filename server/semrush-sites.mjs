@@ -1,6 +1,7 @@
 import { hostnameRoot, inferCategory, isCandidateUrl } from './collector.js';
 
 export const SEMRUSH_ADVERTISER_ROW_UNITS = 20;
+const normalized = (value) => String(value).normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 export function validateSemrushSites(input) {
   if (
     !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(input.requestId || '')
@@ -154,6 +155,7 @@ export async function runSemrushSites(job, io) {
           cp.logs.push('任务已取消，已返回页面仍保存，停止后续请求');
         }
         const ids = [];
+        const keywordId = (v.keywordRecords || []).find((item) => normalized(item.term) === normalized(term))?.id;
         for (const site of advertiserSites(
           result.rows,
           term,
@@ -167,7 +169,7 @@ export async function runSemrushSites(job, io) {
             cp.siteLimitReached = true;
             break;
           }
-          await io.saveSite(site, term, v.market);
+          await io.saveSite({ ...site, keywordIds: keywordId ? [keywordId] : [] });
           ids.push(site.id);
           if (!cp.siteIds.includes(site.id)) cp.siteIds.push(site.id);
         }

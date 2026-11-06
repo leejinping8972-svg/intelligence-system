@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { pool, lock, unlock } from './database.mjs';
+import { pool, lock, sql, unlock } from './database.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
 import { mergeBusiness } from './market-jobs.mjs';
 import { runSemrushSites, validateSemrushSites } from './semrush-sites.mjs';
 import { naturalKey } from './domain.mjs';
+import { ensureDirectKeywords } from './keyword-associations.mjs';
 
 const normalized = (value) =>
   String(value).normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
@@ -49,10 +50,11 @@ export async function submitSemrushSites(input) {
       ).rows.length
     )
       throw new Error('请先在数据源与设置中配置Semrush MCP');
+    const keywordRecords = await ensureDirectKeywords({ connection: c, sql, terms: value.seeds, market: value.market });
     const id = randomUUID();
     await c.query(
       'INSERT INTO research_jobs(id,request_id,input,checkpoint) VALUES($1,$2,$3,$4)',
-      [id, input.requestId, value, { submittedAt: new Date().toISOString() }],
+      [id, input.requestId, { ...value, keywordRecords }, { submittedAt: new Date().toISOString() }],
     );
     const job = (await c.query('SELECT * FROM research_jobs WHERE id=$1', [id]))
       .rows[0];

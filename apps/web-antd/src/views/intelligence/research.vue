@@ -123,6 +123,7 @@ const remote = useWorkspaceList<Keyword>(
   computed(() => ({
     market: state.market,
     search: search.value,
+    keywordId: route.query.keywordId,
     batch: batchFilter.value,
     category: category.value,
     rating: rating.value,
@@ -267,6 +268,7 @@ const localRows = computed(() =>
       (reviewFilter.value === 'ALL' ||
         (record.reviewStatus || 'pending') === reviewFilter.value) &&
       (!favoritesOnly.value || record.favorite) &&
+      (!route.query.keywordId || record.id === String(route.query.keywordId)) &&
       (!batchFilter.value ||
         (record.batch || '')
           .toLocaleLowerCase()
@@ -409,6 +411,9 @@ const columns = [
   { title: '热门相关查询', key: 'core:relatedTop', width: 170 },
   { title: '上升相关查询', key: 'core:relatedRising', width: 170 },
   { title: '来源', key: 'source', width: 105 },
+  { title: '关联广告', key: 'relatedAds', width: 88 },
+  { title: '关联商品', key: 'relatedProducts', width: 88 },
+  { title: '关联独立站', key: 'relatedSites', width: 98 },
   {
     title: '抓取时间',
     key: 'collectedAt',
@@ -471,6 +476,22 @@ function reviewLabel(value?: string) {
   if (value === 'selected') return '已入选';
   if (value === 'excluded') return '已排除';
   return '待人工筛选';
+}
+function relatedCount(record: Keyword, collection: 'ads' | 'products' | 'sites') {
+  if (serverMode) return record.relatedCounts?.[collection] || 0;
+  if (collection === 'ads') return state.ads.filter((item) => item.keywordIds?.includes(record.id)).length;
+  if (collection === 'products') return state.products.filter((item) => item.keywordIds?.includes(record.id)).length;
+  return state.sites.filter((item) => item.keywordIds?.includes(record.id)).length;
+}
+function relatedCollection(key: unknown): 'ads' | 'products' | 'sites' {
+  if (key === 'relatedProducts') return 'products';
+  if (key === 'relatedSites') return 'sites';
+  return 'ads';
+}
+function openRelated(collection: 'ads' | 'products' | 'sites', id: string) {
+  const path = collection === 'ads' ? '/ads' : collection === 'products' ? '/products' : '/sites';
+  const query = { keywordId: id };
+  void router.push({ path, query });
 }
 function markRecords(
   records: Keyword[],
@@ -1115,6 +1136,16 @@ function saveMetrics() {
               </Tag>
             </div>
           </template>
+           <template v-else-if="['relatedAds', 'relatedProducts', 'relatedSites'].includes(String(column.key))">
+             <Button
+               type="link"
+               size="small"
+               :disabled="relatedCount(record as Keyword, relatedCollection(column.key)) === 0"
+               @click="openRelated(relatedCollection(column.key), record.id)"
+             >
+               {{ relatedCount(record as Keyword, relatedCollection(column.key)) }} 条
+             </Button>
+           </template>
           <template v-else-if="column.key === 'collectedAt'">
             <span>{{ formatTime(record.collectedAt) }}</span><Tooltip :title="formatTime(record.trendCollectedAt)">
               <p class="hci-subtle">

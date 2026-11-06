@@ -55,7 +55,7 @@ export async function runCombinedDiscovery(job, io, runAds) {
       const current = await io.readKeyword(r.id);
       const ids = cp.siteIdsByKeyword[r.id] || [];
       const recordStatus =
-        current?.reviewStatus === 'selected' ? status : 'cancelled';
+        r.direct || current?.reviewStatus === 'selected' ? status : 'cancelled';
       let siteStatus = ids.length > 0 ? 'completed' : 'empty';
       if (['cancelled', 'partial'].includes(recordStatus))
         siteStatus = recordStatus;
@@ -101,7 +101,7 @@ export async function runCombinedDiscovery(job, io, runAds) {
       const r = v.records[cp.search.index];
       cp.currentTerm = `Brave Search · ${r.term}`;
       const current = await io.readKeyword(r.id);
-      if (!current || current.reviewStatus !== 'selected') {
+      if (!r.direct && (!current || current.reviewStatus !== 'selected')) {
         cp.search.logs.push(`${r.term}：已移出入选列表，跳过搜索`);
         continue;
       }

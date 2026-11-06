@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { readSorftimeToken } from './collector.js';
 import { appendCoreEvidence, archiveCoreEvidence } from './core-evidence.mjs';
-import { lock, pool, putDocument, unlock } from './database.mjs';
+import { lock, pool, putDocument, sql, unlock } from './database.mjs';
 import { observeDiscovery } from './discovery-newness.mjs';
 import { readKeyword } from './enrichment-jobs.mjs';
 import { withFormulaIntelligence } from './formula-intelligence.mjs';
@@ -27,6 +27,7 @@ import {
   upsertResourceContent,
 } from './product-resource-service.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
+import { ensureDirectKeywords } from './keyword-associations.mjs';
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 export function validatePlatformProducts(input) {
@@ -135,6 +136,14 @@ export async function submitPlatformProducts(input, context = {}) {
       )
     )
       throw new Error('这些关键词已有平台商品任务，请等待完成');
+    if (value.resourceDiscovery && value.resourcePlan.mode === 'keyword') {
+      value.keywordRecords = await ensureDirectKeywords({ connection: c, sql, terms: value.resourcePlan.terms, market: value.market });
+      value.trend = false;
+      value.resourcePlan = { ...value.resourcePlan, includeHistory: false };
+    } else if (!value.resourceDiscovery) {
+      value.keywordRecords = await ensureDirectKeywords({ connection: c, sql, terms: value.seeds, market: value.market });
+      value.trend = false;
+    }
     if (value.resourceDiscovery) {
       const configNames = {
         sorftime: ['provider:sorftime:mcp:v1', 'credentials'],
@@ -182,22 +191,10 @@ export async function submitPlatformProducts(input, context = {}) {
       ).rows.length === 0
     )
       throw new Error('请先在数据源与设置中配置 ScrapeCreators API Key');
-    const all = (
-      await c.query(
-        'SELECT natural_key,data FROM research_keywords ORDER BY updated_at DESC LIMIT 10000',
-      )
-    ).rows;
-    value.keywordRecords = all
-      .filter(
-        ({ data: k }) =>
-          k.market === value.market &&
-          value.seeds.some((s) => s.toLowerCase() === k.term.toLowerCase()),
-      )
-      .map(({ natural_key, data: k }) => ({
-        id: k.id,
-        term: k.term,
-        naturalKey: natural_key,
-      }));
+    if (!value.resourceDiscovery && !value.keywordRecords?.length) {
+      const all = (await c.query('SELECT natural_key,data FROM research_keywords ORDER BY updated_at DESC LIMIT 10000')).rows;
+      value.keywordRecords = all.filter(({ data: k }) => k.market === value.market && value.seeds.some((s) => s.toLowerCase() === k.term.toLowerCase())).map(({ natural_key, data: k }) => ({ id: k.id, term: k.term, naturalKey: natural_key }));
+    }
     const id = randomUUID();
     await c.query(
       'INSERT INTO research_jobs(id,request_id,input,checkpoint) VALUES($1,$2,$3,$4)',

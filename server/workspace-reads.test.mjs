@@ -48,6 +48,17 @@ test('product projection indexes FBM and regular new-product classification type
     ['fbm_new', 'regular_new'],
   );
 });
+test('business projections expose keyword links for reverse association counts', () => {
+  const projection = projectRecord('products', {
+    id: 'keyword-linked-product',
+    market: 'US',
+    title: 'Creatine Gummies',
+    keywordIds: ['keyword-creatine'],
+  });
+  assert.deepEqual(projection.links.filter(([relation]) => relation === 'keyword'), [
+    ['keyword', 'keyword-creatine'],
+  ]);
+});
 const keyword = (i) => ({
   id: `k${i}`,
   term: `magnesium gummies ${i}`,
