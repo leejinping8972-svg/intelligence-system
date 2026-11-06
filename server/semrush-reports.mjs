@@ -5,6 +5,9 @@ import { pool, putDocument } from './database.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { connectSemrush, safeSemrushError } from './semrush-mcp.mjs';
 
+const noData = (payload) =>
+  String(payload?.code || payload?.error?.code || '').toLowerCase() === 'no_data';
+
 export function mcpPayload(result) {
   if (result.isError) {
     const message = result.content
@@ -12,6 +15,9 @@ export function mcpPayload(result) {
         .map((c) => c.text)
         .join(' ') || 'Semrush 报告失败';
     if (/\bERROR\s*50\s*::\s*(NOTHING FOUND|NO DATA FOUND)\b/i.test(message)) return { data: [] };
+    try {
+      if (noData(JSON.parse(message))) return { data: [] };
+    } catch { /* Plain text errors are handled below. */ }
     throw new Error(message);
   }
   if (result.structuredContent) return result.structuredContent;
@@ -59,6 +65,7 @@ export function csvRows(text) {
   );
 }
 export function reportRows(payload) {
+  if (noData(payload)) return [];
   const data = payload.data;
   if (typeof data === 'string') return csvRows(data);
   if (Array.isArray(data)) return data;
@@ -67,6 +74,10 @@ export function reportRows(payload) {
   if (Array.isArray(payload.rows)) return payload.rows;
   // Only explicit source evidence counts as no data; malformed reports remain errors.
   if (String(payload.error?.code) === '50' && /NOTHING FOUND|NO DATA FOUND/i.test(payload.error?.message || '')) return [];
+  if (payload.code && typeof payload.message === 'string')
+    throw Object.assign(new Error(`Semrush ${payload.code}：${payload.message}`), {
+      code: 'SEMRUSH_UPSTREAM_ERROR',
+    });
   throw Object.assign(new Error('Semrush 报告未返回可识别的数据行；已保留报告结构，需核实后继续'), {
     code: 'SEMRUSH_REPORT_FORMAT',
     mcpPreview: JSON.stringify({ keys: Object.keys(payload), dataType: data === null ? 'null' : typeof data, dataKeys: data && typeof data === 'object' ? Object.keys(data) : [] }),
