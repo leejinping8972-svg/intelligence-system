@@ -62,13 +62,13 @@ async function reconcileAssociationsOnce() {
     await connection.query(
       sql(
         "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'keywords',natural_key FROM research_keywords ON CONFLICT(kind,source_key) DO UPDATE SET revision=workspace_read_dirty.revision+1",
-        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'keywords',natural_key FROM research_keywords ON DUPLICATE KEY UPDATE revision=revision+1",
+        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'keywords',natural_key FROM research_keywords ON DUPLICATE KEY UPDATE revision=workspace_read_dirty.revision+1",
       ),
     );
     await connection.query(
       sql(
         "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'business',name FROM workspace_documents WHERE name LIKE 'business:%' ON CONFLICT(kind,source_key) DO UPDATE SET revision=workspace_read_dirty.revision+1",
-        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'business',name FROM workspace_documents WHERE name LIKE 'business:%' ON DUPLICATE KEY UPDATE revision=revision+1",
+        "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'business',name FROM workspace_documents WHERE name LIKE 'business:%' ON DUPLICATE KEY UPDATE revision=workspace_read_dirty.revision+1",
       ),
     );
     await putDocument('workspace_documents', 'read:keyword-associations-v1', { completedAt: new Date().toISOString(), ...result }, false, connection);
