@@ -13,6 +13,7 @@ test('saved metric evidence distinguishes a failed request from skipped keywords
       'owner',
       {
         semBlocked: '报告异常',
+        semBlockedError: 'Semrush报告未返回可识别的数据行',
         logs: ['403 ERROR 132 :: API UNITS BALANCE IS ZERO'],
         keywords: [{ id: 'attempted' }, { id: 'skipped' }],
       },
@@ -33,7 +34,7 @@ test('saved metric evidence distinguishes a failed request from skipped keywords
     assert.equal(result[0].semrushCollection.status, 'failed');
     assert.match(result[0].semrushCollection.message, /未返回可识别/);
     assert.equal(result[1].semrushCollection.status, 'not_started');
-    assert.match(result[1].semrushCollection.message, /未执行.*额度为0/);
+    assert.match(result[1].semrushCollection.message, /未执行.*未返回可识别/);
     assert.equal(result[1].semrushCollection.finishedAt, undefined);
     assert.equal(result[2], rows[2]);
     assert.equal(JSON.stringify(rows), before);

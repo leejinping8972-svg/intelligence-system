@@ -215,8 +215,9 @@ export function jobProgress(
   const expansionTotal = discoveryTotal + (semrushEnabled ? records.length : 0);
   if (expansionOnly) percent = expansionTotal ? Math.min(100, Math.floor(100 * (discoveryDone + (semrushEnabled ? metricProcessed : 0)) / expansionTotal)) : 0;
   const discoveryFailed = Number(cp.discoveryFailures ?? Math.max(0, (cp.failures || 0) - (cp.metricFailures || 0)));
-  const quotaError = (cp.logs || []).some(message => /ERROR\s*132|API UNITS BALANCE IS ZERO/i.test(message));
-  const metricBlockReason = quotaError ? 'Semrush API额度为0（ERROR 132），相关扩词或搜索量查询未完成' : cp.semBlockedError || cp.semBlocked || '';
+  const currentBlock = cp.semBlockedError || cp.semBlocked || '';
+  const quotaError = /ERROR\s*132|API UNITS BALANCE IS ZERO/i.test(currentBlock);
+  const metricBlockReason = quotaError ? '本次请求返回 Semrush API额度为0（ERROR 132），后续指标查询已停止' : currentBlock;
   return {
     expansionOnly,
     phase: expansionOnly ? expansionPhase : phase,

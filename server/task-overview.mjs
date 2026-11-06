@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { checkpointFailureCount, checkpointStopReason } from './task-stop-reason.mjs';
 const resourceKey = (w) =>
   createHash('sha256')
     .update(
@@ -27,7 +28,7 @@ export function taskOverview(job, task) {
   const c = task.researchProgress || task.collectionProgress;
   const p = task.progress;
   const state = job.cancelled ? 'cancelled' : job.status;
-  let failed = count(cp.failures);
+  let failed = checkpointFailureCount(cp.failures);
   let processed = count(c?.done);
   let succeeded = null;
   let total = count(c?.total);
@@ -110,9 +111,7 @@ export function taskOverview(job, task) {
     reason = '用户取消，当前请求结束后停止；已有结果保留';
   else if (['failed', 'partial'].includes(state) && !reason)
     reason =
-      (cp.logs || []).findLast((l) =>
-        /失败|异常|限流|上限|未完成|停止|未知|不足|未返回/.test(l),
-      ) || '本轮已停止，部分采集未完成；历史记录未提供更具体原因';
+      checkpointStopReason(cp) || '本轮已停止，部分采集未完成；历史记录未提供更具体原因';
   const reasons = {
     request_limit: '达到本次请求上限，剩余步骤未采集',
     rate_limit: '来源限流，等待冷却',

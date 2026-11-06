@@ -418,6 +418,9 @@ async function exerciseReadModel(
     1,
   );
   assert.match((await reads.status()).error, /部分记录/);
+  assert.match((await reads.list({ collection: 'products' })).error, /本列表部分记录/);
+  assert.equal((await reads.list({ collection: 'keywords' })).error, '', 'a bad product must not show an error on the keyword list');
+  assert.equal((await reads.list({ collection: 'ads' })).error, '', 'a bad product must not show an error on the advertising list');
   await putDocument('workspace_documents', 'business:products:p1', {
     id: 'p1',
     market: 'MX',

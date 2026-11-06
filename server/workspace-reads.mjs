@@ -19,6 +19,7 @@ import { productAsin } from './product-asin.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 import { compareProductValues, productSortKeys, productSortValue } from './product-list-sort.mjs';
 import { productPlatformSql, resolvedProductPlatform } from './product-platform.mjs';
+import { createDirtyBatchReader, isolateProjectionWrites, projectionCollection } from './workspace-projection-writes.mjs';
 
 const collections = new Set([
   'keywords',
@@ -248,6 +249,15 @@ export function createWorkspaceReads({
 }) {
   let flight;
   let lastError = '';
+  let collectionErrors = {};
+  let errorsLoaded = false;
+  const readDirtyBatch = createDirtyBatchReader();
+  async function loadProjectionErrors(connection) {
+    collectionErrors = Object.fromEntries((await connection.query(
+      sql("SELECT DISTINCT value->>'collection' AS collection FROM workspace_documents WHERE name LIKE 'read:failure:%'", "SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(value,'$.collection')) AS collection FROM workspace_documents WHERE name LIKE 'read:failure:%'"),
+    )).rows.map(({ collection }) => [collection, '本列表部分记录更新失败，保留这些记录的上次结果；其他记录已继续更新']));
+    errorsLoaded = true;
+  }
   const statistics = createWorkspaceStatistics({ pool, sql, putDocument, loadPublic });
   async function refreshStatistics(connection) {
     await connection.query('BEGIN');
@@ -327,7 +337,7 @@ export function createWorkspaceReads({
       for (let offset = 0; offset < links.length; offset += 2000) {
         const part = links.slice(offset, offset + 2000);
         await connection.query(
-          `INSERT INTO workspace_read_links(collection,id,relation,target) VALUES ${part.map((_, i) => `($${i * 4 + 1},$${i * 4 + 2},$${i * 4 + 3},$${i * 4 + 4})`).join(',')}`,
+          `INSERT INTO workspace_read_links(collection,id,relation,target) VALUES ${part.map((_, i) => `($${i * 4 + 1},$${i * 4 + 2},$${i * 4 + 3},$${i * 4 + 4})`).join(',')} ${sql('ON CONFLICT(collection,id,relation,target) DO NOTHING', 'ON DUPLICATE KEY UPDATE target=workspace_read_links.target')}`,
           part.flat(),
         );
       }
@@ -407,12 +417,9 @@ export function createWorkspaceReads({
       if (!locked) return false;
       await seed(connection);
       if (statistics.due()) await refreshStatistics(connection);
-      const dirty = (
-        await connection.query(
-          'SELECT kind,source_key,revision FROM workspace_read_dirty ORDER BY kind,source_key LIMIT 100',
-        )
-      ).rows;
+      const dirty = await readDirtyBatch(connection);
       if (!dirty.length) {
+        if (!errorsLoaded) await loadProjectionErrors(connection);
         const snapshot = await connection.query(
           'SELECT market FROM workspace_overview_snapshots LIMIT 1',
         );
@@ -446,10 +453,7 @@ export function createWorkspaceReads({
           clearFailures = [];
         for (const item of dirty) {
           const source = sources.get(`${item.kind}:${item.source_key}`);
-          const collection =
-            item.kind === 'keywords'
-              ? 'keywords'
-              : item.source_key.slice(9).split(':')[0];
+          const collection = projectionCollection(item);
           if (collections.has(collection)) {
             if (collection === 'ads' || collection === 'sites')
               advertiserDirty = true;
@@ -481,35 +485,18 @@ export function createWorkspaceReads({
             replacements.push([collection, item.source_key]);
           }
         }
-        if (clearFailures.length)
-          await connection.query(
-            `DELETE FROM workspace_documents WHERE name IN (${clearFailures.map((_, i) => `$${i + 1}`).join(',')})`,
-            clearFailures,
-          );
-        if (replacements.length) {
-          const condition = replacements
-            .map(
-              (_, i) =>
-                `(collection=$${i * 2 + 1} AND source_key=$${i * 2 + 2})`,
-            )
-            .join(' OR ');
-          const old = (
-            await connection.query(
-              `SELECT collection,id FROM workspace_read_rows WHERE ${condition}`,
-              replacements.flat(),
-            )
-          ).rows;
-          if (old.length)
-            await connection.query(
-              `DELETE FROM workspace_read_links WHERE ${old.map((_, i) => `(collection=$${i * 2 + 1} AND id=$${i * 2 + 2})`).join(' OR ')}`,
-              old.flatMap((r) => [r.collection, r.id]),
-            );
-          await connection.query(
-            `DELETE FROM workspace_read_rows WHERE ${condition}`,
-            replacements.flat(),
-          );
-          await saveProjections(connection, projected);
-        }
+        const successful = await isolateProjectionWrites(connection, projected, replacements, saveProjections, async ([collection, sourceKey], error) => {
+          const item = dirty.find((r) => r.source_key === sourceKey);
+          const failureKey = `read:failure:${createHash('sha256').update(`${item.kind}:${sourceKey}`).digest('hex')}`;
+          await putDocument('workspace_documents', failureKey, {
+            collection, sourceKey, revision: item.revision, at: new Date().toISOString(),
+            code: error.code, message: '单条记录索引异常，原始资料和上次索引已保留；其他记录继续更新',
+          }, false, connection);
+        });
+        const successKeys = successful.map(([, sourceKey]) => clearFailures[replacements.findIndex((r) => r[1] === sourceKey)]);
+        if (successKeys.length) await connection.query(
+          `DELETE FROM workspace_documents WHERE name IN (${successKeys.map((_, i) => `$${i + 1}`).join(',')})`, successKeys,
+        );
         await connection.query(
           `DELETE FROM workspace_read_dirty WHERE ${dirty.map((_, i) => `(kind=$${i * 3 + 1} AND source_key=$${i * 3 + 2} AND revision=$${i * 3 + 3})`).join(' OR ')}`,
           dirty.flatMap((r) => [r.kind, r.source_key, r.revision]),
@@ -544,18 +531,13 @@ export function createWorkspaceReads({
           await putDocument('workspace_documents', 'read:reports-ready', { ready: true }, false, connection);
         }
         await connection.query('COMMIT');
-        lastError = (
-          await connection.query(
-            "SELECT name FROM workspace_documents WHERE name LIKE 'read:failure:%' LIMIT 1",
-          )
-        ).rows.length
-          ? '部分记录字段异常，保留上次可用结果'
-          : '';
+        await loadProjectionErrors(connection);
+        lastError = '';
       } catch (error) {
         await connection.query('ROLLBACK');
         throw error;
       }
-      return dirty.length === 100;
+      return (await connection.query('SELECT kind FROM workspace_read_dirty LIMIT 1')).rows.length > 0;
     } finally {
       if (locked) await unlock(connection, 'workspace-reads');
       connection.release();
@@ -575,12 +557,11 @@ export function createWorkspaceReads({
     return flight;
   }
   let statusFlight;
-  function status() {
+  function status(collection) {
     // Concurrent list, overview and bootstrap responses share the same read.
     // Completed results are not cached, so subsequent writes stay visible.
-    if (statusFlight) return statusFlight;
-    statusFlight = readStatus().finally(() => { statusFlight = undefined; });
-    return statusFlight;
+    if (!statusFlight) statusFlight = readStatus().finally(() => { statusFlight = undefined; });
+    return statusFlight.then((state) => ({ ...state, error: state.error || (collection ? collectionErrors[collection] : Object.keys(collectionErrors).length ? '部分记录更新失败，其他列表和记录已继续更新' : '') || '' }));
   }
   async function readStatus() {
     const [versions, dirty] = await Promise.all([
@@ -854,7 +835,7 @@ export function createWorkspaceReads({
         `SELECT COUNT(*) AS total FROM workspace_read_rows r WHERE ${query.where}`,
         query.values,
       ),
-      status(),
+      status(input.collection),
       query.collection === 'keywords' ? pool.query(
         `SELECT COUNT(*) AS total,SUM(CASE WHEN grade IN ('A','B') THEN 1 ELSE 0 END) AS priority,SUM(CASE WHEN grade IS NULL OR grade='' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN review_status='selected' THEN 1 ELSE 0 END) AS selected FROM workspace_read_rows WHERE collection='keywords'${input.market && input.market !== 'ALL' ? ' AND market=$1' : ''}`,
         input.market && input.market !== 'ALL' ? [input.market] : [],

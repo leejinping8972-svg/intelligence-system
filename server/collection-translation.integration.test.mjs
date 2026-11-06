@@ -194,4 +194,11 @@ test('translation is awaited after durable collection; failures and restarts nev
     3,
     'legacy keyword cache is reused without charging again',
   );
+  await pool.query('INSERT INTO workspace_documents(name,value) VALUES($1,$2)', [
+    `collection:translation:v1:${translationHash('Legacy Unknown Brand')}`,
+    { status: 'started', owner: 'legacy-unconfirmed' },
+  ]);
+  await pool.query("INSERT INTO research_requests VALUES('old-brand','ads:0','done',$1)", [{ ads: [{ id: 'old-brand-ad', brand: 'Legacy Unknown Brand' }] }]);
+  await assert.rejects(collect({ id: 'old-brand' }, 'ads:0', { sources: ['synthetic'] }), /尚未确认/);
+  assert.equal(calls, 3, 'a new brand cache namespace must not bypass the old unknown paid request');
 });

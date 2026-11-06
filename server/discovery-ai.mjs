@@ -20,6 +20,10 @@ export async function configuredJson(prompt, sample, overrides = {}) {
     { role: 'system', content: prompt },
     { role: 'user', content: JSON.stringify(sample) },
   ]);
+  if (overrides.onResponse) await overrides.onResponse(
+    (typeof result.choices?.[0]?.message?.content === 'string' ? result.choices[0].message.content : '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''),
+    { model: config.model, usage: result.usage, finishReason: result.choices?.[0]?.finish_reason },
+  );
   const raw = modelReportText(result)
     .trim()
     .replace(/^```(?:json)?\s*|\s*```$/g, '');

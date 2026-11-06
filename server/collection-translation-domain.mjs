@@ -18,8 +18,8 @@ export const translationFields = {
 };
 export const translationHash = (text) =>
   createHash('sha256').update(String(text)).digest('hex');
-export const translationKey = (text) =>
-  `collection:translation:v1:${translationHash(text)}`;
+export const translationKey = (text, brand = false) =>
+  `collection:translation:v1:${brand ? 'brand:' : ''}${translationHash(text)}`;
 const needsTranslation = (text) =>
   /\p{L}/u.test(text) &&
   (!/\p{Script=Han}/u.test(text) || /\p{Script=Latin}{2,}/u.test(text)) &&
@@ -59,9 +59,10 @@ export function planTranslations(kind, records) {
       for (const group of parts)
         for (const text of group) {
           if (needsTranslation(text))
-            items.set(translationKey(text), {
-              key: translationKey(text),
+            items.set(translationKey(text, field === 'brand'), {
+              key: translationKey(text, field === 'brand'),
               text,
+              allowOriginal: field === 'brand',
             });
         }
       fields.push({ field, original, parts });
@@ -80,7 +81,7 @@ export function applyTranslations(records, plan, translated) {
         group
           .map((text) => {
             if (!needsTranslation(text)) return text;
-            const value = translated.get(translationKey(text));
+            const value = translated.get(translationKey(text, field === 'brand'));
             if (!value)
               throw new Error('采集翻译未完整返回，原始采集响应已保留');
             return value;
@@ -126,23 +127,31 @@ export function translationBatches(items) {
   return batches;
 }
 
-export function validateTranslations(result, items) {
-  if (!Array.isArray(result?.items) || result.items.length !== items.length)
-    throw new Error('采集翻译数量不完整');
+export function inspectTranslations(result, items) {
   const values = new Map();
-  for (const item of result.items) {
+  const issues = new Map();
+  const returned = Array.isArray(result?.items) ? result.items : [];
+  const counts = new Map();
+  for (const item of returned) if (item && typeof item.id === 'string') counts.set(item.id, (counts.get(item.id) || 0) + 1);
+  for (const item of items) {
+    if (!counts.has(item.key)) issues.set(item.key, '采集翻译数量不完整，缺少对应译文');
+  }
+  for (const item of returned) {
+    if (!item || typeof item !== 'object') continue;
     const source = items.find((entry) => entry.key === item.id);
-    if (
-      !source ||
-      values.has(item.id) ||
-      typeof item.text !== 'string' ||
-      !item.text.trim() ||
-      item.text.length > 12000 ||
-      !/\p{Script=Han}/u.test(item.text)
-    )
-      throw new Error('采集翻译返回未知编号、重复项或无效中文');
+    if (!source) continue;
+    if (counts.get(item.id) !== 1) { issues.set(item.id, '采集翻译返回重复编号'); continue; }
+    if (typeof item.text !== 'string' || !item.text.trim()) { issues.set(item.id, '采集翻译返回空译文'); continue; }
+    if (item.text.length > 12000) { issues.set(item.id, '采集翻译返回超长译文'); continue; }
+    if (!/\p{Script=Han}/u.test(item.text) && !(source.allowOriginal && item.text.trim() === source.text.trim())) { issues.set(item.id, '采集翻译未包含中文，原文已保留'); continue; }
     values.set(item.id, item.text.trim());
   }
+  return { values, issues, unexpected: returned.some((item) => !items.some((source) => source.key === item?.id)) };
+}
+
+export function validateTranslations(result, items) {
+  const { values, issues, unexpected } = inspectTranslations(result, items);
+  if (issues.size || unexpected) throw new Error([...issues.values()][0] || '采集翻译返回未知编号');
   return values;
 }
 

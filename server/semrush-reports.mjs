@@ -6,13 +6,14 @@ import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { connectSemrush, safeSemrushError } from './semrush-mcp.mjs';
 
 export function mcpPayload(result) {
-  if (result.isError)
-    throw new Error(
-      result.content
+  if (result.isError) {
+    const message = result.content
         ?.filter((c) => c.type === 'text')
         .map((c) => c.text)
-        .join(' ') || 'Semrush 报告失败',
-    );
+        .join(' ') || 'Semrush 报告失败';
+    if (/\bERROR\s*50\s*::\s*(NOTHING FOUND|NO DATA FOUND)\b/i.test(message)) return { data: [] };
+    throw new Error(message);
+  }
   if (result.structuredContent) return result.structuredContent;
   const text = result.content
     ?.filter((c) => c.type === 'text')
@@ -63,7 +64,13 @@ export function reportRows(payload) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.rows)) return data.rows;
   if (Array.isArray(data?.data)) return data.data;
-  throw new Error('Semrush 报告未返回可识别的数据行');
+  if (Array.isArray(payload.rows)) return payload.rows;
+  // Only explicit source evidence counts as no data; malformed reports remain errors.
+  if (String(payload.error?.code) === '50' && /NOTHING FOUND|NO DATA FOUND/i.test(payload.error?.message || '')) return [];
+  throw Object.assign(new Error('Semrush 报告未返回可识别的数据行；已保留报告结构，需核实后继续'), {
+    code: 'SEMRUSH_REPORT_FORMAT',
+    mcpPreview: JSON.stringify({ keys: Object.keys(payload), dataType: data === null ? 'null' : typeof data, dataKeys: data && typeof data === 'object' ? Object.keys(data) : [] }),
+  });
 }
 const get = (r, ...keys) => {
   for (const key of keys)
@@ -287,6 +294,8 @@ export async function collectSemrush(request) {
     await putDocument('provider_configs', name, { cachedAt: at, result });
     return { ...result, semrushKeyId };
   } catch (error) {
-    throw new Error(safeSemrushError(error, key), { cause: error });
+    throw Object.assign(new Error(safeSemrushError(error, key), { cause: error }), {
+      code: error.code, mcpPreview: error.mcpPreview,
+    });
   }
 }

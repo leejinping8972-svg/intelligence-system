@@ -75,7 +75,7 @@ test('request evidence corrects legacy skipped metrics without counting another 
     assert.equal(old.progress.metricUnknown, 1);
     assert.equal(old.progress.rows[10].status, 'unknown');
     assert.equal(old.progress.rows[11].status, 'not_started');
-    assert.match(old.progress.metricBlockReason, /额度为0/);
+    assert.equal(old.progress.metricBlockReason, '报告异常', 'historical quota logs must not overwrite current saved evidence');
     assert.ok(old.overview.percent < 100);
     const current = result[1];
     assert.equal(current.progress.phase, 'queued');
