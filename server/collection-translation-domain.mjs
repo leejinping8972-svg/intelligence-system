@@ -22,6 +22,7 @@ export const translationKey = (text, brand = false) =>
   `collection:translation:v1:${brand ? 'brand:' : ''}${translationHash(text)}`;
 const needsTranslation = (text) =>
   /\p{L}/u.test(text) &&
+  !/^\{\{\s*[a-z_][\w.]*\s*\}\}$/i.test(text.trim()) &&
   (!/\p{Script=Han}/u.test(text) || /\p{Script=Latin}{2,}/u.test(text)) &&
   !/^https?:\/\//i.test(text);
 
@@ -42,6 +43,8 @@ export function planTranslations(kind, records) {
       const original = record[field];
       if (typeof original !== 'string' && !Array.isArray(original)) continue;
       const values = Array.isArray(original) ? original : [original];
+      const brand = field === 'brand' || (kind === 'ads' && field === 'headline' &&
+        typeof original === 'string' && original.trim() === record.brand?.trim());
       const saved = record[`${field}Zh`];
       const proof = record.collectionTranslation?.fields?.[field];
       if (
@@ -59,13 +62,13 @@ export function planTranslations(kind, records) {
       for (const group of parts)
         for (const text of group) {
           if (needsTranslation(text))
-            items.set(translationKey(text, field === 'brand'), {
-              key: translationKey(text, field === 'brand'),
+            items.set(translationKey(text, brand), {
+              key: translationKey(text, brand),
               text,
-              allowOriginal: field === 'brand',
+              allowOriginal: brand,
             });
         }
-      fields.push({ field, original, parts });
+      fields.push({ field, original, parts, brand });
     }
     return fields;
   });
@@ -76,12 +79,12 @@ export function applyTranslations(records, plan, translated) {
   return records.map((record, index) => {
     const result = { ...record };
     const proof = { ...record.collectionTranslation?.fields };
-    for (const { field, original, parts } of plan.plans[index]) {
+    for (const { field, original, parts, brand } of plan.plans[index]) {
       const values = parts.map((group) =>
         group
           .map((text) => {
             if (!needsTranslation(text)) return text;
-            const value = translated.get(translationKey(text, field === 'brand'));
+            const value = translated.get(translationKey(text, brand));
             if (!value)
               throw new Error('采集翻译未完整返回，原始采集响应已保留');
             return value;

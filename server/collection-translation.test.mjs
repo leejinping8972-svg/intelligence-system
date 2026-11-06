@@ -50,6 +50,27 @@ function harness() {
   return { io, stored, calls };
 }
 
+test('unfilled source template tokens are retained without a translation request', async () => {
+  const h = harness();
+  const [record] = await translateCollectionRecords('ads', [{
+    headline: '{{product.name}}', copy: '{{product.brand}}',
+  }], h.io);
+  assert.equal(h.calls.length, 0);
+  assert.equal(record.headline, '{{product.name}}');
+  assert.equal(record.headlineZh, '{{product.name}}');
+  assert.equal(record.copyZh, '{{product.brand}}');
+  assert.ok(planTranslations('ads', [{ copy: 'Buy {{product.name}} today' }]).items.length);
+});
+
+test('an ad headline containing only the advertiser brand reuses the brand translation', async () => {
+  const h = harness();
+  h.stored.set(translationKey('Powersludge', true), { status: 'complete', text: 'Powersludge' });
+  const [record] = await translateCollectionRecords('ads', [{ brand: 'Powersludge', headline: 'Powersludge' }], h.io);
+  assert.equal(record.headlineZh, 'Powersludge');
+  assert.equal(h.calls.length, 0);
+  assert.equal(planTranslations('ads', [{ brand: 'Powersludge', headline: 'Powersludge supports sleep' }]).items.find(i => i.text.includes('supports')).allowOriginal, false);
+});
+
 test('collection translates ads, products, sites and keyword batches before returning results', async () => {
   const h = harness();
   const source = {
