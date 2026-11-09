@@ -1,47 +1,58 @@
 {
-  "title": "Semrush关键词月度趋势与可用指标展示",
+  "title": "情报总览今日新品、采集日期与独立站关联导航",
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/SemrushKeywordMetrics.vue",
-    "apps/web-antd/src/views/intelligence/keyword-research.ts",
-    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
+    "apps/web-antd/src/views/intelligence/ads.vue",
+    "apps/web-antd/src/views/intelligence/components/CollectionTimeFilter.vue",
+    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/keyword-views.ts",
+    "apps/web-antd/src/views/intelligence/overview.vue",
+    "apps/web-antd/src/views/intelligence/products.vue",
     "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/semrush-keyword-metrics.ts",
-    "server/SEMRUSH-KEYWORD-TRENDS.md",
-    "server/domain.mjs",
-    "server/keyword-data.mjs",
-    "server/keyword-submit.mjs",
-    "server/runner.mjs",
-    "server/semrush-keyword-trends.d.mts",
-    "server/semrush-keyword-trends.mjs",
-    "server/semrush-keyword-trends.test.mjs",
-    "server/semrush-reports.mjs",
-    "tests/semrush-keyword-metrics.test.ts"
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "apps/web-antd/src/views/intelligence/use-core-list.ts",
+    "apps/web-antd/src/views/intelligence/workspace-queries.ts",
+    "server/OVERVIEW-COLLECTION-TIME.md",
+    "server/collection-time.d.mts",
+    "server/collection-time.mjs",
+    "server/competitor-monitor-providers.mjs",
+    "server/competitor-monitor-store.mjs",
+    "server/keyword-views.mjs",
+    "server/keyword-views.test.mjs",
+    "server/monitor-catalog-rules.mjs",
+    "server/monitor-product-pool.integration.mjs",
+    "server/monitor-product-pool.mjs",
+    "server/overview-collection-monitor.test.mjs",
+    "server/product-pool-domain.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "featureShas": [
-    "a0bf7310c15cf1f239336bbb3094cd7f58b9276c"
+    "2381033b8d9f07e89f8231d6dbb79a0c71b13da7",
+    "e9f7eac08d3a534715ee22568c37815bc531d370"
   ],
-  "sourceSha": "a0bf7310c15cf1f239336bbb3094cd7f58b9276c",
+  "sourceSha": "bb8a2e8725d11a347844a3ff3c0faa16188c7d11",
   "changes": [
-    "接入当前账户支持的12个月相对趋势、搜索结果数、种子相关度及SERP特征",
-    "关键词列表小曲线、指标详情及CSV导出，展示月/3月/6月变化和真实0/缺失",
-    "默认复用缓存，显式勾选才更新所选关键词；无自动历史收费回填"
+    "总览今日发现且入池新品数量及跳转、独立站监控异常提醒",
+    "商品、独立站、广告、关键词真实采集日期筛选，含分页、全选及导出",
+    "排除监控静态资源链接；正常采集的近7天上架且有同次正销量证据商品自动入池",
+    "独立站商品/广告数量及精确站点市场跳转，保留全部商品范围并清除残余日期筛选"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupDataRepair": false,
+    "derivedReadModel": "v7 to v8; existing worker rebuilds derived indices",
     "consistency": "skipped-by-user",
     "backup": "skipped-by-user-policy-no-schema-change"
   },
   "validation": {
-    "development": "Server 36/36; frontend 26/26; web typecheck, isolated development build, scoped lint and Edge synthetic desktop/mobile interaction checks passed",
-    "limitations": "Account report schemas confirmed; no paid execute_report or production-account visual acceptance",
-    "release": "Repeat tests, validation build, CI waiting and database consistency reconciliation skipped by user policy"
+    "development": "Overview feature server 63/63; new domain 5/5; real persistence isolated integration passed; site navigation server 8/8 and frontend 32/32; both web typechecks, development builds and synthetic browser checks passed",
+    "limitations": "Existing competitor monitor baseline assertion also fails on untouched base; no isolated MySQL or real account capture/visual acceptance",
+    "release": "Repeat tests, validation build, CI waiting and database reconciliation skipped by user policy"
   },
-  "id": "20261109061944-ad9eed6a",
-  "builtAt": "2026-11-09T06:19:44.530Z",
-  "sourceDigest": "ad9eed6a634fca45a35fa69a7814434780d8c1d33ee4f01f9eb789a171873a9b",
+  "id": "20261109082802-2513257f",
+  "builtAt": "2026-11-09T08:28:02.404Z",
+  "sourceDigest": "2513257f9b4a942ea1818b7c7ccaf124e6de47c0988103cb1b96fc8ce2e93d98",
   "operator": "Codex"
 }
