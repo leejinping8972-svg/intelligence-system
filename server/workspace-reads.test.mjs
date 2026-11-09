@@ -556,6 +556,49 @@ async function exerciseReadModel(
     }
   }
   assert.equal((await reads.list({ ...sortQuery, market: 'MX', sort: 'core:cumulativeSold' })).total, 0);
+  const associationCounts = [
+    { ads: 0, products: 0, sites: 0 },
+    { ads: 2, products: 1, sites: 3 },
+    { ads: 10, products: 2, sites: 1 },
+    { ads: 2, products: 2, sites: 0 },
+    { ads: 0, products: 0, sites: 0 },
+    { ads: 11, products: 4, sites: 4 },
+  ];
+  for (const [i, counts] of associationCounts.entries()) {
+    const id = `association-sort-${i}`, market = i === 5 ? 'MX' : 'US';
+    const source = { ...keyword(i), id, term: id, market, productIds: ['deleted-sort-product'], siteIds: ['deleted-sort-site'], trendHistoryPoints: [] };
+    for (const collection of ['ads', 'products', 'sites']) {
+      for (let j = 0; j < counts[collection]; j++) {
+        const businessId = `association-${collection}-${i}-${j}`;
+        if (collection !== 'ads' && j % 2 === 0) source[collection === 'products' ? 'productIds' : 'siteIds'].push(businessId);
+        await putDocument('workspace_documents', `business:${collection}:${businessId}`, {
+          id: businessId, market, title: businessId, brand: businessId,
+          domain: `${businessId}.example`, benefits: [], ingredientInsights: [],
+          mainProducts: [], sources: [],
+          keywordIds: collection === 'ads' || j % 2 === 1 || j % 3 === 0 ? [id] : [],
+        });
+      }
+    }
+    await pool.query('INSERT INTO research_keywords(natural_key,data) VALUES($1,$2)', [id, source]);
+  }
+  await drain();
+  for (const [sort, collection] of [['relatedAds', 'ads'], ['relatedProducts', 'products'], ['relatedSites', 'sites']]) {
+    for (const order of ['ascend', 'descend']) {
+      const expected = associationCounts.slice(0, 5).map((counts, i) => ({ id: `association-sort-${i}`, count: counts[collection] }))
+        .sort((a, b) => (a.count - b.count) * (order === 'ascend' ? 1 : -1) || a.id.localeCompare(b.id));
+      const actual = [];
+      for (let page = 1; page <= 3; page++) {
+        const listed = await reads.list({ collection: 'keywords', search: 'association-sort-', market: 'US', sort, order, pageSize: 2, page });
+        assert.equal(listed.total, 5);
+        actual.push(...listed.rows.map(row => ({ id: row.id, count: row.relatedCounts[collection] })));
+      }
+      assert.deepEqual(actual, expected, `${sort} ${order}: global numeric order, stable ties, zero and deleted links`);
+      const otherMarket = await reads.list({ collection: 'keywords', search: 'association-sort-', market: 'MX', sort, order, pageSize: 1 });
+      assert.equal(otherMarket.total, 1);
+      assert.equal(otherMarket.rows[0].relatedCounts[collection], associationCounts[5][collection]);
+      assert.equal((await reads.list({ collection: 'keywords', search: 'missing-association-sort', sort, order })).total, 0);
+    }
+  }
   if (engine === 'mysql') {
     for (const table of ['workspace_read_dirty', 'workspace_read_rows'])
       await pool.query(`ALTER TABLE ${table} MODIFY source_key varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL`);

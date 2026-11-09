@@ -55,6 +55,7 @@ import {
   state,
 } from './data';
 import { keywordJob, startKeywordJob, stopKeywordJob } from './keyword-jobs';
+import { keywordAssociationColumns } from './keyword-association-columns';
 import { keywordChineseName } from './keyword-names';
 import {
   assessKeyword,
@@ -411,9 +412,7 @@ const columns = [
   { title: '热门相关查询', key: 'core:relatedTop', width: 170 },
   { title: '上升相关查询', key: 'core:relatedRising', width: 170 },
   { title: '来源', key: 'source', width: 105 },
-  { title: '关联广告', key: 'relatedAds', width: 88 },
-  { title: '关联商品', key: 'relatedProducts', width: 88 },
-  { title: '关联独立站', key: 'relatedSites', width: 98 },
+  ...keywordAssociationColumns(serverMode, relatedCount),
   {
     title: '抓取时间',
     key: 'collectedAt',
@@ -444,7 +443,7 @@ const displayColumns = computed(() => {
   ];
   return ordered.map((column) => ({
     ...column,
-    ...(['collectedAt', 'score'].includes(column.key || '')
+    ...(['collectedAt', 'score', 'relatedAds', 'relatedProducts', 'relatedSites'].includes(column.key || '')
       ? {
           sortOrder:
             remote.sort.value === column.key
@@ -454,6 +453,12 @@ const displayColumns = computed(() => {
       : {}),
   }));
 });
+function tableChange(...args: Parameters<typeof remote.tableChange>) {
+  const previousSort = `${remote.sort.value}:${remote.order.value}`;
+  const sorter = Array.isArray(args[2]) ? args[2][0] || {} : args[2];
+  remote.tableChange(args[0], args[1], sorter.order ? sorter : { columnKey: 'score', order: 'descend' });
+  if (previousSort !== `${remote.sort.value}:${remote.order.value}`) currentPage.value = 1;
+}
 function formatTime(value?: string) {
   if (!value) return '未记录';
   const date = new Date(value);
@@ -1007,7 +1012,7 @@ function saveMetrics() {
         @retry="remote.reload(true)"
       />
       <Table
-        @change="remote.tableChange"
+        @change="tableChange"
         :data-source="rows"
         :columns="displayColumns"
         class="hci-resource-table keyword-compact-table"
