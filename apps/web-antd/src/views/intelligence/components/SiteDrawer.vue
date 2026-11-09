@@ -168,13 +168,18 @@ function go(path: string, query: Record<string, string>) {
       <section class="hci-detail-section">
         <h3>关联检索词</h3>
         <CompactTags :items="provenance.queryTerms" label="实际检索词" />
+        <div v-for="link in site.sourceKeywordLinks" :key="link.domain">
+          <p>来源站点关键词 · <button class="hci-link" @click="state.market = site.market; go('/sites', { sourceSite: link.domain })">{{ link.domain }}</button></p>
+          <CompactTags :items="link.terms" label="来源站点关键词" />
+        </div>
       </section>
       <section class="hci-detail-section">
         <h3>发现来源</h3>
         <CompactTags :items="sources" label="全部数据来源" color="blue" />
         <article v-for="(item, index) in provenance.discoveries" :key="index" class="hci-source-record">
           <b>{{ item.source }}</b>
-          <p>{{ item.text }}</p>
+          <p v-if="item.domain">与 <button class="hci-link" @click="state.market = site.market; go('/sites', { sourceSite: item.domain })">{{ item.domain }}</button> 竞争搜索广告关键词的站点</p>
+          <p v-else>{{ item.text }}</p>
         </article>
       </section>
       <section class="hci-detail-section">

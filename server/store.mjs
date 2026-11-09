@@ -10,6 +10,7 @@ import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 import { reconcileKeywordAssociations } from './keyword-associations.mjs';
 import { repairSiteKeywordAssociations } from './site-keyword-repair.mjs';
+import { reconcileSourceKeywords } from './site-source-keywords.mjs';
 import { markUsageChanged } from './usage-changes.mjs';
 import {
   requestFailed,
@@ -60,10 +61,12 @@ async function reconcileAssociationsOnce() {
     const repairMarker = (await connection.query(
       "SELECT value FROM workspace_documents WHERE name='read:site-keyword-provenance-v1'",
     )).rows[0]?.value;
-    if (marker?.completedAt && repairMarker?.completedAt) return;
+    const sourceMarker = (await connection.query("SELECT value FROM workspace_documents WHERE name='read:site-source-keywords-v1'")).rows[0]?.value;
+    if (marker?.completedAt && repairMarker?.completedAt && sourceMarker?.completedAt) return;
     await connection.query('BEGIN');
     const result = marker?.completedAt ? {} : await reconcileKeywordAssociations({ connection, sql, putDocument });
-    const repaired = await repairSiteKeywordAssociations({ connection, putDocument });
+    const repaired = repairMarker?.completedAt ? {} : await repairSiteKeywordAssociations({ connection, putDocument });
+    const sourceKeywords = sourceMarker?.completedAt ? {} : await reconcileSourceKeywords({ connection, putDocument });
     await connection.query(
       sql(
         "INSERT INTO workspace_read_dirty(kind,source_key) SELECT 'keywords',natural_key FROM research_keywords ON CONFLICT(kind,source_key) DO UPDATE SET revision=workspace_read_dirty.revision+1",
@@ -79,7 +82,10 @@ async function reconcileAssociationsOnce() {
     );
     if (!marker?.completedAt)
       await putDocument('workspace_documents', 'read:keyword-associations-v1', { completedAt: new Date().toISOString(), ...result }, false, connection);
-    await putDocument('workspace_documents', 'read:site-keyword-provenance-v1', { completedAt: new Date().toISOString(), ...repaired }, false, connection);
+    if (!repairMarker?.completedAt)
+      await putDocument('workspace_documents', 'read:site-keyword-provenance-v1', { completedAt: new Date().toISOString(), ...repaired }, false, connection);
+    if (!sourceMarker?.completedAt)
+      await putDocument('workspace_documents', 'read:site-source-keywords-v1', { completedAt: new Date().toISOString(), ...sourceKeywords }, false, connection);
     await connection.query('COMMIT');
   } catch (error) {
     await connection.query('ROLLBACK').catch(() => {});

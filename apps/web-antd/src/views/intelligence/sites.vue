@@ -2,7 +2,7 @@
 import CollectionTimeFilter from './components/CollectionTimeFilter.vue';
 import { matchesCollectionRange } from '../../../../../server/collection-time.mjs';
 import type { Site } from './data';
-import { siteKeywordProvenance } from '../../../../../server/site-keyword-provenance.mjs';
+import { siteKeywordProvenance, sourceSiteDomain } from '../../../../../server/site-keyword-provenance.mjs';
 import { useSiteKeywordFilter } from './site-keyword-filter';
 
 import { computed, nextTick, ref, watch } from 'vue';
@@ -83,6 +83,7 @@ async function scoreSelected() {
 }
 
 const route = useRoute();
+const sourceSiteFilter = computed(() => sourceSiteDomain(route.query.sourceSite));
 const collectedRange = ref<string[]>([]);
 const search = ref('');
 const platform = ref('ALL');
@@ -96,6 +97,7 @@ const remote = useWorkspaceList<Site>('sites', computed(() => ({ market: state.m
   search: search.value, platform: platform.value, category: category.value, ownership: ownership.value,
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   keywordId: keywordFilter.value || undefined, source: source.value, score: scoreFilter.value,
+  siteDomain: sourceSiteFilter.value || undefined,
 })), page, pageSize);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keywordId),
@@ -136,7 +138,25 @@ function keywordLabel(id: string) {
   return option?.label?.split(' · ')[0] || id;
 }
 function siteKeywords(site: Site) {
-  return (site.keywordIds || []).map((id) => ({ id, label: keywordLabel(id) }));
+  return (site.keywordIds || []).map((id) => {
+    const inherited = site.sourceKeywordLinks?.find((item) => item.keywordIds.includes(id));
+    const index = inherited?.keywordIds.indexOf(id) ?? -1;
+    return { id, label: inherited?.terms[index] || keywordLabel(id), source: inherited?.domain || '' };
+  });
+}
+async function filterSourceSite(domain: string, site: Site) {
+  state.market = site.market;
+  await nextTick();
+  search.value = '';
+  platform.value = category.value = ownership.value = source.value = 'ALL';
+  collectedRange.value = [];
+  scoreFilter.value = emptyScoreFilter();
+  selected.value = undefined;
+  await router.push({ path: '/sites', query: { sourceSite: domain } });
+}
+function clearSourceSite() {
+  const { sourceSite: _sourceSite, ...query } = route.query;
+  void router.replace({ path: route.path, query });
 }
 function openKeyword(id: string) {
   void router.push({ path: '/research', query: { keywordId: id } });
@@ -198,6 +218,7 @@ watch(
 const rows = computed(() => serverMode ? remote.rows.value :
   filteredSites.value.filter(
     (s) =>
+      (!sourceSiteFilter.value || sourceSiteDomain(s.domain) === sourceSiteFilter.value) &&
       `${s.brand} ${s.domain} ${s.keyword} ${s.mainProducts.join(' ')} ${s.category} ${s.ownershipBackground} ${state.products
         .filter((product) => product.siteId === s.id)
         .map(
@@ -240,7 +261,7 @@ async function exportSites() {
   } catch (cause) { message.error((cause as Error).message); }
   finally { exporting.value = false; }
 }
-watch([search, platform, category, ownership, keywordFilter, source, scoreFilter], () => {
+watch([search, platform, category, ownership, keywordFilter, source, scoreFilter, sourceSiteFilter], () => {
   page.value = 1;
   ids.value = [];
   scoreRequest = '';
@@ -297,6 +318,10 @@ watch(collectedRange, () => { page.value = 1; ids.value = []; });
         导出
       </Button>
     </PageHeader>
+    <div v-if="sourceSiteFilter" class="hci-demo-note">
+      <b>站点筛选</b>{{ sourceSiteFilter }}
+      <button class="hci-link" style="margin-left: 12px" @click="clearSourceSite">清除站点筛选</button>
+    </div>
     <div v-if="route.query.keywordId || linkedKeyword" class="hci-demo-note">
       <b>关键词关联筛选</b>{{ linkedKeyword?.term || keywordLabel(String(route.query.keywordId || '')) }} ·
       {{
@@ -411,17 +436,21 @@ watch(collectedRange, () => { page.value = 1; ids.value = []; });
               :key="item.id"
               type="link"
               size="small"
+              :title="item.source ? `来源站点 ${item.source} 的关键词` : '已关联关键词'"
               @click="openKeyword(item.id)"
             >{{ item.label }}</Button>
             <span v-if="!record.keywordIds?.length" class="hci-subtle">未关联实际检索词</span>
+            <small v-if="record.sourceKeywordLinks?.some((item: NonNullable<Site['sourceKeywordLinks']>[number]) => item.keywordIds.length)" class="hci-subtle">含来源站点关键词</small>
             </div>
           </template>
           <template v-if="column.key === 'discoverySources'">
             <div v-for="(item, index) in siteKeywordProvenance(record as Site).discoveries" :key="index" class="hci-source-summary">
-              {{ item.text }}
+              <template v-if="item.domain">与 <button class="hci-link" :aria-label="`筛选站点 ${item.domain}`" @click="filterSourceSite(item.domain, record as Site)">{{ item.domain }}</button> 竞争搜索广告关键词的站点</template>
+              <template v-else>{{ item.text }}</template>
               <small class="hci-subtle">{{ item.source }}</small>
+              <small v-if="record.sourceKeywordLinks?.find((link: NonNullable<Site['sourceKeywordLinks']>[number]) => link.domain === item.domain)?.keywordIds.length" class="hci-subtle">已记录来源站点关键词</small>
+              <small v-else-if="!siteKeywordProvenance(record as Site).queryTerms.length && item.domain" class="hci-subtle">来源站点暂无已记录关键词</small>
             </div>
-            <small v-if="siteKeywordProvenance(record as Site).discoveries.length" class="hci-subtle">存在部分广告关键词重合，具体重合词未提供</small>
             <span v-if="!siteKeywordProvenance(record as Site).discoveries.length" class="hci-subtle">{{ sources(record as Site).join('；') || '未记录' }}</span>
           </template>
           <template v-if="column.key === 'collectionEvidence'">

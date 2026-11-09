@@ -11,6 +11,7 @@ import {
 } from './model.js';
 import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
+import { sourceSiteDomain } from './site-keyword-provenance.mjs';
 import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
@@ -63,7 +64,7 @@ const listKeys = {
   products:
     'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId keywordIds color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications sourceCategories',
   sites:
-    'id brand brandZh domain market platform type keyword keywordIds category categoryZh description descriptionZh mainProducts mainProductsZh ownershipBackground ownershipEvidence signals sources sourceEvidence categoryEvidence metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
+    'id brand brandZh domain market platform type keyword keywordIds sourceKeywordLinks category categoryZh description descriptionZh mainProducts mainProductsZh ownershipBackground ownershipEvidence signals sources sourceEvidence categoryEvidence metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand brandZh market platform headline headlineZh copy copyZh sellingPointZh format productId status color archiveId pageId keywordIds query collectionBatches siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
 };
 export function projectRecord(collection, value) {
@@ -750,6 +751,12 @@ export function createWorkspaceReads({
     equals('platform', 'platform');
     equals('ownership', 'ownership');
     equals('siteId', 'site_id');
+    if (collection === 'sites' && input.siteDomain) {
+      const selectedDomain = sourceSiteDomain(input.siteDomain);
+      if (!selectedDomain) throw new Error('站点域名无效');
+      const domain = sql("r.payload->>'domain'", "JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.domain'))");
+      clauses.push(`LOWER(${domain}) IN (${bind(selectedDomain)},${bind(`www.${selectedDomain}`)})`);
+    }
     if (collection === 'products') {
       const field = key => sql(
         `NULLIF(r.payload->>'${key}','')`,

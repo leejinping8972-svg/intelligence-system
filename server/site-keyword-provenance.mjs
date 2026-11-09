@@ -10,6 +10,11 @@ const unique = (values) => [
   ).values(),
 ];
 
+export function sourceSiteDomain(value) {
+  const text = clean(value).replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase().replace(/^www\./, '');
+  return /^(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z]{2,63}$/.test(text) ? text : '';
+}
+
 /** Interpret saved provenance without inventing searches or splitting query punctuation. */
 export function siteKeywordProvenance(site) {
   const searches = [...array(site.queryTerms), site.query];
@@ -30,6 +35,7 @@ export function siteKeywordProvenance(site) {
     if (competitor || /domain_adwords_adwords/i.test(source)) {
       discoveries.push({
         ...row,
+        domain: sourceSiteDomain(competitor?.[1] || item.domain),
         source: /semrush/i.test(source) ? 'Semrush · 搜索广告竞品拓展' : source,
         text: competitor
           ? `与 ${competitor[1]} 竞争搜索广告关键词的站点`
@@ -64,6 +70,7 @@ export function siteKeywordProvenance(site) {
     )
       discoveries.push({
         source: '历史竞品拓展',
+        domain: sourceSiteDomain(primary.replace(/^保健品付费搜索竞品\s+/, '')),
         text: primary.replace(/^保健品付费搜索竞品\s+/, '搜索广告竞品拓展：'),
         url: '',
         collectedAt: '',

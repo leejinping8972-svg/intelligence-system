@@ -16,6 +16,7 @@ import { withFormulaIntelligence } from './formula-intelligence.mjs';
 import { appendCoreEvidence, archiveCoreEvidence, exactProductLinks } from './core-evidence.mjs';
 import { translateCollectionRecords } from './collection-translation.mjs';
 import { ensureDirectKeywords } from './keyword-associations.mjs';
+import { attachSourceKeywords } from './site-source-keywords.mjs';
 const readDoc = async (key) =>
   (
     await pool.query('SELECT value FROM workspace_documents WHERE name=$1', [
@@ -64,6 +65,7 @@ export async function mergeBusiness(key, patch, options = {}) {
             ]),
           ).values(),
         ];
+    if (kind === 'sites') value = await attachSourceKeywords({ connection: c, site: value });
     if (old.firstSeenAt) value.firstSeenAt = old.firstSeenAt;
     if (old.productId) value.productId = old.productId;
     if (old.metrics && !patch.metrics) value.metrics = old.metrics;
