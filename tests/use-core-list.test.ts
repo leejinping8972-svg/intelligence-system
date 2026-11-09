@@ -25,9 +25,9 @@ describe('keyword list association columns', () => {
     expect(columns.at(-1)?.key).toBe('actions');
   });
 
-  it('retains the default association metrics for pages without custom columns', () => {
+  it('omits retired association metrics for pages without custom columns', () => {
     const keys = useCoreList('keywords').columns([{ key: 'term' }]).map((column) => column.key);
-    expect(keys).toContain('core:linkedProducts');
-    expect(keys).toContain('core:linkedSites');
+    expect(keys).not.toContain('core:linkedProducts');
+    expect(keys).not.toContain('core:linkedSites');
   });
 });
