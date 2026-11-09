@@ -1,22 +1,29 @@
 {
-  "title": "移除关键词页旧商品与站点关联指标列",
+  "title": "关键词关联广告、商品与独立站数量排序",
   "changes": [
-    "关键词通用列配置彻底移除旧关联商品、关联站点指标列",
-    "保留左侧可点击的关联广告、商品、独立站数量及筛选跳转"
+    "关联广告、关联商品、关联独立站三列表头支持升序和降序",
+    "服务端按筛选后的全部关键词关联数量排序后分页，数量相同时按ID稳定排序",
+    "显示与排序复用双向关联去重规则，零关联正常参与排序",
+    "切换排序回到第一页，翻页保留排序，取消排序恢复研究评分默认顺序"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/use-core-list.ts",
-    "tests/use-core-list.test.ts"
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/keyword-association-columns.ts",
+    "tests/keyword-association-columns.test.ts"
   ],
-  "sourceSha": "681c396360d0f438e19c0c50f1dffbd954c366c7",
+  "sourceSha": "7d7924961fb823fb542803633ff846504289aa80",
   "includedCommits": [
-    "681c396360d0f438e19c0c50f1dffbd954c366c7"
+    "7d7924961fb823fb542803633ff846504289aa80"
   ],
   "developmentVerification": {
-    "frontend": "28/28 existing tests passed",
+    "server": "7/7; PGlite actual list globally sorted across pages for three columns, both directions, ties, zero, deleted links and market filters",
+    "frontend": "39/39; association sorter configuration, numerical demo comparisons, existing column/metric/query tests",
     "typecheck": "Web full typecheck passed",
-    "diff": "git diff --check passed",
-    "limits": "no separate development build for this column configuration removal; no full lint or browser acceptance; hooks skipped"
+    "syntax": "Node syntax and git diff --check passed",
+    "mysql": "Bounded SELECT-only candidate reads: three columns, two directions and two pages; no paid calls or source writes",
+    "limits": "No separate development build; isolated official artifact built once after freeze; no full lint, isolated MySQL database test, browser acceptance or commit hooks"
   },
   "database": {
     "schemaChange": false,
@@ -31,7 +38,7 @@
     "full-database-backup-no-schema-or-migration"
   ],
   "operator": "Codex",
-  "id": "20261109031503-a3dc90c2",
-  "builtAt": "2026-11-09T03:15:03.394Z",
-  "sourceDigest": "a3dc90c266aed8b4baeb9ee3cc474de380c54ac061cd598d330bf7818b9884ef"
+  "id": "20261109032726-e51dc92f",
+  "builtAt": "2026-11-09T03:27:26.855Z",
+  "sourceDigest": "e51dc92f5c5be42bfdb34158f7c29cefce5f99b6a2f9eedd64f4ea007dc91093"
 }
