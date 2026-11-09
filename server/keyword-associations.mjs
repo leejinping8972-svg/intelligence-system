@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { cleanKeyword, naturalKey, normalizeTerm } from './domain.mjs';
+import { siteKeywordProvenance } from './site-keyword-provenance.mjs';
 
 const BUSINESS_COLLECTIONS = new Set(['ads', 'products', 'sites']);
 
@@ -19,6 +20,8 @@ function uniqueStrings(values) {
  * expands terms or calls a provider/model.
  */
 export function associationTerms(value) {
+  if (value?.domain && Array.isArray(value?.mainProducts))
+    return siteKeywordProvenance(value).queryTerms.filter((term) => term.length <= 255);
   const sourceEvidence = Array.isArray(value?.sourceEvidence) ? value.sourceEvidence : [];
   const resourceTerms = Array.isArray(value?.resourceEvidence?.queryTerms)
     ? value.resourceEvidence.queryTerms

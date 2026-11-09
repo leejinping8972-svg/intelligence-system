@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { siteKeywordProvenance } from '../../../../../../server/site-keyword-provenance.mjs';
 import { useRouter } from 'vue-router';
 
 import { Alert, Button, Drawer, Progress, Tag } from 'ant-design-vue';
@@ -29,6 +30,7 @@ watch(() => props.id, async (id) => {
   catch (cause) { if (props.id === id) detailError.value = (cause as Error).message; }
 }, { immediate: true });
 const site = computed(() => state.sites.find((item) => item.id === props.id));
+const provenance = computed(() => siteKeywordProvenance(site.value || {}));
 const products = computed(() =>
   serverMode ? remoteProducts.rows.value : state.products.filter((item) => item.siteId === props.id),
 );
@@ -164,8 +166,19 @@ function go(path: string, query: Record<string, string>) {
         </div>
       </section>
       <section class="hci-detail-section">
-        <h3>发现来源与证据</h3>
+        <h3>关联检索词</h3>
+        <CompactTags :items="provenance.queryTerms" label="实际检索词" />
+      </section>
+      <section class="hci-detail-section">
+        <h3>发现来源</h3>
         <CompactTags :items="sources" label="全部数据来源" color="blue" />
+        <article v-for="(item, index) in provenance.discoveries" :key="index" class="hci-source-record">
+          <b>{{ item.source }}</b>
+          <p>{{ item.text }}</p>
+        </article>
+      </section>
+      <section class="hci-detail-section">
+        <h3>采集证据</h3>
         <article
           v-for="(evidence, index) in site.sourceEvidence"
           :key="index"
@@ -174,7 +187,7 @@ function go(path: string, query: Record<string, string>) {
           <div>
             <b>{{ evidence.source }}</b><time>{{ evidence.collectedAt || '日期未记录' }}</time>
           </div>
-          <p v-if="evidence.keyword">发现词：{{ evidence.keyword }}</p>
+          <p v-if="evidence.keyword">{{ provenance.queryTerms.includes(evidence.keyword) ? '实际检索词' : '采集记录' }}：{{ evidence.keyword }}</p>
           <a
             v-if="evidence.url"
             :href="evidence.url"

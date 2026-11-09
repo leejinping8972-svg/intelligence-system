@@ -67,7 +67,6 @@ import {
   state,
   toggleFavorite,
 } from './data';
-import { discoveryDecision, discoveryFilters } from './discovery';
 import {
   PRODUCT_DECISION_RULES,
   productDataSource,
@@ -107,7 +106,6 @@ const favorites = ref(false);
 const benefitFilter = ref('ALL');
 const ingredientFilter = ref('ALL');
 const decisionFilter = ref('ALL');
-const newness = ref('ALL');
 const newProductType = ref('ALL');
 const productPool = ref('existing');
 const newProductTypeOptions = [
@@ -150,7 +148,6 @@ const remote = useWorkspaceList<Product>(
     benefit: benefitFilter.value,
     ingredient: ingredientFilter.value,
     decision: decisionFilter.value,
-    newness: newness.value,
     newProductType: newProductType.value,
     productPool: productPool.value,
     provider: sourceFilter.value,
@@ -311,14 +308,6 @@ const rows = computed(() =>
             productDecisions(p).some(
               (tag) => tag.key === decisionFilter.value,
             )) &&
-          (newness.value === 'ALL' ||
-            (newness.value === 'discovered'
-              ? discoveryDecision(p, 'product').recentDiscovery
-              : (discoveryDecision(p, 'product').isNew === null
-                  ? 'unknown'
-                  : discoveryDecision(p, 'product').isNew
-                    ? 'yes'
-                    : 'no') === newness.value)) &&
           (productPool.value === 'pool' ? inNewProductPool(p) : !inNewProductPool(p)) &&
           (newProductType.value === 'ALL' ||
             (p.newProductClassifications || []).some(
@@ -428,7 +417,6 @@ watch(
     benefitFilter,
     ingredientFilter,
     decisionFilter,
-    newness,
     newProductType,
     productPool,
     sourceFilter,
@@ -615,14 +603,6 @@ async function exportProducts() {
           :options="siteOptions"
           aria-label="按独立站筛选商品"
           style="min-width: 230px"
-        /><Select
-          id="product-newness"
-          aria-label="商品新旧标签"
-          v-model:value="newness"
-          show-search
-          option-filter-prop="label"
-          :options="discoveryFilters"
-          style="min-width: 180px"
         /><Select
           id="product-new-type"
           aria-label="新品类型"
