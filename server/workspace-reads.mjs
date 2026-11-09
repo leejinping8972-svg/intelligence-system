@@ -62,7 +62,7 @@ const listKeys = {
   products:
     'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId keywordIds color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications sourceCategories',
   sites:
-    'id brand brandZh domain market platform type keyword keywordIds category categoryZh description descriptionZh mainProducts mainProductsZh ownershipBackground ownershipEvidence signals sources metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
+    'id brand brandZh domain market platform type keyword keywordIds category categoryZh description descriptionZh mainProducts mainProductsZh ownershipBackground ownershipEvidence signals sources sourceEvidence categoryEvidence metrics metricsStatus metricsMessage productCollection collectorMode lastCollectedAt evidenceUrl confidence dataNature',
   ads: 'id brand brandZh market platform headline headlineZh copy copyZh sellingPointZh format productId status color archiveId pageId keywordIds query collectionBatches siteIds landingUrls imageUrls videoUrls videoPosterUrls lastCollectedAt startDate source firstSeenAt evidenceUrl dataNature discovery',
 };
 export function projectRecord(collection, value) {
@@ -973,6 +973,9 @@ export function createWorkspaceReads({
     }
     // Lookup options stay small and omit source evidence and time series.
     for (const collection of ['keywords', 'sites']) {
+      const siteKeywordOnly = input.collection === 'sites' && collection === 'keywords'
+        ? ` AND (EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows s ON s.collection='sites' AND s.id=l.id WHERE l.collection='sites' AND l.relation='keyword' AND l.target=workspace_read_rows.id${market ? ' AND s.market=$2' : ''}) OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows s ON s.collection='sites' AND s.id=l.target WHERE l.collection='keywords' AND l.id=workspace_read_rows.id AND l.relation='sites'${market ? ' AND s.market=$2' : ''}))`
+        : '';
       const fields = ['term', 'brand', 'domain', 'reviewStatus'];
       const columns = fields
         .map(
@@ -985,7 +988,7 @@ export function createWorkspaceReads({
         .join(',');
       result[collection] = (
         await pool.query(
-          `SELECT id,market,${columns} FROM workspace_read_rows WHERE collection=$1${market} ORDER BY id LIMIT 2000`,
+          `SELECT id,market,${columns} FROM workspace_read_rows WHERE collection=$1${market}${siteKeywordOnly} ORDER BY id LIMIT 2000`,
           [collection, ...values.slice(1)],
         )
       ).rows.map((r) => ({

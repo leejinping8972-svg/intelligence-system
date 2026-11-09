@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Site } from './data';
+import { siteKeywordProvenance } from '../../../../../server/site-keyword-provenance.mjs';
+import { useSiteKeywordFilter } from './site-keyword-filter';
 
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -83,13 +85,13 @@ const search = ref('');
 const platform = ref('ALL');
 const category = ref('ALL');
 const ownership = ref('ALL');
-const keywordFilter = ref('');
+const keywordFilter = useSiteKeywordFilter();
 const selected = ref<Site>();
 const page = ref(1);
 const pageSize = ref(8);
 const remote = useWorkspaceList<Site>('sites', computed(() => ({ market: state.market,
   search: search.value, platform: platform.value, category: category.value, ownership: ownership.value,
-  keywordId: keywordFilter.value || route.query.keywordId, source: source.value, score: scoreFilter.value,
+  keywordId: keywordFilter.value || undefined, source: source.value, score: scoreFilter.value,
 })), page, pageSize);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keywordId),
@@ -156,13 +158,6 @@ watch(
   { immediate: true },
 );
 watch(
-  () => route.query.keywordId,
-  (value) => {
-    keywordFilter.value = typeof value === 'string' ? value : '';
-  },
-  { immediate: true },
-);
-watch(
   () => state.market,
   () => {
     selected.value = undefined;
@@ -209,8 +204,7 @@ const rows = computed(() => serverMode ? remote.rows.value :
       (!keywordFilter.value ||
         state.keywords
           .find((keyword) => keyword.id === keywordFilter.value)
-          ?.siteIds.includes(s.id)) &&
-      (!linkedKeyword.value || linkedKeyword.value.siteIds.includes(s.id)),
+          ?.siteIds.includes(s.id)),
   ),
 );
 const { selectAll, clear, selectable, rowSelection } = useFilteredSelection(rows, ids, serverMode ? remote.selectAll : undefined);
@@ -238,6 +232,8 @@ watch([search, platform, category, ownership, keywordFilter, source, scoreFilter
 const columns = [
   { title: '品牌 / 独立站', key: 'brand', width: 220 },
   { title: '关联关键词', key: 'keywords', width: 190 },
+  { title: '发现来源', key: 'discoverySources', width: 250 },
+  { title: '采集证据', key: 'collectionEvidence', width: 280 },
   { title: '市场', key: 'market', width: 90 },
   { title: '采集时间（北京时间）', key: 'collectedAt', width: 170, sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[], sorter: serverMode ? true : (a: Site, b: Site) => collectionTimeOrder(siteCollectedAt(a)) - collectionTimeOrder(siteCollectedAt(b)) },
   {
@@ -292,7 +288,7 @@ const columns = [
         v-if="route.query.keywordId || linkedKeyword"
         class="hci-link"
         style="margin-left: 12px"
-        @click="router.replace('/sites')"
+        @click="keywordFilter = ''"
       >
         清除关联筛选
       </button>
@@ -305,6 +301,7 @@ const columns = [
           allow-clear
         /><Select
           v-model:value="keywordFilter"
+          allow-clear
           :options="keywordOptions"
           show-search
           option-filter-prop="label"
@@ -388,6 +385,7 @@ const columns = [
           ><template v-if="column.key === 'market'">
             <Tag>{{ marketName(record.market) }}</Tag> </template
           ><template v-if="column.key === 'keywords'">
+            <div class="hci-site-keywords">
             <Button
               v-for="item in siteKeywords(record as Site)"
               :key="item.id"
@@ -395,7 +393,21 @@ const columns = [
               size="small"
               @click="openKeyword(item.id)"
             >{{ item.label }}</Button>
-            <span v-if="!record.keywordIds?.length" class="hci-subtle">未关联</span>
+            <span v-if="!record.keywordIds?.length" class="hci-subtle">未关联实际检索词</span>
+            </div>
+          </template>
+          <template v-if="column.key === 'discoverySources'">
+            <div v-for="(item, index) in siteKeywordProvenance(record as Site).discoveries" :key="index" class="hci-source-summary">
+              {{ item.text }}
+              <small class="hci-subtle">{{ item.source }}</small>
+            </div>
+            <span v-if="!siteKeywordProvenance(record as Site).discoveries.length" class="hci-subtle">{{ sources(record as Site).join('；') || '未记录' }}</span>
+          </template>
+          <template v-if="column.key === 'collectionEvidence'">
+            <div v-for="(item, index) in siteKeywordProvenance(record as Site).evidence.slice(0, 2)" :key="index" class="hci-source-summary hci-clamp-2" :title="item.text">
+              {{ item.source }}：{{ item.text || '已保存来源网址' }}
+            </div>
+            <button class="hci-link" @click="selected = record as Site">查看采集证据</button>
           </template
           ><template v-if="column.key === 'collectedAt'">
               <CollectionTime :at="siteCollectedAt(record)" />
@@ -442,3 +454,9 @@ const columns = [
     <SiteDrawer :id="selected?.id" @close="selected = undefined" />
   </main>
 </template>
+<style scoped>
+.hci-site-keywords { display: flex; flex-wrap: wrap; gap: 4px; max-width: 240px; }
+.hci-site-keywords :deep(.ant-btn) { height: auto; max-width: 100%; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.hci-source-summary { max-width: 280px; white-space: normal; overflow-wrap: anywhere; margin-bottom: 4px; }
+.hci-source-summary small { display: block; }
+</style>

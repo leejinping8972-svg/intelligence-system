@@ -321,6 +321,7 @@ export interface SiteAssessment {
   }[];
 }
 export interface Site {
+  categoryEvidence?: string[];
   brandZh?: string;
   categoryZh?: string;
   description?: string;
