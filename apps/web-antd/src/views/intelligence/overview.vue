@@ -6,6 +6,8 @@ import { Alert, Button, Select, Tag } from 'ant-design-vue';
 import { serverMode } from './session';
 import { useOverviewSnapshot } from './workspace-queries';
 
+import { productDiscoveryDay, shanghaiDay } from '../../../../../server/collection-time.mjs';
+import { inNewProductPool } from '../../../../../server/product-pool-domain.mjs';
 import { trendOption } from './charts';
 import NewResearchDialog from './components/NewResearchDialog.vue';
 import PageHeader from './components/PageHeader.vue';
@@ -38,7 +40,20 @@ const keyword = computed(
     overviewKeywords.value.find((k) => k.id === selectedTerm.value) ||
     overviewKeywords.value[0],
 );
+const today = computed(() => overview.snapshot.value?.todayNewProducts?.day || shanghaiDay());
 const stats = computed(() => [
+  {
+    title: '今日新品发现',
+    value: serverMode ? overview.snapshot.value?.todayNewProducts?.count ?? '—' : filteredProducts.value.filter(p => inNewProductPool(p) && productDiscoveryDay(p) === today.value).length,
+    note: '北京时间今日首次发现且已入池', icon: '✦',
+    route: { path: '/products', query: { pool: 'pool', discoveredOn: today.value } },
+  },
+  {
+    title: '独立站监控异常',
+    value: serverMode ? overview.snapshot.value?.monitoring?.problems ?? '—' : '—',
+    note: '开启的监控中失败、受阻或未完成', icon: '!',
+    route: { path: '/monitor', query: { tab: 'monitors' } },
+  },
   {
     title: '在研关键词',
     value: count('keywords'),
@@ -288,3 +303,8 @@ function selectMarket(name: string) {
     </div>
   </main>
 </template>
+
+<style scoped>
+.overview-asset-stats { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+@media (min-width: 1440px) { .overview-asset-stats { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+</style>

@@ -1,3 +1,4 @@
+import { collectionRange, productDiscoveryDay, resourceCollectionTime, shanghaiDay } from './collection-time.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
@@ -29,7 +30,7 @@ const collections = new Set([
   'advertisers',
   'insightReports',
 ]);
-const MODEL_VERSION = 'workspace-reads-v7-keyword-associations';
+const MODEL_VERSION = 'workspace-reads-v8-collection-time';
 const keywordAssociationSorts = new Map([
   ['relatedAds', 'ads'], ['relatedProducts', 'products'], ['relatedSites', 'sites'],
 ]);
@@ -163,7 +164,10 @@ export function projectRecord(collection, value) {
   );
   add('benefit', value.benefits);
   if (collection === 'products') add('sourceCategory', value.sourceCategories);
-  if (collection === 'products') add('listingDate', [productListingDate(value)]);
+  if (collection === 'products') {
+    add('listingDate', [productListingDate(value)]);
+    add('discoveredDay', [productDiscoveryDay(value)]);
+  }
   if (collection === 'products')
     add(
       'newProduct',
@@ -223,8 +227,7 @@ export function projectRecord(collection, value) {
     .join(' ')
     .normalize('NFKC')
     .toLowerCase();
-  const at =
-    value.collectedAt || value.lastCollectedAt || value.firstSeenAt || '';
+  const at = resourceCollectionTime(collection, value);
   return {
     data,
     links: [...links.values()],
@@ -694,10 +697,20 @@ export function createWorkspaceReads({
         [market],
       )
     ).rows[0];
+    const day = shanghaiDay();
+    const todayQuery = filter({ collection: 'products', market, productPool: 'pool', discoveredOn: day });
+    const today = Number((await pool.query(`SELECT COUNT(*) AS total FROM workspace_read_rows r WHERE ${todayQuery.where}`, todayQuery.values)).rows[0].total);
+    const monitorRows = (await pool.query(sql(
+      "SELECT t.value->>'market' AS market,t.value->>'enabled' AS enabled,r.value->>'status' AS status FROM workspace_documents t LEFT JOIN workspace_documents r ON r.name='competitor:run:' || (t.value->>'id') WHERE t.name LIKE 'competitor:target:%' AND t.value->>'kind'='site'",
+      "SELECT JSON_UNQUOTE(JSON_EXTRACT(t.value,'$.market')) AS market,JSON_UNQUOTE(JSON_EXTRACT(t.value,'$.enabled')) AS enabled,JSON_UNQUOTE(JSON_EXTRACT(r.value,'$.status')) AS status FROM workspace_documents t LEFT JOIN workspace_documents r ON r.name=CONCAT('competitor:run:',JSON_UNQUOTE(JSON_EXTRACT(t.value,'$.id'))) WHERE t.name LIKE 'competitor:target:%' AND JSON_UNQUOTE(JSON_EXTRACT(t.value,'$.kind'))='site'"
+    ))).rows.filter(r => market === 'ALL' || r.market === market);
+    const monitoring = { total: monitorRows.length, problems: monitorRows.filter(r => ['true', '1'].includes(String(r.enabled)) && ['failed','blocked','partial','interrupted','retry_wait'].includes(r.status)).length };
     return {
       snapshot: row
         ? {
             ...row.payload,
+            todayNewProducts: { count: today, day },
+            monitoring,
             generatedAt: row.generated_at,
             revision: String(row.revision),
           }
@@ -762,6 +775,14 @@ export function createWorkspaceReads({
         );
     }
     if (input.favorite) clauses.push('r.favorite=1');
+    const range = collectionRange(input.collectedFrom, input.collectedTo);
+    if (range.from) clauses.push(`r.collected_at>=${bind(range.from)}`);
+    if (range.to) clauses.push(`r.collected_at<${bind(range.to)}`);
+    if (collection === 'products' && input.discoveredOn) {
+      collectionRange(input.discoveredOn, input.discoveredOn);
+      clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='discoveredDay' AND d.target=${bind(input.discoveredOn)})`);
+    }
+
     if (collection === 'products') {
       const { from, to } = validateListingRange(input.listedFrom, input.listedTo);
       if (from || to) clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='listingDate'${from ? ` AND d.target>=${bind(from)}` : ''}${to ? ` AND d.target<=${bind(to)}` : ''})`);

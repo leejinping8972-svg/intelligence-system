@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CollectionTimeFilter from './components/CollectionTimeFilter.vue';
+import { matchesCollectionRange } from '../../../../../server/collection-time.mjs';
 import type { Ad, Product, Site } from './data';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -44,6 +46,7 @@ import { useWorkspaceList } from './workspace-queries';
 import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 const route = useRoute(),
   router = useRouter();
+const collectedRange = ref<string[]>([]);
 const search = ref(''),
   newness = ref('ALL'),
   status = ref('ALL'),
@@ -90,6 +93,7 @@ const rows = computed(() => serverMode ? remote.rows.value :
   state.ads
     .filter(
       (a) =>
+      matchesCollectionRange('ads', a, collectedRange.value[0], collectedRange.value[1]) &&
         inMarket(a.market) &&
         `${a.brand} ${a.brandZh || ''} ${a.headline} ${a.headlineZh || ''} ${a.copy} ${a.copyZh || ''} ${a.query || ''} ${a.pageId || ''}`
           .toLowerCase()
@@ -114,6 +118,7 @@ const rows = computed(() => serverMode ? remote.rows.value :
 const page = ref(1);
 const pageSize = ref(20);
 const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.market, search: search.value,
+    collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   enabled: viewTab.value !== 'advertisers', platform: platformFilter.value, source: sourceFilter.value, batch: batchFilter.value, status: status.value, newness: newness.value, keywordId: keywordFilter.value || route.query.keywordId, linkedSite: linkedSite.value, linkedProduct: linkedProduct.value,
 })), page, pageSize);
 const productLookup = useWorkspaceList<Product>('products', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: productSearch.value })), ref(1), ref(50));
@@ -224,6 +229,7 @@ async function exportAds() {
     exportCsv('广告完整数据.csv', records.map((row) => ({ 广告主中文: row.brandZh || '', 广告主原文: row.brand, 素材标题中文: row.headlineZh || '', 素材标题原文: row.headline, 广告文案中文: row.copyZh || '', 广告文案原文: row.copy, 抓取批次: row.collectionBatches?.join('；') || '', 广告ID: row.archiveId || row.id, ...core.exportRecord(row) })));
   } catch (cause) { message.error((cause as Error).message); }
 }
+watch(collectedRange, () => { page.value = 1; clear(); });
 </script>
 <template>
   <main class="hci-page">
@@ -235,6 +241,8 @@ async function exportAds() {
     >
     <AdsResearchPanel v-if="viewTab !== 'advertisers'" ref="adResearch" :ads="serverMode ? state.ads : rows" :show-list="viewTab === 'reports'" />
     <section v-if="viewTab === 'ads'" class="hci-panel">
+      <CollectionTimeFilter v-model="collectedRange" />
+
       <div class="hci-toolbar hci-filter-toolbar ad-filters">
         <Input.Search
           v-model:value="search"

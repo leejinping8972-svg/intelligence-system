@@ -14,7 +14,7 @@ test('keyword views persist across service instances, isolate accounts and detec
   const otherDevice = createKeywordViewsAction({ pool });
   const alice = { id: 'admin-a' }, bob = { id: 'admin-b' };
   const filters = {
-    market: 'VN', search: 'magnesium', category: 'ALL', rating: 'ALL', ratingStatus: 'ALL',
+    market: 'VN', search: 'magnesium', batch: '', collectedFrom: '2026-11-01', collectedTo: '2026-11-09', category: 'ALL', rating: 'ALL', ratingStatus: 'ALL',
     score: { min: 30, max: 90, status: 'scored' }, tags: ['测试'], timeRange: '90',
     review: 'excluded', favorite: false, sort: 'score', order: 'descend', pageSize: 50, period: 180,
   };
@@ -31,7 +31,7 @@ test('keyword views persist across service instances, isolate accounts and detec
     assert.equal(updated.view.revision, 2);
     await assert.rejects(firstDevice({ action: 'server_keyword_views_save', ...view, filters }, alice), { status: 409 });
     await assert.rejects(firstDevice({ action: 'server_keyword_views_delete', ...view }, alice), { status: 409 });
-    for (const invalid of [{ period: 4 }, { score: { min: 80, max: 30, status: 'all' } }, { apiKey: 'not-allowed' }, { review: 'made-up' }]) {
+    for (const invalid of [{ collectedFrom: '2026-02-30' }, { collectedFrom: '2026-11-10' }, { period: 4 }, { score: { min: 80, max: 30, status: 'all' } }, { apiKey: 'not-allowed' }, { review: 'made-up' }]) {
       await assert.rejects(firstDevice({ action: 'server_keyword_views_save', name: '非法', filters: { ...filters, ...invalid } }, alice), { status: 400 });
     }
     await otherDevice({ action: 'server_keyword_views_delete', id: view.id, revision: 2 }, alice);

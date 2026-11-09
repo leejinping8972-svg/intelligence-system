@@ -1,3 +1,4 @@
+import { monitorCatalogUrl } from './monitor-catalog-rules.mjs';
 import { setTimeout as pause } from 'node:timers/promises';
 
 import { collectAds } from './ads-provider.mjs';
@@ -56,14 +57,14 @@ export async function scanSite(
     : undefined;
   if (catalogScopeKey && progress?.catalogScopeKey !== catalogScopeKey)
     progress = { nextRunAt: progress?.nextRunAt || 0 };
-  const queue = progress?.queue || [
+  const queue = (progress?.queue || [
     ...(site.platform === 'Shopify'
       ? [`${base}/products.json?limit=50&page=1`]
       : []),
     ...(isWestmonth(site)
       ? [westmonthEntry(false, site.market)]
       : fallbackProductUrls(site)),
-  ];
+  ]).map(url => monitorCatalogUrl(url, base)).filter(Boolean);
   const attempted = new Set();
   const errors = [];
   const products = new Map();
@@ -165,7 +166,7 @@ export async function scanSite(
           ...productPageUrls(page.html, page.url, 1000),
           ...catalogLinks(page.html, page.url, /sitemap.*\.xml/.test(url)),
         ]) {
-          const next = canonicalCatalogUrl(link, base);
+          const next = monitorCatalogUrl(link, base);
           if (next && !visited.has(next) && !queue.includes(next)) {
             if (queue.length < 5000 && visited.size < 10_000) queue.push(next);
             else truncated = true;

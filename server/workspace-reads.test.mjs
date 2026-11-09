@@ -1,3 +1,4 @@
+import { shanghaiDay } from './collection-time.mjs';
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
@@ -611,6 +612,46 @@ async function exerciseReadModel(
   ]);
   await drain();
   assert.equal((await reads.list({ collection: 'keywords', search: 'collation-probe' })).total, 2);
+  // All list actions share exact date filters, independent of page boundaries.
+  for (const collection of ['keywords', 'products', 'sites', 'ads']) {
+    const times = ['2026-11-08T15:59:59.999Z', '2026-11-08T16:00:00.000Z', '2026-11-09T15:59:59.999Z', '2026-11-09T16:00:00.000Z', ''];
+    for (const [i, at] of times.entries()) {
+      const id = `date-probe-${collection}-${i}`;
+      const item = { id, market: 'US', term: id, title: id, domain: `${id}.example`, source: 'synthetic', category: 'test', benefits: [], ingredientInsights: [], mainProducts: [], sources: [], collectedAt: at, lastCollectedAt: at, firstSeenAt: '2026-11-09T00:00:00Z', series: [] };
+      if (collection === 'keywords') await pool.query('INSERT INTO research_keywords(natural_key,data) VALUES($1,$2)', [id, item]);
+      else await putDocument('workspace_documents', `business:${collection}:${id}`, item);
+    }
+    await drain();
+    const query = {collection, market:'US', search:`date-probe-${collection}`, collectedFrom:'2026-11-09',collectedTo:'2026-11-09'};
+    const firstPage = await reads.list({...query,pageSize:1,page:1});
+    const secondPage = await reads.list({...query,pageSize:1,page:2});
+    assert.equal(firstPage.total,2,collection);assert.equal(secondPage.total,2,collection);
+    assert.notEqual(firstPage.rows[0].id,secondPage.rows[0].id);
+    const selection = await reads.selection(query);
+    assert.equal(selection.count,2);
+    const exported = await reads.exportRecords({...query,ids:selection.rows.map(r => r.id)});
+    assert.equal(exported.rows.length,2);
+    assert.ok(exported.rows.every(p => /-[12]$/.test(p.id)));
+    await assert.rejects(reads.list({...query,collectedFrom:'2026-02-30'}), /采集日期/);
+  }
+  const today=shanghaiDay();
+  for (const [id,market,firstSeenAt,pool] of [
+    ['today-new','US',`${today}T01:00:00+08:00`,true],
+    ['today-foreign','MX',`${today}T02:00:00+08:00`,true],
+    ['today-existing','US',`${today}T03:00:00+08:00`,false],
+    ['today-old','US','2026-01-01T00:00:00Z',true],
+  ]) await putDocument('workspace_documents',`business:products:${id}`,{id,market,title:id,firstSeenAt,benefits:[],ingredientInsights:[],newProductClassifications:pool?[{type:'new_listing'}]:[]});
+  for (const [id,market,enabled,status] of [['monitor-a','US',true,'failed'],['monitor-b','US',false,'blocked'],['monitor-c','MX',true,'partial'],['monitor-d','US',true,'completed']]) {
+    await putDocument('workspace_documents',`competitor:target:${id}`,{id,kind:'site',market,enabled});
+    await putDocument('workspace_documents',`competitor:run:${id}`,{status});
+  }
+  await drain();
+  const todayUS = (await reads.overview({market:'US'})).snapshot;
+  const todayAll = (await reads.overview({market:'ALL'})).snapshot;
+  assert.equal(todayUS.todayNewProducts.count,1);assert.equal(todayAll.todayNewProducts.count,2);
+  assert.equal(todayUS.monitoring.problems,1);assert.equal(todayAll.monitoring.problems,2);
+  const todayList=await reads.list({collection:'products',market:'US',productPool:'pool',discoveredOn:today});
+  assert.equal(todayList.total,todayUS.todayNewProducts.count);assert.equal(todayList.rows[0].id,'today-new');
   return {
     pageBytes: Buffer.byteLength(JSON.stringify(first)),
     overviewBytes: Buffer.byteLength(JSON.stringify(overview)),

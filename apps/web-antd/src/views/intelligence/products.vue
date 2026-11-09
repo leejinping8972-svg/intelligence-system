@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CollectionTimeFilter from './components/CollectionTimeFilter.vue';
+import { matchesCollectionRange, productDiscoveryDay } from '../../../../../server/collection-time.mjs';
 /* oxlint-disable import/first, eslint/no-nested-ternary, unicorn/no-array-sort -- Existing product list structure. */
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -78,6 +80,7 @@ import { useWorkspaceList } from './workspace-queries';
 const route = useRoute();
 const router = useRouter();
 const search = ref('');
+const collectedRange = ref<string[]>([]);
 const listedRange = ref<[] | [string, string]>([]);
 const listedQuick = ref(0);
 function setListedQuick(days: number) {
@@ -107,7 +110,12 @@ const benefitFilter = ref('ALL');
 const ingredientFilter = ref('ALL');
 const decisionFilter = ref('ALL');
 const newProductType = ref('ALL');
-const productPool = ref('existing');
+const productPool = ref(route.query.pool === 'pool' ? 'pool' : 'existing');
+const discoveredOn = ref(typeof route.query.discoveredOn === 'string' ? route.query.discoveredOn : '');
+watch(() => [route.query.pool, route.query.discoveredOn], () => {
+  productPool.value = route.query.pool === 'pool' ? 'pool' : 'existing';
+  discoveredOn.value = typeof route.query.discoveredOn === 'string' ? route.query.discoveredOn : '';
+});
 const newProductTypeOptions = [
   { label: '全部新品类型', value: 'ALL' },
   { label: 'FBM新品', value: 'fbm_new' },
@@ -150,11 +158,13 @@ const remote = useWorkspaceList<Product>(
     decision: decisionFilter.value,
     newProductType: newProductType.value,
     productPool: productPool.value,
+    discoveredOn: discoveredOn.value || undefined,
     provider: sourceFilter.value,
     productPlatform: platformFilter.value,
     siteLinked: siteLinked.value,
     siteId: siteFilter.value,
     keywordId: keywordFilter.value || route.query.keywordId,
+    collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
     listedFrom: listedRange.value[0],
     listedTo: listedRange.value[1],
   })),
@@ -288,6 +298,8 @@ const rows = computed(() =>
             .join(' ')}`
             .toLowerCase()
             .includes(search.value.toLowerCase()) &&
+      matchesCollectionRange('products', p, collectedRange.value[0], collectedRange.value[1]) &&
+          (!discoveredOn.value || productDiscoveryDay(p) === discoveredOn.value) &&
           matchesListingRange(p, listedRange.value[0], listedRange.value[1]) &&
           (category.value === 'ALL' || p.category === category.value) &&
           (sourceCategory.value === 'ALL' || p.sourceCategories?.includes(sourceCategory.value)) &&
@@ -411,6 +423,7 @@ watch(
   [
     search,
     listedRange,
+    discoveredOn,
     category,
     sourceCategory,
     favorites,
@@ -522,6 +535,13 @@ async function exportProducts() {
     message.error((error as Error).message);
   }
 }
+watch(collectedRange, () => { page.value = 1; clear(); });
+watch(() => [route.query.pool, route.query.discoveredOn], () => {
+  if (route.query.pool !== 'pool' || !route.query.discoveredOn) return;
+  search.value = ''; collectedRange.value = []; listedRange.value = []; listedQuick.value = 0;
+  category.value = sourceCategory.value = benefitFilter.value = ingredientFilter.value = decisionFilter.value = newProductType.value = sourceFilter.value = platformFilter.value = siteLinked.value = 'ALL';
+  siteFilter.value = keywordFilter.value = ''; favorites.value = false; page.value = 1; clear();
+}, { immediate: true });
 </script>
 <template>
   <main class="hci-page">
@@ -646,6 +666,8 @@ async function exportProducts() {
           家独立站</span>
       </div>
     </section>
+    <div v-if="discoveredOn" class="hci-demo-note">首次发现日期：{{ discoveredOn }}（北京时间）<Button type="link" @click="discoveredOn = ''; router.replace({ query: { ...route.query, discoveredOn: undefined } })">清除发现日期</Button></div>
+    <CollectionTimeFilter v-model="collectedRange" />
     <div class="product-controls-row">
       <div class="hci-toolbar product-listing-filter">
         <span>上架时间</span>

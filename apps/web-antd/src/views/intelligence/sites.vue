@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CollectionTimeFilter from './components/CollectionTimeFilter.vue';
+import { matchesCollectionRange } from '../../../../../server/collection-time.mjs';
 import type { Site } from './data';
 import { siteKeywordProvenance } from '../../../../../server/site-keyword-provenance.mjs';
 import { useSiteKeywordFilter } from './site-keyword-filter';
@@ -81,6 +83,7 @@ async function scoreSelected() {
 }
 
 const route = useRoute();
+const collectedRange = ref<string[]>([]);
 const search = ref('');
 const platform = ref('ALL');
 const category = ref('ALL');
@@ -91,6 +94,7 @@ const page = ref(1);
 const pageSize = ref(8);
 const remote = useWorkspaceList<Site>('sites', computed(() => ({ market: state.market,
   search: search.value, platform: platform.value, category: category.value, ownership: ownership.value,
+    collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   keywordId: keywordFilter.value || undefined, source: source.value, score: scoreFilter.value,
 })), page, pageSize);
 const linkedKeyword = computed(() =>
@@ -195,6 +199,7 @@ const rows = computed(() => serverMode ? remote.rows.value :
         .join(' ')}`
         .toLowerCase()
         .includes(search.value.toLowerCase()) &&
+      matchesCollectionRange('sites', s, collectedRange.value[0], collectedRange.value[1]) &&
       matchesScore(s.assessment?.score, scoreFilter.value) &&
       (source.value === 'ALL' || sources(s).includes(source.value)) &&
       (platform.value === 'ALL' || s.platform === platform.value) &&
@@ -251,6 +256,7 @@ const columns = [
   { title: '关联商品', key: 'products', width: 105 },
   { title: '操作', key: 'actions', width: 190, fixed: 'right' as const },
 ];
+watch(collectedRange, () => { page.value = 1; ids.value = []; });
 </script>
 <template>
   <main class="hci-page">
@@ -294,6 +300,8 @@ const columns = [
       </button>
     </div>
     <section class="hci-panel hci-resource-list">
+      <CollectionTimeFilter v-model="collectedRange" />
+
       <div class="hci-toolbar hci-filter-toolbar">
         <Input.Search
           v-model:value="search"

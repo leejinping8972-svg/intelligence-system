@@ -1,3 +1,4 @@
+import { collectionRange } from './collection-time.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 
 function fail(message, status = 400) {
@@ -13,7 +14,7 @@ function option(value, options) {
 }
 function cleanFilters(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('缺少视图筛选');
-  const keys = ['market', 'search', 'batch', 'category', 'rating', 'ratingStatus', 'score', 'tags', 'timeRange', 'review', 'favorite', 'sort', 'order', 'pageSize', 'period'];
+  const keys = ['market', 'search', 'batch', 'collectedFrom', 'collectedTo', 'category', 'rating', 'ratingStatus', 'score', 'tags', 'timeRange', 'review', 'favorite', 'sort', 'order', 'pageSize', 'period'];
   if (Object.keys(value).some(key => !keys.includes(key))) fail('不支持的视图字段');
   const market = textValue(value.market, 3);
   if (market !== 'ALL' && !/^[A-Z]{2,3}$/.test(market)) fail('市场无效');
@@ -25,7 +26,10 @@ function cleanFilters(value) {
   if (score.min !== null && score.max !== null && score.min > score.max) fail('评分范围无效');
   if (!Array.isArray(value.tags) || value.tags.length > 30) fail('标签无效');
   if (typeof value.favorite !== 'boolean') fail('收藏筛选无效');
+  try { collectionRange(value.collectedFrom, value.collectedTo); } catch (error) { fail(error.message); }
   return {
+    ...(value.collectedFrom ? { collectedFrom: value.collectedFrom } : {}),
+    ...(value.collectedTo ? { collectedTo: value.collectedTo } : {}),
     market, search: textValue(value.search, 300), batch: textValue(value.batch || '', 100), category: textValue(value.category),
     rating: option(value.rating, ['ALL', 'UNRATED', 'A', 'B', 'C', 'D']),
     ratingStatus: textValue(value.ratingStatus, 40),

@@ -259,6 +259,8 @@ export function useWorkspaceList<T extends { id: string }>(
 }
 
 export interface OverviewSnapshot {
+  todayNewProducts?: { count: number; day: string };
+  monitoring?: { total: number; problems: number };
   counts: {
     keywords: number;
     sites: number;
@@ -324,6 +326,9 @@ export function useOverviewSnapshot() {
       if (ticket === sequence) loading.value = false;
     }
   }
+  let refreshTimer: ReturnType<typeof setInterval> | undefined;
+  const startRefresh = () => { refreshTimer ??= setInterval(() => void reload(), 60_000); };
+  startRefresh();
   watch(
     () => [session.user?.id, state.market, cloudWorkspace.publishedRevision],
     () => void reload(),
@@ -331,10 +336,13 @@ export function useOverviewSnapshot() {
   );
   onActivated(() => {
     active = true;
+    startRefresh();
     void reload();
   });
   const stop = () => {
     active = false;
+    clearInterval(refreshTimer);
+    refreshTimer = undefined;
     sequence += 1;
     controller?.abort();
     loading.value = false;

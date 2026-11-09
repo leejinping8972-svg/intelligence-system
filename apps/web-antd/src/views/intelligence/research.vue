@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CollectionTimeFilter from './components/CollectionTimeFilter.vue';
+import { matchesCollectionRange } from '../../../../../server/collection-time.mjs';
 import type { Keyword, Market } from './data';
 import type { KeywordViewFilters } from './keyword-views';
 
@@ -87,6 +89,7 @@ const semrushRefreshMetrics = ref(false);
 const researchError = ref('');
 const checkingSource = ref(false);
 const researchSubmitting = ref(false);
+const collectedRange = ref<string[]>([]);
 const search = ref('');
 const batchFilter = ref('');
 const category = ref('ALL');
@@ -134,6 +137,7 @@ const remote = useWorkspaceList<Keyword>(
     ratingStatus: ratingStatus.value,
     score: scoreFilter.value,
     tags: tagFilter.value,
+    collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
     timeRange: timeRange.value,
     review: reviewFilter.value,
     favorite: favoritesOnly.value,
@@ -143,6 +147,7 @@ const remote = useWorkspaceList<Keyword>(
 );
 remote.sort.value = 'score';
 const viewFilters = computed<KeywordViewFilters>(() => ({
+  collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   market: state.market,
   search: search.value,
   batch: batchFilter.value,
@@ -170,6 +175,7 @@ async function applyView(filters: KeywordViewFilters) {
   scoreFilter.value = { ...filters.score };
   tagFilter.value = [...filters.tags];
   timeRange.value = filters.timeRange;
+  collectedRange.value = filters.collectedFrom && filters.collectedTo ? [filters.collectedFrom, filters.collectedTo] : [];
   reviewFilter.value = filters.review;
   favoritesOnly.value = filters.favorite;
   remote.sort.value = filters.sort;
@@ -257,6 +263,7 @@ const localRows = computed(() =>
       )}`
         .toLocaleLowerCase()
         .includes(search.value.toLocaleLowerCase()) &&
+      matchesCollectionRange('keywords', record, collectedRange.value[0], collectedRange.value[1]) &&
       matchesScore(record.assessment.score, scoreFilter.value) &&
       (category.value === 'ALL' || record.category === category.value) &&
       (rating.value === 'ALL' ||
@@ -780,6 +787,8 @@ function saveMetrics() {
   );
   message.success('评分依据已保存并重新评级');
 }
+watch(collectedRange, () => { if (collectedRange.value.length) timeRange.value = 'ALL'; currentPage.value = 1; clearSelection(); });
+watch(timeRange, () => { if (timeRange.value !== 'ALL') collectedRange.value = []; });
 </script>
 
 <template>
@@ -842,6 +851,8 @@ function saveMetrics() {
       </div>
     </div>
     <section class="hci-panel">
+      <CollectionTimeFilter v-model="collectedRange" />
+
       <div class="hci-toolbar keyword-filters hci-filter-toolbar">
         <Input.Search
           v-model:value="search"
@@ -929,6 +940,7 @@ function saveMetrics() {
             scoreFilter = emptyScoreFilter();
             tagFilter = [];
             timeRange = 'ALL';
+            collectedRange = [];
             reviewFilter = 'ALL';
             favoritesOnly = false;
           "

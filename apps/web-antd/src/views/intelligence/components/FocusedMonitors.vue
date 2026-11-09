@@ -176,6 +176,7 @@ function view(row: FocusedMonitorRow) {
     show-icon
     role="alert"
   />
+  <p class="hci-subtle" style="margin-bottom: 12px">新发现指完整基线后首次监测到的商品，不代表刚上架。基线采集会分轮补齐历史目录；近7个完整自然日上架且有同次销量证据的商品才自动入新品池。</p>
   <div class="hci-toolbar" style="margin-bottom: 12px">
     <Input.Search
       v-model:value="search"
@@ -259,7 +260,7 @@ function view(row: FocusedMonitorRow) {
             {{ watchStatus[record.run.status] || record.run.status }}
 </Tag>{{ record.run.day }}
           <p class="hci-subtle">
-            {{ record.run.requests }}次请求 · {{ record.run.added || 0 }}项上新
+            {{ record.run.requests }}次请求 · {{ record.run.added || 0 }}项新发现
           </p>
           <p v-if="record.run.sourceAnalysis" class="hci-subtle">
             AI分析：完成 {{ record.run.sourceAnalysis.completed }}/{{ record.run.sourceAnalysis.total }} ·

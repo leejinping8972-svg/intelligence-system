@@ -1,3 +1,4 @@
+import { admitMonitoredProduct } from './monitor-product-pool.mjs';
 /* eslint-disable unicorn/no-await-expression-member -- Document SQL follows existing server query conventions. */
 /* eslint-disable unicorn/prefer-ternary -- Each scheduler branch supplies a separate set of IO callbacks. */
 import { randomUUID } from 'node:crypto';
@@ -300,6 +301,7 @@ export async function persistObservation(c, target, kind, item, event, at, trans
       mergeObserved(old, item, at),
       item,
     );
+    if (kind === 'products') observed = admitMonitoredProduct(old, observed, item);
     if (['products', 'sites', 'ads'].includes(kind)) {
       const { gateSourceFields } = await import('./source-field-domain.mjs');
       const { queueSourceFields } = await import('./source-field-store.mjs');
