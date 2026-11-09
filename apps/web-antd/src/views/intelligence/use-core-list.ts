@@ -62,8 +62,6 @@ const extra: Record<CoreKind, Array<[string, string]>> = {
     ['autocomplete', '搜索联想词数'],
     ['aiSuggestions', 'AI建议词数'],
     ['otherExpansion', '其他扩词数'],
-    ['linkedProducts', '关联商品'],
-    ['linkedSites', '关联站点'],
   ],
 };
 type Column = {
@@ -93,10 +91,6 @@ export function useCoreList(kind: CoreKind) {
     const covered = new Set(base.map(c => c.key));
     if (kind === 'products' && covered.has('spec')) covered.add('core:spec');
     if (kind === 'sites' && covered.has('products')) covered.add('core:linkedProducts');
-    if (kind === 'keywords') {
-      if (covered.has('relatedProducts')) covered.add('core:linkedProducts');
-      if (covered.has('relatedSites')) covered.add('core:linkedSites');
-    }
     const fields: Array<[string, string]> = [
       ...presets[kind],
       ...extra[kind],
