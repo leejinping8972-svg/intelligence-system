@@ -1,44 +1,47 @@
 {
+  "title": "Semrush关键词月度趋势与可用指标展示",
   "files": [
-    "apps/web-antd/src/views/intelligence/__tests__/site-keyword-filter.test.ts",
-    "apps/web-antd/src/views/intelligence/components/SiteDrawer.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/site-keyword-filter.ts",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "server/SITE-KEYWORD-PROVENANCE.md",
-    "server/keyword-associations.mjs",
-    "server/site-keyword-provenance.d.mts",
-    "server/site-keyword-provenance.mjs",
-    "server/site-keyword-provenance.test.mjs",
-    "server/site-keyword-repair.mjs",
-    "server/store.mjs",
-    "server/workspace-reads.mjs"
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
+    "apps/web-antd/src/views/intelligence/components/CoreMetricsPanel.vue",
+    "apps/web-antd/src/views/intelligence/components/SemrushKeywordMetrics.vue",
+    "apps/web-antd/src/views/intelligence/keyword-research.ts",
+    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/semrush-keyword-metrics.ts",
+    "server/SEMRUSH-KEYWORD-TRENDS.md",
+    "server/domain.mjs",
+    "server/keyword-data.mjs",
+    "server/keyword-submit.mjs",
+    "server/runner.mjs",
+    "server/semrush-keyword-trends.d.mts",
+    "server/semrush-keyword-trends.mjs",
+    "server/semrush-keyword-trends.test.mjs",
+    "server/semrush-reports.mjs",
+    "tests/semrush-keyword-metrics.test.ts"
   ],
   "featureShas": [
-    "fe4056ad7530e24b6e2c8a1f4d7267120b292e95"
+    "a0bf7310c15cf1f239336bbb3094cd7f58b9276c"
   ],
-  "sourceSha": "fe4056ad7530e24b6e2c8a1f4d7267120b292e95",
-  "title": "独立站检索词、发现来源及采集证据分离与筛选清除",
-  "database": {
-    "consistency": "skipped-by-user",
-    "schemaChange": false,
-    "startupDataRepair": true,
-    "backup": "encrypted affected-source snapshot before startup"
-  },
+  "sourceSha": "a0bf7310c15cf1f239336bbb3094cd7f58b9276c",
   "changes": [
-    "独立站关联关键词只使用实际检索词，竞品拓展说明及官网证据分别展示",
-    "关键词下拉框清除与URL同步，可清除后重新检索",
-    "解除证据明确属于说明的历史自动站点双向关联，保留原始记录、人工和真实查询关系",
-    "移除商品页全部新旧标签筛选"
+    "接入当前账户支持的12个月相对趋势、搜索结果数、种子相关度及SERP特征",
+    "关键词列表小曲线、指标详情及CSV导出，展示月/3月/6月变化和真实0/缺失",
+    "默认复用缓存，显式勾选才更新所选关键词；无自动历史收费回填"
   ],
+  "database": {
+    "schemaChange": false,
+    "migration": false,
+    "startupDataRepair": false,
+    "consistency": "skipped-by-user",
+    "backup": "skipped-by-user-policy-no-schema-change"
+  },
   "validation": {
-    "development": "Server 10/10; enhanced provenance/repair integration 3/3; router filter 2/2; web typecheck; isolated development build; scoped oxlint; Edge synthetic interaction checks passed",
-    "limitations": "No isolated MySQL or authenticated production visual acceptance; startup data repair requires encrypted affected-source snapshot",
+    "development": "Server 36/36; frontend 26/26; web typecheck, isolated development build, scoped lint and Edge synthetic desktop/mobile interaction checks passed",
+    "limitations": "Account report schemas confirmed; no paid execute_report or production-account visual acceptance",
     "release": "Repeat tests, validation build, CI waiting and database consistency reconciliation skipped by user policy"
   },
-  "id": "20261109042035-46807d27",
-  "builtAt": "2026-11-09T04:20:35.480Z",
-  "sourceDigest": "46807d27d686447efa2cd68242e1c5a48b8c6890af7f629fe42e3c0bb53f800e",
+  "id": "20261109061944-ad9eed6a",
+  "builtAt": "2026-11-09T06:19:44.530Z",
+  "sourceDigest": "ad9eed6a634fca45a35fa69a7814434780d8c1d33ee4f01f9eb789a171873a9b",
   "operator": "Codex"
 }
