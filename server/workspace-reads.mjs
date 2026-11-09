@@ -30,6 +30,21 @@ const collections = new Set([
   'insightReports',
 ]);
 const MODEL_VERSION = 'workspace-reads-v7-keyword-associations';
+const keywordAssociationSorts = new Map([
+  ['relatedAds', 'ads'], ['relatedProducts', 'products'], ['relatedSites', 'sites'],
+]);
+// Share the same bidirectional, existing-record union for displayed counts
+// and ordering. UNION also removes links saved on both sides.
+function keywordAssociationRows(slots, collection) {
+  const kind = collection ? `r.collection='${collection}'` : "r.collection IN ('ads','products','sites')";
+  return `SELECT l.target,r.collection,r.id FROM workspace_read_links l
+    JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id
+    WHERE l.relation='keyword' AND ${kind}${slots ? ` AND l.target IN (${slots})` : ''}
+    UNION
+    SELECT l.id AS target,r.collection,r.id FROM workspace_read_links l
+    JOIN workspace_read_rows r ON r.collection=l.relation AND r.id=l.target
+    WHERE l.collection='keywords' AND ${kind}${slots ? ` AND l.id IN (${slots})` : ''}`;
+}
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
@@ -311,15 +326,7 @@ export function createWorkspaceReads({
           SUM(CASE WHEN a.collection='ads' THEN 1 ELSE 0 END) AS ads,
           SUM(CASE WHEN a.collection='products' THEN 1 ELSE 0 END) AS products,
           SUM(CASE WHEN a.collection='sites' THEN 1 ELSE 0 END) AS sites
-          FROM (
-            SELECT l.target,r.collection,r.id FROM workspace_read_links l
-            JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id
-            WHERE l.relation='keyword' AND l.target IN (${slots}) AND r.collection IN ('ads','products','sites')
-            UNION
-            SELECT l.id AS target,r.collection,r.id FROM workspace_read_links l
-            JOIN workspace_read_rows r ON r.collection=l.relation AND r.id=l.target
-            WHERE l.collection='keywords' AND l.id IN (${slots}) AND l.relation IN ('ads','products','sites')
-          ) a GROUP BY a.target`, values),
+          FROM (${keywordAssociationRows(slots)}) a GROUP BY a.target`, values),
       ]);
       const countMap = new Map(counts.rows.map((item) => [item.target, { ads: Number(item.ads) || 0, products: Number(item.products) || 0, sites: Number(item.sites) || 0 }]));
       return records.map((record) => ({ ...record, relatedCounts: countMap.get(record.id) || { ads: 0, products: 0, sites: 0 }, coreSummary: { ...record.coreSummary, related: { expansions: expansions.rows.filter((item) => item.market === record.market && item.target === normalizeTerm(record.term) && normalizeTerm(item.term) !== normalizeTerm(record.term)).map((item) => ({ term: item.term, source: item.source || '' })) } } }));
@@ -869,7 +876,21 @@ export function createWorkspaceReads({
           : 'r.collected_at';
     const direction = input.order === 'ascend' ? 'ASC' : 'DESC';
     let result;
-    if (query.collection === 'products' && productSortKeys.includes(input.sort)) {
+    if (query.collection === 'keywords' && keywordAssociationSorts.has(input.sort)) {
+      // Aggregate the compact association index before paging, not the visible
+      // rows. Ties always use the keyword ID so adjacent pages remain stable.
+      result = await pool.query(
+        `SELECT r.payload FROM workspace_read_rows r LEFT JOIN (
+          SELECT a.target,COUNT(*) AS related_count
+          FROM (${keywordAssociationRows(null, keywordAssociationSorts.get(input.sort))}) a
+          GROUP BY a.target
+        ) association_counts ON association_counts.target=r.id
+        WHERE ${query.where}
+        ORDER BY COALESCE(association_counts.related_count,0) ${direction},r.id ASC
+        LIMIT $${query.values.length + 1} OFFSET $${query.values.length + 2}`,
+        [...query.values, pageSize, (page - 1) * pageSize],
+      );
+    } else if (query.collection === 'products' && productSortKeys.includes(input.sort)) {
       // Read only sort metadata across the filtered set; fetch full payloads for this page.
       const field = (path) => sql(`r.payload${path.split('.').map((part) => `->'${part}'`).join('')}`, `JSON_EXTRACT(r.payload,'$.${path}')`);
       const pairs = [
