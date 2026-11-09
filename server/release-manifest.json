@@ -1,60 +1,47 @@
 {
-  "title": "广告、商品、独立站关键词关联与直接检索建库",
+  "title": "关键词关联数量与重复列修复",
   "changes": [
-    "四类业务列表显示关联关键词并支持跳转筛选",
-    "关键词列表显示关联广告、商品、独立站数量并支持跳转筛选",
-    "直接关键词检索先幂等写入关键词库，不抓扩展词和趋势",
-    "启动时一次性回填历史业务关键词关联并补建缺失关键词",
-    "兼容正式 MySQL：明确限定 workspace_read_dirty.revision 的重复键更新列"
+    "保留关键词列表已计算的广告、商品、站点关联数量，避免响应合并时丢失显示为0",
+    "双向关联按实际存在的业务记录合并去重，数量与点击后的关键词筛选一致",
+    "关键词列表只保留一组可点击的广告、商品、独立站关联列",
+    "指标和导出优先读取当前关联计数并保留真实0"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/ads.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "server/ads-provider.mjs",
-    "server/combined-discovery.mjs",
-    "server/keyword-associations.mjs",
-    "server/keyword-associations.test.mjs",
-    "server/market-jobs.mjs",
-    "server/market-jobs.test.mjs",
-    "server/platform-products-jobs.mjs",
-    "server/product-resource-engine.mjs",
-    "server/semrush-sites-store.mjs",
-    "server/semrush-sites.mjs",
-    "server/store.mjs",
     "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "server/workspace-reads.test.mjs",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/core-list-metrics.ts",
+    "apps/web-antd/src/views/intelligence/use-core-list.ts",
+    "tests/core-list-metrics.test.ts",
+    "tests/use-core-list.test.ts"
+  ],
+  "sourceSha": "2e5e7fdd9bd901b9d47223a8cfbeffc2394d3a35",
+  "includedCommits": [
+    "2e5e7fdd9bd901b9d47223a8cfbeffc2394d3a35"
   ],
   "developmentVerification": {
-    "knownGap": "定向oxlint未通过，输出为既有存量文件告警，未记为通过",
-    "diff": "git diff --check",
-    "frontend": "Web类型检查、生产构建",
-    "server": "相关专项90/90",
-    "mysqlCompatibilityFix": "node --check server/store.mjs；定向 oxlint 仍为既有存量告警"
+    "server": "7/7; PGlite actual list response, trend merge and two-way association counts versus filtered totals",
+    "frontend": "28/28; unique association columns, counts and zero values in metrics/export",
+    "typecheck": "Web full typecheck passed",
+    "build": "isolated development production-mode build passed",
+    "syntax": "Node syntax and git diff --check passed",
+    "mysql": "NMNH bounded SELECT-only candidate read passed; isolated MySQL unavailable locally",
+    "limits": "full-repo lint not run; merge commit hook rejected an existing release scope; commits used LEFTHOOK=0"
   },
-  "releaseSkipped": [
-    "发布阶段重复验证",
-    "独立验证构建",
-    "CI等待",
-    "数据库一致性核对按用户要求跳过"
-  ],
-  "operator": "Codex",
-  "sourceSha": "f9a48e0497f95e47e9f5610227b2c706d7c5763e",
-  "includedCommits": [
-    "f9a48e0497f95e47e9f5610227b2c706d7c5763e",
-    "941632bc4a7856938fe1b3f36f097d221a067cdd"
-  ],
   "database": {
     "schemaChange": false,
-    "migration": true,
-    "startupDataBackfill": true,
-    "backupStatus": "required-before-cutover",
-    "consistency": "skipped-by-user"
+    "migration": false,
+    "startupDataBackfill": false
   },
-  "releaseValidation": "发布阶段重复验证、独立验证构建和CI等待按用户策略跳过；数据库一致性核对按用户要求跳过",
-  "id": "20261106194051-ce3945f0",
-  "builtAt": "2026-11-06T19:40:51.912Z",
-  "sourceDigest": "ce3945f015f918769aaf2e5ec7b00e5333db5b8aeef64380c1df78b85ba9b56f"
+  "releaseSkipped": [
+    "repeat-tests",
+    "validation-build",
+    "ci-wait",
+    "database-consistency-by-user",
+    "full-database-backup-no-schema-or-migration"
+  ],
+  "operator": "Codex",
+  "id": "20261109023653-35e1d7b5",
+  "builtAt": "2026-11-09T02:36:53.171Z",
+  "sourceDigest": "35e1d7b574430528267b8ca0fea20da7a89e295a4ce4032f10d9fae20be6a7a8"
 }
