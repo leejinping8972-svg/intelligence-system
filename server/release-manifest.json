@@ -1,37 +1,44 @@
 {
-  "title": "关键词缺少中文译名时显示原词",
-  "changes": [
-    "已保存中文或本地词库命中时显示中文，否则直接显示原词",
-    "主列表、种子词、详情及相关查询共用原词兜底，移除中文待补齐占位"
-  ],
   "files": [
-    "apps/web-antd/src/views/intelligence/research.vue"
+    "apps/web-antd/src/views/intelligence/__tests__/site-keyword-filter.test.ts",
+    "apps/web-antd/src/views/intelligence/components/SiteDrawer.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "apps/web-antd/src/views/intelligence/site-keyword-filter.ts",
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "server/SITE-KEYWORD-PROVENANCE.md",
+    "server/keyword-associations.mjs",
+    "server/site-keyword-provenance.d.mts",
+    "server/site-keyword-provenance.mjs",
+    "server/site-keyword-provenance.test.mjs",
+    "server/site-keyword-repair.mjs",
+    "server/store.mjs",
+    "server/workspace-reads.mjs"
   ],
-  "sourceSha": "e85903045d5bb7162b233956664d52f13002b0a8",
-  "includedCommits": [
-    "e85903045d5bb7162b233956664d52f13002b0a8"
+  "featureShas": [
+    "fe4056ad7530e24b6e2c8a1f4d7267120b292e95"
   ],
-  "developmentVerification": {
-    "frontend": "11/11 existing metadata and association UI tests passed",
-    "display": "Executed actual display helper: 3-glucan, Astaxanthin, Catechin and Ferulic acid fall back to original text; saved Chinese, glossary Chinese and empty-term behavior preserved",
-    "typecheck": "Web full typecheck passed",
-    "diff": "git diff --check passed",
-    "limits": "No new tests or separate development build for this one-line display fallback; no full lint, browser acceptance or commit hooks"
-  },
+  "sourceSha": "fe4056ad7530e24b6e2c8a1f4d7267120b292e95",
+  "title": "独立站检索词、发现来源及采集证据分离与筛选清除",
   "database": {
+    "consistency": "skipped-by-user",
     "schemaChange": false,
-    "migration": false,
-    "startupDataBackfill": false
+    "startupDataRepair": true,
+    "backup": "encrypted affected-source snapshot before startup"
   },
-  "releaseSkipped": [
-    "repeat-tests",
-    "validation-build",
-    "ci-wait",
-    "database-consistency-by-user",
-    "full-database-backup-no-schema-or-migration"
+  "changes": [
+    "独立站关联关键词只使用实际检索词，竞品拓展说明及官网证据分别展示",
+    "关键词下拉框清除与URL同步，可清除后重新检索",
+    "解除证据明确属于说明的历史自动站点双向关联，保留原始记录、人工和真实查询关系",
+    "移除商品页全部新旧标签筛选"
   ],
-  "operator": "Codex",
-  "id": "20261109033832-4af1dae1",
-  "builtAt": "2026-11-09T03:38:32.430Z",
-  "sourceDigest": "4af1dae164c294f3d30d03110dd8546381e5acd5c5bd3b192225558d5b016571"
+  "validation": {
+    "development": "Server 10/10; enhanced provenance/repair integration 3/3; router filter 2/2; web typecheck; isolated development build; scoped oxlint; Edge synthetic interaction checks passed",
+    "limitations": "No isolated MySQL or authenticated production visual acceptance; startup data repair requires encrypted affected-source snapshot",
+    "release": "Repeat tests, validation build, CI waiting and database consistency reconciliation skipped by user policy"
+  },
+  "id": "20261109042035-46807d27",
+  "builtAt": "2026-11-09T04:20:35.480Z",
+  "sourceDigest": "46807d27d686447efa2cd68242e1c5a48b8c6890af7f629fe42e3c0bb53f800e",
+  "operator": "Codex"
 }
