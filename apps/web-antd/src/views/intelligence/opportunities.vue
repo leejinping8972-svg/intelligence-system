@@ -12,6 +12,7 @@ import {
   Alert,
   Tabs,
   Tag,
+  Tooltip,
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
@@ -42,12 +43,42 @@ watch(
   },
 );
 const tabs = [
-  { key: 'concept', label: '产品概念' },
-  { key: 'keyword', label: '热门关键词' },
-  { key: 'ingredient', label: '成分观察' },
-  { key: 'claim', label: '营销卖点' },
-  { key: 'site', label: '成长型站点' },
-  { key: 'new', label: '新发现商品' },
+  {
+    key: 'concept', label: '产品概念',
+    source: '来自商品库中已采集或人工导入的商品品类。',
+    rule: '按品类字段的完整文本分组，统计每组商品数，按样本数从多到少排列；字段为空时归为“待补充”。',
+    limit: '目前是品类样本归纳，不会自动生成新产品方案，也不代表需求或商业机会已验证。',
+  },
+  {
+    key: 'keyword', label: '热门关键词',
+    source: '来自关键词研究中已保存的关键词及其趋势增长值。',
+    rule: '只展示增长值大于20的关键词；缺失增长值时不入选。沿用原记录的趋势来源和统计周期。',
+    limit: '不是按搜索量排序的热搜榜，也不会在打开页签时补抓趋势。不同来源和周期的增长值需要分别核实。',
+  },
+  {
+    key: 'ingredient', label: '成分观察',
+    source: '来自商品库中已采集或人工整理的成分字段。',
+    rule: '按成分字段的完整文本分组，统计每组商品数，按样本数从多到少排列；字段为空时归为“待补充”。',
+    limit: '目前不会拆分复方成分或合并同义名称。样本数不代表成分热度、剂量有效性或科学功效。',
+  },
+  {
+    key: 'claim', label: '营销卖点',
+    source: '来自商品库中已采集或人工整理的卖点文案字段。',
+    rule: '按卖点字段的完整文本分组，统计每组商品数，按样本数从多到少排列；字段为空时归为“待补充”。',
+    limit: '文案相近但文字不同的记录不会自动合并。这里反映竞品表达，不代表宣传内容已获得科学或合规验证。',
+  },
+  {
+    key: 'site', label: '成长型站点',
+    source: '来自独立站库中已保存的站点，以及商品库中与这些站点关联的商品。',
+    rule: '列出当前市场的站点，按站点ID统计关联商品数；没有关联商品的站点也会显示。',
+    limit: '目前没有按流量、销售额或增长率筛选，也没有成长排名。“成长型”是研究方向名称，不能据此认定站点正在增长。',
+  },
+  {
+    key: 'new', label: '新发现商品',
+    source: '来自商品库中已采集或人工导入的商品记录。',
+    rule: '目前列出当前市场的全部商品样本，每条记录算1项；未按首次发现时间、上架时间或“竞品上新”事件筛选。',
+    limit: '可能包含历史商品和不同链接的同款记录。新发现不等于新上市，也不等同于新品池中的“新上架商品”。',
+  },
 ];
 const rows = computed(() => {
   if (serverMode) return remote.rows.value;
@@ -86,8 +117,30 @@ function report() {
         <Tabs.TabPane
           v-for="item in tabs"
           :key="item.key"
-          :tab="item.label"
-        />
+        >
+          <template #tab>
+            <span class="opportunity-tab">
+              {{ item.label }}
+              <Tooltip :trigger="['hover', 'focus']" :overlay-style="{ maxWidth: 'min(380px, calc(100vw - 32px))' }">
+                <template #title>
+                  <div class="opportunity-help-text">
+                    <p><b>数据来源：</b>{{ item.source }}</p>
+                    <p><b>整理规则：</b>{{ item.rule }}</p>
+                    <p><b>判断边界：</b>{{ item.limit }}</p>
+                    <p>按所选市场读取已入库数据，服务端在每天北京时间09:00后更新统计快照；实际刷新可能延迟。查看说明不会触发额外采集。</p>
+                  </div>
+                </template>
+                <button
+                  type="button"
+                  class="opportunity-help"
+                  :aria-label="`${item.label}抓取逻辑说明`"
+                  @click.stop
+                  @keydown.stop
+                >?</button>
+              </Tooltip>
+            </span>
+          </template>
+        </Tabs.TabPane>
 </Tabs><Empty v-if="!rows.length" description="暂无符合条件的研究方向" />
       <Alert v-if="remote.error.value" type="error" :message="remote.error.value" show-icon />
       <p v-if="serverMode && remote.loading.value" role="status">正在加载研究方向…</p>
@@ -156,3 +209,46 @@ function report() {
     </Modal>
   </main>
 </template>
+
+<style scoped>
+.opportunity-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.opportunity-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: transparent;
+  color: #64748b;
+  cursor: help;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+.opportunity-help:hover,
+.opportunity-help:focus-visible {
+  color: #2563eb;
+}
+.opportunity-help:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.opportunity-help-text {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.opportunity-help-text p {
+  margin: 0 0 8px;
+}
+.opportunity-help-text p:last-child {
+  margin-bottom: 0;
+}
+</style>
