@@ -1,29 +1,22 @@
 {
-  "title": "关键词关联广告、商品与独立站数量排序",
+  "title": "关键词缺少中文译名时显示原词",
   "changes": [
-    "关联广告、关联商品、关联独立站三列表头支持升序和降序",
-    "服务端按筛选后的全部关键词关联数量排序后分页，数量相同时按ID稳定排序",
-    "显示与排序复用双向关联去重规则，零关联正常参与排序",
-    "切换排序回到第一页，翻页保留排序，取消排序恢复研究评分默认顺序"
+    "已保存中文或本地词库命中时显示中文，否则直接显示原词",
+    "主列表、种子词、详情及相关查询共用原词兜底，移除中文待补齐占位"
   ],
   "files": [
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/keyword-association-columns.ts",
-    "tests/keyword-association-columns.test.ts"
+    "apps/web-antd/src/views/intelligence/research.vue"
   ],
-  "sourceSha": "7d7924961fb823fb542803633ff846504289aa80",
+  "sourceSha": "e85903045d5bb7162b233956664d52f13002b0a8",
   "includedCommits": [
-    "7d7924961fb823fb542803633ff846504289aa80"
+    "e85903045d5bb7162b233956664d52f13002b0a8"
   ],
   "developmentVerification": {
-    "server": "7/7; PGlite actual list globally sorted across pages for three columns, both directions, ties, zero, deleted links and market filters",
-    "frontend": "39/39; association sorter configuration, numerical demo comparisons, existing column/metric/query tests",
+    "frontend": "11/11 existing metadata and association UI tests passed",
+    "display": "Executed actual display helper: 3-glucan, Astaxanthin, Catechin and Ferulic acid fall back to original text; saved Chinese, glossary Chinese and empty-term behavior preserved",
     "typecheck": "Web full typecheck passed",
-    "syntax": "Node syntax and git diff --check passed",
-    "mysql": "Bounded SELECT-only candidate reads: three columns, two directions and two pages; no paid calls or source writes",
-    "limits": "No separate development build; isolated official artifact built once after freeze; no full lint, isolated MySQL database test, browser acceptance or commit hooks"
+    "diff": "git diff --check passed",
+    "limits": "No new tests or separate development build for this one-line display fallback; no full lint, browser acceptance or commit hooks"
   },
   "database": {
     "schemaChange": false,
@@ -38,7 +31,7 @@
     "full-database-backup-no-schema-or-migration"
   ],
   "operator": "Codex",
-  "id": "20261109032726-e51dc92f",
-  "builtAt": "2026-11-09T03:27:26.855Z",
-  "sourceDigest": "e51dc92f5c5be42bfdb34158f7c29cefce5f99b6a2f9eedd64f4ea007dc91093"
+  "id": "20261109033832-4af1dae1",
+  "builtAt": "2026-11-09T03:38:32.430Z",
+  "sourceDigest": "4af1dae164c294f3d30d03110dd8546381e5acd5c5bd3b192225558d5b016571"
 }
