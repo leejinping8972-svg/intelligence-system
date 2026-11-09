@@ -31,6 +31,14 @@ const product = (patch = {}) =>
 const get = (metrics: ReturnType<typeof productMetrics>, key: string) =>
   metrics.find((m) => m.key === key)!;
 describe('core metrics with database pagination', () => {
+  it('uses the current association totals in metrics and exports, including real zeros', () => {
+    const keyword = { id: 'k', term: 'NMNH', market: 'US', productIds: ['old-p'], siteIds: ['old-s'], relatedCounts: { ads: 50, products: 3, sites: 0 } } as Keyword;
+    const metrics = keywordMetrics(keyword, 30);
+    expect(get(metrics, 'linkedProducts').value).toBe(3);
+    expect(get(metrics, 'linkedSites').value).toBe(0);
+    expect(coreExport('keywords', keyword)['linkedProducts_值']).toBe(3);
+    expect(coreExport('keywords', keyword)['linkedSites_值']).toBe(0);
+  });
   it('shows the metric attempt date independently of keyword discovery and does not invent old dates', () => {
     const keyword = { id: 'k', term: 'curcumin', market: 'US', collectedAt: '2026-11-05T14:47:11Z', semrushCollection: { status: 'failed', message: '额度为0', finishedAt: at } } as Keyword;
     const volume = get(keywordMetrics(keyword, 30), 'searchVolume');

@@ -1065,12 +1065,12 @@ export function keywordMetrics(
       },
     ),
   );
-  for (const [key, label, ids] of [
-    ['linkedProducts', '关联商品', k.productIds],
-    ['linkedSites', '关联站点', k.siteIds],
+  for (const [key, label, count] of [
+    ['linkedProducts', '关联商品', k.relatedCounts?.products ?? k.productIds?.length],
+    ['linkedSites', '关联站点', k.relatedCounts?.sites ?? k.siteIds?.length],
   ] as const)
     result.push(
-      metric(k, key, label, ids?.length ?? null, '条已保存', {
+      metric(k, key, label, count ?? null, '条已保存', {
         source: '系统保存的关联',
         collectedAt: k.updatedAt || '',
         nature: 'system_observation',

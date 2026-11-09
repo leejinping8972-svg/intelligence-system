@@ -480,8 +480,8 @@ function reviewLabel(value?: string) {
 function relatedCount(record: Keyword, collection: 'ads' | 'products' | 'sites') {
   if (serverMode) return record.relatedCounts?.[collection] || 0;
   if (collection === 'ads') return state.ads.filter((item) => item.keywordIds?.includes(record.id)).length;
-  if (collection === 'products') return state.products.filter((item) => item.keywordIds?.includes(record.id)).length;
-  return state.sites.filter((item) => item.keywordIds?.includes(record.id)).length;
+  if (collection === 'products') return state.products.filter((item) => item.keywordIds?.includes(record.id) || record.productIds?.includes(item.id)).length;
+  return state.sites.filter((item) => item.keywordIds?.includes(record.id) || record.siteIds?.includes(item.id)).length;
 }
 function relatedCollection(key: unknown): 'ads' | 'products' | 'sites' {
   if (key === 'relatedProducts') return 'products';

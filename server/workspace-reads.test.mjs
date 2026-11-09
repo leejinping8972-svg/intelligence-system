@@ -69,7 +69,7 @@ const keyword = (i) => ({
   source: 'Semrush',
   reviewStatus: 'selected',
   favorite: false,
-  productIds: [`p${i}`],
+  productIds: i === 0 ? ['p0', 'p1', 'deleted-product'] : [`p${i}`],
   siteIds: ['s1'],
   series: [],
   trendPoints: [],
@@ -145,6 +145,7 @@ async function exerciseReadModel(
       ingredient: '镁 100mg',
       ingredientInsights: [{ name: '镁', amount: '100mg', role: '矿物质' }],
       siteId: 's1',
+      keywordIds: i === 0 || i === 2 ? ['k0'] : [],
       favorite: false,
       dataNature: 'collected',
       firstSeenAt: observedAt,
@@ -160,6 +161,7 @@ async function exerciseReadModel(
     category: '运动营养',
     sources: ['广告落地页'],
     mainProducts: ['magnesium'],
+    keywordIds: ['k0'],
     dataNature: 'collected',
   });
   for (let i = 0; i < 31; i++)
@@ -184,6 +186,16 @@ async function exerciseReadModel(
   const firstProducts = await reads.list({ collection: 'products', pageSize: 1 });
   const keywordSummary = await reads.list({ collection: 'keywords', market: 'US', search: 'magnesium gummies 0', pageSize: 1 });
   assert.equal(keywordSummary.total, 1);
+  // The list must retain counts when merging freshly saved trend evidence.
+  // Include forward-only p1, reverse-only p2 and p0/s1 linked both ways;
+  // omit the deleted product and never count the same business row twice.
+  assert.deepEqual(keywordSummary.rows[0].relatedCounts, { ads: 31, products: 3, sites: 1 });
+  for (const collection of ['ads', 'products', 'sites']) {
+    const filtered = await reads.list({ collection, keywordId: 'k0', pageSize: 1 });
+    assert.equal(keywordSummary.rows[0].relatedCounts[collection], filtered.total);
+  }
+  const otherKeyword = await reads.list({ collection: 'keywords', keywordId: 'k2', pageSize: 1 });
+  assert.deepEqual(otherKeyword.rows[0].relatedCounts, { ads: 0, products: 1, sites: 1 });
   assert.equal(keywordSummary.marketSummary.total, 17);
   assert.equal(keywordSummary.marketSummary.selected, 17);
   assert.equal((await reads.list({ collection: 'keywords' })).marketSummary.total, 34);
@@ -209,6 +221,7 @@ async function exerciseReadModel(
   assert.equal(savedRow.trendCalendarSummary[1].heat, 50);
   assert.equal(savedRow.trendRelatedTop.length, 25);
   assert.equal(savedRow.trendDailyPoints, undefined);
+  assert.deepEqual(savedRow.relatedCounts, { ads: 31, products: 3, sites: 1 });
   const batchPage = await reads.list({ collection: 'keywords', batch: '2026-11-01' });
   assert.equal(batchPage.total, 17);
   assert.ok(batchPage.rows.every((row) => row.batch === '2026-11-01-US'));
