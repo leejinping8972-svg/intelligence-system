@@ -1,9 +1,10 @@
 import type { Keyword, Market } from './data';
+import type { SemrushExtraMetrics } from '../../../../../server/semrush-keyword-trends.mjs';
 
 import { assessSupplementRelevance } from './keyword-relevance';
 
 export type KeywordGrade = 'A' | 'B' | 'C' | 'D';
-export interface KeywordMetrics {
+export interface KeywordMetrics extends SemrushExtraMetrics {
   market: Market;
   source: string;
   collectedAt: string;

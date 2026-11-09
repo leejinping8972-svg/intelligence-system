@@ -16,6 +16,7 @@ import { state } from '../data';
 import { serverMode } from '../session';
 import EvidenceMetric from './EvidenceMetric.vue';
 import KeywordRelatedQueries from './KeywordRelatedQueries.vue';
+import SemrushKeywordMetrics from './SemrushKeywordMetrics.vue';
 const props = defineProps<{
   kind: CoreKind;
   record: Ad | Keyword | Product | Site;
@@ -76,6 +77,7 @@ const columns = [
         />
       </template>
     </Table>
+    <SemrushKeywordMetrics v-if="kind === 'keywords'" :keyword="record as Keyword" />
     <details v-if="record.coreEvidence?.history?.length">
       <summary>
         来源快照（当前{{ record.coreEvidence.history.length }} / 累计{{

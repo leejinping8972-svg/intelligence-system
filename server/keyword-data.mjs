@@ -1,5 +1,6 @@
 import { editableKeywordPatch } from './domain.mjs';
 import { trendComparisons } from './model.js';
+import { validSemrushTrend } from './semrush-keyword-trends.mjs';
 
 const timestamp = (value) => Date.parse(value || '') || 0;
 const metricFields = [
@@ -8,6 +9,11 @@ const metricFields = [
   'top3Share',
   'cpc',
   'advertisingCompetition',
+  'searchResultCount',
+  'relatedRelevance',
+  'serpFeatures',
+  'searchTrend',
+  'intent',
 ];
 const annualFields = [
   'series',
@@ -53,7 +59,15 @@ export function mergeKeywordMetrics(current, incoming, importOnly = false) {
           timestamp(current.metrics.collectedAt)))
   )
     return current.metrics;
-  return { ...current.metrics, ...metrics };
+  const merged = { ...current.metrics, ...metrics };
+  // The curve carries its own observation date: a missing field or a stale
+  // checkpoint must never erase or re-date an already collected curve.
+  const previous = current.metrics?.searchTrend;
+  if (validSemrushTrend(previous) &&
+      (!validSemrushTrend(metrics.searchTrend) ||
+       timestamp(metrics.searchTrend.collectedAt) < timestamp(previous.collectedAt)))
+    merged.searchTrend = previous;
+  return merged;
 }
 
 // Checkpoints can outlive newer writes from other jobs. Merge each source by its own timestamp.
