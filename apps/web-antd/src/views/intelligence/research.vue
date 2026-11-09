@@ -290,7 +290,7 @@ function chineseText(term?: string, saved?: string) {
   return (
     saved?.trim() ||
     keywordChineseName({ term, termZh: '' }) ||
-    '中文待补齐'
+    term
   );
 }
 const selection = computed(() =>
