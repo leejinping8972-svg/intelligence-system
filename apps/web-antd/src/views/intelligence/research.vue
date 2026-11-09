@@ -43,6 +43,8 @@ import PublicContentLauncher from './components/PublicContentLauncher.vue';
 import SavedKeywordViews from './components/SavedKeywordViews.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
 import SemrushHotwordsSidebar from './components/SemrushHotwordsSidebar.vue';
+import SemrushKeywordMetrics from './components/SemrushKeywordMetrics.vue';
+import { semrushKeywordExport } from './semrush-keyword-metrics';
 import SocialTrendCell from './components/SocialTrendCell.vue';
 import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 import {
@@ -81,6 +83,7 @@ const open = ref(false);
 const modelOpen = ref(false);
 const supplementSubmitting = ref(false);
 const supplementOpen = ref(false);
+const semrushRefreshMetrics = ref(false);
 const researchError = ref('');
 const checkingSource = ref(false);
 const researchSubmitting = ref(false);
@@ -426,6 +429,7 @@ const columns = [
   },
   { title: '人工筛选', key: 'review', width: 78 },
   { title: '谷歌趋势', key: 'trend', width: 145 },
+  { title: 'Semrush月趋势', key: 'semrushTrend', width: 180 },
   { title: 'TK趋势', key: 'tiktok', width: 108 },
   { title: 'INS趋势', key: 'instagram', width: 108 },
   { title: 'FB趋势', key: 'facebook', width: 108 },
@@ -433,7 +437,7 @@ const columns = [
 ];
 const displayColumns = computed(() => {
   const all = core.columns(columns);
-  const trends = new Set(['facebook', 'instagram', 'tiktok', 'trend']);
+  const trends = new Set(['facebook', 'instagram', 'tiktok', 'trend', 'semrushTrend']);
   const ordered = [
     ...all.filter(
       (column) => !trends.has(column.key || '') && column.key !== 'actions',
@@ -596,7 +600,7 @@ async function createResearch() {
     state.market =
       config.markets.length === 1 ? config.markets[0] || 'US' : 'ALL';
     message.success(
-      '已提交关键词拓展；完成后全部进入候选列表。谷歌/TK/INS/FB 趋势请用「趋势采集 / 每日监测」',
+      '已提交关键词拓展；完成后全部进入候选列表。Semrush月度趋势随指标保存；Google日/周及TK/INS/FB趋势请用「趋势采集 / 每日监测」',
     );
     await router.push('/monitor?tab=tasks');
   } catch (error) {
@@ -638,11 +642,12 @@ async function supplementSelected() {
         depth: 1,
         limit: submittedIds.length,
         expectedKeywordCount: submittedIds.length,
+        semrushRefreshMetrics: semrushRefreshMetrics.value,
       },
       records,
     );
     message.success(
-      `已勾选${submittedIds.length}个词，后台已接收${result.acceptedKeywords ?? records.length}个；Semrush 指标补齐后可重评。趋势请用「趋势采集 / 每日监测」`,
+      `已勾选${submittedIds.length}个词，后台已接收${result.acceptedKeywords ?? records.length}个；Semrush 指标与月度趋势将写回列表。`,
     );
     supplementOpen.value = false;
     await router.push('/monitor?tab=tasks');
@@ -671,6 +676,7 @@ async function exportKeywords() {
     '关键词研究与评级.csv',
     records.map((record) => ({
       ...core.exportRecord(record),
+      ...semrushKeywordExport(record),
       关键词: record.term,
       中文名称: keywordChineseName(record),
       种子词: record.seedTerm || '',
@@ -959,7 +965,7 @@ function saveMetrics() {
           清空选择
         </Button>
         <Tooltip
-          title="补充 Semrush 搜索量、自然搜索KD与意图后重评。谷歌/TK/INS/FB 趋势请用「趋势采集 / 每日监测」。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
+          title="补充 Semrush 月度趋势、搜索量、自然搜索KD与意图后重评。Google日/周及TK/INS/FB趋势请用「趋势采集 / 每日监测」。优先复用 Semrush 缓存，报告查询使用现有账户额度。"
         >
           <span>
             <Button
@@ -971,7 +977,7 @@ function saveMetrics() {
                 supplementSubmitting
               "
               :loading="supplementSubmitting"
-              @click="supplementOpen = true"
+              @click="semrushRefreshMetrics = false; supplementOpen = true"
             >
               一键补齐数据并重评
             </Button>
@@ -1102,6 +1108,9 @@ function saveMetrics() {
           </template>
           <template v-else-if="column.key === 'tags'">
             <CompactTags :items="record.assessment.tags" label="分析标签" />
+          </template>
+          <template v-else-if="column.key === 'semrushTrend'">
+            <SemrushKeywordMetrics :keyword="record as Keyword" compact />
           </template>
           <template v-else-if="column.key === 'trend'">
             <KeywordTrendDialog
@@ -1293,7 +1302,7 @@ function saveMetrics() {
         <Alert
           type="info"
           show-icon
-          message="第一步只拓展关键词，不限制数量；抓到的词全部进入候选列表。谷歌 / TK / INS / FB 趋势请到「趋势采集 / 每日监测」完成。"
+          message="第一步只拓展关键词，不限制数量；抓到的词全部进入候选列表。Semrush月度趋势随指标保存；Google日/周及TK/INS/FB趋势请到「趋势采集 / 每日监测」完成。"
           style="margin-bottom: 12px"
         />
         <CollectionEstimate
@@ -1314,7 +1323,7 @@ function saveMetrics() {
       <p class="hci-subtle">
         Google／Amazon 联想为公开接口，可能限流；Sorftime
         使用你的账户额度。Semrush
-        勾选后自动补充搜索量与自然搜索KD，也可在评分详情中手动补充，来源与日期会保留。趋势采集与研究任务已分离。提交成功后由腾讯云后台执行，关闭浏览器后继续运行。
+        勾选后自动补充Semrush搜索量、自然搜索KD与月度趋势，也可手动补齐，来源与日期会保留。Google日/周及社媒趋势使用独立采集入口。提交成功后由腾讯云后台执行，关闭浏览器后继续运行。
       </p>
     </Modal>
 
@@ -1328,8 +1337,12 @@ function saveMetrics() {
     >
       <Form layout="vertical">
         <Form.Item label="关键词">
-          已勾选 {{ selectedIds.length }} 个；仅补齐 Semrush
-          指标。趋势请用「趋势采集 / 每日监测」。
+          已勾选 {{ selectedIds.length }} 个；补齐 Semrush 指标与12个月搜索走势。
+          Google日/周趋势及TK/INS/FB仍使用「趋势采集 / 每日监测」。
+        </Form.Item>
+        <Form.Item>
+          <Checkbox v-model:checked="semrushRefreshMetrics">更新Semrush字段，重新查询所选关键词（消耗账户额度）</Checkbox>
+          <p class="hci-subtle">默认复用30天内缓存。旧缓存未包含月度趋势时，可勾选更新；仅查询本次所选词，不自动补采历史全库。</p>
         </Form.Item>
         <CollectionEstimate
           v-if="supplementOpen"

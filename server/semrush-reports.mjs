@@ -4,6 +4,7 @@ import process from 'node:process';
 import { pool, putDocument } from './database.mjs';
 import { decryptSemrushKey, semrushKeyIdentifier } from './semrush-config.mjs';
 import { connectSemrush, safeSemrushError } from './semrush-mcp.mjs';
+import { semrushExportColumns, semrushExtraMetrics, validSemrushTrend } from './semrush-keyword-trends.mjs';
 
 const noData = (payload) =>
   String(payload?.code || payload?.error?.code || '').toLowerCase() === 'no_data';
@@ -94,7 +95,7 @@ const numeric = (r, keys, max = Infinity) => {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 && n <= max ? n : undefined;
 };
-export function rowMetrics(row, market, at, report = 'phrase_this') {
+export function rowMetrics(row, market, at, report = 'phrase_this', columns) {
   const metrics = {
     market,
     source: `Semrush MCP · ${report}`,
@@ -122,7 +123,7 @@ export function rowMetrics(row, market, at, report = 'phrase_this') {
   }
   const intent = get(row, 'intent', 'Intent', 'Intents', 'Int');
   if (intent !== undefined) metrics.intent = String(intent).slice(0, 100);
-  return metrics;
+  return { ...metrics, ...semrushExtraMetrics(row, at, report, columns) };
 }
 export const rowTerm = (row) =>
   String(get(row, 'keyword', 'Keyword', 'Ph') || '')
@@ -166,30 +167,23 @@ async function execute(c, report, params) {
   );
   if (schema.report !== report)
     throw new Error('Semrush 报告标识不匹配，已停止查询');
-  const allowed = schema.parameters.export_columns?.items?.enum || [];
-  params.export_columns = [
-    'keyword',
-    'volume',
-    'keyword_difficulty',
-    'cpc',
-    'competitive_density',
-    'intent',
-  ].filter((k) => allowed.includes(k));
+  params.export_columns = semrushExportColumns(schema);
   if (!schema.parameters.database?.enum?.includes(params.database))
     throw new Error('Semrush 当前报告不支持该国家市场');
-  return mcpPayload(
+  const payload = mcpPayload(
     await c.rpc('tools/call', {
       name: 'execute_report',
       arguments: { report, params },
     }),
   );
+  return { ...payload, requestedColumns: params.export_columns };
 }
 export async function collectSemrush(request) {
   const at = new Date().toISOString();
   const market = request.markets[0];
   const term = request.keywords[0];
   const name = cacheName(term, market);
-  if (request.semExpansion !== true) {
+  if (request.semExpansion !== true && request.semrushRefreshMetrics !== true) {
     const { rows } = await pool.query(
       'SELECT value FROM provider_configs WHERE name=$1',
       [name],
@@ -200,7 +194,7 @@ export async function collectSemrush(request) {
         ...cached.result,
         apiUnits: 0,
         cached: true,
-        message: `使用30天内 Semrush 缓存，未重复调用；指标采集日期保留原值。${cached.result.message || ''}`,
+        message: `使用30天内 Semrush 缓存，未重复调用；指标采集日期保留原值。${cached.result.metrics?.searchTrend ? '' : '历史缓存未包含月度趋势，可在补齐指标中勾选更新字段。'}${cached.result.message || ''}`,
       };
   }
   const { c, key, semrushKeyId } = await client();
@@ -233,10 +227,16 @@ export async function collectSemrush(request) {
           for (const row of rows) {
             const word = rowTerm(row);
             if (!word || items.size >= request.limit) continue;
+            const previous = items.get(word.toLowerCase())?.metrics;
+            const incoming = rowMetrics(row, market, at, report, payload.requestedColumns);
+            if (incoming.relatedRelevance !== undefined) incoming.relatedTo = term;
+            const metrics = { ...previous, ...incoming };
+            if (validSemrushTrend(previous?.searchTrend) && !validSemrushTrend(incoming.searchTrend))
+              metrics.searchTrend = previous.searchTrend;
             items.set(word.toLowerCase(), {
               term: word,
               source: `Semrush ${report}`,
-              metrics: rowMetrics(row, market, at, report),
+              metrics,
             });
           }
           sources.push({
@@ -288,7 +288,7 @@ export async function collectSemrush(request) {
         rowTerm(r).toLowerCase() ===
         term.normalize('NFKC').replaceAll(/\s+/g, ' ').trim().toLowerCase(),
     );
-    const metrics = row ? rowMetrics(row, market, at) : null;
+    const metrics = row ? rowMetrics(row, market, at, 'phrase_this', payload.requestedColumns) : null;
     const complete =
       metrics?.monthlySearchVolume !== undefined &&
       metrics?.difficulty !== undefined;
@@ -298,7 +298,7 @@ export async function collectSemrush(request) {
       apiUnits: payload.metadata?.usage?.api_units,
       message: row
         ? complete
-          ? '已获取同市场 Semrush 搜索量与自然搜索 KD；意图未返回时保留未知'
+          ? `已获取同市场 Semrush 指标；${metrics.searchTrend.status === 'collected' ? '12个月趋势已保存' : metrics.searchTrend.message}；其他缺失字段保留未知`
           : 'Semrush 仅返回部分指标；搜索量或自然搜索 KD 缺项仍需补充'
         : 'Semrush 未收录该关键词，不能当成搜索量为0',
     };

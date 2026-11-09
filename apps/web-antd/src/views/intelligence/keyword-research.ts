@@ -16,6 +16,7 @@ export interface KeywordResearchInput {
   /** 0 or omitted = unlimited expansion (cloud path). */
   limit?: number;
   expectedKeywordCount?: number;
+  semrushRefreshMetrics?: boolean;
   signal?: AbortSignal;
   sorftimeRequestLimit?: number;
   socialTrends?: ResearchSocialTrends;

@@ -19,6 +19,7 @@ export function researchSignature(input) {
     depth: input.depth,
     limit: input.limit,
     sorftimeRequestLimit: input.sorftimeRequestLimit,
+    semrushRefreshMetrics: input.semrushRefreshMetrics === true,
     socialTrends: input.socialTrends
       ? {
           sources: sorted(input.socialTrends.sources),

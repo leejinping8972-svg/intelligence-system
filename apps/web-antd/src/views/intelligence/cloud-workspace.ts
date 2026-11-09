@@ -707,6 +707,7 @@ async function doSubmitCloudResearch(
         }
       : {}),
     sorftimeRequestLimit: input.sorftimeRequestLimit,
+    ...(input.semrushRefreshMetrics === true ? { semrushRefreshMetrics: true } : {}),
     ...(input.socialTrends ? { socialTrends: input.socialTrends } : {}),
     ...(existingRecords ? { existingRecords } : {}),
   };

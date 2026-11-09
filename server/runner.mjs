@@ -509,6 +509,7 @@ export async function runJob(job, overrides = {}) {
             keywords: [r.term],
             markets: [r.market],
             sources: ['semrush'],
+            ...(input.semrushRefreshMetrics ? { semrushRefreshMetrics: true } : {}),
           });
           cp.semUnits = (cp.semUnits || 0) + (result.apiUnits || 0);
           if (result.metrics) r.metrics = result.metrics;

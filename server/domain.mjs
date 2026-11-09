@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { validateResearchTrends } from './keyword-research-trends.mjs';
+import { sanitizeSemrushExtras } from './semrush-keyword-trends.mjs';
 
 export const normalizeTerm = (value) =>
   String(value || '')
@@ -137,6 +138,10 @@ export function validateJob(value) {
     )
       throw new Error('请选择市场，关键词上限为1～100');
     input.expectedKeywordCount = value.expectedKeywordCount ?? input.limit;
+    if (value.semrushRefreshMetrics === true) {
+      if (!input.sources.includes('semrush')) throw new Error('更新Semrush字段必须选择Semrush渠道');
+      input.semrushRefreshMetrics = true;
+    }
     if (
       input.existingRecords.length === 0 ||
       input.existingRecords.length > 100 ||
@@ -208,6 +213,7 @@ export function editableKeywordPatch(patch) {
       for (const key of ['intent', 'database', 'report'])
         if (typeof patch.metrics[key] === 'string')
           result.metrics[key] = patch.metrics[key].slice(0, 100);
+      Object.assign(result.metrics, sanitizeSemrushExtras(patch.metrics));
       for (const key of [
         'monthlySearchVolume',
         'difficulty',
