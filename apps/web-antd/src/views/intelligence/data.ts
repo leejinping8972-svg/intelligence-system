@@ -331,6 +331,7 @@ export interface Site {
   coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   listSummary?: boolean;
   productCount?: number;
+  adCount?: number;
   productCollection?: CollectionState;
   id: string;
   brand: string;
