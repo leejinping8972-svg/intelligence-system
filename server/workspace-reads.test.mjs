@@ -305,8 +305,12 @@ async function exerciseReadModel(
         source: '广告落地页',
       })
     ).rows[0].productCount,
-    240,
+    120,
   );
+  const linkedSite = (await reads.list({ collection: 'sites', market: 'US' })).rows[0];
+  assert.equal(linkedSite.productCount, (await reads.list({ collection: 'products', market: 'US', siteId: 's1', productPool: 'ALL' })).total);
+  assert.equal(linkedSite.adCount, 31);
+  assert.equal(linkedSite.adCount, (await reads.list({ collection: 'ads', market: 'US', linkedSite: 's1' })).total);
   assert.equal(
     (await reads.list({ collection: 'ads', keywordId: 'k0' })).total,
     31,

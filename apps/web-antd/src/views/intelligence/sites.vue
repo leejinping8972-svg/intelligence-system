@@ -141,6 +141,17 @@ function siteKeywords(site: Site) {
 function openKeyword(id: string) {
   void router.push({ path: '/research', query: { keywordId: id } });
 }
+async function openRelated(collection: 'products' | 'ads', site: Site) {
+  state.market = site.market;
+  await nextTick();
+  await router.push({ path: `/${collection}`, query: { site: site.id } });
+}
+function relatedCount(site: Site, collection: 'products' | 'ads') {
+  if (serverMode) return collection === 'products' ? site.productCount : site.adCount;
+  return collection === 'products'
+    ? state.products.filter((item) => item.siteId === site.id && item.market === site.market).length
+    : state.ads.filter((item) => item.siteIds?.includes(site.id) && item.market === site.market).length;
+}
 const collectedCount = computed(
   () => rows.value.filter((site) => site.dataNature === 'collected').length,
 );
@@ -237,6 +248,8 @@ watch([search, platform, category, ownership, keywordFilter, source, scoreFilter
 const columns = [
   { title: '品牌 / 独立站', key: 'brand', width: 220 },
   { title: '关联关键词', key: 'keywords', width: 190 },
+  { title: '关联商品', key: 'products', width: 105 },
+  { title: '关联广告', key: 'ads', width: 105 },
   { title: '发现来源', key: 'discoverySources', width: 250 },
   { title: '采集证据', key: 'collectionEvidence', width: 280 },
   { title: '市场', key: 'market', width: 90 },
@@ -253,7 +266,6 @@ const columns = [
   { title: '类别', dataIndex: 'category', width: 150 },
   { title: '主要产品', key: 'mainProducts', width: 250 },
   { title: '股权背景（官网）', key: 'ownership', width: 220 },
-  { title: '关联商品', key: 'products', width: 105 },
   { title: '操作', key: 'actions', width: 190, fixed: 'right' as const },
 ];
 watch(collectedRange, () => { page.value = 1; ids.value = []; });
@@ -409,6 +421,7 @@ watch(collectedRange, () => { page.value = 1; ids.value = []; });
               {{ item.text }}
               <small class="hci-subtle">{{ item.source }}</small>
             </div>
+            <small v-if="siteKeywordProvenance(record as Site).discoveries.length" class="hci-subtle">存在部分广告关键词重合，具体重合词未提供</small>
             <span v-if="!siteKeywordProvenance(record as Site).discoveries.length" class="hci-subtle">{{ sources(record as Site).join('；') || '未记录' }}</span>
           </template>
           <template v-if="column.key === 'collectionEvidence'">
@@ -433,7 +446,11 @@ watch(collectedRange, () => { page.value = 1; ids.value = []; });
               <span class="hci-clamp-2">{{ record.ownershipSource }}</span>
             </div> </template
           ><template v-if="column.key === 'products'">
-            {{ serverMode ? record.productCount ?? '—' : state.products.filter((p) => p.siteId === record.id).length }}
+            <Button type="link" size="small"
+              :disabled="!relatedCount(record as Site, 'products')"
+              :aria-label="`查看 ${record.domain} 的关联商品`"
+              @click="openRelated('products', record as Site)"
+            >{{ relatedCount(record as Site, 'products') ?? '—' }} 条</Button>
             <p v-if="record.productCollection" class="hci-subtle">
               {{
                 record.productCollection.status === 'running'
@@ -445,7 +462,14 @@ watch(collectedRange, () => { page.value = 1; ids.value = []; });
                       : '目录采集结束'
               }}
               · {{ record.productCollection.count || 0 }} 件
-            </p> </template
+            </p> </template>
+          <template v-if="column.key === 'ads'">
+            <Button type="link" size="small"
+              :disabled="!relatedCount(record as Site, 'ads')"
+              :aria-label="`查看 ${record.domain} 的关联广告`"
+              @click="openRelated('ads', record as Site)"
+            >{{ relatedCount(record as Site, 'ads') ?? '—' }} 条</Button>
+          </template
           ><template v-if="column.key === 'actions'">
             <ProductCollectDialog :site-ids="[record.id]" />
             <CompetitorWatchPanel kind="site" :site-id="record.id" />

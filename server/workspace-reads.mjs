@@ -929,12 +929,14 @@ export function createWorkspaceReads({
       const positions = new Map(ids.map((id, i) => [id, i]));
       result.rows.sort((a, b) => positions.get(a.id) - positions.get(b.id));
     } else result = await pool.query(
-      `SELECT r.payload,${query.collection === 'sites' ? "(SELECT COUNT(*) FROM workspace_read_rows p WHERE p.collection='products' AND p.site_id=r.id)" : '0'} AS product_count FROM workspace_read_rows r WHERE ${query.where} ORDER BY CASE WHEN ${sortColumn} IS NULL THEN 1 ELSE 0 END,${sortColumn} ${direction},r.id ASC LIMIT $${query.values.length + 1} OFFSET $${query.values.length + 2}`,
+      `SELECT r.payload,${query.collection === 'sites' ? "(SELECT COUNT(*) FROM workspace_read_rows p WHERE p.collection='products' AND p.site_id=r.id AND p.market=r.market)" : '0'} AS product_count,
+        ${query.collection === 'sites' ? "(SELECT COUNT(*) FROM workspace_read_rows a WHERE a.collection='ads' AND a.market=r.market AND EXISTS(SELECT 1 FROM workspace_read_links l WHERE l.collection=a.collection AND l.id=a.id AND l.relation='sites' AND l.target=r.id))" : '0'} AS ad_count
+        FROM workspace_read_rows r WHERE ${query.where} ORDER BY CASE WHEN ${sortColumn} IS NULL THEN 1 ELSE 0 END,${sortColumn} ${direction},r.id ASC LIMIT $${query.values.length + 1} OFFSET $${query.values.length + 2}`,
       [...query.values, pageSize, (page - 1) * pageSize],
     );
     const records = result.rows.map((r) =>
         query.collection === 'sites'
-          ? { ...r.payload, productCount: Number(r.product_count) }
+          ? { ...r.payload, productCount: Number(r.product_count), adCount: Number(r.ad_count) }
           : r.payload,
       );
     let related;

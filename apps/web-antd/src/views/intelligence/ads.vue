@@ -71,7 +71,14 @@ watch(() => [route.query.tab, route.query.report], () => {
     void router.replace({ path: route.query.report ? '/ad-reports' : '/advertisers', query });
   }
 }, { immediate: true });
-watch(() => route.query.site, value => { linkedSite.value = typeof value === 'string' ? value : undefined; }, { immediate: true });
+watch(() => route.query.site, value => {
+  linkedSite.value = typeof value === 'string' ? value : undefined;
+  if (linkedSite.value) {
+    search.value = batchFilter.value = '';
+    status.value = newness.value = platformFilter.value = sourceFilter.value = 'ALL';
+    linkedProduct.value = keywordFilter.value = undefined;
+  }
+}, { immediate: true });
 watch(() => route.query.keywordId, value => { keywordFilter.value = typeof value === 'string' ? value : undefined; }, { immediate: true });
 watch(() => route.query.pageId, (value) => {
   if (value) { search.value = String(value); status.value = 'ALL'; newness.value = 'ALL'; }

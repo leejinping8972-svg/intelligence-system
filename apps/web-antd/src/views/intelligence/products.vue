@@ -239,6 +239,16 @@ watch(
   () => route.query.site,
   (v) => {
     siteFilter.value = String(v || '');
+    if (typeof v === 'string' && v) {
+      search.value = '';
+      category.value = sourceCategory.value = benefitFilter.value = ingredientFilter.value = 'ALL';
+      decisionFilter.value = newProductType.value = sourceFilter.value = platformFilter.value = siteLinked.value = 'ALL';
+      favorites.value = false;
+      productPool.value = 'ALL';
+      keywordFilter.value = '';
+      setListedQuick(0);
+      page.value = 1;
+    }
     const site = state.sites.find((s) => s.id === v);
     if (site) state.market = site.market;
   },
@@ -320,7 +330,7 @@ const rows = computed(() =>
             productDecisions(p).some(
               (tag) => tag.key === decisionFilter.value,
             )) &&
-          (productPool.value === 'pool' ? inNewProductPool(p) : !inNewProductPool(p)) &&
+          (productPool.value === 'ALL' || (productPool.value === 'pool' ? inNewProductPool(p) : !inNewProductPool(p))) &&
           (newProductType.value === 'ALL' ||
             (p.newProductClassifications || []).some(
               (item) => item.type === newProductType.value,
@@ -546,6 +556,7 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
 <template>
   <main class="hci-page">
     <Tabs v-model:active-key="productPool" @change="newProductType = 'ALL'; sourceCategory = 'ALL'; page = 1">
+      <Tabs.TabPane v-if="siteFilter || productPool === 'ALL'" key="ALL" tab="全部商品" />
       <Tabs.TabPane key="existing" tab="商品库" />
       <Tabs.TabPane key="pool"><template #tab><span>新品池 <Popover :content="NEW_PRODUCT_RULES" :trigger="['hover', 'focus', 'click']" :overlay-style="{ maxWidth: '420px' }"><button type="button" aria-label="新品池数据获取条件" style="border:1px solid currentColor; border-radius:50%; width:18px; height:18px; font-size:12px; line-height:16px" @click.stop>?</button></Popover></span></template></Tabs.TabPane>
     </Tabs>

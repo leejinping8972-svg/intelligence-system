@@ -91,6 +91,7 @@ export function useCoreList(kind: CoreKind) {
     const covered = new Set(base.map(c => c.key));
     if (kind === 'products' && covered.has('spec')) covered.add('core:spec');
     if (kind === 'sites' && covered.has('products')) covered.add('core:linkedProducts');
+    if (kind === 'sites' && covered.has('ads')) covered.add('core:linkedAds');
     const fields: Array<[string, string]> = [
       ...presets[kind],
       ...extra[kind],
