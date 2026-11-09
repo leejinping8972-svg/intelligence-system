@@ -305,7 +305,21 @@ export function createWorkspaceReads({
       const field = (name) => sql(`r.payload->>'${name}'`, `JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.${name}'))`);
       const [expansions, counts] = await Promise.all([
         pool.query(`SELECT r.market,l.target,${field('term')} AS term,${field('source')} AS source FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE l.collection='keywords' AND l.relation='seed' AND l.target IN (${slots})`, terms),
-        pool.query(`SELECT l.target,${sql('SUM(CASE WHEN l.collection=\'ads\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)', 'SUM(CASE WHEN l.collection=\'ads\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)')} AS ads,${sql('SUM(CASE WHEN l.collection=\'products\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)', 'SUM(CASE WHEN l.collection=\'products\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)')} AS products,${sql('SUM(CASE WHEN l.collection=\'sites\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)', 'SUM(CASE WHEN l.collection=\'sites\' AND l.relation=\'keyword\' THEN 1 ELSE 0 END)')} AS sites FROM workspace_read_links l WHERE l.target IN (${slots}) AND l.relation='keyword' GROUP BY l.target`, records.map((record) => record.id)),
+        // Match the keyword filter in both directions. UNION counts a saved
+        // business record once even when both sides contain the association.
+        pool.query(`SELECT a.target,
+          SUM(CASE WHEN a.collection='ads' THEN 1 ELSE 0 END) AS ads,
+          SUM(CASE WHEN a.collection='products' THEN 1 ELSE 0 END) AS products,
+          SUM(CASE WHEN a.collection='sites' THEN 1 ELSE 0 END) AS sites
+          FROM (
+            SELECT l.target,r.collection,r.id FROM workspace_read_links l
+            JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id
+            WHERE l.relation='keyword' AND l.target IN (${slots}) AND r.collection IN ('ads','products','sites')
+            UNION
+            SELECT l.id AS target,r.collection,r.id FROM workspace_read_links l
+            JOIN workspace_read_rows r ON r.collection=l.relation AND r.id=l.target
+            WHERE l.collection='keywords' AND l.id IN (${slots}) AND l.relation IN ('ads','products','sites')
+          ) a GROUP BY a.target`, values),
       ]);
       const countMap = new Map(counts.rows.map((item) => [item.target, { ads: Number(item.ads) || 0, products: Number(item.products) || 0, sites: Number(item.sites) || 0 }]));
       return records.map((record) => ({ ...record, relatedCounts: countMap.get(record.id) || { ads: 0, products: 0, sites: 0 }, coreSummary: { ...record.coreSummary, related: { expansions: expansions.rows.filter((item) => item.market === record.market && item.target === normalizeTerm(record.term) && normalizeTerm(item.term) !== normalizeTerm(record.term)).map((item) => ({ term: item.term, source: item.source || '' })) } } }));
@@ -886,7 +900,7 @@ export function createWorkspaceReads({
       const [trends, relations] = await Promise.all([
         withKeywordTrends(records), withRelations(query.collection, records),
       ]);
-      related = trends.map((record, index) => ({ ...record, semrushCollection: relations[index].semrushCollection, coreSummary: relations[index].coreSummary }));
+      related = trends.map((record, index) => ({ ...record, relatedCounts: relations[index].relatedCounts, semrushCollection: relations[index].semrushCollection, coreSummary: relations[index].coreSummary }));
     } else related = await withRelations(query.collection, records);
     return {
       rows: related,
