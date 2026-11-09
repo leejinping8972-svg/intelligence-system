@@ -77,6 +77,7 @@ watch(() => route.query.site, value => {
     search.value = batchFilter.value = '';
     status.value = newness.value = platformFilter.value = sourceFilter.value = 'ALL';
     linkedProduct.value = keywordFilter.value = undefined;
+    collectedRange.value = [];
   }
 }, { immediate: true });
 watch(() => route.query.keywordId, value => { keywordFilter.value = typeof value === 'string' ? value : undefined; }, { immediate: true });

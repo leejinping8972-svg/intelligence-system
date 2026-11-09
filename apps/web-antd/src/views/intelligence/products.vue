@@ -113,7 +113,7 @@ const newProductType = ref('ALL');
 const productPool = ref(route.query.pool === 'pool' ? 'pool' : 'existing');
 const discoveredOn = ref(typeof route.query.discoveredOn === 'string' ? route.query.discoveredOn : '');
 watch(() => [route.query.pool, route.query.discoveredOn], () => {
-  productPool.value = route.query.pool === 'pool' ? 'pool' : 'existing';
+  productPool.value = route.query.site ? 'ALL' : route.query.pool === 'pool' ? 'pool' : 'existing';
   discoveredOn.value = typeof route.query.discoveredOn === 'string' ? route.query.discoveredOn : '';
 });
 const newProductTypeOptions = [
@@ -245,6 +245,8 @@ watch(
       decisionFilter.value = newProductType.value = sourceFilter.value = platformFilter.value = siteLinked.value = 'ALL';
       favorites.value = false;
       productPool.value = 'ALL';
+      collectedRange.value = [];
+      discoveredOn.value = '';
       keywordFilter.value = '';
       setListedQuick(0);
       page.value = 1;
