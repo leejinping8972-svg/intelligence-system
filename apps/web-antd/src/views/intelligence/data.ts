@@ -321,6 +321,7 @@ export interface SiteAssessment {
   }[];
 }
 export interface Site {
+  sourceKeywordLinks?: { domain: string; siteId: string; keywordIds: string[]; terms: string[] }[];
   categoryEvidence?: string[];
   brandZh?: string;
   categoryZh?: string;
