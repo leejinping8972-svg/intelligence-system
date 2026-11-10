@@ -21,7 +21,8 @@ test('only failed category/seller and invalid review analysis retry; success, co
   try {
     await db.exec('CREATE TABLE research_jobs(id text primary key,status text,cancelled boolean,input jsonb,checkpoint jsonb,updated_at timestamptz); CREATE TABLE research_requests(job_id text,step text,status text,response jsonb,error text); CREATE TABLE workspace_documents(name text primary key,value jsonb);');
     const plan = discoveryPlan(futureHealthPlan({ kind: 'regular_new', market: 'US', channels: ['amazon'], completeDays: true, maxProducts: 500, maxPages: 5 }));
-    const work = healthCategoryWork(plan), sourceStep = w => `source:${stableId(JSON.stringify(w))}`;
+    const work = healthCategoryWork(plan), sourceStep = w => `source:${stableId(JSON.stringify(Object.fromEntries(
+      Object.entries(w).toSorted(([a],[b])=>a.length-b.length||a.localeCompare(b)))))}`;
     const accepted = { ...p('saved'), sourcePlatform: 'Amazon', sourceProvider: 'Amazon Official', sellerName: '店铺甲', sellerId: 'A1234567890123', sourceProductId: 'B000000001', fieldAnalysis: { version: 2, status: 'analyzed', marker: 'keep' } };
     const review = p('review');
     const sample = healthProductSample(sourceFieldSample('products', review), HEALTH_PRODUCT_POLICY);
@@ -73,7 +74,7 @@ test('only failed category/seller and invalid review analysis retry; success, co
     for(let i=0;i<8 && !['partial','completed'].includes(status);i++) await runHealthDiscovery(job,io);
     assert.equal(status,'completed', JSON.stringify({failures:job.checkpoint.failures,reviews:docs}));
     assert.equal(calls.length,3);
-    assert.equal(calls.filter(s=>s.startsWith('retry:1:')).length,2);
+    assert.equal(calls.filter(s=>s.startsWith('retry:1:')).length,3);
     assert.ok(calls.some(s=>s.includes(`intake:${digest(review.id)}:fields:`)));
     assert.equal(job.checkpoint.products,2);
     assert.equal(job.checkpoint.healthReviewCount,0);

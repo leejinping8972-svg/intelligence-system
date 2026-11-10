@@ -4,6 +4,8 @@ import { stableId } from './discovery-monitor-domain.mjs';
 
 const intakeKey = id => `intake:${createHash('sha256').update(id).digest('hex').slice(0, 24)}`;
 export const healthRequestStep = (cp, step) => cp.healthRequestSteps?.[step] || step;
+export const healthSourceStep = (cp, work) => cp.healthSourceSteps?.[`${healthCategoryKey(work)}:${work.page}`] ||
+  `source:${stableId(JSON.stringify(work))}`;
 export const isHealthDiscovery = job => job.input?.kind === 'discovery_monitor' &&
   job.input.plan?.healthCoverageVersion === HEALTH_COVERAGE_VERSION;
 
@@ -26,14 +28,24 @@ export async function prepareHealthRetry(job, connection) {
   const retryStep = step => { cp.healthRequestSteps[step] = `retry:${round}:${step}`; };
   const allWork = healthCategoryWork(job.input.plan);
   cp.work = [];
+  cp.healthSourceSteps = { ...cp.healthSourceSteps };
+  const sourceHandled = new Set();
   for (const work of allWork) {
     const category = cp.healthCoverage?.[healthCategoryKey(work)];
     if (!category?.error) continue;
     // Legacy coverage stored only successful page count; the failed page was
     // the immediately following page. New runners also save its exact work.
     const failed = category.failedWork || { ...work, page: category.firstPage === 'failed' ? 1 : (category.pages || 0) + 1 };
-    const step = `source:${stableId(JSON.stringify(failed))}`;
-    if (!latest(step)) throw new Error('失败类目缺少请求记录，未创建重复请求');
+    // MySQL/Pg JSON storage can reorder work keys. Match the legacy journal's
+    // actual key before creating a retry; never guess a new request identity.
+    const variants = [failed,
+      Object.fromEntries(Object.entries(failed).toSorted(([a],[b]) => a.length - b.length || a.localeCompare(b))),
+      Object.fromEntries(Object.entries(failed).toSorted(([a],[b]) => a.localeCompare(b)))];
+    const step = [healthSourceStep(cp, failed), ...variants.map(w => `source:${stableId(JSON.stringify(w))}`)]
+      .find(key => latest(key));
+    if (!step) throw new Error('失败类目缺少请求记录，未创建重复请求');
+    cp.healthSourceSteps[`${healthCategoryKey(failed)}:${failed.page}`] = step;
+    sourceHandled.add(priorSteps[step] || step);
     retryStep(step);
     cp.work.push(failed);
   }
@@ -71,7 +83,6 @@ export async function prepareHealthRetry(job, connection) {
     const sellerOnly = Boolean(accepted && failedSteps.every(step => /:seller_(?:identity|detail):/.test(step)));
     cp.pending.push({ product, powderOnly, retry: true, accepted: Boolean(accepted), forceAnalysis, sellerOnly });
   }
-  const sourceHandled = new Set(cp.work.map(w => priorSteps[`source:${stableId(JSON.stringify(w))}`] || `source:${stableId(JSON.stringify(w))}`));
   const unhandled = requests.filter(r => r.status === 'failed' &&
     (priorSteps[r.step.replace(/^retry:\d+:/, '')] || r.step.replace(/^retry:\d+:/, '')) === r.step &&
     !handled.has(r.step) && !sourceHandled.has(r.step));

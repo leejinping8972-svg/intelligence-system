@@ -2,7 +2,7 @@ import { healthCategoryKey, healthCategoryWork, HEALTH_PRODUCT_POLICY } from './
 import { healthProductDecision } from './health-product-domain.mjs';
 import { newProductEvidence, stableId } from './discovery-monitor-domain.mjs';
 import { prepareProductIntake } from './product-intake.mjs';
-import { healthRequestStep } from './health-discovery-retry.mjs';
+import { healthRequestStep, healthSourceStep } from './health-discovery-retry.mjs';
 
 // Independent versioned runner: legacy frozen jobs retain their original work
 // and journal keys. Each invocation makes at most one source page or intake.
@@ -112,7 +112,7 @@ export async function runHealthDiscovery(job, io) {
     const category = cp.healthCoverage[healthCategoryKey(work)];
     cp.calls++;
     try {
-      const result = await collect(job, `source:${stableId(JSON.stringify(work))}`, {
+      const result = await collect(job, healthSourceStep(cp, work), {
         ...plan, ...work, sources: ['discovery_sorftime'], sorftimeRequestLimit: 1,
         social: false, now: cp.asOf,
       });
