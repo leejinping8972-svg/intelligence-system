@@ -37,6 +37,7 @@ import EvidenceMetric from './components/EvidenceMetric.vue';
 import PageHeader from './components/PageHeader.vue';
 import ProductArt from './components/ProductArt.vue';
 import ProductAsin from './components/ProductAsin.vue';
+import ProductMerchant from './components/ProductMerchant.vue';
 import ProductChineseName from './components/ProductChineseName.vue';
 import ProductText from './components/ProductText.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
@@ -512,6 +513,7 @@ async function exportProducts() {
         商品: p.title,
         中文参考: productChineseName(p) || '中文参考待补充',
         品牌: p.brand,
+        卖家: p.sellerName || p.sourceMetrics?.shopName || '',
         国家: p.market,
         规格: p.size,
         价格: p.price,
@@ -774,9 +776,6 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
           />
         </button>
         <div class="hci-product-content">
-          <div class="hci-product-brand">
-            <ProductText :text="product.brand" :translated="product.brandZh" />
-          </div>
           <button
             class="hci-product-title hci-clamp-2"
             @click="selected = product.id"
@@ -784,6 +783,7 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
             <ProductChineseName :product="product" />
           </button>
           <ProductAsin :product="product" />
+          <ProductMerchant :product="product" />
           <div class="hci-subtle">
             关联关键词：
             <Button
@@ -922,8 +922,8 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
               >
                 <ProductChineseName :product="record as Product" />
               </Button>
-              <ProductText :text="record.brand" :translated="record.brandZh" />
               <ProductAsin :product="record as Product" />
+              <ProductMerchant :product="record as Product" />
             </div>
           </div>
         </template>

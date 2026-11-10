@@ -259,6 +259,7 @@ export interface Product {
   linkedSite?: { id: string; brand: string; domain: string; market: string } | null;
   sourceProductId?: string;
   asin?: string;
+  sellerName?: string;
   sourceUrl?: string;
   id: string;
   title: string;

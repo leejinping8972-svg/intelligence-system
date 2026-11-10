@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { mergeResourceHistory } from './product-resource-domain.mjs';
 import { normalizeAsin, productAsin } from './product-asin.mjs';
+import { productSellerName, sourceSellerName } from './product-seller.mjs';
 
 export const text = (value) =>
   typeof value === 'string' ? value.trim().slice(0, 12_000) : '';
@@ -270,6 +271,11 @@ export function normalizeAmazon(
   const p = baseProduct(context, asin, row, title, url);
   p.asin = asin;
   p.collectionFields.push('asin');
+  const sellerName = sourceSellerName(row);
+  if (sellerName) {
+    p.sellerName = sellerName;
+    p.collectionFields.push('sellerName');
+  }
   p.searchSubtitle = text(field(row, 'sub_title', 'subTitle', 'SubTitle'));
   const image = field(
     row,
@@ -476,6 +482,8 @@ export function normalizeAmazonContent(value, product, at) {
   };
   const asin = productAsin(product);
   if (asin) patch.asin = asin;
+  const sellerName = sourceSellerName(row);
+  if (sellerName) patch.sellerName = sellerName;
   const image = field(
     row,
     'mainImages',
@@ -531,6 +539,7 @@ export function normalizeAmazonContent(value, product, at) {
     ...new Set([
       ...(product.collectionFields || []),
       ...(patch.asin ? ['asin'] : []),
+      ...(patch.sellerName ? ['sellerName'] : []),
       ...(patch.imageUrl ? ['image'] : []),
       ...(patch.claim ? ['description'] : []),
       ...(ingredient ? ['ingredients'] : []),
@@ -671,6 +680,7 @@ export function mergePlatformProduct(old, patch) {
     'benefitEvidence',
     'size',
     'brand',
+    'sellerName',
     'category',
     'form',
     'sourceUrl',
@@ -769,5 +779,7 @@ export function mergePlatformProduct(old, patch) {
   }
   const asin = productAsin(merged);
   if (asin) merged.asin = asin;
+  const sellerName = productSellerName(patch) || productSellerName(old);
+  if (sellerName) merged.sellerName = sellerName;
   return merged;
 }
