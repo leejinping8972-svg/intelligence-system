@@ -53,9 +53,19 @@ async function submit(operation: 'analyze' | 'collect' | 'save') {
   busy.value = true;
   error.value = '';
   try {
-    const { communityText, ...values } = form;
+    const {
+      communityText,
+      maxProducts: _posts,
+      maxPages: _pages,
+      maxDetails: _details,
+      maxRequests: _requests,
+      maxCommentRequests: _commentRequests,
+      analysisMaxRecords: _analysis,
+      ...values
+    } = form;
     const plan = {
       ...values,
+      collectionLimitsVersion: 2,
       kind: 'ingredients',
       sourceMode: 'ingredient_trends',
       channels: ['reddit'],
@@ -109,7 +119,7 @@ async function submit(operation: 'analyze' | 'collect' | 'save') {
     <Alert
       type="info"
       show-icon
-      message="每天补充帖子与重点评论，每周分析累计内容。"
+      message="每天补充帖子与评论，每周分批分析累计内容。"
       description="渠道为ScrapeCreators / Reddit。首次回溯7天；后续补新帖并回访近期讨论。评论可能存在来源缺口，达到上限会保留待续内容。"
     />
     <Form.Item label="研究归属市场">
@@ -154,37 +164,23 @@ async function submit(operation: 'analyze' | 'collect' | 'save') {
       <Form.Item label="每周分析时间（北京时间）"
         ><Input v-model:value="form.analysisTime" type="time"
       /></Form.Item>
-      <Form.Item label="每次来源请求上限"
-        ><InputNumber v-model:value="form.maxRequests" :min="1" :max="500"
-      /></Form.Item>
-      <Form.Item label="其中评论请求上限"
-        ><InputNumber
-          v-model:value="form.maxCommentRequests"
-          :min="0"
-          :max="300"
-      /></Form.Item>
-      <Form.Item label="每次回访帖子数"
-        ><InputNumber v-model:value="form.maxDetails" :min="0" :max="20"
-      /></Form.Item>
-      <Form.Item label="每社区最多页数"
-        ><InputNumber v-model:value="form.maxPages" :min="1" :max="100"
-      /></Form.Item>
-      <Form.Item label="每次最多帖子数"
+      <Form.Item label="每社区每次最多帖子数"
         ><InputNumber
           id="ingredient-max-posts"
-          v-model:value="form.maxProducts"
+          v-model:value="form.maxPostsPerCommunity"
           :min="1"
           :max="5000"
       /></Form.Item>
-      <Form.Item label="每周分析资料上限"
+      <Form.Item label="每帖每次最多评论数（含回复）"
         ><InputNumber
-          v-model:value="form.analysisMaxRecords"
-          :min="40"
-          :max="5000"
+          id="ingredient-max-comments"
+          v-model:value="form.maxCommentsPerPost"
+          :min="0"
+          :max="1000"
       /></Form.Item>
     </div>
     <p class="hci-subtle">
-      每次来源请求可能消耗credits；评论分支也计入请求。周分析只读取已积累内容并使用已配置AI模型。来源、页数与分析上限都会影响覆盖。
+      帖子按社区分别计数，评论按每帖每次去重计数（含回复），设为0则不采评论。系统自动翻页并保存待续内容，近期帖子轮换回访。周分析分批处理两周窗口内全部归档资料，不再按2000段截断。来源与模型调用仍会消耗费用；后台保护触发或来源缺口会明确显示为部分覆盖。
     </p>
     <Form.Item v-if="scheduled" label="启用每日采集及每周分析"
       ><Switch v-model:checked="form.enabled"
