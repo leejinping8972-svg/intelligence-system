@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mergePlatformProduct } from './platform-product-data.mjs';
 import { intakeSourceWork } from './product-intake-sorftime.mjs';
+import { healthProductSample } from './health-product-domain.mjs';
 import { sourceFieldSample } from './source-field-domain.mjs';
 import { needsSellerDetails } from './amazon-seller-details.mjs';
 import { productSellerId, productSellerName } from './product-seller.mjs';
@@ -73,7 +74,7 @@ export async function prepareProductIntake(job, original, io, options = {}) {
       }
     }
   }
-  const sample = sourceFieldSample('products', product);
+  const sample = healthProductSample(sourceFieldSample('products', product), options.healthProductPolicy);
   if (
     product.fieldAnalysis?.version === 2 &&
     product.fieldAnalysis.status === 'analyzed' &&

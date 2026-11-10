@@ -14,6 +14,8 @@ export interface DiscoveryPlan {
   sourceMarkets?: Record<string, string>;
   categories?: Record<string, DiscoveryCategory[]>;
   completeDays?: boolean;
+  healthCoverageVersion?: string;
+  healthProductPolicy?: string;
   supplementOnly?: boolean;
   sourceMode?: 'ingredient_trends' | 'official_new_releases' | 'sorftime';
   communities?: string[];

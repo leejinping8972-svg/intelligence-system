@@ -1,3 +1,4 @@
+import { futureHealthPlan } from './health-category-domain.mjs';
 export const POOL_TYPES = ['regular_new', 'fbm_new', 'new_listing'];
 export function inNewProductPool(product) {
   return (product?.newProductClassifications || []).some((c) =>
@@ -12,7 +13,7 @@ export function poolType(product) {
     : 'regular_new';
 }
 export const NEW_PRODUCT_RULES =
-  '按各监控保存的周期和北京时间发起采集，筛选执行日前所选数量的完整自然日内上架、Sorftime报告销量大于0的商品。默认近7天、每天00:00，可在编辑监控中修改；具体条件见商品入池证据。默认美国保健品，可选择来源真实类目；FBM仅指Amazon商家自配送。TikTok优先取上架日期，缺少时使用来源曝光日期并标注替代口径；其他平台缺上架日期、或所有平台缺销量证据时不入池。销量为来源报告或估算，不是已核实订单；覆盖受来源收录、类目、页数和采集上限影响。独立站监控取得近7个完整自然日内的可靠上架日期及同次采集的正销量证据时，也自动进入“新上架商品”；缺日期或销量证据不入池，首次发现不作为上架依据。入池后保留历史，不因超过所选天数移除；历史宽窗口或官方榜单数据按原入池证据标注。';
+  '按各监控保存的周期和北京时间发起采集，筛选执行日前所选数量的完整自然日内上架、Sorftime报告销量大于0的商品。默认近7天、每天00:00，可在编辑监控中修改；具体条件见商品入池证据。美国Amazon固定206个基础保健类目、TikTok固定4个基础类目，另查2个仅保留粉剂的代餐混合入口；代餐粉、冲调型奶昔粉、蛋白营养粉保留，器具和普通即食即饮食品排除，资料不足待确认。逐类首屏覆盖及分页截断见任务进度；其他站点可选择来源真实类目；FBM仅指Amazon商家自配送。TikTok优先取上架日期，缺少时使用来源曝光日期并标注替代口径；其他平台缺上架日期、或所有平台缺销量证据时不入池。销量为来源报告或估算，不是已核实订单；覆盖受来源收录、类目、页数和采集上限影响。独立站监控取得近7个完整自然日内的可靠上架日期及同次采集的正销量证据时，也自动进入“新上架商品”；缺日期或销量证据不入池，首次发现不作为上架依据。入池后保留历史，不因超过所选天数移除；历史宽窗口或官方榜单数据按原入池证据标注。';
 
 // Apply only to future scheduled runs; never rewrite a frozen job/checkpoint.
 export function dailyNewProductPlan(plan) {
@@ -20,7 +21,7 @@ export function dailyNewProductPlan(plan) {
   // Legacy persisted settings were hidden by the previous fixed schedule. Keep
   // that effective schedule until an explicit save opts into editable settings.
   const editable = plan.scheduleConfigVersion === 1;
-  return {
+  return futureHealthPlan({
     ...plan,
     ...(plan.market === 'US'
       ? {
@@ -42,7 +43,7 @@ export function dailyNewProductPlan(plan) {
     completeDays: true,
     frequency: editable ? (plan.frequency ?? 'daily') : 'daily',
     time: editable ? (plan.time ?? '00:00') : '00:00',
-  };
+  });
 }
 
 export function previousListingWindow(days, now = Date.now()) {

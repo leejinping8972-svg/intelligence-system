@@ -48,12 +48,13 @@ const loading = ref(false);
 const error = ref('');
 const capabilities = ref<DiscoveryCapabilities>();
 const canEdit = computed(() => serverMode && session.user?.role === 'admin');
+const fullHealthCoverage = computed(() => form.kind !== 'ingredients' && form.market === 'US' && form.channels.length > 0 && form.channels.every(c => ['amazon', 'tiktok'].includes(c)));
 const collectionRule = computed(() => {
   const cycle = form.frequency === 'weekly'
     ? `每周${['日', '一', '二', '三', '四', '五', '六'][form.weekday]}`
     : form.frequency === 'monthly' ? `每月${form.monthDay}日` : '每天';
   const start = props.scheduled ? `${cycle}北京时间${form.time}采集` : '本次采集';
-  return `${start}执行日前${form.days}个完整自然日上架、Sorftime报告销量大于0的商品。未选类目时默认查保健品；TikTok缺上架日期时使用来源曝光日期，列表会说明替代口径；缺少日期或销量证据时跳过。`;
+  return `${start}执行日前${form.days}个完整自然日上架、Sorftime报告销量大于0的商品。${fullHealthCoverage.value ? '按所选渠道覆盖Amazon 206个、TikTok 4个基础类目；Amazon另查2个代餐混合入口，仅保留粉剂。' : '未选类目时默认查保健品。'}TikTok缺上架日期时使用来源曝光日期，列表会说明替代口径；缺少日期或销量证据时跳过。`;
 });
 const channelOptions = computed(() =>
   form.kind === 'ingredients'
@@ -171,8 +172,10 @@ async function submit(save: boolean) {
     const payload = {
       ...values,
       sourceMode: 'sorftime',
+      healthCoverageVersion: fullHealthCoverage.value ? 'us-health-20261110-v1' : undefined,
+      healthProductPolicy: fullHealthCoverage.value ? 'oral-topical-nutrition-powder-v1' : undefined,
       ...(form.kind !== 'ingredients' ? { completeDays: true } : {}),
-      categories: Object.fromEntries(form.channels.map(c => [c, (form.categories[c] || []).filter(item => item.market === (form.sourceMarkets?.[c] || form.market))])),
+      categories: fullHealthCoverage.value ? {} : Object.fromEntries(form.channels.map(c => [c, (form.categories[c] || []).filter(item => item.market === (form.sourceMarkets?.[c] || form.market))])),
       officialBoardUrls:
         form.kind === 'ingredients'
           ? undefined
@@ -286,9 +289,10 @@ async function submit(save: boolean) {
         />
       </Form.Item>
     </div>
-    <template>
-      <DiscoveryCategories v-model="form.categories" :channels="form.channels" :source-markets="form.sourceMarkets || {}" :market="form.market" />
-      <Form.Item label="仅保健品（默认开启）"><Switch v-model:checked="form.supplementOnly" /></Form.Item>
+    <template v-if="form.kind !== 'ingredients'">
+      <Alert v-if="fullHealthCoverage" type="info" message="固定保健品范围：代餐粉、冲调型奶昔粉、蛋白营养粉保留；摇摇杯等器具、普通即食食品和普通即饮代餐排除。资料不足待确认；外用配方须有健康护理用途证据。" />
+      <DiscoveryCategories v-else v-model="form.categories" :channels="form.channels" :source-markets="form.sourceMarkets || {}" :market="form.market" />
+      <Form.Item v-if="!fullHealthCoverage" label="仅保健品（默认开启）"><Switch v-model:checked="form.supplementOnly" /></Form.Item>
       <p class="hci-subtle">美国站不包含Shopee；Temu接口已开放，但保健品类目样本暂未返回，当前不纳入默认监控。</p>
     </template>
     <Alert
@@ -324,6 +328,9 @@ async function submit(save: boolean) {
         <InputNumber v-model:value="form.maxPages" :min="1" :max="100" />
       </Form.Item>
     </div>
+    <p v-if="fullHealthCoverage" class="hci-subtle">
+      逐类查询首屏，达到商品上限仍检查剩余类目首屏；页数或数量截断会标记为部分完成。覆盖受来源收录影响，当前未单独验证外用专门类目全覆盖。扩大范围会增加来源请求。
+    </p>
     <p v-if="scheduled" class="hci-subtle">
       立即运行使用当前填写的采集条件；更改定时监控请另点“保存监控”。
     </p>

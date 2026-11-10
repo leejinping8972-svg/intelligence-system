@@ -1,3 +1,4 @@
+import { healthCoverageSteps } from './health-category-domain.mjs';
 import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -51,7 +52,7 @@ function projectKnownJob(job) {
     mode: 'live', stage: job.input.kind === 'source_fields' ? 'analysis' : 'products',
     title: job.input.kind === 'product_watch' ? '云端 · 商品持续监控' : job.input.kind === 'source_fields' ? '云端 · 来源字段AI分析' : `云端 · ${discoveryKinds[job.input.plan.kind]}${job.input.plan.sourceMode === 'ingredient_trends' ? (job.input.trendOperation === 'analyze' ? ' · 周分析' : ' · 每日采集') : ''}`,
     status: job.cancelled ? 'cancelled' : job.status, created: job.checkpoint.submittedAt,
-    steps: [...(job.checkpoint.logs || []), ...(job.checkpoint.failures || [])],
+    steps: [...healthCoverageSteps(job.checkpoint), ...(job.checkpoint.logs || []), ...(job.checkpoint.failures || [])],
     requests: job.checkpoint.calls || 0,
   }];
   if (job.input.kind === 'semrush_sites')

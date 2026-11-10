@@ -1,3 +1,4 @@
+import { validateHealthProduct } from './health-product-domain.mjs';
 import { createHash } from 'node:crypto';
 import { freshTranslation } from './collection-translation-domain.mjs';
 
@@ -233,6 +234,7 @@ export function validateSourceFields(result, sample) {
       fields: evidence,
       supplement: Boolean(result.supplement?.value === true && supplement),
       supplementEvidence: supplement?.quote || '',
+      ...(sample.healthProductPolicy ? { healthProduct: validateHealthProduct(result.healthProduct, sample) } : {}),
       analyzedAt: new Date().toISOString(),
     },
   };
