@@ -25,6 +25,8 @@ export function intakeSourceWork(product) {
 }
 
 export async function productIntakeSource(request, overrides = {}) {
+  if (['seller_identity', 'seller_detail'].includes(request.op))
+    return (await import('./amazon-seller-details.mjs')).amazonSellerSource(request, overrides);
   let token = '';
   try {
     const {

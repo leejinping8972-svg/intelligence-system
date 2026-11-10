@@ -64,6 +64,63 @@ describe('product seller and Amazon links', () => {
     });
     expect(missing.querySelector('a')).toBeNull();
   });
+  it('opens seller business details with line breaks and a safe source-market profile link', async () => {
+    const host = await mount(ProductMerchant, {
+      product: {
+        sourcePlatform: 'Amazon',
+        sourceProductId: 'B000000001',
+        market: 'MX',
+        sourceMarket: 'US',
+        brand: 'Brand A',
+        sellerName: 'Store B',
+        sellerId: 'A1234567890123',
+        sellerDetails: {
+          status: 'available',
+          sellerName: 'Store B',
+          sellerId: 'A1234567890123',
+          market: 'US',
+          businessName: '<img src=x> Example Inc',
+          businessAddress: ['Street 1', 'City', 'US'],
+          collectedAt: '2026-11-10T03:00:00Z',
+          provider: 'Sorftime',
+          lookup: 'id',
+        },
+      },
+    });
+    let rowClicks = 0;
+    host.addEventListener('click', () => {
+      rowClicks += 1;
+    });
+    host.querySelector('button')?.click();
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(rowClicks).toBe(0);
+    const details = document.body.querySelector('.seller-details');
+    expect(details?.textContent).toContain('<img src=x> Example Inc');
+    expect(details?.querySelector('img')).toBeNull();
+    expect(details?.querySelector('.seller-address')?.textContent).toBe(
+      'Street 1\nCity\nUS',
+    );
+    const link = details?.querySelector('a');
+    expect(link?.href).toBe('https://www.amazon.com/sp?seller=A1234567890123');
+    expect(link?.target).toBe('_blank');
+    expect(link?.rel).toContain('noopener');
+  });
+  it('shows honest missing seller details without making a source request on click', async () => {
+    const host = await mount(ProductMerchant, {
+      product: {
+        sourcePlatform: 'Amazon',
+        sellerName: 'Store C',
+        brand: 'Brand A',
+      },
+    });
+    host.querySelector('button')?.click();
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const details = document.body.querySelector('.seller-details');
+    expect(details?.textContent).toContain('尚未获取企业资料');
+    expect(details?.querySelector('a')).toBeNull();
+  });
 });
 
 describe('watch chart point tooltip', () => {

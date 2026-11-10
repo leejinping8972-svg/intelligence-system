@@ -18,7 +18,7 @@ import { keywordTrendList } from './keyword-trend-list.mjs';
 import { keywordMetricEvidence } from './keyword-metric-evidence.mjs';
 import { productChineseName } from './product-names.mjs';
 import { productAsin } from './product-asin.mjs';
-import { productSellerName } from './product-seller.mjs';
+import { productSellerDetails, productSellerId, productSellerName } from './product-seller.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 import { compareProductValues, productSortKeys, productSortValue } from './product-list-sort.mjs';
 import { productPlatformSql, resolvedProductPlatform } from './product-platform.mjs';
@@ -101,6 +101,10 @@ export function projectRecord(collection, value) {
     if (asin) data.asin = asin;
     const sellerName = productSellerName(value);
     if (sellerName) data.sellerName = sellerName;
+    const sellerId = productSellerId(value);
+    if (sellerId) data.sellerId = sellerId;
+    const sellerDetails = productSellerDetails(value);
+    if (sellerDetails) data.sellerDetails = sellerDetails;
     data.ingredientInsights = (value.ingredientInsights || [])
       .slice(0, 20)
       .map((item) => ({

@@ -260,6 +260,8 @@ export interface Product {
   sourceProductId?: string;
   asin?: string;
   sellerName?: string;
+  sellerId?: string;
+  sellerDetails?: import('../../../../../server/product-seller.mjs').AmazonSellerDetails;
   sourceUrl?: string;
   id: string;
   title: string;

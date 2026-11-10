@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { mergeResourceHistory } from './product-resource-domain.mjs';
 import { normalizeAsin, productAsin } from './product-asin.mjs';
-import { productSellerName, sourceSellerName } from './product-seller.mjs';
+import { productSellerDetails, productSellerId, productSellerName, sellerNameKey, sourceSellerId, sourceSellerName } from './product-seller.mjs';
 
 export const text = (value) =>
   typeof value === 'string' ? value.trim().slice(0, 12_000) : '';
@@ -276,6 +276,8 @@ export function normalizeAmazon(
     p.sellerName = sellerName;
     p.collectionFields.push('sellerName');
   }
+  const sellerId = sourceSellerId(row);
+  if (sellerId) p.sellerId = sellerId;
   p.searchSubtitle = text(field(row, 'sub_title', 'subTitle', 'SubTitle'));
   const image = field(
     row,
@@ -484,6 +486,8 @@ export function normalizeAmazonContent(value, product, at) {
   if (asin) patch.asin = asin;
   const sellerName = sourceSellerName(row);
   if (sellerName) patch.sellerName = sellerName;
+  const sellerId = sourceSellerId(row);
+  if (sellerId) patch.sellerId = sellerId;
   const image = field(
     row,
     'mainImages',
@@ -781,5 +785,10 @@ export function mergePlatformProduct(old, patch) {
   if (asin) merged.asin = asin;
   const sellerName = productSellerName(patch) || productSellerName(old);
   if (sellerName) merged.sellerName = sellerName;
+  const sellerChanged = sellerNameKey(productSellerName(old)) !== sellerNameKey(sellerName);
+  const patchSellerId = productSellerId(patch);
+  merged.sellerId = patchSellerId || (sellerChanged ? '' : productSellerId(old));
+  if (patch.sellerDetails) merged.sellerDetails = patch.sellerDetails;
+  if (!productSellerDetails(merged)) delete merged.sellerDetails;
   return merged;
 }
