@@ -1,3 +1,4 @@
+import { HEALTH_PRODUCT_PROMPT } from './health-product-domain.mjs';
 import { openAdsKey } from './ads-provider.mjs';
 import { pool } from './database.mjs';
 import { modelReportText, postModel } from './model-provider.mjs';
@@ -35,7 +36,7 @@ export async function configuredJson(prompt, sample, overrides = {}) {
 }
 export async function fieldAnalysisRequest(request, overrides = {}) {
   const response = await configuredJson(
-    SOURCE_FIELD_PROMPT,
+    request.sample.healthProductPolicy ? `${SOURCE_FIELD_PROMPT}\n${HEALTH_PRODUCT_PROMPT}` : SOURCE_FIELD_PROMPT,
     request.sample,
     overrides,
   );

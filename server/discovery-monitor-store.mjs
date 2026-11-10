@@ -1,3 +1,5 @@
+import { futureHealthPlan } from './health-category-domain.mjs';
+import { runHealthDiscovery } from './health-discovery-runner.mjs';
 import { randomUUID } from 'node:crypto';
 import { dailyNewProductPlan } from './product-pool-domain.mjs';
 import { assertResourceCategory } from './product-resource-service.mjs';
@@ -36,7 +38,7 @@ async function validateCategories(plan, connection) {
   }
 }
 export async function submitDiscovery(input, connection = pool) {
-  const plan = discoveryPlan(input.plan || input);
+  let plan = discoveryPlan(input.plan || input);
   const requestId = input.requestId;
   if (!/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(requestId || ''))
     throw new Error('提交编号无效');
@@ -47,12 +49,13 @@ export async function submitDiscovery(input, connection = pool) {
   ).rows[0];
   if (old) {
     if (
-      !isDeepStrictEqual(old.input.plan, plan) ||
+      !isDeepStrictEqual(old.input.plan, old.input.plan.healthCoverageVersion ? discoveryPlan(futureHealthPlan(plan)) : plan) ||
       (old.input.monitorId || '') !== (input.monitorId || '')
     )
       throw new Error('此编号已用于不同任务');
     return old;
   }
+  plan = discoveryPlan(futureHealthPlan(plan));
   await validateCategories(plan, connection);
   const id = randomUUID();
   const value = {
@@ -245,6 +248,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     ...overrides,
   };
   const plan = job.input.plan;
+  if (plan.healthCoverageVersion) return runHealthDiscovery(job, io);
   if (plan.sourceMode === 'official_new_releases')
     return runOfficialNewReleases(job, io);
   const cp = {

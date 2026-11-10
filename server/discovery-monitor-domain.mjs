@@ -1,3 +1,4 @@
+import { HEALTH_COVERAGE_VERSION, HEALTH_PRODUCT_POLICY, supportsHealthCoverage } from './health-category-domain.mjs';
 import { createHash } from 'node:crypto';
 import { previousListingWindow } from './product-pool-domain.mjs';
 import {
@@ -139,6 +140,12 @@ export function discoveryPlan(input, scheduled = false) {
           ...(input.kind !== 'ingredients' ? { requireSales: true } : {}),
         }),
   };
+  if (input.healthCoverageVersion) {
+    if (input.healthCoverageVersion !== HEALTH_COVERAGE_VERSION || !supportsHealthCoverage(plan) ||
+      input.healthProductPolicy !== HEALTH_PRODUCT_POLICY) throw Error('保健品类目版本或筛选规则无效');
+    Object.assign(plan, { healthCoverageVersion: HEALTH_COVERAGE_VERSION, healthProductPolicy: HEALTH_PRODUCT_POLICY,
+      supplementOnly: true, categories: {} });
+  }
   if (scheduled) {
     const frequency =
       input.frequency || 'daily';

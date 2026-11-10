@@ -69,12 +69,9 @@ test('US discovery categories, daily watch controls and honest trend display on 
     await dateButton.click();
     await page.getByText('未取得TikTok可靠上架日期，曝光日期不等于实际上架日期。',{exact:true}).waitFor();
     await dateButton.click();
-    await page
-      .getByRole('button', { name: '获取Sorftime类目' })
-      .first()
-      .click();
-    await page.locator('#source-category-amazon').click();
-    await page.getByText('Synthetic Vitamins · 123', { exact: true }).click();
+    await page.getByText(/Amazon 206个、TikTok 4个基础类目/).waitFor();
+    assert.equal(await page.getByRole('button', {name:'获取Sorftime类目'}).count(), 0);
+    assert.match(await page.locator('.discovery-form').innerText(), /代餐粉、冲调型奶昔粉、蛋白营养粉保留/);
     await page
       .getByRole('button', { name: '保存监控', exact: true })
       .first()
@@ -91,7 +88,9 @@ test('US discovery categories, daily watch controls and honest trend display on 
     assert.equal(saved.time, '00:00');
     assert.equal(saved.completeDays, true);
     assert.deepEqual(saved.channels, ['amazon', 'tiktok']);
-    assert.equal(saved.categories.amazon[0].id, '123');
+    assert.deepEqual(saved.categories, {});
+    assert.equal(saved.healthCoverageVersion, 'us-health-20261110-v1');
+    assert.equal(saved.healthProductPolicy, 'oral-topical-nutrition-powder-v1');
     async function choose(id,label){await page.locator(id).focus();await page.locator(id).press('ArrowDown');await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByText(label,{exact:true}).click();}
     await choose('#discovery-days','近30天');
     await choose('#discovery-frequency','每周');
