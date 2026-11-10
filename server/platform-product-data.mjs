@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { mergeResourceHistory } from './product-resource-domain.mjs';
+import { mergeProductRawEvidence } from './product-raw-evidence.mjs';
 import { normalizeAsin, productAsin } from './product-asin.mjs';
 import { productSellerDetails, productSellerId, productSellerName, sellerNameKey, sourceSellerId, sourceSellerName } from './product-seller.mjs';
 
@@ -726,6 +727,7 @@ export function mergePlatformProduct(old, patch) {
   merged.sourceEvidence = merged.sourceEvidence.slice(-100);
   merged.newProductClassifications = [...new Map(merged.newProductClassifications.map((v) => [`${v.type}|${v.listingDate}|${v.days}|${v.evidenceUrl || ""}`, v])).values()].slice(-30);
   merged.sourceMetrics = { ...old.sourceMetrics, ...patch.sourceMetrics };
+  merged.resourceRaw = mergeProductRawEvidence(old.resourceRaw, patch.resourceRaw);
   merged.sourceContent = {
     ...old.sourceContent, ...patch.sourceContent,
     attributes: { ...old.sourceContent?.attributes, ...patch.sourceContent?.attributes },
