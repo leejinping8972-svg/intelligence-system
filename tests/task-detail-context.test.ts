@@ -52,6 +52,26 @@ describe('task detail context', () => {
     expect(taskObjectSummary(task)).toBe('历史任务未记录对象信息');
     expect(taskTitle(task)).toBe('平台商品发现与趋势补全');
   });
+  it('uses the category scope in discovery details instead of calling categories generic targets', () => {
+    const task = fixture();
+    task.context = undefined;
+    task.status = 'running';
+    task.overview = {
+      status: 'running', total: 212, processed: 212, succeeded: 212, failed: 0, waiting: 0,
+      remaining: 0, percent: 100, outcome: '商品资料处理中', reason: '', startedAt: '', finishedAt: '', elapsedSeconds: null,
+      healthDiscovery: {
+        categories: { total: 212, processed: 212, succeeded: 212, failed: 0, remaining: 0 },
+        pages: { processed: 212, pending: 1, failed: 0, truncated: 0 },
+        products: { returned: 6, accepted: 1, excluded: 0, review: 1, pending: 4, evidenceSkipped: 0, limitSkipped: 0 },
+        issues: 0, remainingWork: 5, phase: '商品资料处理中',
+      },
+    };
+    const wrapper = mount(TaskDetailPanel, { props: { task } });
+    expect(wrapper.find('.task-progress-summary').text()).toContain('类目首屏 212/212 · 商品资料处理中');
+    expect(wrapper.text()).toContain('商品入库 1 · 排除 0 · 待确认 1 · 待处理 4');
+    expect(wrapper.text()).not.toContain('212 个目标');
+    expect(wrapper.text()).not.toContain('本次采集目标完成');
+  });
   it('expands batch objects and retains the true total', async () => {
     const task = fixture();
     const context = task.context!;

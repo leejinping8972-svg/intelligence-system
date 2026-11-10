@@ -301,7 +301,7 @@ const columns = [
               "
               size="small"
             />
-            <div class="task-result">
+            <div class="task-result" :class="{ 'task-result-discovery': task.overview?.healthDiscovery }">
               {{ taskSummary(task).result }}
             </div>
           </template>
@@ -408,7 +408,7 @@ const columns = [
           "
           size="small"
         />
-        <p class="task-result">{{ taskSummary(task).result }}</p>
+        <p class="task-result" :class="{ 'task-result-discovery': task.overview?.healthDiscovery }">{{ taskSummary(task).result }}</p>
         <div class="task-id">{{ task.cloudJobId || task.id }}</div>
         <div class="task-actions">
           <Button size="small" @click="emit('details', task)">查看详情</Button><Button
@@ -539,6 +539,7 @@ const columns = [
 }
 
 .task-result {
+  white-space: pre-line;
   display: -webkit-box;
   margin-top: 6px;
   overflow: hidden;
@@ -546,6 +547,12 @@ const columns = [
   font-size: 12px;
   color: #64748b;
   -webkit-box-orient: vertical;
+}
+
+.task-result-discovery {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
 }
 
 .task-actions {

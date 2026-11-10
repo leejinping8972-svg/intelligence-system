@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { checkpointFailureCount, checkpointStopReason } from './task-stop-reason.mjs';
+import { healthDiscoveryProgress } from './health-discovery-progress.mjs';
 const resourceKey = (w) =>
   createHash('sha256')
     .update(
@@ -28,12 +29,16 @@ export function taskOverview(job, task) {
   const c = task.researchProgress || task.collectionProgress;
   const p = task.progress;
   const state = job.cancelled ? 'cancelled' : job.status;
+  const healthDiscovery = healthDiscoveryProgress(job);
   let failed = checkpointFailureCount(cp.failures);
   let processed = count(c?.done);
   let succeeded = null;
   let total = count(c?.total);
   let waiting = count(c?.waiting);
-  if (input.kind === 'product_watch') {
+  if (healthDiscovery) {
+    ({ total, processed, succeeded, failed } = healthDiscovery.categories);
+    waiting = 0;
+  } else if (input.kind === 'product_watch') {
     total = cp.total || 0; processed = cp.index || 0; succeeded = cp.succeeded || 0; failed = cp.failures?.length || 0; waiting = 0;
   } else if (cp.personaProgress) {
     ({ total, processed, succeeded, failed } = cp.personaProgress);
@@ -121,11 +126,12 @@ export function taskOverview(job, task) {
   reason = reasons[reason] || reason;
   if (input.kind === 'persona_research' && state === 'completed') reason = '';
   const percent = total
-    ? Math.min(100, Math.round((processed / total) * 100))
+    ? Math.min(healthDiscovery && processed < total ? 99 : 100, Math.round((processed / total) * 100))
     : null;
   const elapsedStart = Date.parse(cp.startedAt || p?.startedAt || '');
   const elapsedEnd = Date.parse(cp.finishedAt || p?.finishedAt || '');
   return {
+    ...(healthDiscovery ? { healthDiscovery } : {}),
     status: state,
     total,
     processed: Math.min(total, processed),
@@ -143,7 +149,7 @@ export function taskOverview(job, task) {
         : state === 'queued'
           ? '已排队'
           : state === 'running'
-            ? waiting
+            ? healthDiscovery ? healthDiscovery.phase : waiting
               ? '执行中 · 部分等待'
               : '正在执行'
             : ['awaiting_review', 'completed'].includes(state)

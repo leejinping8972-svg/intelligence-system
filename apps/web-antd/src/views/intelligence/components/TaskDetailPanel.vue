@@ -24,7 +24,9 @@ const warning = computed(() => props.task.overview?.reason || (
   (props.task.researchProgress?.unknownCharges || props.task.collectionProgress?.unknownCharges)
     ? '来源扣费或请求结果未确认，已有记录保留，请先核实后续操作。' : ''
 ));
-const progressLabel = computed(() => props.task.overview
+const progressLabel = computed(() => props.task.overview?.healthDiscovery
+  ? summary.value.label
+  : props.task.overview
   ? `已处理 ${props.task.overview.processed} / ${props.task.overview.total} 个目标`
   : summary.value.label);
 async function copyId() {
@@ -92,7 +94,7 @@ async function copyId() {
       <template v-else>
         <p class="result-summary">{{ task.overview?.outcome || status?.label || task.status }}</p>
         <p v-if="context?.verificationOnly" class="task-secondary">{{ ['completed', 'awaiting_review'].includes(task.status) ? '本任务未保存可展示的核对回执，请展开执行记录查看。' : '本任务仅核对并保存记录，不更新商品库。' }}</p>
-        <p v-else class="task-secondary">{{ summary.result }}</p>
+        <p v-else class="task-secondary task-result-text">{{ summary.result }}</p>
       </template>
       <div class="task-progress-summary"><span>{{ progressLabel }}</span><span v-if="task.overview?.elapsedSeconds !== null && task.overview?.elapsedSeconds !== undefined">耗时 {{ task.overview.elapsedSeconds }} 秒</span></div>
       <Progress v-if="summary.percent !== null" :percent="summary.percent" :stroke-color="summary.color" :status="['partial', 'failed', 'cancelled'].includes(task.status) ? 'exception' : 'normal'" size="small" />
@@ -119,6 +121,7 @@ async function copyId() {
 
 <style scoped>
 .task-detail { color: var(--hci-ink, #25323b); font-size: 14px; line-height: 1.65; }
+.task-result-text { white-space: pre-line; }
 .task-detail h1, .task-detail h2, .task-detail h3, .task-detail p { margin: 0; }
 .task-detail-heading { padding: 2px 0 26px; }
 .task-detail-title-row { display: flex; gap: 16px; align-items: center; justify-content: space-between; }

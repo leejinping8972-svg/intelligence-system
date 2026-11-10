@@ -46,6 +46,7 @@ export function expandTaskStatusFilters(statuses: string[]) {
 
 export function partialTaskCanContinue(task: Task) {
   if (task.status !== 'partial' || task.readOnly || task.canContinue === false) return false;
+  if (task.overview?.healthDiscovery) return task.overview.healthDiscovery.remainingWork > 0;
   if ((task.overview?.remaining ?? 0) > 0) return true;
   const collection = task.researchProgress || task.collectionProgress;
   if (
@@ -108,6 +109,28 @@ export function taskSummary(task: Task): {
     if (['cancelled', 'failed', 'partial'].includes(o.status))
       color = '#c48532';
     else if (o.status === 'running') color = '#1677ff';
+    if (o.healthDiscovery) {
+      const { categories: c, products: p, pages, issues } = o.healthDiscovery;
+      return {
+        percent: o.percent,
+        label: `类目首屏 ${c.processed}/${c.total} · ${o.outcome}`,
+        result: [
+          `查询成功 ${c.succeeded} · 失败 ${c.failed} · 待查 ${c.remaining}`,
+          `商品入库 ${p.accepted} · 排除 ${p.excluded} · 待确认 ${p.review} · 待处理 ${p.pending}`,
+          `来源返回 ${p.returned} 条（含重复） · 已取 ${pages.processed} 页 · 待翻页 ${pages.pending}`,
+          [
+            pages.failed ? `来源异常 ${pages.failed} 个类目` : '',
+            pages.truncated ? `翻页未完整 ${pages.truncated} 个类目` : '',
+            issues ? `执行异常 ${issues} 条（详见记录）` : '',
+            p.evidenceSkipped ? `日期/销量等证据不符 ${p.evidenceSkipped} 条` : '',
+            p.limitSkipped ? `数量上限跳过 ${p.limitSkipped} 条` : '',
+          ].filter(Boolean).join(' · '),
+          o.reason,
+          '进度条仅表示类目首屏查询进度，分页与商品处理结果另列。',
+        ].filter(Boolean).join('\n'),
+        color,
+      };
+    }
     const succeeded = o.succeeded === null ? '' : `采集成功 ${o.succeeded} · `;
     return {
       percent: o.percent,
