@@ -1,42 +1,40 @@
 {
-  "title": "来源站点关键词回退与来源域名筛选",
+  "title": "Google Trends Cookie与限流队列修复",
   "files": [
-    "apps/web-antd/src/views/intelligence/components/SiteDrawer.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "server/SITE-SOURCE-KEYWORDS.md",
-    "server/market-jobs.mjs",
-    "server/site-keyword-provenance.d.mts",
-    "server/site-keyword-provenance.mjs",
-    "server/site-source-keywords.mjs",
-    "server/site-source-keywords.test.mjs",
-    "server/store.mjs",
-    "server/workspace-reads.mjs"
+    "server/GOOGLE-TRENDS-COOLDOWN.md",
+    "server/trend-provider.mjs",
+    "server/trend-queue.mjs",
+    "server/trend-queue.test.mjs",
+    "workers/site-discovery/google-trends.test.mjs",
+    "workers/site-discovery/package.json",
+    "workers/site-discovery/source-scheduler.test.mjs",
+    "workers/site-discovery/src/index.js",
+    "workers/site-discovery/src/source-scheduler.js"
   ],
   "featureShas": [
-    "771ccf37a9290a54aa7bf73b4756ca308dca9423"
+    "30fa991b5671d4d01f9fb969bd0fa00897d6c096"
   ],
-  "sourceSha": "771ccf37a9290a54aa7bf73b4756ca308dca9423",
+  "sourceSha": "e992078a2d4fb6f607eb4bff57e08eaf94f13843",
   "changes": [
-    "无具体检索词时复用同市场来源站点已保存关键词，保存来源标记与双向关联，仅继承一层",
-    "列表和详情来源域名可点击精确筛选站点，并支持清除筛选",
-    "首次启动补齐历史来源关联；保留原始证据和人工关联，无额外采集请求"
+    "Cookie页面200/429均复用Cookie，页面429不再冻结数据接口；明确服务级限制仍遵守",
+    "趋势数据429按Retry-After或5/15/30/60秒冷却，成功重置；附加接口429保留曲线",
+    "网络超时从实际发送开始，日志区分阶段、排队和超时"
   ],
   "database": {
-    "schemaChange": false,
-    "migration": true,
-    "startupDataRepair": true,
+    "startupDataRepair": false,
     "readModelVersionChange": false,
+    "backup": "skipped-by-user-policy-no-schema-change",
+    "schemaChange": false,
     "consistency": "skipped-by-user",
-    "backup": "encrypted-affected-source-snapshot"
+    "migration": false
   },
   "validation": {
-    "development": "8 related server tests, Web typecheck, independent dev build, targeted module lint and real component browser interactions passed; browser errors 0",
-    "limitations": "No production account visual acceptance, standalone MySQL verification, repository-wide lint or commit hooks",
-    "release": "Repeat tests, validation build, CI waiting and database reconciliation skipped by user policy"
+    "limitations": "Full lint has existing rule errors; no frontend changes or repeated Web typecheck; commit hooks skipped; live probes did not write business results",
+    "release": "Repeated validation, CI waiting and database reconciliation skipped by user policy",
+    "development": "68 Node tests passed; independent collector/model build, Node syntax and diff checks, new-test/provider lint passed; live isolated candidate from production container fetched all 6 curves for 3 words, 52 weekly and 92 daily points each with calculated growth"
   },
-  "id": "20261110014056-1409e34f",
-  "builtAt": "2026-11-10T01:40:56.288Z",
-  "sourceDigest": "1409e34ffe66c655cae818a035b1a7f7338f78fe102a3b10c802105503bbe762",
+  "id": "20261110021533-cf472bf2",
+  "builtAt": "2026-11-10T02:15:33.619Z",
+  "sourceDigest": "cf472bf2aa71ed9e49e0fe1c7a4db998ab09b6f62e67624f60b651bda3ce18c3",
   "operator": "Codex"
 }
