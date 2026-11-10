@@ -1,40 +1,49 @@
 {
-  "title": "Google Trends Cookie与限流队列修复",
+  "title": "商品卖家展示、ASIN跳转与趋势节点数值提示",
   "files": [
-    "server/GOOGLE-TRENDS-COOLDOWN.md",
-    "server/trend-provider.mjs",
-    "server/trend-queue.mjs",
-    "server/trend-queue.test.mjs",
-    "workers/site-discovery/google-trends.test.mjs",
-    "workers/site-discovery/package.json",
-    "workers/site-discovery/source-scheduler.test.mjs",
-    "workers/site-discovery/src/index.js",
-    "workers/site-discovery/src/source-scheduler.js"
+    "apps/web-antd/src/views/intelligence/__tests__/product-merchant-chart.test.ts",
+    "apps/web-antd/src/views/intelligence/components/ProductAsin.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductMerchant.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductWatchChart.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductWatchHistory.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "server/PRODUCT-SELLER-ASIN.md",
+    "server/official-new-releases.mjs",
+    "server/platform-product-data.mjs",
+    "server/product-asin.d.mts",
+    "server/product-asin.mjs",
+    "server/product-asin.test.mjs",
+    "server/product-seller.d.mts",
+    "server/product-seller.mjs",
+    "server/product-seller.test.mjs",
+    "server/workspace-reads.mjs"
   ],
   "featureShas": [
-    "30fa991b5671d4d01f9fb969bd0fa00897d6c096"
+    "6bedca3c89e3fafeae09b1cc3449150e782212d4"
   ],
-  "sourceSha": "e992078a2d4fb6f607eb4bff57e08eaf94f13843",
+  "sourceSha": "e7569eb83900e7d52229adcdb03d851e5d43f105",
   "changes": [
-    "Cookie页面200/429均复用Cookie，页面429不再冻结数据接口；明确服务级限制仍遵守",
-    "趋势数据429按Retry-After或5/15/30/60秒冷却，成功重置；附加接口429保留曲线",
-    "网络超时从实际发送开始，日志区分阶段、排队和超时"
+    "列表卡片、表格和详情按卖家/品牌分行展示；来源详情采集保存销售方，旧资料按页只读复用，无额外补采",
+    "ASIN在新标签页跳转对应Amazon来源站点，保留来源市场与研究市场区别",
+    "持续观察节点悬停、聚焦显示日期/指标/数值，价格含币种，保留零值及缺失口径"
   ],
   "database": {
+    "schemaChange": false,
+    "migration": false,
     "startupDataRepair": false,
     "readModelVersionChange": false,
     "backup": "skipped-by-user-policy-no-schema-change",
-    "schemaChange": false,
-    "consistency": "skipped-by-user",
-    "migration": false
+    "consistency": "skipped-by-user"
   },
   "validation": {
-    "limitations": "Full lint has existing rule errors; no frontend changes or repeated Web typecheck; commit hooks skipped; live probes did not write business results",
+    "development": "Related server 57/57, existing read-model regression 5/5, frontend 4/4 passed; full Web typecheck, independent developer build, local lint and diff checks passed; synthetic browser component checks passed",
     "release": "Repeated validation, CI waiting and database reconciliation skipped by user policy",
-    "development": "68 Node tests passed; independent collector/model build, Node syntax and diff checks, new-test/provider lint passed; live isolated candidate from production container fetched all 6 curves for 3 words, 52 weekly and 92 daily points each with calculated growth"
+    "limitations": "Two official-new-release runner tests also failed on unchanged baseline; no production account visual acceptance, independent MySQL, full lint or development commit hooks"
   },
-  "id": "20261110021533-cf472bf2",
-  "builtAt": "2026-11-10T02:15:33.619Z",
-  "sourceDigest": "cf472bf2aa71ed9e49e0fe1c7a4db998ab09b6f62e67624f60b651bda3ce18c3",
+  "id": "20261110030017-13632963",
+  "builtAt": "2026-11-10T03:00:17.698Z",
+  "sourceDigest": "13632963d14ebff01ad050a1b605e9c72cd210be85deee6dddb007ecf02011d5",
   "operator": "Codex"
 }
