@@ -5,6 +5,7 @@ import {
   officialHosts,
 } from './official-new-release-domain.mjs';
 import { scheduleSource } from './source-scheduler.mjs';
+import { normalizeSellerId } from './product-seller.mjs';
 
 const clean = (value) =>
   String(value || '')
@@ -272,6 +273,13 @@ export function parseOfficialDetail(html, request) {
     p.sellerName = sold;
     p.collectionFields = [...new Set([...(p.collectionFields || []), 'sellerName'])];
   }
+  try {
+    const sellerUrl = new URL($('#sellerProfileTriggerId').attr('href'), p.sourceUrl);
+    if (sellerUrl.origin === new URL(p.sourceUrl).origin && sellerUrl.pathname === '/sp') {
+      const sellerId = normalizeSellerId(sellerUrl.searchParams.get('seller'));
+      if (sellerId) p.sellerId = sellerId;
+    }
+  } catch { /* The page may omit the seller profile link. */ }
   // A seller name alone is insufficient: a third-party seller can use FBA.
   const fulfillment = ships
     ? /^amazon(?:\.com(?:\.mx)?)?$/i.test(ships)

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { mergePlatformProduct } from './platform-product-data.mjs';
 import { intakeSourceWork } from './product-intake-sorftime.mjs';
 import { sourceFieldSample } from './source-field-domain.mjs';
+import { needsSellerDetails } from './amazon-seller-details.mjs';
+import { productSellerId, productSellerName } from './product-seller.mjs';
 
 const digest = (value) =>
   createHash('sha256').update(value).digest('hex').slice(0, 24);
@@ -52,6 +54,22 @@ export async function prepareProductIntake(job, original, io, options = {}) {
           );
       } catch (error) {
         errors.push(`${work.op}：${String(error.message).slice(0, 350)}`);
+      }
+    }
+    if (needsSellerDetails(product)) {
+      for (const op of [...(productSellerId(product) ? [] : ['seller_identity']), 'seller_detail']) {
+        if (await io.isCancelled?.()) break;
+        try {
+          const identity = digest(`${product.sourceMarket || product.market}|${productSellerName(product)}|${productSellerId(product)}`);
+          const result = await request(`${key}:${op}:${identity}`, {
+            sources: ['product_intake_source'], provider: 'sorftime',
+            sorftimeRequestLimit: 1, op, product,
+          });
+          if (result.patch) product = mergePlatformProduct(product, { ...result.patch, id: product.id });
+        } catch (error) {
+          errors.push(`卖家资料：${String(error.message).slice(0, 350)}`);
+          break;
+        }
       }
     }
   }
