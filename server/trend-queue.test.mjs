@@ -183,16 +183,27 @@ function harness(terms = ['a', 'b']) {
     },
   };
 }
-test('Retry-After is a minimum; jitter never causes an early request', () => {
+test('429 honors Retry-After or uses the short capped schedule', () => {
   assert.equal(
     retryDelay(1, 600, () => 0),
     600_000,
   );
   assert.equal(
     retryDelay(2, 0, () => 0),
-    300_000,
+    15_000,
   );
-  assert.ok(retryDelay(1, 600, () => 0.5) > 600_000);
+  assert.equal(
+    retryDelay(1, 600, () => 0.5),
+    600_000,
+  );
+  assert.equal(
+    retryDelay(1, 2, () => 0),
+    2_000,
+  );
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 6].map((n) => retryDelay(n, 0, () => 0)),
+    [5_000, 15_000, 30_000, 60_000, 60_000, 60_000],
+  );
   assert.ok(Number.isFinite(retryDelay(1, Infinity)));
 });
 test('429 queues only the failed step; no request during provider cooldown; other pending work advances first', async () => {
@@ -248,6 +259,50 @@ test('network failure cools the shared lane while later words stay queued', asyn
   }
   assert.equal(h.saved.checkpoint.trendWork[1].daily.status, 'done');
   assert.ok(h.saved.checkpoint.trendWork[0].annual.attempts >= 1);
+});
+
+test('consecutive data limits use short shared cooldowns and a success resets them', async () => {
+  const h = harness(['a', 'b', 'c']);
+  let limits = 0;
+  h.io.collect = async (_j, key, req) => {
+    h.requests.push({ key, req });
+    if (limits++ < 2)
+      return { status: 'error', message: 'HTTP 429', httpStatus: 429 };
+    return {
+      ...h.result(req),
+      diagnostics: [{ stage: 'session', kind: 'response', httpStatus: 429 }],
+    };
+  };
+  await runTrendJob(h.job, h.io);
+  assert.equal(h.gate.until - h.now, 5_000);
+  h.advance();
+  await runTrendJob(h.saved, h.io);
+  assert.equal(h.gate.until - h.now, 15_000);
+  h.advance();
+  await runTrendJob(h.saved, h.io);
+  assert.equal(h.gate.consecutive429, 0);
+  assert.equal(h.gate.reason, 'pacing');
+  assert.match(h.saved.checkpoint.logs.join('\n'), /Cookie页面：HTTP 429/);
+});
+
+test('an optional insight limit retains the curve and still cools subsequent trend requests', async () => {
+  const h = harness(['a']);
+  h.io.collect = async (_j, _key, req) => ({
+    ...h.result(req),
+    diagnostics: [
+      {
+        stage: 'relatedsearches',
+        kind: 'response',
+        httpStatus: 429,
+        retryAfterSeconds: 23,
+      },
+    ],
+  });
+  await runTrendJob(h.job, h.io);
+  assert.equal(h.saved.checkpoint.trendWork[0].annual.status, 'done');
+  assert.equal(h.gate.until - h.now, 23_000);
+  assert.equal(h.gate.reason, 'rate_limit');
+  assert.ok(h.records.get('a').trendPoints.length > 0);
 });
 test('successful annual series is not fetched again after daily retry or process restart', async () => {
   const h = harness(['a']);

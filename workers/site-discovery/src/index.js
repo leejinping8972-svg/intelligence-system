@@ -1269,8 +1269,68 @@ function googleTrendsHeaders(market, cookie = '', attempt = 0) {
   return headers;
 }
 
-async function googleTrendsSession(market) {
-  const response = await scheduledFetch(
+const GOOGLE_TRENDS_NETWORK_TIMEOUT = 15_000;
+const GOOGLE_TRENDS_STAGE_NAMES = {
+  session: 'Cookie页面',
+  explore: '趋势探索接口',
+  multiline: '趋势曲线接口',
+  comparedgeo: '区域热度接口',
+  relatedsearches: '相关查询接口',
+};
+
+async function googleTrendsFetch(url, init, stage, onEvent) {
+  try {
+    const response = await scheduledFetch(url, init, {
+      intervalMs: 0,
+      // Google data rate limits are handled by the durable trend queue.
+      // A Cookie-page 429 must not poison the entire host's next request.
+      rateLimitCooldown: false,
+      timeoutMs: GOOGLE_TRENDS_NETWORK_TIMEOUT,
+      onWait: (waitMs) => onEvent?.({ stage, kind: 'queue_wait', waitMs }),
+    });
+    onEvent?.({
+      stage,
+      kind: 'response',
+      httpStatus: response.status,
+      ...(response.status === 429
+        ? {
+            retryAfterSeconds: googleTrendsHttpError(response, '')
+              .retryAfterSeconds,
+          }
+        : {}),
+    });
+    return response;
+  } catch (error) {
+    const timeout = error.name === 'TimeoutError';
+    const failure = new Error(
+      `Google Trends${GOOGLE_TRENDS_STAGE_NAMES[stage]}：${timeout ? '网络超时（15秒）' : error.message}`,
+    );
+    failure.name = error.name;
+    failure.stage = stage;
+    onEvent?.({ stage, kind: timeout ? 'network_timeout' : 'network_error' });
+    throw failure;
+  }
+}
+
+async function readGoogleTrendsPayload(response, stage, onEvent) {
+  try {
+    return parseGoogleTrendsPayload(await response.text());
+  } catch (error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      onEvent?.({ stage, kind: 'network_timeout' });
+      throw Object.assign(
+        new Error(
+          `Google Trends${GOOGLE_TRENDS_STAGE_NAMES[stage]}：读取响应网络超时（15秒）`,
+        ),
+        { stage },
+      );
+    }
+    throw error;
+  }
+}
+
+async function googleTrendsSession(market, onEvent) {
+  const response = await googleTrendsFetch(
     `https://trends.google.com/trends/explore?geo=${market}`,
     {
       headers: {
@@ -1279,25 +1339,48 @@ async function googleTrendsSession(market) {
         'user-agent': GOOGLE_TRENDS_USER_AGENTS[0],
       },
       redirect: 'follow',
-      signal: AbortSignal.timeout(15_000),
     },
+    'session',
+    onEvent,
   );
-  return googleCookieHeader(response.headers.get('set-cookie'));
+  const scope =
+    response.headers.get('ratelimit-scope') ||
+    response.headers.get('x-ratelimit-scope') ||
+    '';
+  if (
+    response.status === 429 &&
+    /^(global|service|account)$/i.test(scope.trim())
+  ) {
+    const error = googleTrendsHttpError(response, 'Cookie页面（服务级限流）');
+    error.stage = 'session';
+    error.serviceLimited = true;
+    await response.body?.cancel();
+    throw error;
+  }
+  // Cookies can be usable even on a rate-limited HTML response.
+  const cookie = googleCookieHeader(response.headers.get('set-cookie'));
+  await response.body?.cancel();
+  return cookie;
 }
 
-async function fetchGoogleTrendsEndpoint(url, market, cookie) {
+async function fetchGoogleTrendsEndpoint(url, market, cookie, stage, onEvent) {
   let lastStatus = 0;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const response = await scheduledFetch(url, {
-      headers: googleTrendsHeaders(market, cookie, attempt),
-      redirect: 'follow',
-      signal: AbortSignal.timeout(15_000),
-    });
+    const response = await googleTrendsFetch(
+      url,
+      {
+        headers: googleTrendsHeaders(market, cookie, attempt),
+        redirect: 'follow',
+      },
+      stage,
+      onEvent,
+    );
     if (response.ok) return response;
     lastStatus = response.status;
     // Do not hammer a throttled provider. The durable server queue handles cooldowns.
     if (response.status === 429) return response;
     if (response.status !== 429 && response.status < 500) return response;
+    await response.body?.cancel();
     await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
   }
   return new Response('', { status: lastStatus || 503 });
@@ -1380,7 +1463,13 @@ export function parseGoogleTrendRelated(payload) {
   };
 }
 
-async function fetchGoogleTrendsWidget(widget, endpoint, market, cookie) {
+async function fetchGoogleTrendsWidget(
+  widget,
+  endpoint,
+  market,
+  cookie,
+  onEvent,
+) {
   if (!widget?.token || !widget?.request) return null;
   const url = new URL(
     `https://trends.google.com/trends/api/widgetdata/${endpoint}`,
@@ -1389,9 +1478,15 @@ async function fetchGoogleTrendsWidget(widget, endpoint, market, cookie) {
   url.searchParams.set('tz', '0');
   url.searchParams.set('req', JSON.stringify(widget.request));
   url.searchParams.set('token', widget.token);
-  const response = await fetchGoogleTrendsEndpoint(url, market, cookie);
+  const response = await fetchGoogleTrendsEndpoint(
+    url,
+    market,
+    cookie,
+    endpoint,
+    onEvent,
+  );
   if (!response.ok) throw googleTrendsHttpError(response, endpoint);
-  return parseGoogleTrendsPayload(await response.text());
+  return readGoogleTrendsPayload(response, endpoint, onEvent);
 }
 
 export async function fetchGoogleTrendsBatch(
@@ -1400,14 +1495,24 @@ export async function fetchGoogleTrendsBatch(
   period = 'today 12-m',
   options = {},
 ) {
-  const cookie = await googleTrendsSession(market).catch(() => '');
+  const onEvent = options.onEvent;
+  const cookie = await googleTrendsSession(market, onEvent).catch((error) => {
+    if (error.serviceLimited) throw error;
+    return '';
+  });
   const exploreResponse = await fetchGoogleTrendsEndpoint(
     googleTrendsExploreUrl(keywords, market, period),
     market,
     cookie,
+    'explore',
+    onEvent,
   );
   if (!exploreResponse.ok) throw googleTrendsHttpError(exploreResponse, '探索');
-  const explore = parseGoogleTrendsPayload(await exploreResponse.text());
+  const explore = await readGoogleTrendsPayload(
+    exploreResponse,
+    'explore',
+    onEvent,
+  );
   const widget = (explore.widgets || []).find(
     (item) => item.id === 'TIMESERIES',
   );
@@ -1425,10 +1530,16 @@ export async function fetchGoogleTrendsBatch(
     timelineUrl,
     market,
     cookie,
+    'multiline',
+    onEvent,
   );
   if (!timelineResponse.ok)
     throw googleTrendsHttpError(timelineResponse, '时间序列');
-  const timeline = parseGoogleTrendsPayload(await timelineResponse.text());
+  const timeline = await readGoogleTrendsPayload(
+    timelineResponse,
+    'multiline',
+    onEvent,
+  );
   const timelineData = timeline.default?.timelineData || [];
   let insights = {
     regions: [],
@@ -1448,8 +1559,20 @@ export async function fetchGoogleTrendsBatch(
       (item) => item.id === 'RELATED_QUERIES',
     );
     const [geoResult, relatedResult] = await Promise.allSettled([
-      fetchGoogleTrendsWidget(geoWidget, 'comparedgeo', market, cookie),
-      fetchGoogleTrendsWidget(relatedWidget, 'relatedsearches', market, cookie),
+      fetchGoogleTrendsWidget(
+        geoWidget,
+        'comparedgeo',
+        market,
+        cookie,
+        onEvent,
+      ),
+      fetchGoogleTrendsWidget(
+        relatedWidget,
+        'relatedsearches',
+        market,
+        cookie,
+        onEvent,
+      ),
     ]);
     const regions =
       geoResult.status === 'fulfilled'
