@@ -1,32 +1,42 @@
 {
-  "title": "机会研究六类页签抓取逻辑说明",
+  "title": "来源站点关键词回退与来源域名筛选",
   "files": [
-    "apps/web-antd/src/views/intelligence/opportunities.vue"
+    "apps/web-antd/src/views/intelligence/components/SiteDrawer.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "server/SITE-SOURCE-KEYWORDS.md",
+    "server/market-jobs.mjs",
+    "server/site-keyword-provenance.d.mts",
+    "server/site-keyword-provenance.mjs",
+    "server/site-source-keywords.mjs",
+    "server/site-source-keywords.test.mjs",
+    "server/store.mjs",
+    "server/workspace-reads.mjs"
   ],
   "featureShas": [
-    "02d234db5ad8a02c02f8fa896a25a7a9ebf97966"
+    "771ccf37a9290a54aa7bf73b4756ca308dca9423"
   ],
-  "sourceSha": "02d234db5ad8a02c02f8fa896a25a7a9ebf97966",
+  "sourceSha": "771ccf37a9290a54aa7bf73b4756ca308dca9423",
   "changes": [
-    "产品概念、热门关键词、成分观察、营销卖点、成长型站点、新发现商品各新增小问号",
-    "说明当前数据来源、字段分组/筛选规则、每日统计快照更新及判断边界",
-    "支持悬停、点击聚焦和键盘查看，问号操作不切换页签"
+    "无具体检索词时复用同市场来源站点已保存关键词，保存来源标记与双向关联，仅继承一层",
+    "列表和详情来源域名可点击精确筛选站点，并支持清除筛选",
+    "首次启动补齐历史来源关联；保留原始证据和人工关联，无额外采集请求"
   ],
   "database": {
     "schemaChange": false,
-    "migration": false,
-    "startupDataRepair": false,
+    "migration": true,
+    "startupDataRepair": true,
     "readModelVersionChange": false,
     "consistency": "skipped-by-user",
-    "backup": "skipped-by-user-policy-no-schema-change"
+    "backup": "encrypted-affected-source-snapshot"
   },
   "validation": {
-    "development": "Web typecheck and independent development build passed; real component browser verified six help entries, tab behavior, keyboard focus, zero script errors; git diff check passed",
-    "limitations": "No production account visual acceptance, repository-wide lint or commit hooks; no redundant implementation-mirroring unit tests added",
+    "development": "8 related server tests, Web typecheck, independent dev build, targeted module lint and real component browser interactions passed; browser errors 0",
+    "limitations": "No production account visual acceptance, standalone MySQL verification, repository-wide lint or commit hooks",
     "release": "Repeat tests, validation build, CI waiting and database reconciliation skipped by user policy"
   },
-  "id": "20261109101453-28325c0f",
-  "builtAt": "2026-11-09T10:14:53.953Z",
-  "sourceDigest": "28325c0f493975a29c83b6270a561b3c1f4bdb3bf2a9798c549e42e70696bd34",
+  "id": "20261110014056-1409e34f",
+  "builtAt": "2026-11-10T01:40:56.288Z",
+  "sourceDigest": "1409e34ffe66c655cae818a035b1a7f7338f78fe102a3b10c802105503bbe762",
   "operator": "Codex"
 }
