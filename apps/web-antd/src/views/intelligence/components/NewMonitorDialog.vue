@@ -42,7 +42,7 @@ const discoveryKind = computed(() =>
 const options = [
   { value: 'fbm_new', label: '每日新品 · FBM' },
   { value: 'regular_new', label: '每日新品 · 常规' },
-  { value: 'ingredients', label: '成分研究' },
+  { value: 'ingredients', label: '成分风向' },
   { value: 'site', label: '独立站上新与变化' },
   { value: 'advertiser', label: '广告主素材变化' },
   { value: 'daily', label: '每日关键词商品与广告发现' },

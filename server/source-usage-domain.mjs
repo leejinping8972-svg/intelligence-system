@@ -180,9 +180,9 @@ export function requestSources(step = '', record = {}, allowance = 0) {
   )
     return ['semrush'];
   if (
-    provider === 'tiktok_shop' ||
+    provider === 'tiktok_shop' || provider === 'scrapecreators' ||
     sources.some((s) =>
-      ['ad_transcript', 'ads', 'social_research'].includes(s),
+      ['ad_transcript', 'ads', 'social_research', 'ingredient_trend_source'].includes(s),
     ) ||
     /^(ads?|social|transcript):/.test(step)
   )

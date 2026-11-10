@@ -78,6 +78,7 @@ export function validateIngredientResearch(parsed, records) {
           url: record.url,
           publishedAt: record.publishedAt,
           topic: record.topic,
+          ...(record.sourceId ? {sourceId:record.sourceId,postId:record.postId,author:record.author,community:record.community,type:record.type} : {}),
         },
       ];
     });
@@ -102,7 +103,7 @@ export function validateIngredientResearch(parsed, records) {
 }
 export async function ingredientAnalysisRequest(request, overrides = {}) {
   const response = await configuredJson(
-    INGREDIENT_PROMPT,
+    `${INGREDIENT_PROMPT}${request.focus ? '\n研究关注方向（仍只依据原文）：'+String(request.focus).slice(0,1000) : ''}`,
     request.records.map((r) => ({
       id: r.id,
       title: r.title,

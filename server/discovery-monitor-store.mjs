@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { effectiveDiscoveryPlan, TREND_SOURCE, trendSlots } from './ingredient-trend-domain.mjs';
+import { runIngredientTrend } from './ingredient-trend-runner.mjs';
+import { ingredientTrendSnapshot } from './ingredient-trend-store.mjs';
 import { dailyNewProductPlan } from './product-pool-domain.mjs';
 import { assertResourceCategory } from './product-resource-service.mjs';
 import { isDeepStrictEqual } from 'node:util';
@@ -38,6 +41,8 @@ async function validateCategories(plan, connection) {
 export async function submitDiscovery(input, connection = pool) {
   const plan = discoveryPlan(input.plan || input);
   const requestId = input.requestId;
+  const trendOperation = plan.sourceMode === TREND_SOURCE ? input.trendOperation || 'collect' : undefined;
+  if (trendOperation && !['collect', 'analyze'].includes(trendOperation)) throw new Error('请选择采集或周分析');
   if (!/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(requestId || ''))
     throw new Error('提交编号无效');
   const old = (
@@ -48,10 +53,21 @@ export async function submitDiscovery(input, connection = pool) {
   if (old) {
     if (
       !isDeepStrictEqual(old.input.plan, plan) ||
-      (old.input.monitorId || '') !== (input.monitorId || '')
+      (old.input.monitorId || '') !== (input.monitorId || '') ||
+      (old.input.trendOperation || 'collect') !== (trendOperation || 'collect')
     )
       throw new Error('此编号已用于不同任务');
     return old;
+  }
+  if (plan.sourceMode === TREND_SOURCE) {
+    const active = (await connection.query("SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false")).rows;
+    const matching = active.find(row => row.input.kind === 'discovery_monitor' && row.input.plan?.sourceMode === TREND_SOURCE &&
+      (row.input.monitorId || '') === (input.monitorId || '') && (row.input.trendOperation || 'collect') === trendOperation &&
+      (input.monitorId || isDeepStrictEqual(row.input.plan, plan)));
+    if (matching) {
+      if (!isDeepStrictEqual(matching.input.plan, plan)) throw new Error('该监控仍有同类任务运行，请等待完成或取消后再按新条件执行');
+      return matching;
+    }
   }
   await validateCategories(plan, connection);
   const id = randomUUID();
@@ -62,6 +78,7 @@ export async function submitDiscovery(input, connection = pool) {
     markets: [plan.market],
     seeds: [],
     monitorId: input.monitorId || '',
+    ...(trendOperation ? {trendOperation} : {}),
   };
   await connection.query(
     'INSERT INTO research_jobs(id,request_id,input,checkpoint) VALUES($1,$2,$3,$4)',
@@ -71,7 +88,7 @@ export async function submitDiscovery(input, connection = pool) {
       value,
       {
         submittedAt: new Date().toISOString(),
-        ...(plan.completeDays ? { asOf: input.asOf || Date.now() } : {}),
+        ...(plan.completeDays || plan.sourceMode === TREND_SOURCE ? { asOf: input.asOf || Date.now() } : {}),
         logs: [],
         calls: 0,
         products: 0,
@@ -85,9 +102,15 @@ export async function submitDiscovery(input, connection = pool) {
 export async function discoveryAction(input, user) {
   if (input.action === 'server_discovery_snapshot')
     return {
-      plans: (await list('discovery:monitor:')).map(dailyNewProductPlan),
+      plans: (await list('discovery:monitor:')).map(dailyNewProductPlan).map(effectiveDiscoveryPlan),
       ingredients: await list('discovery:ingredient:'),
     };
+  if (input.action === 'server_discovery_capabilities' && input.kind === 'ingredients')
+    return {channels: [], social: [{id:'reddit',supported:true,details:true}],provider:'scrapecreators'};
+  if (input.action === 'server_discovery_trend_snapshot') {
+    if (!['US','MX','VN'].includes(input.market)) throw new Error('请选择研究市场');
+    return ingredientTrendSnapshot({pool,read,putDocument},input.market);
+  }
   if (input.action === 'server_discovery_capabilities')
     return discoverySorftime({ op: 'catalogue' });
   requireAdmin(user);
@@ -181,7 +204,26 @@ export async function tickDiscoveryMonitors(now = Date.now()) {
     held = await lock(c, 'monitor-config');
     if (!held) return;
     for (const savedPlan of await list('discovery:monitor:', c)) {
-      const plan = dailyNewProductPlan(savedPlan);
+      let plan;
+      try {plan = effectiveDiscoveryPlan(dailyNewProductPlan(savedPlan));}
+      catch(error){
+        await putDocument('workspace_documents',`discovery:monitor:${savedPlan.id}`,{...savedPlan,lastScheduleError:String(error.message).slice(0,500)},false,c);
+        continue;
+      }
+      if (plan.kind === 'ingredients') {
+        for (const {operation, slot} of trendSlots(plan, now)) {
+          const requestId = stableId(`ingredient-trend:${plan.id}:${operation}:${slot}`);
+          if ((await c.query('SELECT id FROM research_jobs WHERE request_id=$1',[requestId])).rows.length) continue;
+          // One active task of each kind per monitor; a long backfill cannot spawn daily duplicates.
+          const active = (await c.query("SELECT input FROM research_jobs WHERE status IN ('queued','running')")).rows;
+          if (active.some(r=>r.input.kind==='discovery_monitor' && r.input.monitorId===plan.id && (r.input.trendOperation||'collect')===operation)) continue;
+          const job = await submitDiscovery({requestId,plan,monitorId:plan.id,asOf:now,trendOperation:operation},c);
+          plan[operation==='collect'?'lastCollectionJobId':'lastAnalysisJobId']=job.id;
+          plan.lastJobId=job.id;plan.lastScheduledAt=new Date(now).toISOString();
+          await putDocument('workspace_documents',`discovery:monitor:${plan.id}`,plan,false,c);
+        }
+        continue;
+      }
       const slot = scheduleSlot(plan, now);
       if (!slot) continue;
       if (plan.lastScheduleErrorSlot === slot) continue;
@@ -245,6 +287,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     ...overrides,
   };
   const plan = job.input.plan;
+  if (plan.sourceMode === TREND_SOURCE) return runIngredientTrend(job, io);
   if (plan.sourceMode === 'official_new_releases')
     return runOfficialNewReleases(job, io);
   const cp = {

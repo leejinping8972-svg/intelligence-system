@@ -65,7 +65,7 @@ defineExpose({ refresh: load });
 </script>
 <template>
   <div class="hci-toolbar">
-    <h3>新品与成分研究</h3>
+    <h3>新品与成分风向</h3>
     <Button :loading="busy" @click="load">刷新</Button>
   </div>
   <Alert v-if="error" type="error" :message="error" show-icon />
@@ -86,7 +86,7 @@ defineExpose({ refresh: load });
     ]"
   >
     <template #emptyText
-      ><Empty description="暂无新品或成分研究监控"
+      ><Empty description="暂无新品或成分风向监控"
     /></template>
     <template #bodyCell="{ column, record }">
       <template v-if="column.key === 'kind'">{{
@@ -97,7 +97,7 @@ defineExpose({ refresh: load });
         <p class="hci-subtle">
           {{
             record.kind === 'ingredients'
-              ? `近${record.days}天讨论`
+              ? (record.communities || []).map((c: string) => `r/${c}`).join(' / ')
               : record.sourceMode === 'official_new_releases'
                 ? '官方新品榜'
                 : `前${record.days}个完整自然日上架 · 有销量`
@@ -119,6 +119,7 @@ defineExpose({ refresh: load });
               : `每月${record.monthDay}日`
         }}
         {{ record.time }}
+        <p v-if="record.kind === 'ingredients'" class="hci-subtle">{{ ['周日','周一','周二','周三','周四','周五','周六'][record.analysisWeekday ?? 1] }} {{ record.analysisTime || '10:00' }} 分析累计讨论</p>
         <p class="hci-subtle">北京时间</p></template
       >
       <template v-else-if="column.key === 'enabled'"

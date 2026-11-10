@@ -156,7 +156,7 @@ test('product monitors do not require or persist a topic; categories remain the 
       channels: ['reddit'],
       topics: 'urolithin A',
     }).topics,
-    ['urolithin A'],
+    [], // Community ingestion is not restricted to known ingredient keywords.
   );
 });
 test('verified Sorftime parameter names: Amazon launch range and string shipping_type FBM', async () => {

@@ -875,6 +875,7 @@ const server = createServer(async (request, response) => {
               'server_core_rates',
               'server_discovery_capabilities',
               'server_discovery_snapshot',
+              'server_discovery_trend_snapshot',
               'server_product_watch_config',
               'server_product_watch_history',
               'server_keyword_views_delete',

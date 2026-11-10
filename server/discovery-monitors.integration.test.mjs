@@ -452,12 +452,12 @@ test('discovery SQL workflow: schedules, source evidence, cancellation and paid 
           (await read(`discovery:monitor:${plan.id}`)).lastJobId,
           job.id,
         );
-        assert.equal((await read(`discovery:monitor:${plan.id}`)).maxPages, 3);
+        assert.equal((await read(`discovery:monitor:${plan.id}`)).maxPages, 20);
         const next = await discoveryAction(
           { ...input, requestId: randomUUID() },
           admin,
         );
-        assert.notEqual(next.jobId, first.jobId);
+        assert.equal(next.jobId, first.jobId); // Same active ingredient run is reused across tabs/request IDs.
       },
     );
     await t.test(
