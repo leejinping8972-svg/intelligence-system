@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { adjacentTrendPeriods } from '../product-trend-period';
 
 const props = defineProps<{
   points: { date: string; value: number | null; partial?: boolean }[];
   metricLabel: string;
+  period?: 'day' | 'month';
 }>();
 const activeIndex = ref<number | null>(null);
 const chart = computed(() => {
@@ -33,7 +35,7 @@ const tooltip = computed(() =>
   !active.value || active.value.y === null
     ? undefined
     : {
-        x: Math.max(55, Math.min(440, active.value.x - 110)),
+        x: Math.max(55, Math.min(360, active.value.x - 150)),
         y: Math.max(4, active.value.y - 68),
       },
 );
@@ -72,8 +74,11 @@ watch(
           i &&
           point.y !== null &&
           chart.dots[i - 1]?.y !== null &&
-          Date.parse(point.date) - Date.parse(chart.dots[i - 1]!.date) ===
-            86400000
+          adjacentTrendPeriods(
+            chart.dots[i - 1]!.date,
+            point.date,
+            period || 'day',
+          )
         "
         :x1="chart.dots[i - 1]?.x"
         :y1="chart.dots[i - 1]?.y ?? 0"
@@ -115,7 +120,7 @@ watch(
       :transform="`translate(${tooltip.x},${tooltip.y})`"
     >
       <rect
-        width="225"
+        width="300"
         :height="active.partial ? 68 : 50"
         rx="5"
         fill="#17233d"

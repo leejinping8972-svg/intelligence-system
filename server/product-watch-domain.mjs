@@ -1,3 +1,5 @@
+import { sameMonthlyIdentity } from './product-monthly-trends.mjs';
+
 const validNumber = (n) =>
   typeof n === 'number' && Number.isFinite(n) && n >= 0;
 export const watchDefaults = (market = 'US') => ({
@@ -5,12 +7,15 @@ export const watchDefaults = (market = 'US') => ({
   enabled: false,
   time: '01:00',
   frequency: 'daily',
+  monthlyHistory: false,
 });
 export function watchConfig(input) {
   if (!['MX', 'US', 'VN'].includes(input.market))
     throw new Error('请选择监控市场');
   if (
     typeof input.enabled !== 'boolean' ||
+    (input.monthlyHistory !== undefined &&
+      typeof input.monthlyHistory !== 'boolean') ||
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)
   )
     throw new Error('监控时间或开关无效');
@@ -18,6 +23,7 @@ export function watchConfig(input) {
     ...watchDefaults(input.market),
     enabled: input.enabled,
     time: input.time,
+    monthlyHistory: input.monthlyHistory === true,
   };
 }
 export function parseAmazonDaily(value, product, at) {
@@ -107,6 +113,8 @@ export function observation(product, previous, at, day, daily = []) {
   return {
     productId: product.id,
     sourceProductId: product.sourceProductId,
+    sourceVariantId:
+      product.sourceVariantId || product.resourceRaw?.variantId || '',
     platform: product.sourcePlatform,
     market: product.sourceMarket || product.market,
     day,
@@ -129,7 +137,19 @@ export function watchTrends(observations) {
   for (const row of rows)
     for (const point of row.dailySales || [])
       daily.set(point.date, { ...point, collectedAt: row.at });
+  const latest = rows.at(-1);
+  const monthlyTrends =
+    latest?.monthlyTrends &&
+    sameMonthlyIdentity(latest.monthlyTrends, {
+      sourceProductId: latest.sourceProductId,
+      sourceMarket: latest.market,
+      sourcePlatform: latest.platform,
+      sourceVariantId: latest.sourceVariantId,
+    })
+      ? latest.monthlyTrends
+      : undefined;
   return {
+    monthlyTrends,
     dailySales: [...daily.values()].sort((a, b) =>
       a.date.localeCompare(b.date),
     ),
