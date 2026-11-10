@@ -1,33 +1,26 @@
 {
-  "title": "新品完整保健类目、营养粉剂规则及默认历史月销量",
+  "title": "成分风向按社区帖子与每帖评论数量采集",
   "files": [
     "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductWatchHistory.vue",
+    "apps/web-antd/src/views/intelligence/components/IngredientTrendForm.vue",
     "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
-    "server/HEALTH-DISCOVERY.md",
-    "server/discovery-ai.mjs",
-    "server/discovery-monitor-domain.mjs",
+    "server/INGREDIENT-TRENDS.md",
     "server/discovery-monitor-store.mjs",
-    "server/health-category-catalogue.mjs",
-    "server/health-category-domain.mjs",
-    "server/health-discovery-runner.mjs",
-    "server/health-discovery.test.mjs",
-    "server/health-product-domain.mjs",
-    "server/product-intake.mjs",
-    "server/product-pool-domain.mjs",
-    "server/product-pool.browser.test.mjs",
-    "server/runner.mjs",
-    "server/source-field-domain.mjs"
+    "server/ingredient-trend-domain.mjs",
+    "server/ingredient-trend-quantity-comments.mjs",
+    "server/ingredient-trend-quantity.test.mjs",
+    "server/ingredient-trend-runner.mjs",
+    "server/ingredient-trend.browser.test.mjs",
+    "server/ingredient-trend.test.mjs"
   ],
   "featureShas": [
-    "5724ff391cda282147da4a82c2fbe8063dd21231",
-    "6334461ab7390cf8d12e6102b6023eb208f03fc1"
+    "f8391488a890528c826fdcca5fe0bcc3ba1cea07"
   ],
-  "sourceSha": "6f54e2456c9075bddda33d412e079d2abc364444",
+  "sourceSha": "ba9ab71843acb09632f6d0d84c099d0818249929",
   "changes": [
-    "美国新品固定Amazon206、TikTok4基础类目，另2个代餐混合入口只保留粉剂；逐类查询并显示首屏/分页截断进度",
-    "代餐粉、冲调型奶昔粉、蛋白营养粉保留，器具与普通食品排除，证据不足待确认，旧冻结任务不扩增",
-    "持续观察趋势默认展示Sorftime历史月销量，无数据也保留所选指标，不自动切到价格或日销量"
+    "数量设置简化为每社区每次最多帖子数和每帖每次最多评论数（含回复）；默认1000/100，评论可设0关闭",
+    "自动分页、逐社区独立配额、14天帖子轮换回访与付费页余量续采；保留后台请求保护和缺口说明",
+    "周分析分批处理两周窗口全部归档资料，取消2000段截断；旧冻结任务和请求编号保持原范围"
   ],
   "database": {
     "schemaChange": false,
@@ -38,9 +31,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "Coverage feature delivered 48/48 related server tests, 1/1 browser component workflow (desktop/mobile), full Web typecheck, independent development build, local new-module lint and diff checks. Monthly default UI is a small state-only change inspected for initial display, product switch reset, missing data and preserving manual selection.",
-    "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation build and CI waiting skipped by user policy. Official artifacts generated once for the frozen candidate.",
-    "limitations": "Source-visible categories are not a guarantee of official platform exhaustiveness. Dedicated topical categories not fully verified; no new paid product/model live acceptance. Pending products archived without a separate manual review page. Monitoring switch preserves schedules, frozen jobs and request journals; no historic reruns."
+    "development": "27/27 related server tests, 1/1 ingredient browser test, full Web typecheck, independent development build, new domain/comment runner lint and diff checks passed. Paid-page interruption/unique quotas/2105 record analysis covered.",
+    "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation build and CI waiting skipped by user policy. Official frontend/API generated once for this frozen candidate.",
+    "limitations": "No new real source/model calls. Source returns entire pages; unique processed comments may include revisits. Internal request guard can leave partial coverage. Extra pre-existing product pool browser regression remains failing; form legacy catch naming lint remains."
   },
   "queue": {
     "leaseCount": 23,
@@ -48,12 +41,12 @@
     "unknownRequests": "never-auto-replay"
   },
   "configuration": {
-    "switchEnabledUSNewProductPlans": true,
-    "preserveSchedules": true,
+    "futureIngredientPlans": "collectionLimitsVersion=2",
+    "preserveEnabledTimeCommunities": true,
     "manualHistoricReplay": false
   },
-  "id": "20261110043501-aa3b4242",
-  "builtAt": "2026-11-10T04:35:01.270Z",
-  "sourceDigest": "aa3b4242d2c5fa91841aa9853d7dcd07212c8d3e7bdd6d385acae9c4fae80e94",
+  "id": "20261110070250-882fcf89",
+  "builtAt": "2026-11-10T07:02:50.472Z",
+  "sourceDigest": "882fcf8913171a51088ef86cc80e5f8bf53322ec509c0506efa7be5f71a538e3",
   "operator": "Codex"
 }
