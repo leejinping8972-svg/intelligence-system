@@ -6,6 +6,19 @@ import { serverMode } from '../session';
 import ProductWatchChart from './ProductWatchChart.vue';
 const props = defineProps<{ productId: string }>();
 type Point = { date: string; value: number | null; partial?: boolean };
+type MonthlySeries = {
+  empty?: boolean;
+  points?: Point[];
+  currency?: string | null;
+  collectedAt?: string;
+  error?: string;
+  checkedAt?: string;
+  basis?: string;
+};
+type MonthlyTrends = {
+  SalesVolume?: MonthlySeries;
+  SalesAmount?: MonthlySeries;
+};
 type Snapshot = {
   day: string;
   at: string;
@@ -19,6 +32,13 @@ type Snapshot = {
 };
 const snapshots = ref<Snapshot[]>([]);
 const daily = ref<Point[]>([]);
+const monthlyTrends = ref<MonthlyTrends>({});
+const isMonthlyHistory = computed(() => metric.value.startsWith('history:'));
+const selectedHistory = computed(() =>
+  metric.value === 'history:SalesVolume'
+    ? monthlyTrends.value.SalesVolume
+    : monthlyTrends.value.SalesAmount,
+);
 const error = ref('');
 const loading = ref(false);
 const metric = ref('price');
@@ -31,6 +51,11 @@ const currencies = computed(() => [
   ),
 ]);
 const options = computed(() => [
+  { value: 'history:SalesVolume', label: 'Sorftime历史月销量' },
+  {
+    value: 'history:SalesAmount',
+    label: `Sorftime历史月销售额${monthlyTrends.value.SalesAmount?.currency ? `（${monthlyTrends.value.SalesAmount.currency}）` : '（币种未返回）'}`,
+  },
   ...currencies.value.map((c) => ({
     value: `price:${c}`,
     label: `价格（${c}）`,
@@ -39,19 +64,21 @@ const options = computed(() => [
   { value: 'monthly', label: '来源月销量快照' },
 ]);
 const points = computed<Point[]>(() =>
-  metric.value === 'daily'
-    ? daily.value
-    : snapshots.value.map((s) => ({
-        date: s.day,
-        value:
-          s.status !== 'completed'
-            ? null
-            : metric.value === 'monthly'
-              ? s.monthlySales
-              : s.currency === metric.value.split(':')[1]
-                ? s.price
-                : null,
-      })),
+  isMonthlyHistory.value
+    ? selectedHistory.value?.points || []
+    : metric.value === 'daily'
+      ? daily.value
+      : snapshots.value.map((s) => ({
+          date: s.day,
+          value:
+            s.status !== 'completed'
+              ? null
+              : metric.value === 'monthly'
+                ? s.monthlySales
+                : s.currency === metric.value.split(':')[1]
+                  ? s.price
+                  : null,
+        })),
 );
 const changes = computed(() =>
   [...snapshots.value]
@@ -73,16 +100,26 @@ const fields: Record<string, string> = {
 async function load() {
   if (!serverMode) return;
   const id = props.productId;
+  snapshots.value = [];
+  daily.value = [];
+  monthlyTrends.value = {};
+  error.value = '';
   loading.value = true;
   try {
     const result = await cloudRequest<{
       snapshots: Snapshot[];
       dailySales: Point[];
+      monthlyTrends?: MonthlyTrends;
     }>('server_product_watch_history', { productId: id });
     if (id !== props.productId) return;
     snapshots.value = result.snapshots;
     daily.value = result.dailySales;
-    metric.value = options.value[0]?.value || 'daily';
+    monthlyTrends.value = result.monthlyTrends || {};
+    metric.value = monthlyTrends.value.SalesVolume?.points?.length
+      ? 'history:SalesVolume'
+      : currencies.value.length
+        ? `price:${currencies.value[0]}`
+        : 'daily';
     error.value = '';
   } catch (e) {
     if (id === props.productId)
@@ -98,12 +135,13 @@ watch(() => props.productId, load, { immediate: true });
     <Alert v-if="error" type="error" :message="error" show-icon />
     <p>
       最近90次每日观察。每日销量为Sorftime提供的数据，非卖家核实订单；月销量快照的变化不代表当天销量。价格按币种分别展示，缺失数据不补零。
+      历史月度直接使用Sorftime返回的月份；与每日保存的月销量快照分开展示，父子体聚合范围以来源为准。
     </p>
     <Empty
-      v-if="!snapshots.length && !loading"
+      v-if="!snapshots.length && !loading && !error"
       description="尚无持续观察记录，请在监控中心启用商品持续监控"
     />
-    <template v-else>
+    <template v-if="!error && (!loading || snapshots.length)">
       <label for="product-watch-metric">趋势指标</label>
       <Select
         id="product-watch-metric"
@@ -112,7 +150,47 @@ watch(() => props.productId, load, { immediate: true });
         aria-label="观察趋势指标"
         style="width: 100%"
       />
-      <ProductWatchChart :points="points" :metric-label="options.find((o) => o.value === metric)?.label || '来源值'" />
+      <template v-if="isMonthlyHistory">
+        <p v-if="selectedHistory?.collectedAt">
+          来源：Sorftime · 最近成功采集：{{
+            new Date(selectedHistory.collectedAt).toLocaleString('zh-CN', {
+              timeZone: 'Asia/Shanghai',
+            })
+          }}（北京时间）；当前月份可能未完整。
+        </p>
+        <Alert
+          v-if="selectedHistory?.error"
+          type="warning"
+          show-icon
+          :message="`最近刷新失败：${selectedHistory.error}。已有历史保留。`"
+        />
+        <Alert
+          v-else-if="selectedHistory?.empty && selectedHistory?.points?.length"
+          type="warning"
+          show-icon
+          message="最近刷新未返回数据，保留上次成功采集的历史。"
+        />
+        <p v-if="!selectedHistory?.checkedAt">
+          尚未采集历史月度。请在监控中心开启“历史月销量与销售额”并保存；下一次新建商品持续监控任务将采集。当前监控范围为新品池内商品，其他平台暂不支持。
+        </p>
+        <p
+          v-else-if="
+            !selectedHistory?.points?.length && !selectedHistory?.error
+          "
+        >
+          Sorftime本次未返回历史月度数据，未将缺失补零。
+        </p>
+        <p v-if="metric === 'history:SalesAmount'">
+          金额按来源市场币种展示，不用当前价格倒算历史销售额。
+        </p>
+      </template>
+      <ProductWatchChart
+        :points="points"
+        :period="isMonthlyHistory ? 'month' : 'day'"
+        :metric-label="
+          options.find((o) => o.value === metric)?.label || '来源值'
+        "
+      />
       <Table
         size="small"
         row-key="date"
@@ -120,7 +198,7 @@ watch(() => props.productId, load, { immediate: true });
         :loading="loading"
         :pagination="{ pageSize: 10 }"
         :columns="[
-          { title: '日期', dataIndex: 'date' },
+          { title: isMonthlyHistory ? '月份' : '日期', dataIndex: 'date' },
           { title: '来源值', key: 'value' },
         ]"
       >

@@ -16,6 +16,12 @@ import {
   watchTrends,
 } from './product-watch-domain.mjs';
 import { collect, saveCheckpoint } from './store.mjs';
+import {
+  monthlyTrendDue,
+  monthlyTrendIdentity,
+  monthlyTrendMetrics,
+  sameMonthlyIdentity,
+} from './product-monthly-trends.mjs';
 
 const read = async (name, c = pool) =>
   (await c.query('SELECT value FROM workspace_documents WHERE name=$1', [name]))
@@ -45,6 +51,7 @@ async function submit(config, day, c) {
     markets: [config.market],
     seeds: [],
     day,
+    monthlyHistory: config.monthlyHistory === true,
   };
   const checkpoint = {
     submittedAt: new Date().toISOString(),
@@ -266,6 +273,56 @@ export async function runProductWatch(job, overrides = {}) {
       }
       if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
       const previous = await io.read(`product-watch:latest:${id}`);
+      const monthlyTrends = sameMonthlyIdentity(
+        previous?.monthlyTrends,
+        product,
+      )
+        ? structuredClone(previous.monthlyTrends)
+        : { identity: monthlyTrendIdentity(product) };
+      if (
+        job.input.monthlyHistory === true &&
+        product.sourcePlatform === 'Amazon'
+      ) {
+        for (const metric of monthlyTrendMetrics) {
+          if (!monthlyTrendDue(monthlyTrends, product, metric, at)) continue;
+          if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
+          const old = monthlyTrends[metric];
+          try {
+            cp.calls++;
+            const result = await io.collect(
+              job,
+              `watch:monthly:${metric}:${stableId(id)}`,
+              {
+                sources: ['product_watch_source'],
+                sorftimeRequestLimit: 1,
+                provider: 'sorftime',
+                product,
+                monthlyMetric: metric,
+              },
+            );
+            if (result.unsupported || !result.monthlyTrend)
+              throw new Error(result.message || '来源未返回历史月度数据');
+            monthlyTrends[metric] =
+              result.monthlyTrend.points.length === 0 && old?.points?.length
+                ? { ...old, checkedAt: at, empty: true, error: undefined }
+                : {
+                    ...result.monthlyTrend,
+                    checkedAt: at,
+                    empty: result.monthlyTrend.points.length === 0,
+                  };
+          } catch (error) {
+            monthlyTrends[metric] = {
+              ...old,
+              checkedAt: at,
+              error: String(error.message).slice(0, 500),
+            };
+            cp.failures.push(
+              `${id}：${metric === 'SalesVolume' ? '历史月销量' : '历史月销售额'} ${monthlyTrends[metric].error}`,
+            );
+          }
+        }
+      }
+      if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
       const value = observation(
         result.product,
         previous,
@@ -273,6 +330,7 @@ export async function runProductWatch(job, overrides = {}) {
         job.input.day,
         daily,
       );
+      value.monthlyTrends = monthlyTrends;
       if (dailyError) {
         value.dailyError = dailyError;
         cp.failures.push(`${id}：每日销量 ${dailyError}`);
