@@ -1,34 +1,19 @@
 {
-  "title": "新品异常定向重试与中文卖家资料恢复",
+  "title": "新品销量证据保留与限定候选原文复核",
   "files": [
-    "apps/web-antd/src/views/intelligence/__tests__/product-merchant-chart.test.ts",
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
-    "apps/web-antd/src/views/intelligence/monitor.vue",
-    "apps/web-antd/src/views/intelligence/task-list.ts",
-    "server/HEALTH-DISCOVERY.md",
-    "server/amazon-seller-details.mjs",
-    "server/amazon-seller-details.test.mjs",
-    "server/discovery-progress.browser.test.mjs",
-    "server/health-discovery-retry.mjs",
-    "server/health-discovery-retry.test.mjs",
-    "server/health-discovery-runner.mjs",
-    "server/index.mjs",
-    "server/product-intake.mjs",
-    "server/product-intake.test.mjs",
-    "server/product-seller.mjs",
-    "server/task-resume.mjs",
-    "tests/health-discovery-progress.test.ts"
+    "server/platform-product-data.mjs",
+    "server/product-raw-evidence.mjs",
+    "server/health-candidate-review.mjs",
+    "server/product-raw-evidence.test.mjs",
+    "server/DISCOVERY-EVIDENCE-REVIEW.md"
   ],
   "featureShas": [
-    "d721304e268370b1640236464e8e3c9e32dd36ee",
-    "f6615f3d7ca92eda253ad78ae41ab5e95af412ad"
+    "334c8b31e434156249c23a9e98db3eb37046a9ec"
   ],
-  "sourceSha": "f6615f3d7ca92eda253ad78ae41ab5e95af412ad",
+  "sourceSha": "334c8b31e434156249c23a9e98db3eb37046a9ec",
   "changes": [
-    "同一任务仅重试失败类目、异常资料和待确认判定，保留成功响应、入库计数与冻结时间窗；未知请求阻止重放",
-    "空占位卖家名不再触发店名搜索，按商品ASIN唯一关联真实卖家，再按ID补企业名和分行地址；中文原文展示",
-    "旧数据库JSON字段排序兼容原始请求步骤，失败历史保留，每次手动只安排一轮重试"
+    "详情遗漏销量时保留原始证据，显式零销量保留新观察与时间",
+    "限定候选人工复核继续验证原文连续引用、身份、原窗口及正销量；不调用来源或模型"
   ],
   "database": {
     "schemaChange": false,
@@ -39,9 +24,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "46 related server tests, 5 seller compatibility tests, 2 browser/targeted retry tests, 8 frontend tests, full Web typecheck, isolated development build and new-module lint passed. Final journal-order follow-up 14/14 tests passed. Read-only live planning selected 1 failed category and 28 affected products (13 accepted enrichment,15 review), retaining15 accepted and original asOf; no paid probes.",
-    "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation build and CI waiting skipped by user policy. Official frontend/API generated once for frozen candidate.",
-    "limitations": "Source may return missing/ambiguous sellers or insufficient product proof. Retry is one bounded manual round and does not guarantee admission. Existing request receipts and previous failures retained. Production recovery separately authorized for exact user task; no scheduled plan changes."
+    "development": "33/33 focused server tests, new-module isolated lint, node syntax and diff checks passed. One broader ingredient runner test fails identically on unchanged baseline; unrelated and retained.",
+    "release": "Repeated validation and CI wait skipped by user policy. One official frontend and API artifact for frozen SHA.",
+    "limitations": "No general automatic approval. Insufficient retained product evidence remains pending; original list and detail sales conflict preserved."
   },
   "queue": {
     "leaseCount": 23,
@@ -51,10 +36,10 @@
   "configuration": {
     "collectionRulesChanged": false,
     "checkpointMigration": false,
-    "targetedManualRetry": true
+    "targetedManualReview": true
   },
-  "id": "20261110090201-bf75e816",
-  "builtAt": "2026-11-10T09:02:01.708Z",
-  "sourceDigest": "bf75e8169dbd997ffaf11632b1239ea7f7e168e8bf28c46e2c14b3a58177f70a",
+  "id": "20261110112949-d3dc0c0a",
+  "builtAt": "2026-11-10T11:29:49.781Z",
+  "sourceDigest": "d3dc0c0a2bce1a3ce94c612bf42c453076b0cddb8d6b6da1c7b653d0123c789b",
   "operator": "Codex"
 }
