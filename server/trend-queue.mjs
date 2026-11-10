@@ -18,14 +18,14 @@ export function retryDelay(
   random = Math.random,
   limited = true,
 ) {
-  const schedule = limited
-    ? [120, 300, 900, 1800, 3600]
-    : [30, 120, 300, 600, 1200];
+  const schedule = limited ? [5, 15, 30, 60, 60] : [30, 120, 300, 600, 1200];
   const header = Number(retryAfterSeconds);
+  if (limited && Number.isFinite(header) && header > 0) return header * 1000;
   const base = Math.max(
     schedule[Math.min(Math.max(0, attempt - 1), 4)] * 1000,
     Number.isFinite(header) ? Math.max(0, header) * 1000 : 0,
   );
+  if (limited) return base;
   return base + Math.floor(base * 0.1 * random());
 }
 export function errorPolicy(error) {
@@ -262,6 +262,22 @@ export async function runTrendJob(job, overrides = {}) {
           trendComparisonVersion: job.input.trendComparisonVersion,
         },
       );
+      const stageNames = {
+        session: 'Cookie页面',
+        explore: '趋势探索接口',
+        multiline: '趋势曲线接口',
+        comparedgeo: '区域热度接口',
+        relatedsearches: '相关查询接口',
+      };
+      for (const event of data.diagnostics || []) {
+        const stage = stageNames[event.stage] || '趋势请求';
+        let detail = `HTTP ${event.httpStatus}${event.httpStatus === 429 ? '，限流' : ''}`;
+        if (event.kind === 'queue_wait')
+          detail = `排队等待${Math.ceil(event.waitMs / 1000)}秒`;
+        else if (event.kind === 'network_timeout') detail = '网络超时（15秒）';
+        else if (event.kind === 'network_error') detail = '网络连接失败';
+        cp.logs.push(`${record.term} · ${stage}：${detail}`);
+      }
       if (data.status === 'error')
         throw Object.assign(new Error(data.message), {
           httpStatus: data.httpStatus,
@@ -316,14 +332,31 @@ export async function runTrendJob(job, overrides = {}) {
             data.message || trendSeriesMessage(data.points.map((p) => p.value)),
         });
       record.growth = trendComparisons(record)[0].change;
+      const insightLimit = (data.diagnostics || []).filter(
+        (event) => event.stage !== 'session' && event.httpStatus === 429,
+      );
+      const consecutive429 =
+        insightLimit.length > 0 ? (gate.consecutive429 || 0) + 1 : 0;
+      const cooldown =
+        insightLimit.length > 0
+          ? retryDelay(
+              consecutive429,
+              Math.max(
+                ...insightLimit.map((event) => event.retryAfterSeconds || 0),
+              ),
+              io.random,
+              true,
+            )
+          : TREND_PACING_MS + Math.floor(io.random() * 3000);
       gate = {
-        until:
-          io.now() +
-          TREND_PACING_MS +
-          Math.floor(io.random() * 3000),
-        reason: 'pacing',
-        consecutive429: 0,
+        until: io.now() + cooldown,
+        reason: insightLimit.length > 0 ? 'rate_limit' : 'pacing',
+        consecutive429,
       };
+      if (insightLimit.length > 0)
+        cp.logs.push(
+          `${record.term} · 附加趋势接口限流，已有曲线保留，趋势限流冷却${Math.ceil(cooldown / 1000)}秒`,
+        );
       updateGate = true;
       cp.logs.push(
         `${record.term} · ${phase === 'annual' ? '一年趋势' : '日趋势'}：${data.points.length}个时点；${part.message || '已保存'}`,
@@ -370,10 +403,7 @@ export async function runTrendJob(job, overrides = {}) {
           until: Math.max(
             Number(gate.until) || 0,
             io.now() +
-              Math.min(
-                60_000,
-                Math.max(TREND_TRANSIENT_COOLDOWN_MS, delay),
-              ),
+              Math.min(60_000, Math.max(TREND_TRANSIENT_COOLDOWN_MS, delay)),
           ),
           reason: 'pacing',
           consecutive429: 0,
@@ -381,7 +411,7 @@ export async function runTrendJob(job, overrides = {}) {
         updateGate = true;
       }
       cp.logs.push(
-        `${record.term} · ${phase === 'annual' ? '一年趋势' : '日趋势'}：${retry ? `已移入延迟队列，自动重试 ${part.attempts}/${RETRY_LIMIT}，${new Date(next).toISOString()}后再试` : '需人工处理'}；${policy.message}`,
+        `${record.term} · ${phase === 'annual' ? '一年趋势' : '日趋势'}：${retry ? `已移入延迟队列，${policy.limited ? '趋势限流冷却' : '网络故障等待'}${Math.ceil(delay / 1000)}秒，自动重试 ${part.attempts}/${RETRY_LIMIT}，${new Date(next).toISOString()}后再试` : '需人工处理'}；${policy.message}`,
       );
     }
     if (updateGate) await io.setGate(gate);

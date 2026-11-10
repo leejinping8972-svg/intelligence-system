@@ -24,9 +24,13 @@ export async function collectTrendPart(
   let period = phase === 'annual' ? 'today 12-m' : 'today 3-m';
   if (extended)
     period = `${start.toISOString().slice(0, 10)} ${captured.toISOString().slice(0, 10)}`;
+  const diagnostics = [];
   try {
     const rows = await fetchBatch([keyword], market, period, {
       includeInsights: phase === 'annual',
+      onEvent: (event) => {
+        if (diagnostics.length < 24) diagnostics.push(event);
+      },
     });
     const row = rows?.[0];
     if (!row || !Array.isArray(row.points))
@@ -63,6 +67,7 @@ export async function collectTrendPart(
       phase,
       keyword,
       market,
+      diagnostics,
       period,
       points,
       ...(extended ? { historyPoints } : {}),
@@ -89,6 +94,8 @@ export async function collectTrendPart(
       phase,
       keyword,
       market,
+      diagnostics,
+      stage: error.stage || diagnostics.at(-1)?.stage || '',
       message: error.message,
       httpStatus: Number(error.status) || 0,
       retryAfterSeconds: Number(error.retryAfterSeconds) || 0,

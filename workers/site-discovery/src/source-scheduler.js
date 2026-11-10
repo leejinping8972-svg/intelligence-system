@@ -16,12 +16,15 @@ export async function scheduleSource(source, callback, options = {}) {
   lane.tail = new Promise((resolve) => {
     release = resolve;
   });
+  const queuedAt = Date.now();
   await previous;
   try {
     const wait = Math.max(0, lane.nextAt - Date.now());
+    if (wait || Date.now() > queuedAt)
+      options.onWait?.(wait + Date.now() - queuedAt);
     if (wait) await sleep(wait);
     const result = await callback();
-    if (result?.status === 429)
+    if (result?.status === 429 && options.rateLimitCooldown !== false)
       lane.nextAt =
         Date.now() +
         Math.max(
@@ -30,7 +33,7 @@ export async function scheduleSource(source, callback, options = {}) {
         );
     return result;
   } catch (error) {
-    if (error.status === 429)
+    if (error.status === 429 && options.rateLimitCooldown !== false)
       lane.nextAt =
         Date.now() + Math.max(60_000, (error.retryAfterSeconds || 0) * 1000);
     throw error;
@@ -55,7 +58,7 @@ export async function parallelItems(items, limit, callback) {
   if (failure) throw failure.reason;
 }
 
-export function scheduledFetch(url, options) {
+export function scheduledFetch(url, options, scheduling = {}) {
   const host = new URL(
     typeof url === 'string' || url instanceof URL ? url : url.url,
   ).hostname
@@ -67,5 +70,18 @@ export function scheduledFetch(url, options) {
       : host === 'api.search.brave.com'
         ? 'brave'
         : 'site:' + host;
-  return scheduleSource(source, () => fetch(url, options));
+  return scheduleSource(
+    source,
+    () => {
+      // A network deadline must start after this request obtains its lane.
+      // Keep any caller cancellation signal in addition to the network timeout.
+      if (!scheduling.timeoutMs) return fetch(url, options);
+      const timeout = AbortSignal.timeout(scheduling.timeoutMs);
+      const signal = options?.signal
+        ? AbortSignal.any([options.signal, timeout])
+        : timeout;
+      return fetch(url, { ...options, signal });
+    },
+    scheduling,
+  );
 }
