@@ -41,7 +41,7 @@ const selectedHistory = computed(() =>
 );
 const error = ref('');
 const loading = ref(false);
-const metric = ref('price');
+const metric = ref('history:SalesVolume');
 const currencies = computed(() => [
   ...new Set(
     snapshots.value
@@ -105,6 +105,7 @@ async function load() {
   monthlyTrends.value = {};
   error.value = '';
   loading.value = true;
+  metric.value = 'history:SalesVolume';
   try {
     const result = await cloudRequest<{
       snapshots: Snapshot[];
@@ -115,11 +116,6 @@ async function load() {
     snapshots.value = result.snapshots;
     daily.value = result.dailySales;
     monthlyTrends.value = result.monthlyTrends || {};
-    metric.value = monthlyTrends.value.SalesVolume?.points?.length
-      ? 'history:SalesVolume'
-      : currencies.value.length
-        ? `price:${currencies.value[0]}`
-        : 'daily';
     error.value = '';
   } catch (e) {
     if (id === props.productId)
