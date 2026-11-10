@@ -7,13 +7,27 @@ import {
   normalizeAmazon,
   normalizeAmazonContent,
 } from './platform-product-data.mjs';
-import { normalizeAsin, productAsin } from './product-asin.mjs';
+import { normalizeAsin, productAmazonUrl, productAsin } from './product-asin.mjs';
 import { normalizeSorftimeProduct } from './product-resource-sorftime.mjs';
 import { projectRecord } from './workspace-reads.mjs';
 
 const at = '2026-11-05T10:30:00Z';
 const asin = 'B000000001';
 const row = { asin, title: 'Synthetic dietary supplement' };
+
+test('Amazon links follow source marketplace and canonical ASIN with safe legacy fallbacks', () => {
+  const p = { sourcePlatform: 'Amazon', sourceProductId: asin, market: 'US' };
+  assert.equal(productAmazonUrl(p), `https://www.amazon.com/dp/${asin}`);
+  assert.equal(productAmazonUrl({ ...p, sourceMarket: 'MX' }), `https://www.amazon.com.mx/dp/${asin}`);
+  assert.equal(productAmazonUrl({ ...p, market: 'VN', sourceMarket: 'US' }), `https://www.amazon.com/dp/${asin}`);
+  assert.equal(productAmazonUrl({ ...p, market: 'VN', sourceUrl: `https://amazon.com.mx/title/dp/${asin}?tag=old` }), `https://www.amazon.com.mx/dp/${asin}`);
+  assert.equal(productAmazonUrl({ ...p, market: 'VN', evidenceUrl: `https://www.amazon.co.uk/gp/product/${asin}` }), `https://www.amazon.co.uk/dp/${asin}`);
+  for (const sourceUrl of [`https://amazon.com.evil.test/dp/${asin}`, `javascript:alert(1)`, `https://www.amazon.com.mx/dp/B000000002`]) assert.equal(productAmazonUrl({ ...p, sourceUrl }), `https://www.amazon.com/dp/${asin}`);
+  assert.equal(productAmazonUrl({ ...p, market: 'VN' }), '');
+  assert.equal(productAmazonUrl({ ...p, sourcePlatform: 'Shopee' }), '');
+  assert.equal(productAmazonUrl({ ...p, sourceProductId: 'bad' }), '');
+  assert.equal(productAmazonUrl(null), '');
+});
 
 test('Amazon ASIN is saved for platform search, resource collection and new-product discovery', () => {
   for (const product of [

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { Alert, Empty, Select, Table } from 'ant-design-vue';
 import { cloudRequest } from '../cloud-workspace';
 import { serverMode } from '../session';
+import ProductWatchChart from './ProductWatchChart.vue';
 const props = defineProps<{ productId: string }>();
 type Point = { date: string; value: number | null; partial?: boolean };
 type Snapshot = {
@@ -52,23 +53,6 @@ const points = computed<Point[]>(() =>
                 : null,
       })),
 );
-const chart = computed(() => {
-  const valid = points.value
-    .map((p) => p.value)
-    .filter((v): v is number => v !== null);
-  const min = Math.min(...valid),
-    max = Math.max(...valid),
-    range = max - min || 1;
-  return {
-    min,
-    max,
-    dots: points.value.map((p, i) => ({
-      ...p,
-      x: 55 + (i * 600) / Math.max(1, points.value.length - 1),
-      y: p.value === null ? null : 150 - ((p.value - min) * 115) / range,
-    })),
-  };
-});
 const changes = computed(() =>
   [...snapshots.value]
     .reverse()
@@ -128,62 +112,7 @@ watch(() => props.productId, load, { immediate: true });
         aria-label="观察趋势指标"
         style="width: 100%"
       />
-      <svg
-        v-if="chart.dots.some((p) => p.value !== null)"
-        viewBox="0 0 700 195"
-        role="img"
-        :aria-label="`${options.find((o) => o.value === metric)?.label}趋势，详细值见下表`"
-        style="width: 100%; max-height: 240px"
-      >
-        <path d="M55 20V155H660" fill="none" stroke="#b8c0cc" />
-        <text x="4" y="40" font-size="12" fill="currentColor">
-          {{ chart.max }}
-        </text>
-        <text x="4" y="153" font-size="12" fill="currentColor">
-          {{ chart.min }}
-        </text>
-        <template v-for="(point, i) in chart.dots" :key="point.date">
-          <line
-            v-if="
-              i &&
-              point.y !== null &&
-              chart.dots[i - 1]?.y !== null &&
-              Date.parse(point.date) - Date.parse(chart.dots[i - 1]!.date) ===
-                86400000
-            "
-            :x1="chart.dots[i - 1]?.x"
-            :y1="chart.dots[i - 1]?.y ?? 0"
-            :x2="point.x"
-            :y2="point.y"
-            stroke="#4263eb"
-            stroke-width="2"
-          />
-          <circle
-            v-if="point.y !== null"
-            :cx="point.x"
-            :cy="point.y"
-            r="3"
-            :fill="point.partial ? '#d99b28' : '#4263eb'"
-          >
-            <title>
-              {{ point.date }}：{{ point.value
-              }}{{ point.partial ? '（可能未完整）' : '' }}
-            </title>
-          </circle>
-        </template>
-        <text x="55" y="183" font-size="12" fill="currentColor">
-          {{ points[0]?.date }}
-        </text>
-        <text
-          x="660"
-          y="183"
-          text-anchor="end"
-          font-size="12"
-          fill="currentColor"
-        >
-          {{ points.at(-1)?.date }}
-        </text>
-      </svg>
+      <ProductWatchChart :points="points" :metric-label="options.find((o) => o.value === metric)?.label || '来源值'" />
       <Table
         size="small"
         row-key="date"

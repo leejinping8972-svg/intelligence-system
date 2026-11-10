@@ -268,6 +268,10 @@ export function parseOfficialDetail(html, request) {
       .first()
       .text(),
   );
+  if (sold) {
+    p.sellerName = sold;
+    p.collectionFields = [...new Set([...(p.collectionFields || []), 'sellerName'])];
+  }
   // A seller name alone is insufficient: a third-party seller can use FBA.
   const fulfillment = ships
     ? /^amazon(?:\.com(?:\.mx)?)?$/i.test(ships)

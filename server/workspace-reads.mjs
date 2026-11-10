@@ -18,6 +18,7 @@ import { keywordTrendList } from './keyword-trend-list.mjs';
 import { keywordMetricEvidence } from './keyword-metric-evidence.mjs';
 import { productChineseName } from './product-names.mjs';
 import { productAsin } from './product-asin.mjs';
+import { productSellerName } from './product-seller.mjs';
 import { productListingDate, validateListingRange } from './product-listing.mjs';
 import { compareProductValues, productSortKeys, productSortValue } from './product-list-sort.mjs';
 import { productPlatformSql, resolvedProductPlatform } from './product-platform.mjs';
@@ -98,6 +99,8 @@ export function projectRecord(collection, value) {
   if (collection === 'products') {
     const asin = productAsin(value);
     if (asin) data.asin = asin;
+    const sellerName = productSellerName(value);
+    if (sellerName) data.sellerName = sellerName;
     data.ingredientInsights = (value.ingredientInsights || [])
       .slice(0, 20)
       .map((item) => ({
@@ -297,11 +300,19 @@ export function createWorkspaceReads({
       const columns = fields.map((key) => sql(`value->>'${key}'`, `JSON_UNQUOTE(JSON_EXTRACT(value,'$.${key}'))`) + ` AS ${key}`).join(',');
       const sites = ids.length ? (await pool.query(`SELECT ${columns} FROM workspace_documents WHERE name IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids.map((id) => `business:sites:${id}`))).rows : [];
       const byId = new Map(sites.map((site) => [site.id, site]));
+      // Older read summaries omitted sellers. Read only the missing names on
+      // this page, without a full index rebuild or a paid source request.
+      const missing = records.filter((record) => !productSellerName(record) && record.sourcePlatform?.toLowerCase() === 'amazon');
+      const sellerPaths = { sellerName: ['sellerName'], shopName: ['resourceRaw', 'shopName'], soldBy: ['resourceRaw', 'soldBy'], metricShopName: ['sourceMetrics', 'shopName'], evidenceShopName: ['resourceEvidence', 'identity', 'shopName'] };
+      const sellerColumns = Object.entries(sellerPaths).map(([alias, path]) => sql(`value #>> '{${path.join(',')}}'`, `NULLIF(JSON_UNQUOTE(JSON_EXTRACT(value,'$.${path.join('.')}')), 'null')`) + ` AS ${alias.toLowerCase()}`).join(',');
+      const sellers = missing.length ? (await pool.query(`SELECT name,${sellerColumns} FROM workspace_documents WHERE name IN (${missing.map((_, i) => `$${i + 1}`).join(',')})`, missing.map((record) => `business:products:${record.id}`))).rows : [];
+      const sellerById = new Map(sellers.map((row) => [row.name, productSellerName({ sellerName: row.sellername, resourceRaw: { shopName: row.shopname, soldBy: row.soldby }, sourceMetrics: { shopName: row.metricshopname }, resourceEvidence: { identity: { shopName: row.evidenceshopname } } })]));
       return records.map((record) => {
         const linkedSite = byId.get(record.siteId) || null;
         const platform = resolvedProductPlatform(record, linkedSite);
         const asin = productAsin(record);
-        return { ...record, linkedSite, ...(asin ? { asin } : {}), ...(platform !== '未记录' ? { sourcePlatform: platform } : {}) };
+        const sellerName = productSellerName(record) || sellerById.get(`business:products:${record.id}`);
+        return { ...record, linkedSite, ...(asin ? { asin } : {}), ...(sellerName ? { sellerName } : {}), ...(platform !== '未记录' ? { sourcePlatform: platform } : {}) };
       });
     }
     const values = records.map((record) => record.id);
