@@ -1,7 +1,9 @@
 import { productAmazonUrl } from './product-asin.mjs';
 
-const clean = (value) =>
-  typeof value === 'string' ? value.trim().slice(0, 500) : '';
+const clean = (value) => {
+  const text = typeof value === 'string' ? value.trim().slice(0, 500) : '';
+  return /^(?:n\/?a|none|null|undefined|unknown|not available|未提供|暂无|未知|[-—]+)$/i.test(text) ? '' : text;
+};
 
 // Seller is a source fact. Never substitute the brand, manufacturer or shipper.
 export function sourceSellerName(row) {

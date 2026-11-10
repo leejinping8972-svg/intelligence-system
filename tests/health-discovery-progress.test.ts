@@ -1,6 +1,6 @@
 import type { Task } from '../apps/web-antd/src/views/intelligence/data';
 import { describe, expect, it } from 'vitest';
-import { partialTaskCanContinue, taskSummary } from '../apps/web-antd/src/views/intelligence/task-list';
+import { partialTaskCanContinue, partialTaskRetriesFailures, taskSummary } from '../apps/web-antd/src/views/intelligence/task-list';
 
 function task(): Task {
   return {
@@ -47,6 +47,9 @@ describe('health discovery task summary', () => {
     t.status = 'partial'; o.status = 'partial'; o.outcome = '已停止 · 采集未完成';
     expect(partialTaskCanContinue(t)).toBe(true);
     h.remainingWork = 0;
+    expect(partialTaskCanContinue(t)).toBe(true);
+    expect(partialTaskRetriesFailures(t)).toBe(true);
+    h.products.review = 0; h.issues = 0; h.pages.failed = 0;
     expect(partialTaskCanContinue(t)).toBe(false);
     h.remainingWork = 2; t.canContinue = false;
     expect(partialTaskCanContinue(t)).toBe(false);

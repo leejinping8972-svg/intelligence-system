@@ -757,10 +757,10 @@ export async function cancelCloudJob(jobId: string) {
   void syncCloudWorkspace().catch(() => {});
 }
 const resumeFlights = new Map<string, Promise<unknown>>();
-export async function resumePartialCloudJob(jobId: string) {
+export async function resumePartialCloudJob(jobId: string, retryFailures = false) {
   const existing = resumeFlights.get(jobId);
   if (existing) return existing;
-  const flight = cloudRequest<{ status?: Task['status'] }>('server_resume_partial', { jobId }).then(result => {
+  const flight = cloudRequest<{ status?: Task['status'] }>('server_resume_partial', { jobId, retryFailures }).then(result => {
     for (const task of state.tasks)
       if (task.cloudJobId === jobId) task.status = result.status || 'queued';
     cloudWorkspace.taskRevision = `action:${Date.now()}`;

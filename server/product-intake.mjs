@@ -37,7 +37,7 @@ export async function prepareProductIntake(job, original, io, options = {}) {
     return result;
   };
   if (options.sourceDetails !== false) {
-    for (const work of intakeSourceWork(product)) {
+    for (const work of options.sellerOnly ? [] : intakeSourceWork(product)) {
       if (options.detailLoaded && work.op === 'detail') continue;
       if (await io.isCancelled?.()) break;
       try {
@@ -67,6 +67,8 @@ export async function prepareProductIntake(job, original, io, options = {}) {
             sorftimeRequestLimit: 1, op, product,
           });
           if (result.patch) product = mergePlatformProduct(product, { ...result.patch, id: product.id });
+          if (op === 'seller_identity' && !productSellerId(product) && !productSellerName(product))
+            throw Error('来源未返回可唯一匹配的卖家，未保存');
         } catch (error) {
           errors.push(`卖家资料：${String(error.message).slice(0, 350)}`);
           break;
@@ -74,8 +76,10 @@ export async function prepareProductIntake(job, original, io, options = {}) {
       }
     }
   }
+  if (options.skipAnalysis) return { product, analysis: product.fieldAnalysis, errors };
   const sample = healthProductSample(sourceFieldSample('products', product), options.healthProductPolicy);
   if (
+    !options.forceAnalysis &&
     product.fieldAnalysis?.version === 2 &&
     product.fieldAnalysis.status === 'analyzed' &&
     product.fieldAnalysis.fingerprint === sample.fingerprint

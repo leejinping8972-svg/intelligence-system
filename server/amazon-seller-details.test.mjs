@@ -17,6 +17,7 @@ import {
   productSellerDetails,
   productSellerId,
   productSellerUrl,
+  productSellerName,
 } from './product-seller.mjs';
 import { projectRecord } from './workspace-reads.mjs';
 
@@ -178,6 +179,24 @@ test('source errors are not retried and known empty responses are distinguished'
     { client },
   );
   assert.equal(noData.empty, true);
+});
+
+test('placeholder seller names trigger a unique ASIN lookup, preserving Chinese company and address', async () => {
+  const p = { ...product(), sellerName: 'N/A', resourceRaw: {shopName:'N/A'} };
+  assert.equal(productSellerName(p),'');
+  assert.equal(productSellerName({...p,resourceRaw:{seller_name:'广东中文店铺'}}),'广东中文店铺');
+  assert.equal(needsSellerDetails(p),true);
+  const client = mockClient([{seller_id:id,seller_name:'中文店铺'}], 'seller_search_from_name');
+  const identity = await amazonSellerSource({op:'seller_identity',product:p},{client});
+  assert.equal(client.calls[0].arguments.name,'B000000001');
+  assert.equal(client.calls[0].arguments.query_type,2);
+  assert.deepEqual(identity.patch,{sellerName:'中文店铺',sellerId:id});
+  const details = await collectDetails({...p,...identity.patch}, detail({seller_name:'中文店铺',seller_id:id,
+    business_name:'佛山市示例商贸有限公司',business_address:['文昌路118号','佛山市','禅城区','广东省','528000','CN']}));
+  assert.equal(details.patch.sellerDetails.businessName,'佛山市示例商贸有限公司');
+  assert.deepEqual(details.patch.sellerDetails.businessAddress,['文昌路118号','佛山市','禅城区','广东省','528000','CN']);
+  client.rpc=async()=>({structuredContent:{data:[{seller_id:id,seller_name:'甲'},{seller_id:'A9999999999999',seller_name:'乙'}]}});
+  await assert.rejects(amazonSellerSource({op:'seller_identity',product:p},{client}),/未唯一匹配/);
 });
 
 test('source seller IDs survive detail/content and canonical seller links use the actual Amazon market', () => {

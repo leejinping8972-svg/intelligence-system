@@ -38,6 +38,7 @@ import { serverMode } from './session';
 import {
   groupTasks,
   partialTaskCanContinue,
+  partialTaskRetriesFailures,
 } from './task-list';
 const route = useRoute();
 const router = useRouter();
@@ -107,10 +108,11 @@ async function continuePartial(task: Task) {
     return;
   resuming.value = task.cloudJobId;
   try {
-    await resumePartialCloudJob(task.cloudJobId);
+    const retryFailures = partialTaskRetriesFailures(task);
+    await resumePartialCloudJob(task.cloudJobId, retryFailures);
     if (selected.value?.cloudJobId === task.cloudJobId)
       void showDetails(selected.value);
-    message.success('已重新入队，将从未完成部分继续采集');
+    message.success(retryFailures ? '已重新入队，仅重试异常和待确认内容，成功结果保留' : '已重新入队，将从未完成部分继续采集');
   } catch (error) {
     message.error(error instanceof Error ? error.message : '继续采集失败');
   } finally {
@@ -355,7 +357,7 @@ const visibleAudit = computed(() => auditRows.value.slice((auditPage.value - 1) 
           :loading="resuming === selected.cloudJobId"
           @click="continuePartial(selected)"
         >
-          继续采集
+          {{ selected && partialTaskRetriesFailures(selected) ? '仅重试异常' : '继续采集' }}
         </Button>
         <Button
           v-if="

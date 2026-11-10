@@ -34,8 +34,10 @@ test('list, card and detail views show fixed category scope and unclipped produc
       import Detail from '/@fs/${components}/TaskDetailPanel.vue';
       const task=reactive(${JSON.stringify(task)});
       window.showFullFirstPages=()=>{task.overview=${JSON.stringify(fullFirstPageOverview)}};
+      window.retryClicks=0;
+      window.showFailures=()=>{task.status='partial';task.overview.healthDiscovery.remainingWork=0;task.overview.healthDiscovery.issues=1;task.overview.healthDiscovery.products.pending=0;};
       createApp({render:()=>h('main',[
-        h('h1',{class:'preview-title'},'新品采集进度'),h(List,{tasks:[task],retrying:''}),
+        h('h1',{class:'preview-title'},'新品采集进度'),h(List,{tasks:[task],retrying:'',onContinue:()=>window.retryClicks++}),
         h('aside',[h(Detail,{task})])
       ])}).mount('#app');
     </script>`);
@@ -79,9 +81,14 @@ test('list, card and detail views show fixed category scope and unclipped produc
     await page.getByText('类目首屏 212/212 · 商品资料处理中', { exact: true }).first().waitFor();
     assert.match(await listResult.innerText(), /待翻页 1/);
     assert.equal(await page.getByText('本次采集目标完成', { exact: true }).count(), 0);
+    await page.evaluate(() => window.showFailures());
+    await page.getByRole('button',{name:'仅重试异常',exact:true}).click();
+    assert.equal(await page.evaluate(()=>window.retryClicks),1);
     await page.getByText('卡片', { exact: true }).click();
     await page.locator('.task-card').waitFor();
-    assert.match(await page.locator('.task-card').innerText(), /类目首屏 212\/212 · 商品资料处理中/);
+    assert.match(await page.locator('.task-card').innerText(), /仅重试异常/);
+    await page.getByRole('button',{name:'仅重试异常',exact:true}).click();
+    assert.equal(await page.evaluate(()=>window.retryClicks),2);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForFunction(() => [...document.querySelectorAll('.ant-progress-bg')].every(e => {
       const track = e.closest('.ant-progress-inner');

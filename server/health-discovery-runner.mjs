@@ -2,12 +2,14 @@ import { healthCategoryKey, healthCategoryWork, HEALTH_PRODUCT_POLICY } from './
 import { healthProductDecision } from './health-product-domain.mjs';
 import { newProductEvidence, stableId } from './discovery-monitor-domain.mjs';
 import { prepareProductIntake } from './product-intake.mjs';
+import { healthRequestStep } from './health-discovery-retry.mjs';
 
 // Independent versioned runner: legacy frozen jobs retain their original work
 // and journal keys. Each invocation makes at most one source page or intake.
 export async function runHealthDiscovery(job, io) {
   const plan = job.input.plan;
   const cp = structuredClone(job.checkpoint);
+  const collect = (task, step, request) => io.collect(task, healthRequestStep(cp, step), request);
   cp.asOf ||= io.now();
   cp.logs ||= [];
   cp.failures ||= [];
@@ -32,37 +34,48 @@ export async function runHealthDiscovery(job, io) {
     cp.nextRunAt = io.now() + 1000;
     return io.saveCheckpoint(job, cp, status);
   };
-  const review = async (product, decision) => {
+  const review = async (product, decision, powderOnly) => {
     const name = `discovery:health-candidate:${job.id}:${stableId(product.id)}`;
     await io.putDocument('workspace_documents', name, {
-      jobId: job.id, product, decision, asOf: cp.asOf, status: 'pending',
+      jobId: job.id, product, decision, powderOnly, asOf: cp.asOf, status: 'pending',
     }, false);
     cp.healthReviewIds ||= [];
     if (!cp.healthReviewIds.includes(product.id)) cp.healthReviewIds.push(product.id);
     cp.healthReviewCount = cp.healthReviewIds.length;
     cp.logs.push(`${product.title?.slice(0, 60) || product.id}：保健品资料待确认，原始资料已保留`);
   };
+  const resolveReview = async (product, decision) => {
+    if (!cp.healthReviewIds?.includes(product.id)) return;
+    await io.putDocument('workspace_documents', `discovery:health-candidate:${job.id}:${stableId(product.id)}`, {
+      jobId: job.id, product, decision, asOf: cp.asOf, status: decision.status,
+    }, false);
+    cp.healthReviewIds = cp.healthReviewIds.filter(id => id !== product.id);
+    cp.healthReviewCount = cp.healthReviewIds.length;
+  };
   try {
     if (await cancelled()) return save('cancelled');
     if (cp.products >= plan.maxProducts && cp.pending.length > 0) {
-      cp.healthLimitSkipped = (cp.healthLimitSkipped || 0) + cp.pending.length;
-      cp.pending = [];
+      const skipped = cp.pending.filter(p => !p.accepted);
+      cp.healthLimitSkipped = (cp.healthLimitSkipped || 0) + skipped.length;
+      cp.pending = cp.pending.filter(p => p.accepted);
     }
     // Drain each paid page before requesting another; rejected candidates do
     // not consume the accepted-product allowance.
     if (cp.pending.length > 0) {
-      const { product, powderOnly } = cp.pending[0];
-      if (cp.accepted.includes(product.id)) cp.pending.shift();
+      const { product, powderOnly, retry, accepted, forceAnalysis, sellerOnly } = cp.pending[0];
+      if (cp.accepted.includes(product.id) && !retry) cp.pending.shift();
       else {
         cp.calls++;
-        const prepared = await prepareProductIntake(job, product, { ...io, isCancelled: cancelled }, {
-          healthProductPolicy: HEALTH_PRODUCT_POLICY,
+        const prepared = await prepareProductIntake(job, product, { ...io, collect, isCancelled: cancelled }, {
+          healthProductPolicy: HEALTH_PRODUCT_POLICY, forceAnalysis, skipAnalysis: accepted, sellerOnly,
         });
         // Keep the candidate on cancellation. Recovery reuses journal receipts.
         if (await cancelled()) return save('cancelled');
         cp.failures.push(...prepared.errors);
         const decision = healthProductDecision(prepared.analysis, powderOnly);
-        if (decision.status === 'accepted') {
+        if (accepted) {
+          await io.upsertProduct(prepared.product);
+        } else if (decision.status === 'accepted') {
           const evidence = newProductEvidence(prepared.product, plan, cp.asOf);
           if (evidence) {
             await io.upsertProduct({ ...prepared.product,
@@ -70,11 +83,15 @@ export async function runHealthDiscovery(job, io) {
             });
             cp.accepted.push(product.id);
             cp.products++;
+            await resolveReview(prepared.product, decision);
           } else {
-            await review(prepared.product, { status: 'pending', reason: 'listing_or_sales_evidence_changed' });
+            await review(prepared.product, { status: 'pending', reason: 'listing_or_sales_evidence_changed' }, powderOnly);
           }
-        } else if (decision.status === 'pending') await review(prepared.product, decision);
-        else cp.healthExcluded = (cp.healthExcluded || 0) + 1;
+        } else if (decision.status === 'pending') await review(prepared.product, decision, powderOnly);
+        else {
+          cp.healthExcluded = (cp.healthExcluded || 0) + 1;
+          await resolveReview(prepared.product, decision);
+        }
         cp.pending.shift();
       }
       return save('running');
@@ -95,7 +112,7 @@ export async function runHealthDiscovery(job, io) {
     const category = cp.healthCoverage[healthCategoryKey(work)];
     cp.calls++;
     try {
-      const result = await io.collect(job, `source:${stableId(JSON.stringify(work))}`, {
+      const result = await collect(job, `source:${stableId(JSON.stringify(work))}`, {
         ...plan, ...work, sources: ['discovery_sorftime'], sorftimeRequestLimit: 1,
         social: false, now: cp.asOf,
       });
@@ -108,6 +125,8 @@ export async function runHealthDiscovery(job, io) {
       if (result.sourceRows > 0 && result.products.length === 0)
         throw new Error('来源返回资料但没有可识别商品，未记为零新品');
       category.pages++;
+      delete category.error;
+      delete category.failedWork;
       if (work.page === 1) category.firstPage = 'done';
       category.rows = (category.rows || 0) + (result.sourceRows || 0);
       for (const product of result.products) {
@@ -137,6 +156,7 @@ export async function runHealthDiscovery(job, io) {
       cp.logs.push(`${work.channel} · ${work.categoryName} · 第${work.page}页：来源${result.sourceRows || 0}条`);
     } catch (error) {
       category.error = String(error.message).slice(0, 500);
+      category.failedWork = work;
       if (work.page === 1) category.firstPage = 'failed';
       cp.failures.push(`${work.channel} · ${work.categoryName}: ${category.error}`);
     }

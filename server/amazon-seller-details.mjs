@@ -26,7 +26,8 @@ const empty = (usage) => {
 };
 
 export function needsSellerDetails(product, now = Date.now()) {
-  if (product?.sourcePlatform !== 'Amazon' || !productSellerName(product))
+  if (product?.sourcePlatform !== 'Amazon' ||
+      (!productSellerName(product) && !/^[A-Z0-9]{10}$/.test(product.sourceProductId || '')))
     return false;
   const details = productSellerDetails(product);
   const age = now - Date.parse(details?.collectedAt);
@@ -40,7 +41,8 @@ export async function amazonSellerSource(request, overrides = {}) {
   const sellerName = productSellerName(product);
   const sellerId = productSellerId(product);
   const market = product.sourceMarket || product.market;
-  if (product.sourcePlatform !== 'Amazon' || !sellerName) return empty();
+  const asinLookup = request.op === 'seller_identity' && !sellerName && /^[A-Z0-9]{10}$/.test(product.sourceProductId || '');
+  if (product.sourcePlatform !== 'Amazon' || (!sellerName && !asinLookup && !sellerId)) return empty();
   if (request.op === 'seller_identity' && sellerId) return empty();
   let token = '';
   try {
@@ -67,8 +69,8 @@ export async function amazonSellerSource(request, overrides = {}) {
     )
       return unsupported();
     const args = {
-      name: identity || !sellerId ? sellerName : sellerId,
-      query_type: identity || !sellerId ? 1 : 2,
+      name: asinLookup ? product.sourceProductId : identity || !sellerId ? sellerName : sellerId,
+      query_type: asinLookup ? 2 : identity || !sellerId ? 1 : 2,
       amz_seller_site: market,
     };
     if (identity && tool.inputSchema.properties.page) args.page = 1;
@@ -99,12 +101,16 @@ export async function amazonSellerSource(request, overrides = {}) {
     const rows = Array.isArray(value.data)
       ? value.data
       : [value.data].filter(Boolean);
-    const matches = rows.filter(
-      (row) => sellerNameKey(row.seller_name) === sellerNameKey(sellerName),
-    );
+    const matches = rows.filter(row => asinLookup
+      ? normalizeSellerId(row.seller_id) && sellerNameKey(row.seller_name)
+      : sellerId && !identity ? normalizeSellerId(row.seller_id) === sellerId ||
+        !normalizeSellerId(row.seller_id) && sellerNameKey(row.seller_name) === sellerNameKey(sellerName)
+      : sellerNameKey(row.seller_name) === sellerNameKey(sellerName));
     if (matches.length !== 1)
       throw new Error('卖家资料未唯一匹配当前销售方，未保存');
     const row = matches[0];
+    if (asinLookup && row.asin && String(row.asin).toUpperCase() !== product.sourceProductId)
+      throw new Error('卖家资料商品标识不一致，未保存');
     const explicitMarket = row.amz_seller_site || row.amz_site || row.market;
     if (explicitMarket && explicitMarket !== market)
       throw new Error('卖家资料站点不一致，未保存');
@@ -113,11 +119,11 @@ export async function amazonSellerSource(request, overrides = {}) {
       throw new Error('卖家资料标识不一致，未保存');
     if (identity)
       return returnedId
-        ? { patch: { sellerId: returnedId }, usage, providerCalls: 1 }
+        ? { patch: { sellerId: returnedId, sellerName: clean(row.seller_name) || sellerName }, usage, providerCalls: 1 }
         : empty(usage);
     const address =
-      typeof row.business_address === 'string'
-        ? row.business_address
+      typeof row.business_address === 'string' || Array.isArray(row.business_address)
+        ? (Array.isArray(row.business_address) ? row.business_address.filter(v => typeof v === 'string').join('\n') : row.business_address)
             .replaceAll(/<br\s*\/?\s*>/gi, '\n')
             .split(/\r?\n/)
             .map((line) => clean(line))
@@ -127,11 +133,12 @@ export async function amazonSellerSource(request, overrides = {}) {
     const businessName = clean(row.business_name);
     return {
       patch: {
+        sellerName: clean(row.seller_name) || sellerName,
         ...(sellerId || returnedId ? { sellerId: sellerId || returnedId } : {}),
         sellerDetails: {
           status:
             businessName || address.length > 0 ? 'available' : 'unavailable',
-          sellerName,
+          sellerName: clean(row.seller_name) || sellerName,
           ...(sellerId || returnedId
             ? { sellerId: sellerId || returnedId }
             : {}),

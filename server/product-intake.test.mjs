@@ -179,6 +179,7 @@ test('capture obtains details and content before AI, preserving usable fields wh
             imageUrls: ['https://example.test/detail.jpg'],
           },
         };
+      if (request.op === 'seller_identity') return {empty:true};
       assert.ok(
         request.sample.sources.some(
           (s) => s.text === 'Supports calm and sleep',
@@ -197,6 +198,7 @@ test('capture obtains details and content before AI, preserving usable fields wh
   assert.deepEqual(calls, [
     'product_intake_source:detail',
     'product_intake_source:content',
+    'product_intake_source:seller_identity',
     'field_analysis:fields',
   ]);
   assert.equal(prepared.product.price, 20);
@@ -228,7 +230,7 @@ test('source or AI failure preserves the product and a resumed unknown request n
   assert.equal(first.product.price, 20);
   assert.equal(resumed.product.sourceMetrics.monthlySales, 5);
   assert.equal(resumed.product.fieldAnalysis.status, 'pending');
-  assert.equal(resumed.errors.length, 3);
+  assert.equal(resumed.errors.length, 4);
 });
 
 test('official board details still fetch content before AI and extract a source brand', async () => {
@@ -248,6 +250,7 @@ test('official board details still fetch content before AI and extract a source 
             },
           };
         const sample = request.sample;
+        if (request.op === 'seller_identity') return {empty:true};
         return validateSourceFields(
           {
             fields: [
@@ -274,7 +277,7 @@ test('official board details still fetch content before AI and extract a source 
     },
     { detailLoaded: true },
   );
-  assert.deepEqual(calls, ['content', 'fields']);
+  assert.deepEqual(calls, ['content', 'seller_identity', 'fields']);
   assert.equal(prepared.product.brand, 'Ryurop');
   assert.equal(prepared.product.brandZh, 'Ryurop');
   assert.ok(
@@ -463,8 +466,8 @@ test('new platform tasks complete product fields within capture and checkpoint r
   const count = journal.size;
   await runProductResourceDiscovery(job, io);
   assert.equal(journal.size, count);
-  assert.equal(count, 4);
+  assert.equal(count, 5);
   assert.equal(saved.get(p.id).titleZh, '镁与茶氨酸补充剂');
   assert.equal(job.checkpoint.confirmedUsage.modelTokens, 100);
-  assert.equal(job.checkpoint.reserved.requests, 4);
+  assert.equal(job.checkpoint.reserved.requests, 5);
 });

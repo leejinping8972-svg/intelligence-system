@@ -25,6 +25,7 @@ import {
   groupTasks,
   mergeTaskStatusCounts,
   partialTaskCanContinue,
+  partialTaskRetriesFailures,
   taskStatus,
   taskStatuses,
   taskSummary,
@@ -333,7 +334,7 @@ const columns = [
                 :disabled="!!resuming && resuming !== task.cloudJobId"
                 @click="emit('continue', task)"
               >
-                继续采集
+                {{ partialTaskRetriesFailures(task) ? '仅重试异常' : '继续采集' }}
 </Button><Button
                 v-if="task.status === 'queued' && !live(task)"
                 size="small"
@@ -430,7 +431,7 @@ const columns = [
             :disabled="!!resuming && resuming !== task.cloudJobId"
             @click="emit('continue', task)"
           >
-            继续采集
+            {{ partialTaskRetriesFailures(task) ? '仅重试异常' : '继续采集' }}
 </Button><Button
             v-if="task.status === 'queued' && !live(task)"
             size="small"

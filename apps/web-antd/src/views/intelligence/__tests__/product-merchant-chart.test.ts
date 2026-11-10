@@ -79,8 +79,8 @@ describe('product seller and Amazon links', () => {
           sellerName: 'Store B',
           sellerId: 'A1234567890123',
           market: 'US',
-          businessName: '<img src=x> Example Inc',
-          businessAddress: ['Street 1', 'City', 'US'],
+          businessName: '<img src=x> 佛山市示例商贸有限公司',
+          businessAddress: ['文昌路118号', '佛山市', '广东省', '528000', 'CN'],
           collectedAt: '2026-11-10T03:00:00Z',
           provider: 'Sorftime',
           lookup: 'id',
@@ -96,10 +96,10 @@ describe('product seller and Amazon links', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(rowClicks).toBe(0);
     const details = document.body.querySelector('.seller-details');
-    expect(details?.textContent).toContain('<img src=x> Example Inc');
+    expect(details?.textContent).toContain('<img src=x> 佛山市示例商贸有限公司');
     expect(details?.querySelector('img')).toBeNull();
     expect(details?.querySelector('.seller-address')?.textContent).toBe(
-      'Street 1\nCity\nUS',
+      '文昌路118号\n佛山市\n广东省\n528000\nCN',
     );
     const link = details?.querySelector('a');
     expect(link?.href).toBe('https://www.amazon.com/sp?seller=A1234567890123');

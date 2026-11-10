@@ -44,9 +44,15 @@ export function expandTaskStatusFilters(statuses: string[]) {
   return [...new Set([...statuses, 'awaiting_review'])];
 }
 
+export function partialTaskRetriesFailures(task: Task) {
+  const health = task.overview?.healthDiscovery;
+  return Boolean(health && health.remainingWork === 0 &&
+    (health.pages.failed > 0 || health.products.review > 0 || health.issues > 0));
+}
+
 export function partialTaskCanContinue(task: Task) {
   if (task.status !== 'partial' || task.readOnly || task.canContinue === false) return false;
-  if (task.overview?.healthDiscovery) return task.overview.healthDiscovery.remainingWork > 0;
+  if (task.overview?.healthDiscovery) return task.overview.healthDiscovery.remainingWork > 0 || partialTaskRetriesFailures(task);
   if ((task.overview?.remaining ?? 0) > 0) return true;
   const collection = task.researchProgress || task.collectionProgress;
   if (

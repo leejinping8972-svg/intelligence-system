@@ -689,7 +689,7 @@ async function api(input, user) {
       return { cancelled: true };
     }
     case 'server_resume_partial': {
-      return resumePartialTask(input.jobId, pool);
+      return resumePartialTask(input.jobId, pool, { retryFailures: input.retryFailures === true });
     }
     case 'server_clear_keywords': {
       requireAdmin(user);
