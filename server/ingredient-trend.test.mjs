@@ -57,7 +57,9 @@ test('new ingredient settings, safe source scope and daily / weekly clocks', () 
     channels: ['quora'],
     enabled: true,
   });
-  assert.equal(legacy.maxPages, 20);
+  assert.equal(legacy.maxPages, undefined);
+  assert.equal(legacy.collectionLimitsVersion, 2);
+  assert.equal(legacy.maxPostsPerCommunity, 1000);
   assert.equal(legacy.frequency, 'daily');
   assert.equal(legacy.enabled, true);
 });
@@ -735,6 +737,68 @@ test('isolated SQL workflow: source journal, multi-community archive, resume and
         );
         assert.ok(report.findings[0].summary.includes(`Opinion ${before + 1}`));
         assert.ok(report.findings[0].summary.includes(`Opinion ${modelCalls}`));
+      },
+    );
+    await t.test(
+      'v2 SQL submission keeps exact request identity and frozen v1 input unchanged',
+      async () => {
+        await pool.query("UPDATE research_jobs SET status='completed'");
+        const old = await make({
+          communities: ['nutrition'],
+          maxRequests: 1,
+          maxDetails: 0,
+        });
+        const repeat = await submitDiscovery({
+          requestId: old.request_id,
+          plan: old.input.plan,
+        });
+        assert.equal(repeat.id, old.id);
+        assert.equal(repeat.input.plan.collectionLimitsVersion, undefined);
+        assert.equal(repeat.input.plan.maxRequests, 1);
+        await pool.query(
+          "UPDATE research_jobs SET status='completed' WHERE id=$1",
+          [old.id],
+        );
+        handler = async (url) =>
+          url.pathname.endsWith('/subreddit')
+            ? Response.json({
+                posts: [post('quantity1', 'nutrition', now - 1000, 2)],
+              })
+            : Response.json({
+                comments: [comment('quantityc1'), comment('quantityc2')],
+                post: { num_comments: 2 },
+              });
+        const submitted = await make({
+          collectionLimitsVersion: 2,
+          communities: ['nutrition'],
+          maxCommentsPerPost: 1,
+        });
+        const duplicate = await submitDiscovery({
+          requestId: submitted.request_id,
+          plan: submitted.input.plan,
+        });
+        assert.equal(duplicate.id, submitted.id);
+        const done = await drain(submitted.id);
+        assert.equal(done.input.plan.collectionLimitsVersion, 2);
+        assert.equal(done.input.plan.maxRequests, undefined);
+        assert.equal(done.checkpoint.comments, 1);
+        assert.equal(done.status, 'partial');
+        const again = await submitDiscovery({
+          requestId: submitted.request_id,
+          plan: submitted.input.plan,
+        });
+        assert.equal(again.id, submitted.id);
+        await assert.rejects(
+          submitDiscovery({
+            requestId: old.request_id,
+            plan: submitted.input.plan,
+          }),
+          /不同任务/,
+        );
+        assert.equal(
+          (await get(old.id)).input.plan.collectionLimitsVersion,
+          undefined,
+        );
       },
     );
   } finally {

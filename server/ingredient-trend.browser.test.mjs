@@ -99,7 +99,7 @@ test('ingredient page shows weekly scope, gaps and original evidence; settings s
         enforce: 'pre',
         resolveId(id, importer) {
           if (mocks[id] && importer?.includes('/views/intelligence/'))
-            return `\0ingredient-fixture:${  id  }.js`;
+            return `\0ingredient-fixture:${id}.js`;
         },
         load(id) {
           if (id.startsWith('\0ingredient-fixture:'))
@@ -147,14 +147,42 @@ test('ingredient page shows weekly scope, gaps and original evidence; settings s
       'Supplements\nNootropics\nBiohackers',
     );
     assert.match(await dialog.innerText(), /每周分析日期/);
+    assert.match(await dialog.innerText(), /每社区每次最多帖子数/);
+    assert.match(await dialog.innerText(), /每帖每次最多评论数/);
+    assert.equal(await dialog.locator('.ant-input-number').count(), 2);
+    assert.doesNotMatch(
+      await dialog.innerText(),
+      /每次来源请求上限|其中评论请求上限|每次回访帖子数|每社区最多页数|每周分析资料上限/,
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({
+      path: resolve(fixture, 'mobile-settings.png'),
+      fullPage: true,
+    });
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    );
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await dialog.getByRole('button', { name: '保存监控', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
     const saved = await page.evaluate(() =>
       window.calls.find((c) => c.action === 'server_discovery_save'),
     );
     assert.equal(saved.input.plan.sourceMode, 'ingredient_trends');
-    assert.equal(saved.input.plan.maxRequests, 60);
-    assert.equal(saved.input.plan.maxCommentRequests, 30);
+    assert.equal(saved.input.plan.collectionLimitsVersion, 2);
+    assert.equal(saved.input.plan.maxPostsPerCommunity, 1000);
+    assert.equal(saved.input.plan.maxCommentsPerPost, 100);
+    for (const key of [
+      'maxRequests',
+      'maxCommentRequests',
+      'maxProducts',
+      'maxPages',
+      'maxDetails',
+      'analysisMaxRecords',
+    ])
+      assert.equal(saved.input.plan[key], undefined);
     assert.equal(saved.input.plan.frequency, 'daily');
     assert.equal(saved.input.plan.analysisWeekday, 1);
     await page.screenshot({

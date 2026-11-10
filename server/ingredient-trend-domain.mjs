@@ -3,6 +3,9 @@ import { createHash } from 'node:crypto';
 export const TREND_SOURCE = 'ingredient_trends';
 export const TREND_COMMUNITIES = ['Supplements', 'Nootropics', 'Biohackers'];
 export const DAY = 86_400_000;
+// Internal circuit breakers, independent of user quantity settings.
+export const TREND_REQUEST_GUARD = 500;
+export const TREND_POST_REQUEST_GUARD = 250;
 export const trendHash = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const iso = (time) => new Date(time).toISOString();
@@ -23,6 +26,18 @@ const time = (value, fallback) => {
     throw new Error('执行时间无效');
   return result;
 };
+const withoutLegacyLimits = (value) => {
+  const {
+    maxProducts: _products,
+    maxPages: _pages,
+    maxDetails: _details,
+    maxRequests: _requests,
+    maxCommentRequests: _commentRequests,
+    analysisMaxRecords: _analysis,
+    ...rest
+  } = value;
+  return rest;
+};
 export function ingredientTrendPlan(input, scheduled = false) {
   const raw = input.communities ?? TREND_COMMUNITIES;
   const communities = [
@@ -41,7 +56,8 @@ export function ingredientTrendPlan(input, scheduled = false) {
     communities.some((s) => !/^[a-z\d_]{3,21}$/i.test(s))
   )
     throw new Error('请填写1至10个Reddit社区名，如Supplements');
-  const plan = {
+  const legacyInput = input.collectionLimitsVersion === 2 ? {} : input;
+  let plan = {
     kind: 'ingredients',
     market: input.market,
     sourceMode: TREND_SOURCE,
@@ -51,19 +67,31 @@ export function ingredientTrendPlan(input, scheduled = false) {
     communities,
     topics: [],
     supplementOnly: true,
-    maxProducts: integer(input.maxProducts, 1000, 1, 5000, '每次最多帖子数'),
-    maxPages: integer(input.maxPages, 20, 1, 100, '每社区最多页数'),
-    maxDetails: integer(input.maxDetails, 6, 0, 20, '每次回访帖子数'),
-    maxRequests: integer(input.maxRequests, 60, 1, 500, '每次来源请求上限'),
+    maxProducts: integer(
+      legacyInput.maxProducts,
+      1000,
+      1,
+      5000,
+      '每次最多帖子数',
+    ),
+    maxPages: integer(legacyInput.maxPages, 20, 1, 100, '每社区最多页数'),
+    maxDetails: integer(legacyInput.maxDetails, 6, 0, 20, '每次回访帖子数'),
+    maxRequests: integer(
+      legacyInput.maxRequests,
+      60,
+      1,
+      500,
+      '每次来源请求上限',
+    ),
     maxCommentRequests: integer(
-      input.maxCommentRequests,
+      legacyInput.maxCommentRequests,
       30,
       0,
       300,
       '评论请求上限',
     ),
     analysisMaxRecords: integer(
-      input.analysisMaxRecords,
+      legacyInput.analysisMaxRecords,
       2000,
       40,
       5000,
@@ -75,6 +103,26 @@ export function ingredientTrendPlan(input, scheduled = false) {
       .trim()
       .slice(0, 1000),
   };
+  if (input.collectionLimitsVersion === 2) {
+    plan = withoutLegacyLimits(plan);
+    Object.assign(plan, {
+      collectionLimitsVersion: 2,
+      maxPostsPerCommunity: integer(
+        input.maxPostsPerCommunity,
+        1000,
+        1,
+        5000,
+        '每社区每次最多帖子数',
+      ),
+      maxCommentsPerPost: integer(
+        input.maxCommentsPerPost,
+        100,
+        0,
+        1000,
+        '每帖每次最多评论数',
+      ),
+    });
+  }
   if (scheduled) {
     if (input.enabled !== undefined && typeof input.enabled !== 'boolean')
       throw new Error('监控开关无效');
@@ -94,7 +142,10 @@ export function effectiveDiscoveryPlan(plan) {
     plan.sourceMode === TREND_SOURCE
       ? plan
       : { market: plan.market, time: plan.time, enabled: plan.enabled };
-  return { ...plan, ...ingredientTrendPlan(input, true) };
+  return {
+    ...withoutLegacyLimits(plan),
+    ...ingredientTrendPlan({ ...input, collectionLimitsVersion: 2 }, true),
+  };
 }
 export function trendSlots(plan, now) {
   const d = new Date(now + 8 * 3_600_000);

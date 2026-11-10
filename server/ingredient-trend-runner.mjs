@@ -1,3 +1,8 @@
+import {
+  runQuantityComments,
+  prepareQuantityComments,
+  commentStateKey,
+} from './ingredient-trend-quantity-comments.mjs';
 import { createTrendArchive } from './ingredient-trend-store.mjs';
 import {
   analysisRecords,
@@ -8,6 +13,7 @@ import {
   mentionMetrics,
   trendHash,
   trendPost,
+  TREND_POST_REQUEST_GUARD,
 } from './ingredient-trend-domain.mjs';
 import { stableId } from './discovery-monitor-domain.mjs';
 
@@ -24,6 +30,7 @@ const failure = (cp, message) => {
 };
 
 export async function runIngredientTrend(job, io) {
+  const quantity = job.input.plan.collectionLimitsVersion === 2;
   const plan = job.input.plan,
     scope = trendScope(job),
     archive = createTrendArchive(io, plan.market);
@@ -73,6 +80,7 @@ export async function runIngredientTrend(job, io) {
       cp.postQueue = [];
       cp.communityPages = {};
       cp.seenPosts = [];
+      if (quantity) cp.communitySeen = {};
       cp.posts = 0;
       cp.newPosts = 0;
       cp.bodyMissing = 0;
@@ -106,12 +114,25 @@ export async function runIngredientTrend(job, io) {
     if (
       cp.phase === 'posts' &&
       cp.postQueue.length > 0 &&
-      cp.sourceRequests < plan.maxRequests &&
-      cp.seenPosts.length < plan.maxProducts
+      (cp.sourceRequests <
+        (quantity ? TREND_POST_REQUEST_GUARD : plan.maxRequests) ||
+        (quantity && cp.activeSourceStep)) &&
+      (quantity || cp.seenPosts.length < plan.maxProducts)
     ) {
       const work = cp.postQueue[0],
         { community, scan } = work;
       const key = coverageKey(plan.market, scope, community);
+      if (
+        quantity &&
+        (cp.communitySeen[community]?.length || 0) >= plan.maxPostsPerCommunity
+      ) {
+        const state = { ...work.state, community, scan, partial: true };
+        await archive.write(key, state);
+        cp.coverage.push(state);
+        cp.postQueue.shift();
+        failure(cp, `r/${community}达到每社区帖子上限，断点已保留`);
+        return save();
+      }
       let result;
       const buffered = Boolean(scan.bufferedRaw),
         capture =
@@ -166,7 +187,9 @@ export async function runIngredientTrend(job, io) {
         accepted = 0,
         missingBody = 0;
       const prepared = raw.posts.map((p) => trendPost(p, community));
-      const unique = new Set(cp.seenPosts);
+      const unique = new Set(
+        quantity ? cp.communitySeen[community] : cp.seenPosts,
+      );
       for (let i = scan.pageOffset || 0; i < prepared.length; i++) {
         const p = prepared[i];
         const stamp = Date.parse(p.publishedAt);
@@ -175,7 +198,8 @@ export async function runIngredientTrend(job, io) {
           stamp >= scan.cutoff &&
           stamp <= scan.asOf &&
           !unique.has(p.id) &&
-          unique.size >= plan.maxProducts
+          unique.size >=
+            (quantity ? plan.maxPostsPerCommunity : plan.maxProducts)
         ) {
           Object.assign(scan, {
             bufferedRaw: raw,
@@ -183,7 +207,8 @@ export async function runIngredientTrend(job, io) {
             bufferedAt: at,
             pageOffset: i,
           });
-          cp.seenPosts = [...unique];
+          if (quantity) cp.communitySeen[community] = [...unique];
+          else cp.seenPosts = [...unique];
           work.state = { ...work.state, community, scan, partial: true };
           await archive.write(key, work.state);
           delete cp.activeSourceStep;
@@ -191,6 +216,14 @@ export async function runIngredientTrend(job, io) {
           cp.logs.push(
             `达到帖子上限，r/${community}本页剩余内容已保存，下次无需重新请求此页`,
           );
+          if (quantity) {
+            cp.coverage.push(work.state);
+            cp.postQueue.shift();
+            failure(
+              cp,
+              `r/${community}达到每社区帖子上限，已付费页面剩余内容留待下次`,
+            );
+          }
           return save();
         }
         if (!p.publishedAt) scan.missingDates++;
@@ -213,7 +246,8 @@ export async function runIngredientTrend(job, io) {
           cp.bodyMissing++;
         }
       }
-      cp.seenPosts = [...unique];
+      if (quantity) cp.communitySeen[community] = [...unique];
+      else cp.seenPosts = [...unique];
       delete scan.bufferedRaw;
       delete scan.bufferedCapture;
       delete scan.bufferedAt;
@@ -265,7 +299,11 @@ export async function runIngredientTrend(job, io) {
         `r/${community}第${pages}页：来源${raw.posts.length}帖，窗口接纳${accepted}帖，${missingBody}帖无文字正文；${complete ? '已到时间边界' : '仍有未覆盖内容'}`,
       );
       cp.postQueue.shift();
-      if (complete && scan.asOf < cp.asOf && pages < plan.maxPages) {
+      if (
+        complete &&
+        scan.asOf < cp.asOf &&
+        (quantity || pages < plan.maxPages)
+      ) {
         cp.postQueue.push({
           community,
           state,
@@ -279,7 +317,7 @@ export async function runIngredientTrend(job, io) {
             missingDates: 0,
           },
         });
-      } else if (!complete && !exhausted && pages < plan.maxPages)
+      } else if (!complete && !exhausted && (quantity || pages < plan.maxPages))
         cp.postQueue.push({ community, state, scan });
       else {
         cp.coverage.push(state);
@@ -306,7 +344,12 @@ export async function runIngredientTrend(job, io) {
         cp.coverage.push(state);
       }
       if (cp.postQueue.length > 0)
-        failure(cp, '来源请求或帖子上限已到，未完成的社区保留断点');
+        failure(
+          cp,
+          quantity
+            ? '触发后台帖子请求保护，未完成的社区保留断点，剩余额度用于评论'
+            : '来源请求或帖子上限已到，未完成的社区保留断点',
+        );
       cp.postQueue = [];
       cp.phase = 'comments';
       const archivedPosts = await archive.recent('post', cp.asOf);
@@ -315,6 +358,17 @@ export async function runIngredientTrend(job, io) {
           (c) => c.toLowerCase() === p.community.toLowerCase(),
         ),
       );
+      if (quantity) {
+        cp.samples = await prepareQuantityComments(
+          posts,
+          plan,
+          cp.asOf,
+          scope,
+          archive,
+        );
+        cp.sampleIndex = 0;
+        return save();
+      }
       cp.samples = commentCandidates(posts, plan, cp.asOf).map((post) => {
         const previous = post.commentState;
         return {
@@ -335,6 +389,13 @@ export async function runIngredientTrend(job, io) {
       cp.sampleIndex = 0;
       return save();
     }
+    if (quantity)
+      return await runQuantityComments(job, io, cp, archive, {
+        scope,
+        request,
+        save,
+        failure,
+      });
     const candidates = cp.samples || [];
     if (
       cp.phase === 'comments' &&
@@ -471,9 +532,13 @@ export async function runIngredientTrend(job, io) {
       cp.samples?.[cp.activeSample]
     ) {
       const { post, ...sample } = cp.samples[cp.activeSample];
-      await archive.savePost(post, {
-        commentState: { ...sample, blocked, lastVisitedAt: iso(cp.asOf) },
-      });
+      const state = { ...sample, blocked, lastVisitedAt: iso(cp.asOf) };
+      if (quantity)
+        await archive.write(
+          commentStateKey(plan.market, scope, post.id),
+          state,
+        );
+      await archive.savePost(post, { commentState: state });
     }
     return save('partial');
   }
@@ -541,20 +606,32 @@ export async function runIngredientTrend(job, io) {
         cp.windowAsOf,
         plan.communities,
       );
-      cp.analysisRecords = records.slice(-plan.analysisMaxRecords);
-      cp.omittedRecords = Math.max(0, records.length - plan.analysisMaxRecords);
+      cp.analysisRecords = quantity
+        ? records
+        : records.slice(-plan.analysisMaxRecords);
+      cp.omittedRecords = quantity
+        ? 0
+        : Math.max(0, records.length - plan.analysisMaxRecords);
       cp.analysisOffset = 0;
       cp.findings = [];
-      cp.commentCoverage = posts
-        .filter((p) => p.commentState)
-        .map((p) => ({
-          postId: p.id,
-          reported: p.commentState.reported,
-          unique: p.commentState.ids?.length || 0,
-          pending: p.commentState.pending?.length || 0,
-          countsMatch: p.commentState.countsMatch === true,
-          blocked: Boolean(p.commentState.blocked),
-        }));
+      cp.commentCoverage = [];
+      for (const post of posts) {
+        const state = quantity
+          ? await archive.read(commentStateKey(plan.market, scope, post.id))
+          : post.commentState;
+        if (!quantity && !state) continue;
+        cp.commentCoverage.push({
+          postId: post.id,
+          reported: state?.reported ?? post.reportedComments,
+          unique: state?.ids?.length || 0,
+          pending:
+            (state?.pending?.length || 0) + (state?.bufferedPage ? 1 : 0),
+          countsMatch:
+            state?.countsMatch === true || post.reportedComments === 0,
+          blocked: Boolean(state?.blocked),
+          disabled: quantity && plan.maxCommentsPerPost === 0,
+        });
+      }
       cp.window = {
         start: iso(cp.windowAsOf - 7 * DAY),
         end: iso(cp.windowAsOf),

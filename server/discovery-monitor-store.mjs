@@ -142,7 +142,7 @@ export async function discoveryAction(input, user) {
       return { jobId: job.id };
     }
     if (input.action === 'server_discovery_save') {
-      const plan = discoveryPlan(dailyNewProductPlan({ ...(input.plan || input), scheduleConfigVersion: 1 }), true);
+      const plan = discoveryPlan(effectiveDiscoveryPlan(discoveryPlan(dailyNewProductPlan({ ...(input.plan || input), scheduleConfigVersion: 1 }), true)), true);
       await validateCategories(plan, c);
       const id = input.id || randomUUID();
       if (!/^[\da-f-]{36}$/i.test(id)) throw new Error('监控编号无效');

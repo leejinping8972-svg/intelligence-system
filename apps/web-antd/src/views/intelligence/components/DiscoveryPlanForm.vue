@@ -289,12 +289,10 @@ async function submit(save: boolean) {
         />
       </Form.Item>
     </div>
-    <template v-if="form.kind !== 'ingredients'">
-      <Alert v-if="fullHealthCoverage" type="info" message="固定保健品范围：代餐粉、冲调型奶昔粉、蛋白营养粉保留；摇摇杯等器具、普通即食食品和普通即饮代餐排除。资料不足待确认；外用配方须有健康护理用途证据。" />
-      <DiscoveryCategories v-else v-model="form.categories" :channels="form.channels" :source-markets="form.sourceMarkets || {}" :market="form.market" />
-      <Form.Item v-if="!fullHealthCoverage" label="仅保健品（默认开启）"><Switch v-model:checked="form.supplementOnly" /></Form.Item>
-      <p class="hci-subtle">美国站不包含Shopee；Temu接口已开放，但保健品类目样本暂未返回，当前不纳入默认监控。</p>
-    </template>
+    <Alert v-if="fullHealthCoverage" type="info" message="固定保健品范围：代餐粉、冲调型奶昔粉、蛋白营养粉保留；摇摇杯等器具、普通即食食品和普通即饮代餐排除。资料不足待确认；外用配方须有健康护理用途证据。" />
+    <DiscoveryCategories v-else v-model="form.categories" :channels="form.channels" :source-markets="form.sourceMarkets || {}" :market="form.market" />
+    <Form.Item v-if="!fullHealthCoverage" label="仅保健品（默认开启）"><Switch v-model:checked="form.supplementOnly" /></Form.Item>
+    <p class="hci-subtle">美国站不包含Shopee；Temu接口已开放，但保健品类目样本暂未返回，当前不纳入默认监控。</p>
     <Alert
       type="info"
       show-icon

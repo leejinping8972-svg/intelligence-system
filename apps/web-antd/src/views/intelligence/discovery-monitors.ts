@@ -19,6 +19,9 @@ export interface DiscoveryPlan {
   supplementOnly?: boolean;
   sourceMode?: 'ingredient_trends' | 'official_new_releases' | 'sorftime';
   communities?: string[];
+  collectionLimitsVersion?: 2;
+  maxPostsPerCommunity?: number;
+  maxCommentsPerPost?: number;
   maxRequests?: number;
   maxCommentRequests?: number;
   analysisMaxRecords?: number;
@@ -91,7 +94,7 @@ export const defaultDiscoveryPlan = (
   categories: {},
   sourceMode: kind === 'ingredients' ? 'ingredient_trends' : 'sorftime',
   channels: kind === 'ingredients' ? ['reddit'] : ['amazon'],
-  ...(kind === 'ingredients' ? {communities: ['Supplements','Nootropics','Biohackers'],maxRequests:60,maxCommentRequests:30,analysisMaxRecords:2000,analysisWeekday:1,analysisTime:'10:00',focus:''} : {}),
+  ...(kind === 'ingredients' ? {communities: ['Supplements','Nootropics','Biohackers'],collectionLimitsVersion:2,maxPostsPerCommunity:1000,maxCommentsPerPost:100,analysisWeekday:1,analysisTime:'10:00',focus:''} : {}),
   sourceMarkets: {},
   topics:
     kind === 'ingredients'
