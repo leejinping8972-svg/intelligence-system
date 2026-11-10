@@ -170,12 +170,14 @@ async function collectRaw(job, step, request) {
     }
   }
   const officialRequest = request.sources?.includes('official_new_releases');
-  const requestUrl = officialRequest
+  const trendRequest = request.sources?.includes('ingredient_trend_source');
+  const trendSpec = trendRequest ? (await import('./ingredient-trend-provider.mjs')).trendSourceSpec(request) : null;
+  const requestUrl = trendSpec ? `https://api.scrapecreators.com${trendSpec.path}` : officialRequest
     ? (request.op === 'detail' && request.ranking?.boardUrl ? new URL(`/dp/${request.asin}`, request.ranking.boardUrl).href : request.url || '')
     : process.env.COLLECTOR_URL || '';
   const requestState = requestStarted(
     {
-      method: officialRequest ? 'GET' : 'POST',
+      method: trendSpec?.method || (officialRequest ? 'GET' : 'POST'),
       url: requestUrl,
       sourceId: request.sources?.[0] || request.provider || 'collector',
       requestId: `${job.id}:${step}`,
@@ -202,7 +204,9 @@ async function collectRaw(job, step, request) {
     const provider = process.env.COLLECTOR_URL
       ? null
       : await import('./local-provider.mjs');
-    const response = request.sources?.includes('product_watch_source')
+    const response = request.sources?.includes('ingredient_trend_source')
+      ? Response.json(await (await import('./ingredient-trend-provider.mjs')).ingredientTrendSource(request))
+      : request.sources?.includes('product_watch_source')
       ? Response.json(await (await import('./product-watch-sorftime.mjs')).productWatchSource(request))
       : request.sources?.includes('official_new_releases')
       ? Response.json(await (await import('./official-new-releases.mjs')).officialNewReleases(request))
@@ -300,6 +304,7 @@ async function collectRaw(job, step, request) {
       requestUsage: {
         ...requestUsage,
         ...completedUsage,
+        ...(trendRequest ? result.requestLog : {}),
       },
       ...(result.semrushKeyId || semrushKeyId
         ? { semrushKeyId: result.semrushKeyId || semrushKeyId }
@@ -317,6 +322,7 @@ async function collectRaw(job, step, request) {
     const failedUsage = {
       ...requestUsage,
       ...requestFailed(requestState, error),
+      ...(trendRequest && error.rawPreview?.requestLog ? {...error.rawPreview.requestLog,outcome:'error'} : {}),
     };
     const mcpPreview =
       error?.mcpPreview ||

@@ -77,16 +77,16 @@ test('edited ingredient monitor immediately submits 5000 posts, closes the modal
     await page.goto(url);
     await page.getByRole('button', { name: /编\s*辑/ }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByRole('spinbutton').first().fill('5000');
+    await dialog.locator('#ingredient-max-posts').fill('5000');
     await dialog
-      .getByRole('button', { name: '按当前设置立即运行', exact: true })
+      .getByRole('button', { name: '立即采集', exact: true })
       .click();
     await page.waitForFunction(
       () => typeof window.completeSubmit === 'function',
     );
     const runningButton = dialog
       .locator('button')
-      .filter({ hasText: '按当前设置立即运行' });
+      .filter({ hasText: '立即采集' });
     assert.match(await runningButton.getAttribute('class'), /ant-btn-loading/);
     await runningButton.click({ force: true });
     const submitted = await page.evaluate(() =>
@@ -94,6 +94,9 @@ test('edited ingredient monitor immediately submits 5000 posts, closes the modal
     );
     assert.equal(submitted.length, 1);
     assert.equal(submitted[0].input.plan.maxProducts, 5000);
+    assert.equal(submitted[0].input.trendOperation,'collect');
+    assert.equal(submitted[0].input.plan.sourceMode,'ingredient_trends');
+    assert.deepEqual(submitted[0].input.plan.channels,['reddit']);
     assert.equal(
       submitted[0].input.monitorId,
       '11111111-1111-4111-a111-111111111111',
@@ -118,13 +121,27 @@ test('edited ingredient monitor immediately submits 5000 posts, closes the modal
       window.nextError = 'Synthetic submit failure';
     });
     await dialog
-      .getByRole('button', { name: '按当前设置立即运行', exact: true })
+      .getByRole('button', { name: '立即采集', exact: true })
       .click();
     await dialog
       .getByText('Synthetic submit failure', { exact: true })
       .waitFor();
     assert.equal(await dialog.isVisible(), true);
     assert.equal((await page.evaluate(() => window.routes)).length, 1);
+    await page.evaluate(()=>{window.nextError='';delete window.completeSubmit;});
+    await dialog.getByRole('button',{name:'分析最近一周',exact:true}).click();
+    await page.waitForFunction(()=>typeof window.completeSubmit==='function');
+    const weekly=await page.evaluate(()=>window.calls.filter(c=>c.action==='server_discovery_submit').at(-1));
+    assert.equal(weekly.input.trendOperation,'analyze');
+    await page.evaluate(()=>window.completeSubmit());
+    await page.waitForFunction(()=>window.routes.length===2);
+    await dialog.waitFor({state:'hidden'});
+    await page.getByRole('button',{name:/编\s*辑/}).click();
+    await dialog.getByRole('button',{name:'保存监控',exact:true}).click();
+    await dialog.waitFor({state:'hidden'});
+    const saved=await page.evaluate(()=>window.calls.find(c=>c.action==='server_discovery_save'));
+    assert.equal(saved.input.plan.frequency,'daily');
+    assert.deepEqual(saved.input.plan.communities,['Supplements','Nootropics','Biohackers']);
     await page.screenshot({
       path: resolve(fixture, 'failure-visible.png'),
       fullPage: true,

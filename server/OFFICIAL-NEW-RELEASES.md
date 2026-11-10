@@ -1,4 +1,4 @@
-> 2026-11-05最新指令：新品与成分研究均默认使用Sorftime MCP，详见[SORFTIME-DISCOVERY.md](./SORFTIME-DISCOVERY.md)。本文件仅描述保留的显式官方榜兼容路径。
+> 2026-11-10：成分能力已调整为[成分风向](./INGREDIENT-TRENDS.md)，采用ScrapeCreators社区增量与周分析。新品仍按2026-11-05指令默认使用Sorftime MCP，详见[SORFTIME-DISCOVERY.md](./SORFTIME-DISCOVERY.md)。本文件仅描述保留的显式官方榜兼容路径。
 
 # 官方新品榜与成分研究提交修复
 

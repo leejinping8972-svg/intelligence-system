@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { ingredientTrendPlan } from './ingredient-trend-domain.mjs';
 import { previousListingWindow } from './product-pool-domain.mjs';
 import {
   officialBoards,
@@ -8,7 +9,7 @@ import {
 export const discoveryKinds = {
   fbm_new: 'FBM新品',
   regular_new: '常规新品',
-  ingredients: '成分研究',
+  ingredients: '成分风向',
 };
 export const discoveryDay = (now) =>
   new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -20,6 +21,7 @@ export function discoveryPlan(input, scheduled = false) {
   if (!Object.hasOwn(discoveryKinds, input.kind))
     throw new Error('请选择监控类型');
   if (!['MX', 'US', 'VN'].includes(input.market)) throw new Error('请选择市场');
+  if (input.kind === 'ingredients') return ingredientTrendPlan(input, scheduled);
   const days = input.days ?? 7;
   if (
     !(

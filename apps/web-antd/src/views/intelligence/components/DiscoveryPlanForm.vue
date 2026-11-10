@@ -20,6 +20,7 @@ import {
 } from 'ant-design-vue';
 
 import DiscoveryCategories from './DiscoveryCategories.vue';
+import IngredientTrendForm from './IngredientTrendForm.vue';
 import { cloudRequest } from '../cloud-workspace';
 import { defaultDiscoveryPlan, discoveryLabels } from '../discovery-monitors';
 import { serverMode, session } from '../session';
@@ -134,6 +135,7 @@ watch(() => form.market, (market) => {
   form.categories = {};
 });
 async function load() {
+  if (form.kind === 'ingredients') return;
   loading.value = true;
   const kind = form.kind;
   try {
@@ -216,7 +218,9 @@ async function submit(save: boolean) {
 }
 </script>
 <template>
+  <IngredientTrendForm v-if="form.kind === 'ingredients'" :plan="plan" :scheduled="scheduled" @saved="emit('saved')" @submitted="emit('submitted', $event)" />
   <Form
+    v-else
     layout="vertical"
     :model="form"
     class="discovery-form"
@@ -272,7 +276,7 @@ async function submit(save: boolean) {
       >
         <Select
           v-model:value="form.sourceMarkets![channel.id]"
-          :disabled="form.kind !== 'ingredients'"
+          disabled
           :options="
             (channel.markets?.length
               ? channel.markets
@@ -282,62 +286,44 @@ async function submit(save: boolean) {
         />
       </Form.Item>
     </div>
-    <template v-if="form.kind !== 'ingredients'">
+    <template>
       <DiscoveryCategories v-model="form.categories" :channels="form.channels" :source-markets="form.sourceMarkets || {}" :market="form.market" />
       <Form.Item label="仅保健品（默认开启）"><Switch v-model:checked="form.supplementOnly" /></Form.Item>
       <p class="hci-subtle">美国站不包含Shopee；Temu接口已开放，但保健品类目样本暂未返回，当前不纳入默认监控。</p>
     </template>
-    <Form.Item v-if="form.kind === 'ingredients'" label="研究话题">
-      <Input.TextArea v-model:value="form.topics" :rows="3" :maxlength="2000" />
-    </Form.Item>
     <Alert
-      v-if="form.kind !== 'ingredients'"
       type="info"
       show-icon
       :message="collectionRule"
     />
     <div class="discovery-grid">
       <Form.Item
-        :label="form.kind === 'ingredients' ? '讨论时间范围' : '上架日期范围'"
+        label="上架日期范围"
       >
         <Select
           v-model:value="form.days"
           id="discovery-days"
           :options="
-            (form.kind === 'ingredients'
-              ? [1, 7, 30, 60, 90]
-              : [7, 30, 60, 90]
-            ).map((value) => ({ value, label: `近${value}天` }))
+            [7, 30, 60, 90].map((value) => ({ value, label: `近${value}天` }))
           "
         />
       </Form.Item>
 
       <Form.Item
-        :label="form.kind === 'ingredients' ? '最多讨论数' : '最多商品数'"
+        label="最多商品数"
       >
         <InputNumber
           v-model:value="form.maxProducts"
           :min="1"
-          :max="form.kind === 'ingredients' ? 5000 : 1000"
+          :max="1000"
         />
       </Form.Item>
       <Form.Item
-        :label="
-          form.kind === 'ingredients' ? '每话题最多页数' : '每类目最多页数'
-        "
+        label="每类目最多页数"
       >
         <InputNumber v-model:value="form.maxPages" :min="1" :max="100" />
       </Form.Item>
-      <Form.Item
-        v-if="form.kind === 'ingredients'"
-        label="最多帖子评论／问题回答"
-      >
-        <InputNumber v-model:value="form.maxDetails" :min="0" :max="20" />
-      </Form.Item>
     </div>
-    <p v-if="form.kind === 'ingredients'" class="hci-subtle">
-      通过Sorftime查询Reddit、Quora，按来源发布时间筛选；Reddit仅有摘要时补取帖子原文。帖子上限5000；实际数量受话题、页数、来源返回和时间筛选影响。扩大时间范围或页数会增加来源请求。
-    </p>
     <p v-if="scheduled" class="hci-subtle">
       立即运行使用当前填写的采集条件；更改定时监控请另点“保存监控”。
     </p>
@@ -384,11 +370,7 @@ async function submit(save: boolean) {
         :disabled="!canEdit"
       >
         {{
-          scheduled
-            ? '保存监控'
-            : form.kind === 'ingredients'
-              ? '开始成分研究'
-              : '抓取新品'
+          scheduled ? '保存监控' : '抓取新品'
         }} </Button
       ><Button
         v-if="scheduled"

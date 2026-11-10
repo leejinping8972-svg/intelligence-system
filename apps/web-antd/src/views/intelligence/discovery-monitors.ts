@@ -2,7 +2,7 @@ export type DiscoveryKind = 'fbm_new' | 'ingredients' | 'regular_new';
 export const discoveryLabels = {
   fbm_new: 'FBM新品',
   regular_new: '常规新品',
-  ingredients: '成分研究',
+  ingredients: '成分风向',
 };
 export interface DiscoveryCategory { id: string; name: string; path: string[]; receiptId: string; market: string; }
 export interface DiscoveryPlan {
@@ -15,7 +15,16 @@ export interface DiscoveryPlan {
   categories?: Record<string, DiscoveryCategory[]>;
   completeDays?: boolean;
   supplementOnly?: boolean;
-  sourceMode?: 'official_new_releases' | 'sorftime';
+  sourceMode?: 'ingredient_trends' | 'official_new_releases' | 'sorftime';
+  communities?: string[];
+  maxRequests?: number;
+  maxCommentRequests?: number;
+  analysisMaxRecords?: number;
+  analysisWeekday?: number;
+  analysisTime?: string;
+  focus?: string;
+  lastCollectionJobId?: string;
+  lastAnalysisJobId?: string;
   requireSales?: boolean;
   requireListingDate?: boolean;
   officialBoardUrls?: string[];
@@ -52,6 +61,11 @@ export interface IngredientFinding {
   mentionCount: number;
   platforms: string[];
   firstSeenInSystem: boolean;
+  window?: {start: string; end: string};
+  current?: {mentionCount: number; postCount: number; commentCount: number; authorCount: number; discussionCount: number};
+  previous?: {mentionCount: number};
+  observedChange?: number | null;
+  comparisonReady?: boolean;
   mentions: {
     id: string;
     quote: string;
@@ -59,6 +73,8 @@ export interface IngredientFinding {
     url: string;
     publishedAt: string;
     topic: string;
+    community?: string;
+    type?: 'comment' | 'post';
   }[];
 }
 export const defaultDiscoveryPlan = (
@@ -67,12 +83,13 @@ export const defaultDiscoveryPlan = (
 ): DiscoveryPlan => ({
   kind,
   market,
-  days: kind === 'ingredients' ? 30 : 7,
+  days: 7,
   completeDays: kind !== 'ingredients',
   supplementOnly: true,
   categories: {},
-  sourceMode: 'sorftime',
-  channels: kind === 'ingredients' ? ['reddit', 'quora'] : ['amazon'],
+  sourceMode: kind === 'ingredients' ? 'ingredient_trends' : 'sorftime',
+  channels: kind === 'ingredients' ? ['reddit'] : ['amazon'],
+  ...(kind === 'ingredients' ? {communities: ['Supplements','Nootropics','Biohackers'],maxRequests:60,maxCommentRequests:30,analysisMaxRecords:2000,analysisWeekday:1,analysisTime:'10:00',focus:''} : {}),
   sourceMarkets: {},
   topics:
     kind === 'ingredients'
@@ -83,7 +100,22 @@ export const defaultDiscoveryPlan = (
   weekday: 1,
   monthDay: 1,
   enabled: false,
-  maxProducts: 100,
-  maxPages: 3,
-  maxDetails: 5,
+  maxProducts: kind === 'ingredients' ? 1000 : 100,
+  maxPages: kind === 'ingredients' ? 20 : 3,
+  maxDetails: kind === 'ingredients' ? 6 : 5,
 });
+
+export interface IngredientTrendReport {
+  id: string;
+  market: string;
+  asOf: string;
+  generatedAt: string;
+  window: {start: string; end: string};
+  findings: IngredientFinding[];
+  recordCount: number;
+  omittedRecords: number;
+  comparisonReady: boolean;
+  postCoverageReady: boolean;
+  communities: string[];
+  commentCoverage: {postId:string;reported:number|null;unique:number;pending:number;countsMatch:boolean;blocked:boolean}[];
+}

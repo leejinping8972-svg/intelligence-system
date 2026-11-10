@@ -21,7 +21,7 @@ function description(input) {
           : ['商品发现与趋势补全', '按指定关键词或资源路径发现商品，并采集已配置的详情与趋势。', 'products'];
     case 'source_fields': return ['来源字段 AI 分析', '整理目标对象已保存的原文资料，提取字段并保留来源引用。', input.targetKind];
     case 'product_watch': return ['商品持续监控', '更新本市场符合监控规则的商品，保留销售与价格观察记录。', 'products'];
-    case 'discovery_monitor': return [({ fbm_new: 'FBM 新品发现', regular_new: '常规新品发现', ingredients: '成分研究' })[input.plan?.kind] || '新品发现', '按监控规则与指定来源收集新品或成分研究线索。', 'products'];
+    case 'discovery_monitor': return [({ fbm_new: 'FBM 新品发现', regular_new: '常规新品发现', ingredients: '成分风向' })[input.plan?.kind] || '新品发现', input.plan?.sourceMode === 'ingredient_trends' ? (input.trendOperation === 'analyze' ? '分析已积累的近期成分讨论，保留原文证据与覆盖范围。' : '每日补充社区帖子与重点评论，按ID去重保留历史。') : '按监控规则与指定来源收集新品或成分线索。', 'products'];
     case 'products': return ['站点商品采集', '从指定独立站采集商品资料。', 'sites'];
     case 'ads': return ['广告与关联站点采集', '按指定关键词查找广告及其关联独立站。', 'keywords'];
     case 'ad_analysis': return ['广告拆解与分析', '分析所选广告的内容、卖点和来源证据。', 'ads'];
