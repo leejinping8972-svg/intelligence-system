@@ -1,26 +1,34 @@
 {
-  "title": "新品类目首屏与商品处理进度分离",
+  "title": "新品异常定向重试与中文卖家资料恢复",
   "files": [
+    "apps/web-antd/src/views/intelligence/__tests__/product-merchant-chart.test.ts",
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
     "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
-    "apps/web-antd/src/views/intelligence/components/TaskDetailPanel.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/monitor.vue",
     "apps/web-antd/src/views/intelligence/task-list.ts",
     "server/HEALTH-DISCOVERY.md",
+    "server/amazon-seller-details.mjs",
+    "server/amazon-seller-details.test.mjs",
     "server/discovery-progress.browser.test.mjs",
-    "server/health-discovery-progress.mjs",
-    "server/health-discovery-progress.test.mjs",
-    "server/task-overview.mjs",
-    "tests/health-discovery-progress.test.ts",
-    "tests/task-detail-context.test.ts"
+    "server/health-discovery-retry.mjs",
+    "server/health-discovery-retry.test.mjs",
+    "server/health-discovery-runner.mjs",
+    "server/index.mjs",
+    "server/product-intake.mjs",
+    "server/product-intake.test.mjs",
+    "server/product-seller.mjs",
+    "server/task-resume.mjs",
+    "tests/health-discovery-progress.test.ts"
   ],
   "featureShas": [
-    "71dbd4020bee6ae7e0bec367d875d794bd47d5da"
+    "d721304e268370b1640236464e8e3c9e32dd36ee",
+    "f6615f3d7ca92eda253ad78ae41ab5e95af412ad"
   ],
-  "sourceSha": "71dbd4020bee6ae7e0bec367d875d794bd47d5da",
+  "sourceSha": "f6615f3d7ca92eda253ad78ae41ab5e95af412ad",
   "changes": [
-    "固定类目首屏进度总数，按已保存覆盖记录累计成功及失败，兼容运行中的任务",
-    "商品入库、排除、待确认、待处理及分页结果独立展示，首屏100%仍提示剩余处理阶段",
-    "列表、卡片与详情保持一致，辅助资料异常不再充当类目失败，保留旧任务与请求账本"
+    "同一任务仅重试失败类目、异常资料和待确认判定，保留成功响应、入库计数与冻结时间窗；未知请求阻止重放",
+    "空占位卖家名不再触发店名搜索，按商品ASIN唯一关联真实卖家，再按ID补企业名和分行地址；中文原文展示",
+    "旧数据库JSON字段排序兼容原始请求步骤，失败历史保留，每次手动只安排一轮重试"
   ],
   "database": {
     "schemaChange": false,
@@ -31,9 +39,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "24/24 related server and real browser checks, 14/14 frontend tests, full Web typecheck, independent development build, new module lint and diff checks passed. Desktop, narrow card and detail progress verified.",
+    "development": "46 related server tests, 5 seller compatibility tests, 2 browser/targeted retry tests, 8 frontend tests, full Web typecheck, isolated development build and new-module lint passed. Final journal-order follow-up 14/14 tests passed. Read-only live planning selected 1 failed category and 28 affected products (13 accepted enrichment,15 review), retaining15 accepted and original asOf; no paid probes.",
     "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation build and CI waiting skipped by user policy. Official frontend/API generated once for frozen candidate.",
-    "limitations": "First-page percentage is explicitly scoped, not overall pagination completion. Unversioned legacy tasks retain old projection. Existing unrelated bulk task projection expectation failure reproduced on unchanged baseline. No new real source/model calls or task replay."
+    "limitations": "Source may return missing/ambiguous sellers or insufficient product proof. Retry is one bounded manual round and does not guarantee admission. Existing request receipts and previous failures retained. Production recovery separately authorized for exact user task; no scheduled plan changes."
   },
   "queue": {
     "leaseCount": 23,
@@ -42,10 +50,11 @@
   },
   "configuration": {
     "collectionRulesChanged": false,
-    "checkpointMigration": false
+    "checkpointMigration": false,
+    "targetedManualRetry": true
   },
-  "id": "20261110072133-4ee63153",
-  "builtAt": "2026-11-10T07:21:33.148Z",
-  "sourceDigest": "4ee631538e81d397630f2276a55edbf15436cf1abd1845477201f4e148dce277",
+  "id": "20261110090201-bf75e816",
+  "builtAt": "2026-11-10T09:02:01.708Z",
+  "sourceDigest": "bf75e8169dbd997ffaf11632b1239ea7f7e168e8bf28c46e2c14b3a58177f70a",
   "operator": "Codex"
 }
