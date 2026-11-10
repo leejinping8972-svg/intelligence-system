@@ -1,71 +1,33 @@
 {
-  "title": "商品历史月度趋势、Amazon卖家公开详情及成分风向",
+  "title": "新品完整保健类目、营养粉剂规则及默认历史月销量",
   "files": [
-    "apps/web-antd/src/router/routes/modules/intelligence.ts",
-    "apps/web-antd/src/views/intelligence/__tests__/product-merchant-chart.test.ts",
-    "apps/web-antd/src/views/intelligence/components/DiscoveryMonitors.vue",
     "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
-    "apps/web-antd/src/views/intelligence/components/IngredientTrendForm.vue",
-    "apps/web-antd/src/views/intelligence/components/NewMonitorDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductMerchant.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductWatchChart.vue",
     "apps/web-antd/src/views/intelligence/components/ProductWatchHistory.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductWatchPanel.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
     "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
-    "apps/web-antd/src/views/intelligence/ingredient-research.vue",
-    "apps/web-antd/src/views/intelligence/navigation.ts",
-    "apps/web-antd/src/views/intelligence/product-trend-period.ts",
-    "server/AMAZON-SELLER-DETAILS.md",
-    "server/INGREDIENT-TRENDS.md",
-    "server/OFFICIAL-NEW-RELEASES.md",
-    "server/PRODUCT-MONTHLY-TRENDS.md",
-    "server/SORFTIME-DISCOVERY.md",
-    "server/SUPPLEMENT-GROWTH-SELECTION.md",
-    "server/amazon-seller-details.mjs",
-    "server/amazon-seller-details.test.mjs",
+    "server/HEALTH-DISCOVERY.md",
     "server/discovery-ai.mjs",
     "server/discovery-monitor-domain.mjs",
-    "server/discovery-monitor-form.browser.test.mjs",
     "server/discovery-monitor-store.mjs",
-    "server/discovery-monitors.integration.test.mjs",
-    "server/discovery-monitors.test.mjs",
-    "server/index.mjs",
-    "server/ingredient-trend-domain.mjs",
-    "server/ingredient-trend-provider.mjs",
-    "server/ingredient-trend-runner.mjs",
-    "server/ingredient-trend-store.mjs",
-    "server/ingredient-trend.browser.test.mjs",
-    "server/ingredient-trend.test.mjs",
-    "server/official-new-releases.mjs",
-    "server/platform-product-data.mjs",
-    "server/product-intake-sorftime.mjs",
+    "server/health-category-catalogue.mjs",
+    "server/health-category-domain.mjs",
+    "server/health-discovery-runner.mjs",
+    "server/health-discovery.test.mjs",
+    "server/health-product-domain.mjs",
     "server/product-intake.mjs",
-    "server/product-monthly-trends.mjs",
-    "server/product-monthly-trends.test.mjs",
-    "server/product-monthly-watch.test.mjs",
-    "server/product-seller.d.mts",
-    "server/product-seller.mjs",
-    "server/product-watch-domain.mjs",
-    "server/product-watch-sorftime.mjs",
-    "server/product-watch-store.mjs",
+    "server/product-pool-domain.mjs",
+    "server/product-pool.browser.test.mjs",
     "server/runner.mjs",
-    "server/source-usage-domain.mjs",
-    "server/store.mjs",
-    "server/task-context.mjs",
-    "server/workspace-reads.mjs",
-    "tests/product-trend-period.test.ts"
+    "server/source-field-domain.mjs"
   ],
   "featureShas": [
-    "dfa41c5b80513926464140707443b133d6810f77",
-    "e0d4398fc9838cfb114a85b4f28c735fa2569d4d",
-    "2e3e2bb7bc5a5de28347ed24c170c1b4acdcc73a"
+    "5724ff391cda282147da4a82c2fbe8063dd21231",
+    "6334461ab7390cf8d12e6102b6023eb208f03fc1"
   ],
-  "sourceSha": "806582c3baf9871f6e1b78b13788f8fb92e5e941",
+  "sourceSha": "6f54e2456c9075bddda33d412e079d2abc364444",
   "changes": [
-    "新增可选Sorftime历史月销量/月销售额，默认关闭，仅新监控任务冻结启用；每7天刷新，缺月和失败保留真实口径",
-    "卖家名可查看企业名称、分行公开地址、来源与时间及Amazon卖家主页；正常intake最多增加两步查询，7天缓存，点击不补采",
-    "成分研究改为成分风向：Reddit三社区每日增量采集、重点评论续采，每周分析归档原文；两周覆盖不足显示待积累，旧冻结任务保留"
+    "美国新品固定Amazon206、TikTok4基础类目，另2个代餐混合入口只保留粉剂；逐类查询并显示首屏/分页截断进度",
+    "代餐粉、冲调型奶昔粉、蛋白营养粉保留，器具与普通食品排除，证据不足待确认，旧冻结任务不扩增",
+    "持续观察趋势默认展示Sorftime历史月销量，无数据也保留所选指标，不自动切到价格或日销量"
   ],
   "database": {
     "schemaChange": false,
@@ -76,18 +38,22 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "Monthly: server16/16 frontend3/3. Seller: server35/35 existing reads5/5 UI6/6. Ingredient: 41/41. Each delivered full Web typecheck, independent developer build, local lint/diff and relevant browser component checks passed.",
-    "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation builds and CI waiting skipped by user policy. Only official deployment artifacts generated once.",
-    "limitations": "Existing product-watch integration and source-usage test failures reproduced on unchanged baseline. Monthly live paid source schema not tested; seller live validation bounded to one US seller; ingredient parser replays used saved responses. No release paid probes/backfill or automatic configuration enablement."
+    "development": "Coverage feature delivered 48/48 related server tests, 1/1 browser component workflow (desktop/mobile), full Web typecheck, independent development build, local new-module lint and diff checks. Monthly default UI is a small state-only change inspected for initial display, product switch reset, missing data and preserving manual selection.",
+    "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation build and CI waiting skipped by user policy. Official artifacts generated once for the frozen candidate.",
+    "limitations": "Source-visible categories are not a guarantee of official platform exhaustiveness. Dedicated topical categories not fully verified; no new paid product/model live acceptance. Pending products archived without a separate manual review page. Monitoring switch preserves schedules, frozen jobs and request journals; no historic reruns."
   },
   "queue": {
     "leaseCount": 23,
-    "newLeaseNames": [],
     "preserveFrozenJobs": true,
     "unknownRequests": "never-auto-replay"
   },
-  "id": "20261110041333-346b20af",
-  "builtAt": "2026-11-10T04:13:33.693Z",
-  "sourceDigest": "346b20afa672974b35026546e2eca6bd1bca90c2376cc98f5569b6de1f58b06c",
+  "configuration": {
+    "switchEnabledUSNewProductPlans": true,
+    "preserveSchedules": true,
+    "manualHistoricReplay": false
+  },
+  "id": "20261110043501-aa3b4242",
+  "builtAt": "2026-11-10T04:35:01.270Z",
+  "sourceDigest": "aa3b4242d2c5fa91841aa9853d7dcd07212c8d3e7bdd6d385acae9c4fae80e94",
   "operator": "Codex"
 }
