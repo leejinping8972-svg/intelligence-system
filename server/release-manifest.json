@@ -1,26 +1,26 @@
 {
-  "title": "成分风向按社区帖子与每帖评论数量采集",
+  "title": "新品类目首屏与商品处理进度分离",
   "files": [
-    "apps/web-antd/src/views/intelligence/components/DiscoveryPlanForm.vue",
-    "apps/web-antd/src/views/intelligence/components/IngredientTrendForm.vue",
-    "apps/web-antd/src/views/intelligence/discovery-monitors.ts",
-    "server/INGREDIENT-TRENDS.md",
-    "server/discovery-monitor-store.mjs",
-    "server/ingredient-trend-domain.mjs",
-    "server/ingredient-trend-quantity-comments.mjs",
-    "server/ingredient-trend-quantity.test.mjs",
-    "server/ingredient-trend-runner.mjs",
-    "server/ingredient-trend.browser.test.mjs",
-    "server/ingredient-trend.test.mjs"
+    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
+    "apps/web-antd/src/views/intelligence/components/TaskDetailPanel.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/task-list.ts",
+    "server/HEALTH-DISCOVERY.md",
+    "server/discovery-progress.browser.test.mjs",
+    "server/health-discovery-progress.mjs",
+    "server/health-discovery-progress.test.mjs",
+    "server/task-overview.mjs",
+    "tests/health-discovery-progress.test.ts",
+    "tests/task-detail-context.test.ts"
   ],
   "featureShas": [
-    "f8391488a890528c826fdcca5fe0bcc3ba1cea07"
+    "71dbd4020bee6ae7e0bec367d875d794bd47d5da"
   ],
-  "sourceSha": "ba9ab71843acb09632f6d0d84c099d0818249929",
+  "sourceSha": "71dbd4020bee6ae7e0bec367d875d794bd47d5da",
   "changes": [
-    "数量设置简化为每社区每次最多帖子数和每帖每次最多评论数（含回复）；默认1000/100，评论可设0关闭",
-    "自动分页、逐社区独立配额、14天帖子轮换回访与付费页余量续采；保留后台请求保护和缺口说明",
-    "周分析分批处理两周窗口全部归档资料，取消2000段截断；旧冻结任务和请求编号保持原范围"
+    "固定类目首屏进度总数，按已保存覆盖记录累计成功及失败，兼容运行中的任务",
+    "商品入库、排除、待确认、待处理及分页结果独立展示，首屏100%仍提示剩余处理阶段",
+    "列表、卡片与详情保持一致，辅助资料异常不再充当类目失败，保留旧任务与请求账本"
   ],
   "database": {
     "schemaChange": false,
@@ -31,9 +31,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "27/27 related server tests, 1/1 ingredient browser test, full Web typecheck, independent development build, new domain/comment runner lint and diff checks passed. Paid-page interruption/unique quotas/2105 record analysis covered.",
-    "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation build and CI waiting skipped by user policy. Official frontend/API generated once for this frozen candidate.",
-    "limitations": "No new real source/model calls. Source returns entire pages; unique processed comments may include revisits. Internal request guard can leave partial coverage. Extra pre-existing product pool browser regression remains failing; form legacy catch naming lint remains."
+    "development": "24/24 related server and real browser checks, 14/14 frontend tests, full Web typecheck, independent development build, new module lint and diff checks passed. Desktop, narrow card and detail progress verified.",
+    "release": "Repeated tests, regression, typecheck, lint, isolated DB checks, UI acceptance, validation build and CI waiting skipped by user policy. Official frontend/API generated once for frozen candidate.",
+    "limitations": "First-page percentage is explicitly scoped, not overall pagination completion. Unversioned legacy tasks retain old projection. Existing unrelated bulk task projection expectation failure reproduced on unchanged baseline. No new real source/model calls or task replay."
   },
   "queue": {
     "leaseCount": 23,
@@ -41,12 +41,11 @@
     "unknownRequests": "never-auto-replay"
   },
   "configuration": {
-    "futureIngredientPlans": "collectionLimitsVersion=2",
-    "preserveEnabledTimeCommunities": true,
-    "manualHistoricReplay": false
+    "collectionRulesChanged": false,
+    "checkpointMigration": false
   },
-  "id": "20261110070250-882fcf89",
-  "builtAt": "2026-11-10T07:02:50.472Z",
-  "sourceDigest": "882fcf8913171a51088ef86cc80e5f8bf53322ec509c0506efa7be5f71a538e3",
+  "id": "20261110072133-4ee63153",
+  "builtAt": "2026-11-10T07:21:33.148Z",
+  "sourceDigest": "4ee631538e81d397630f2276a55edbf15436cf1abd1845477201f4e148dce277",
   "operator": "Codex"
 }
