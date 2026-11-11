@@ -466,6 +466,14 @@ export interface Task {
   canContinue?: boolean;
   sourceAnalysis?: { total: number; queued: number; running: number; completed: number; failed: number; cancelled: number; pending: number; processed: number };
   overview?: {
+    ingredientTrend?: {
+      operation: string; waiting: boolean; total: number; processed: number;
+      percent: null | number; phase: string;
+      posts: number; newPosts: number; comments: number; commentPosts: number;
+      visitedPosts: number; pendingPosts: number; blockedPosts: number;
+      pages: number; requests: number; modelCalls: number;
+      timings: Record<string, null | number>;
+    };
     healthDiscovery?: {
       categories: { total: number; processed: number; succeeded: number; failed: number; remaining: number };
       pages: { processed: number; pending: number; failed: number; truncated: number };

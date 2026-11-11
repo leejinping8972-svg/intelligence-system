@@ -10,6 +10,18 @@ export function createTrendArchive(io, market) {
   const read = io.read;
   const write = (name, value) =>
     io.putDocument('workspace_documents', name, value, false);
+  const readMany = async (names) =>
+    io.documents
+      ? io.documents.readMany(names)
+      : new Map(
+          await Promise.all(
+            names.map(async (name) => [name, await read(name)]),
+          ),
+        );
+  const writeMany = async (entries) => {
+    if (io.documents) return io.documents.writeMany(entries);
+    for (const [name, value] of entries) await write(name, value);
+  };
   const prefix = `ingredient-trend:`;
   const key = (record) =>
     `${prefix}${record.type}:${market}:${(record.publishedAt || 'unknown').slice(0, 10)}:${record.id}`;
@@ -29,7 +41,71 @@ export function createTrendArchive(io, market) {
   return {
     read,
     write,
+    readMany,
+    writeMany,
     key,
+    async observeMany(records, captureId, observedAt) {
+      if (records.length === 0) return [];
+      if (!io.documents) {
+        const result = [];
+        for (const record of records)
+          result.push(await this.observe(record, captureId, observedAt));
+        return result;
+      }
+      return io.documents.transaction(async (documents) => {
+        const old = await documents.readMany(
+          records.map((record) => key(record)),
+        );
+        const current = records.map((record) => {
+          const previous = old.get(key(record));
+          const value = {
+            ...previous,
+            ...record,
+            text: record.text || previous?.text || '',
+            firstSeenAt: previous?.firstSeenAt || observedAt,
+            firstSeenCapture: previous?.firstSeenCapture || captureId,
+            lastSeenAt: observedAt,
+          };
+          const hash = contentHash(value);
+          return {
+            value,
+            hash,
+            name: key(record),
+            previous,
+            versionKey: `${prefix}version:${market}:${record.type}:${record.id}:${hash}`,
+          };
+        });
+        const versions = await documents.readMany(
+          current.map((record) => record.versionKey),
+        );
+        const writes = new Map();
+        for (const { value, hash, name, versionKey } of current) {
+          writes.set(versionKey, {
+            ...value,
+            firstSeenAt: versions.get(versionKey)?.firstSeenAt || observedAt,
+            contentHash: hash,
+          });
+          writes.set(
+            `${prefix}observation:${market}:${trendHash([captureId, value.type, value.id])}`,
+            {
+              sourceId: value.id,
+              type: value.type,
+              captureId,
+              observedAt,
+              contentHash: hash,
+              reportedComments: value.reportedComments ?? null,
+              score: value.score ?? null,
+            },
+          );
+          writes.set(name, { ...value, contentHash: hash });
+        }
+        await documents.writeMany([...writes]);
+        return current.map(({ value, hash, previous }) => ({
+          record: { ...value, contentHash: hash },
+          added: !previous || previous.firstSeenCapture === captureId,
+        }));
+      });
+    },
     async recent(type, now, days = 14) {
       const rows = [];
       for (let d = 0; d <= days; d++)

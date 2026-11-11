@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { checkpointFailureCount, checkpointStopReason } from './task-stop-reason.mjs';
 import { healthDiscoveryProgress } from './health-discovery-progress.mjs';
+import { ingredientTrendProgress } from './ingredient-trend-progress.mjs';
 const resourceKey = (w) =>
   createHash('sha256')
     .update(
@@ -30,12 +31,16 @@ export function taskOverview(job, task) {
   const p = task.progress;
   const state = job.cancelled ? 'cancelled' : job.status;
   const healthDiscovery = healthDiscoveryProgress(job);
+  const ingredientTrend = ingredientTrendProgress(job);
   let failed = checkpointFailureCount(cp.failures);
   let processed = count(c?.done);
   let succeeded = null;
   let total = count(c?.total);
   let waiting = count(c?.waiting);
-  if (healthDiscovery) {
+  if (ingredientTrend) {
+    ({ total, processed } = ingredientTrend);
+    waiting = ingredientTrend.waiting ? 1 : 0;
+  } else if (healthDiscovery) {
     ({ total, processed, succeeded, failed } = healthDiscovery.categories);
     waiting = 0;
   } else if (input.kind === 'product_watch') {
@@ -125,13 +130,28 @@ export function taskOverview(job, task) {
   };
   reason = reasons[reason] || reason;
   if (input.kind === 'persona_research' && state === 'completed') reason = '';
-  const percent = total
+  let percent = total
     ? Math.min(healthDiscovery && processed < total ? 99 : 100, Math.round((processed / total) * 100))
     : null;
+  if (ingredientTrend) percent = ingredientTrend.percent;
+  let outcome = '状态待核对';
+  if (input.expansionOnly && ['completed', 'awaiting_review'].includes(state) && (failed || processed < total))
+    outcome = '本轮结束 · 部分环节未完成';
+  else if (['failed', 'partial'].includes(state))
+    outcome = ingredientTrend?.operation === 'analyze' ? '已停止 · 分析未完成' : '已停止 · 采集未完成';
+  else if (state === 'cancelled') outcome = '已取消 · 结果保留';
+  else if (state === 'queued') outcome = '已排队';
+  else if (state === 'running') {
+    outcome = waiting ? '执行中 · 部分等待' : '正在执行';
+    if (healthDiscovery) outcome = healthDiscovery.phase;
+    if (ingredientTrend) outcome = ingredientTrend.phase;
+  } else if (['awaiting_review', 'completed'].includes(state))
+    outcome = ingredientTrend?.operation === 'analyze' ? '本次分析完成' : '本次采集目标完成';
   const elapsedStart = Date.parse(cp.startedAt || p?.startedAt || '');
   const elapsedEnd = Date.parse(cp.finishedAt || p?.finishedAt || '');
   return {
     ...(healthDiscovery ? { healthDiscovery } : {}),
+    ...(ingredientTrend ? { ingredientTrend } : {}),
     status: state,
     total,
     processed: Math.min(total, processed),
@@ -140,21 +160,7 @@ export function taskOverview(job, task) {
     waiting,
     remaining: Math.max(0, total - processed),
     percent,
-    outcome: input.expansionOnly && ['completed', 'awaiting_review'].includes(state) && (failed || processed < total)
-      ? '本轮结束 · 部分环节未完成'
-      : ['failed', 'partial'].includes(state)
-      ? '已停止 · 采集未完成'
-      : state === 'cancelled'
-        ? '已取消 · 结果保留'
-        : state === 'queued'
-          ? '已排队'
-          : state === 'running'
-            ? healthDiscovery ? healthDiscovery.phase : waiting
-              ? '执行中 · 部分等待'
-              : '正在执行'
-            : ['awaiting_review', 'completed'].includes(state)
-              ? '本次采集目标完成'
-              : '状态待核对',
+    outcome,
     reason,
     startedAt: cp.startedAt || p?.startedAt || '',
     finishedAt: cp.finishedAt || p?.finishedAt || '',

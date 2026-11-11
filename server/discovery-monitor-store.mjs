@@ -4,12 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { effectiveDiscoveryPlan, TREND_SOURCE, trendSlots } from './ingredient-trend-domain.mjs';
 import { runIngredientTrend } from './ingredient-trend-runner.mjs';
 import { ingredientTrendSnapshot } from './ingredient-trend-store.mjs';
+import { createTrendDocuments } from './ingredient-trend-documents.mjs';
 import { dailyNewProductPlan } from './product-pool-domain.mjs';
 import { assertResourceCategory } from './product-resource-service.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
 import { requireAdmin } from './auth.mjs';
-import { lock, pool, putDocument, unlock } from './database.mjs';
+import { lock, pool, putDocument, sql, unlock } from './database.mjs';
 import {
   dateInWindow,
   discoveryKinds,
@@ -287,6 +288,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     read,
     putDocument,
     now: Date.now,
+    documents: createTrendDocuments({ pool: overrides.pool || pool, sql }),
     ...overrides,
   };
   const plan = job.input.plan;

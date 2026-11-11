@@ -5,6 +5,11 @@ import {
   trendHash,
   TREND_REQUEST_GUARD,
 } from './ingredient-trend-domain.mjs';
+import {
+  compactSamples,
+  loadSample,
+  storeSamples,
+} from './ingredient-trend-checkpoint.mjs';
 
 // Progress is scoped to a monitor. Archives remain shared, but one monitor's
 // quota/cursors must not consume another monitor's work.
@@ -22,6 +27,9 @@ export async function prepareQuantityComments(
 ) {
   if (plan.maxCommentsPerPost === 0) return [];
   const samples = [];
+  const previousStates = await archive.readMany(
+    posts.map((post) => commentStateKey(plan.market, scope, post.id)),
+  );
   for (const post of posts) {
     if (
       !post.publishedAt ||
@@ -30,7 +38,7 @@ export async function prepareQuantityComments(
       post.reportedComments === 0
     )
       continue;
-    const previous = await archive.read(
+    const previous = previousStates.get(
       commentStateKey(plan.market, scope, post.id),
     );
     // A legacy unknown response must also be resolved before a v2 collection.
@@ -65,16 +73,17 @@ export async function prepareQuantityComments(
 
 export async function runQuantityComments(job, io, cp, archive, context) {
   const { scope, request, save, failure } = context;
+  await compactSamples(job, cp, archive);
   const plan = job.input.plan,
     candidates = cp.samples || [];
   const eligible = (sample, index) =>
     cp.activeSourceStep
       ? index === cp.activeSample
       : !sample.blocked &&
-        hasWork(sample) &&
-        sample.runIds.length < plan.maxCommentsPerPost &&
-        (sample.bufferedPage || cp.sourceRequests < TREND_REQUEST_GUARD);
-  const persist = async (sample, at) => {
+        sample.pendingCount > 0 &&
+        sample.observed < plan.maxCommentsPerPost &&
+        (sample.buffered || cp.sourceRequests < TREND_REQUEST_GUARD);
+  const persist = async (sample, at, index) => {
     const { post, runIds: _runIds, ...state } = sample;
     const value = { ...state, lastVisitedAt: at, lastJobId: job.id };
     await archive.write(commentStateKey(plan.market, scope, post.id), value);
@@ -92,13 +101,15 @@ export async function runQuantityComments(job, io, cp, archive, context) {
         lastJobId: job.id,
       },
     });
+    const summaries = await storeSamples(job, [sample], archive);
+    cp.samples[index] = summaries[0];
   };
   if (candidates.some((sample, index) => eligible(sample, index))) {
     let index = (cp.sampleIndex || 0) % candidates.length;
     while (!eligible(candidates[index], index))
       index = (index + 1) % candidates.length;
-    const sample = candidates[index];
     cp.activeSample = index;
+    const sample = await loadSample(candidates[index], archive);
     let page = sample.bufferedPage;
     if (!page) {
       const work = sample.pending[0];
@@ -115,7 +126,7 @@ export async function runQuantityComments(job, io, cp, archive, context) {
           step: cp.activeSourceStep,
           message: String(error.message).slice(0, 500),
         };
-        await persist(sample, iso(cp.asOf));
+        await persist(sample, iso(cp.asOf), index);
         cp.sourceRequests++;
         cp.commentRequests++;
         cp.calls++;
@@ -143,15 +154,18 @@ export async function runQuantityComments(job, io, cp, archive, context) {
     const ids = new Set(sample.ids),
       runIds = new Set(sample.runIds);
     let offset = page.offset || 0;
+    const accepted = [];
     for (; offset < page.records.length; offset++) {
       const record = page.records[offset];
       if (!runIds.has(record.id) && runIds.size >= plan.maxCommentsPerPost)
         break;
-      await archive.observe(record, page.capture, page.at);
+      accepted.push(record);
       ids.add(record.id);
       runIds.add(record.id);
       if (!record.text) sample.bodyMissing++;
     }
+    const archiveStarted = performance.now();
+    await archive.observeMany(accepted, page.capture, page.at);
     sample.ids = [...ids];
     sample.runIds = [...runIds];
     sample.reported = page.reported;
@@ -174,7 +188,11 @@ export async function runQuantityComments(job, io, cp, archive, context) {
     sample.countGap =
       sample.reported === null ? null : sample.reported - sample.ids.length;
     sample.countsMatch = sample.countGap === 0 && sample.paginationExhausted;
-    await persist(sample, page.at);
+    await persist(sample, page.at, index);
+    cp.timings ||= {};
+    cp.timings.lastArchiveMs = performance.now() - archiveStarted;
+    cp.timings.archiveMs =
+      (cp.timings.archiveMs || 0) + cp.timings.lastArchiveMs;
     cp.sampleIndex = index + 1;
     cp.logs.push(
       `${sample.post.id}评论：本次${sample.runIds.length}/${plan.maxCommentsPerPost}条，当前遍历累计${sample.ids.length}/${sample.reported ?? '未知'}；${hasWork(sample) ? '待续内容已保存' : '来源分页结束'}`,
@@ -187,37 +205,33 @@ export async function runQuantityComments(job, io, cp, archive, context) {
   for (const sample of candidates) {
     if (
       sample.blocked ||
-      hasWork(sample) ||
+      sample.pendingCount > 0 ||
       sample.missingCursor ||
       !sample.countsMatch
     ) {
       let reason = '来源计数缺口';
       if (sample.blocked) reason = '请求待确认';
       else if (
-        sample.runIds.length >= plan.maxCommentsPerPost &&
-        hasWork(sample)
+        sample.observed >= plan.maxCommentsPerPost &&
+        sample.pendingCount > 0
       )
         reason = '每帖评论数量上限';
-      else if (hasWork(sample) && cp.sourceRequests >= TREND_REQUEST_GUARD)
+      else if (
+        sample.pendingCount > 0 &&
+        cp.sourceRequests >= TREND_REQUEST_GUARD
+      )
         reason = '后台来源请求保护';
       failure(
         cp,
-        `${sample.post.id}评论部分覆盖：${reason}，本次${sample.runIds.length}条，断点已保留`,
+        `${sample.postId}评论部分覆盖：${reason}，本次${sample.observed}条，断点已保留`,
       );
     }
   }
-  cp.comments = candidates.reduce((n, sample) => n + sample.runIds.length, 0);
+  cp.comments = candidates.reduce((n, sample) => n + sample.observed, 0);
   cp.logs.push(
     `采集结束：${cp.posts}帖（首次入库${cp.newPosts}），回访${candidates.length}帖，本次去重评论${cp.comments}条；${plan.maxCommentsPerPost === 0 ? '评论采集已关闭；' : ''}未执行AI分析`,
   );
-  cp.samples = candidates.map((sample) => ({
-    postId: sample.post.id,
-    unique: sample.ids.length,
-    observed: sample.runIds.length,
-    pendingCount: sample.pending.length + (sample.bufferedPage ? 1 : 0),
-    countsMatch: sample.countsMatch === true,
-    blocked: sample.blocked,
-  }));
+  cp.samples = candidates.map(({ stateKey: _stateKey, ...summary }) => summary);
   cp.phase = 'done';
   return save(cp.failures.length > 0 ? 'partial' : 'completed');
 }

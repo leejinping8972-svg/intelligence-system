@@ -7,7 +7,7 @@ import { Alert, Button, message, Progress, Tag } from 'ant-design-vue';
 
 import { marketName } from '../data';
 import { taskObjectSummary, taskTime } from '../task-context';
-import { taskStatus, taskStatuses, taskSummary, taskTitle } from '../task-list';
+import { taskStatusInfo, taskSummary, taskTitle } from '../task-list';
 import ProductDrawer from './ProductDrawer.vue';
 import TaskCollections from './TaskCollections.vue';
 import TaskProgress from './TaskProgress.vue';
@@ -18,17 +18,18 @@ const productId = ref<string>();
 const context = computed(() => props.task.context);
 const expanded = ref(false);
 const targets = computed(() => expanded.value ? context.value?.objects || [] : (context.value?.objects || []).slice(0, 3));
-const status = computed(() => taskStatuses[taskStatus(props.task)]);
+const status = computed(() => taskStatusInfo(props.task));
 const summary = computed(() => taskSummary(props.task));
 const warning = computed(() => props.task.overview?.reason || (
   (props.task.researchProgress?.unknownCharges || props.task.collectionProgress?.unknownCharges)
     ? '来源扣费或请求结果未确认，已有记录保留，请先核实后续操作。' : ''
 ));
-const progressLabel = computed(() => props.task.overview?.healthDiscovery
-  ? summary.value.label
-  : props.task.overview
-  ? `已处理 ${props.task.overview.processed} / ${props.task.overview.total} 个目标`
-  : summary.value.label);
+const progressLabel = computed(() => {
+  const overview = props.task.overview;
+  if (overview?.ingredientTrend || overview?.healthDiscovery) return summary.value.label;
+  if (overview) return `已处理 ${overview.processed} / ${overview.total} 个目标`;
+  return summary.value.label;
+});
 async function copyId() {
   try {
     await navigator.clipboard.writeText(props.task.cloudJobId || props.task.id);

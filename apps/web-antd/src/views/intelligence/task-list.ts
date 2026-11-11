@@ -28,6 +28,12 @@ export function taskStatus(task: Task) {
     : task.status;
 }
 
+export function taskStatusInfo(task: Task) {
+  return task.status === 'running' && task.overview?.ingredientTrend?.waiting
+    ? { label: '等待采集', color: 'default' }
+    : taskStatuses[taskStatus(task)];
+}
+
 export function mergeTaskStatusCounts(counts: Record<string, number> = {}) {
   const next = { ...counts };
   const review = Number(next.awaiting_review) || 0;
@@ -115,6 +121,29 @@ export function taskSummary(task: Task): {
     if (['cancelled', 'failed', 'partial'].includes(o.status))
       color = '#c48532';
     else if (o.status === 'running') color = '#1677ff';
+    if (o.ingredientTrend) {
+      const trend = o.ingredientTrend;
+      const timing = (field: string) => trend.timings[field] === null || trend.timings[field] === undefined
+        ? '' : `${(trend.timings[field] / 1000).toFixed(1)}秒`;
+      const times = [
+        ['lastSourceMs', '请求处理'], ['lastArchiveMs', '归档'],
+        ['lastCheckpointMs', '保存'], ['lastQueueMs', '续跑延迟'], ['lastSchedulingMs', '计划调度'],
+      ].map(([field = '', label]) => timing(field) ? `${label} ${timing(field)}` : '').filter(Boolean).join(' · ');
+      return {
+        percent: trend.percent,
+        label: trend.operation === 'analyze'
+          ? `周分析${trend.total ? ` ${trend.processed}/${trend.total}段` : ''} · ${o.outcome}`
+          : `${trend.commentPosts ? `评论回访 ${trend.processed}/${trend.commentPosts}帖` : `已采 ${trend.posts}帖`} · ${o.outcome}`,
+        result: [
+          trend.waiting ? '当日采集保存后自动开始分析' : '',
+          trend.operation === 'collect' ? `帖子 ${trend.posts} · 本轮新增 ${trend.newPosts} · 评论记录 ${trend.comments}` : '',
+          trend.operation === 'collect' ? `已回访 ${trend.visitedPosts}帖 · 待续 ${trend.pendingPosts}帖 · 请求异常 ${trend.blockedPosts}帖` : '',
+          trend.operation === 'collect' ? `帖子页 ${trend.pages} · 来源请求 ${trend.requests}次` : `模型请求 ${trend.modelCalls}次`,
+          times ? `最近耗时：${times}` : '', o.reason,
+        ].filter(Boolean).join('\n'),
+        color,
+      };
+    }
     if (o.healthDiscovery) {
       const { categories: c, products: p, pages, issues } = o.healthDiscovery;
       return {

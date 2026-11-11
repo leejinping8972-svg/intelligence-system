@@ -28,6 +28,7 @@ import {
   partialTaskRetriesFailures,
   taskStatus,
   taskStatuses,
+  taskStatusInfo,
   taskSummary,
   taskTitle,
 } from '../task-list';
@@ -285,8 +286,8 @@ const columns = [
             </Tag>
           </template>
           <template v-if="column.key === 'status'">
-            <Tag :color="taskStatuses[taskStatus(task)]?.color">
-              {{ taskStatuses[taskStatus(task)]?.label }}
+            <Tag :color="taskStatusInfo(task)?.color">
+              {{ taskStatusInfo(task)?.label }}
             </Tag>
           </template>
           <template v-if="column.key === 'progress'">
@@ -302,7 +303,7 @@ const columns = [
               "
               size="small"
             />
-            <div class="task-result" :class="{ 'task-result-discovery': task.overview?.healthDiscovery }">
+            <div class="task-result" :class="{ 'task-result-discovery': task.overview?.healthDiscovery || task.overview?.ingredientTrend }">
               {{ taskSummary(task).result }}
             </div>
           </template>
@@ -382,8 +383,8 @@ const columns = [
       <article v-for="task in visible" :key="task.id" class="task-card">
         <div class="task-card-head">
           <h3>{{ taskTitle(task) }}</h3>
-          <Tag :color="taskStatuses[taskStatus(task)]?.color">
-            {{ taskStatuses[taskStatus(task)]?.label }}
+          <Tag :color="taskStatusInfo(task)?.color">
+            {{ taskStatusInfo(task)?.label }}
           </Tag>
         </div>
         <p class="task-object-name">{{ taskObjectSummary(task) }}</p>
@@ -409,7 +410,7 @@ const columns = [
           "
           size="small"
         />
-        <p class="task-result" :class="{ 'task-result-discovery': task.overview?.healthDiscovery }">{{ taskSummary(task).result }}</p>
+        <p class="task-result" :class="{ 'task-result-discovery': task.overview?.healthDiscovery || task.overview?.ingredientTrend }">{{ taskSummary(task).result }}</p>
         <div class="task-id">{{ task.cloudJobId || task.id }}</div>
         <div class="task-actions">
           <Button size="small" @click="emit('details', task)">查看详情</Button><Button

@@ -16,6 +16,17 @@ import {
   TREND_POST_REQUEST_GUARD,
 } from './ingredient-trend-domain.mjs';
 import { stableId } from './discovery-monitor-domain.mjs';
+import {
+  analysisBatch,
+  compactAnalysis,
+  compactSamples,
+  loadSample,
+  storeSamples,
+} from './ingredient-trend-checkpoint.mjs';
+import {
+  beginTrendTiming,
+  saveTrendCheckpoint,
+} from './ingredient-trend-timing.mjs';
 
 export const coverageKey = (market, scope, community) =>
   `ingredient-trend:coverage:${market}:${scope}:${community.toLowerCase()}`;
@@ -35,21 +46,25 @@ export async function runIngredientTrend(job, io) {
     scope = trendScope(job),
     archive = createTrendArchive(io, plan.market);
   const cp = structuredClone(job.checkpoint);
+  beginTrendTiming(io, cp);
   cp.logs ||= [];
   cp.failures ||= [];
   cp.calls ||= 0;
   cp.sourceRequests ||= 0;
   cp.commentRequests ||= 0;
   cp.asOf ||= io.now();
+  cp.startedAt ||= cp.submittedAt || iso(io.now());
   cp.operation ||= job.input.trendOperation || 'collect';
-  const save = (status = 'running') => {
+  const save = async (status = 'running') => {
     cp.logs = cp.logs.slice(-200);
     if (status === 'running') {
       cp.nextRunAt = io.now() + 1000;
     } else {
       cp.finishedAt = iso(io.now());
     }
-    return io.saveCheckpoint(job, cp, status);
+    if (quantity) await compactSamples(job, cp, archive);
+    await compactAnalysis(job, cp, archive);
+    return saveTrendCheckpoint(io, job, cp, status);
   };
   const cancelled = async () => {
     const result = await io.pool.query(
@@ -58,13 +73,26 @@ export async function runIngredientTrend(job, io) {
     );
     return result.rows[0]?.cancelled;
   };
+  const timedCollect = async (step, work) => {
+    const started = performance.now();
+    cp.timings.lastProviderMs = null;
+    try {
+      const result = await io.collect(job, step, work);
+      cp.timings.lastProviderMs = result.requestLog?.durationMs ?? null;
+      return result;
+    } finally {
+      cp.timings.lastSourceMs = performance.now() - started;
+      cp.timings.sourceMs =
+        (cp.timings.sourceMs || 0) + cp.timings.lastSourceMs;
+    }
+  };
   const request = async (work) => {
     const step = cp.activeSourceStep || `ingredient-trend:${cp.sourceRequests}`;
     cp.activeSourceStep = step;
     // Keep the work in the saved queue until its response AND archive writes commit.
     // collect() journals started/done and returns a cached response after a crash.
     await save();
-    return io.collect(job, step, {
+    return timedCollect(step, {
       sources: ['ingredient_trend_source'],
       provider: 'scrapecreators',
       ...work,
@@ -440,8 +468,12 @@ export async function runIngredientTrend(job, io) {
       const page = commentPage(result.raw, sample.post),
         at = result.requestLog?.startedAt || iso(cp.asOf);
       const ids = new Set(sample.ids);
+      await archive.observeMany(
+        page.records,
+        `${job.id}:${cp.sourceRequests}`,
+        at,
+      );
       for (const c of page.records) {
-        await archive.observe(c, `${job.id}:${cp.sourceRequests}`, at);
         ids.add(c.id);
         if (!c.text) sample.bodyMissing++;
       }
@@ -531,40 +563,71 @@ export async function runIngredientTrend(job, io) {
       cp.activeSample !== undefined &&
       cp.samples?.[cp.activeSample]
     ) {
-      const { post, ...sample } = cp.samples[cp.activeSample];
-      const state = { ...sample, blocked, lastVisitedAt: iso(cp.asOf) };
-      if (quantity)
-        await archive.write(
-          commentStateKey(plan.market, scope, post.id),
-          state,
-        );
-      await archive.savePost(post, { commentState: state });
+      const summary = cp.samples[cp.activeSample];
+      let loaded;
+      try {
+        loaded = await loadSample(summary, archive);
+      } catch (stateError) {
+        failure(cp, stateError.message);
+      }
+      if (loaded) {
+        const { post, ...sample } = loaded;
+        const state = { ...sample, blocked, lastVisitedAt: iso(cp.asOf) };
+        if (quantity)
+          await archive.write(
+            commentStateKey(plan.market, scope, post.id),
+            state,
+          );
+        await archive.savePost(post, { commentState: state });
+        if (quantity) {
+          const summaries = await storeSamples(
+            job,
+            [{ ...loaded, blocked }],
+            archive,
+          );
+          cp.samples[cp.activeSample] = summaries[0];
+        }
+      } else if (quantity && summary.postId) {
+        // Missing immutable state must also stop tomorrow's monitor from
+        // requesting a fresh paid page. Preserve any surviving continuation.
+        const key = commentStateKey(plan.market, scope, summary.postId);
+        const previous = await archive.read(key);
+        await archive.write(key, {
+          pending: [],
+          ids: [],
+          ...previous,
+          blocked,
+        });
+        summary.blocked = blocked;
+      }
     }
     return save('partial');
   }
 
   async function analyze() {
-    if (!cp.analysisRecords) {
+    if (!cp.analysisRecords && !cp.analysisRecordKeys) {
       // Avoid racing the same monitor's still-running daily collection.
       if (job.input.monitorId) {
         const { rows } = await io.pool.query(
-          "SELECT id,input FROM research_jobs WHERE status IN ('queued','running') AND id<>$1",
+          "SELECT id,input FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND id<>$1",
           [job.id],
         );
-        if (
-          rows.some(
-            (r) =>
-              r.input.kind === 'discovery_monitor' &&
-              r.input.monitorId === job.input.monitorId &&
-              r.input.plan?.sourceMode === 'ingredient_trends' &&
-              (r.input.trendOperation || 'collect') === 'collect',
-          )
-        ) {
-          cp.logs.push('等待本监控的当日采集保存后再分析');
-          cp.nextRunAt = io.now() + 30_000;
-          return io.saveCheckpoint(job, cp, 'running');
+        const dependency = rows.find(
+          (r) =>
+            r.input.kind === 'discovery_monitor' &&
+            r.input.monitorId === job.input.monitorId &&
+            r.input.plan?.sourceMode === 'ingredient_trends' &&
+            (r.input.trendOperation || 'collect') === 'collect',
+        );
+        if (dependency) {
+          if (cp.waitingForCollectionId !== dependency.id)
+            cp.logs.push('等待本监控的当日采集保存后再分析');
+          cp.waitingForCollectionId = dependency.id;
+          cp.nextRunAt = 0;
+          return saveTrendCheckpoint(io, job, cp, 'running');
         }
       }
+      delete cp.waitingForCollectionId;
       cp.sourceCoverage = [];
       for (const community of plan.communities)
         cp.sourceCoverage.push(
@@ -615,9 +678,14 @@ export async function runIngredientTrend(job, io) {
       cp.analysisOffset = 0;
       cp.findings = [];
       cp.commentCoverage = [];
+      const commentStates = quantity
+        ? await archive.readMany(
+            posts.map((post) => commentStateKey(plan.market, scope, post.id)),
+          )
+        : null;
       for (const post of posts) {
         const state = quantity
-          ? await archive.read(commentStateKey(plan.market, scope, post.id))
+          ? commentStates.get(commentStateKey(plan.market, scope, post.id))
           : post.commentState;
         if (!quantity && !state) continue;
         cp.commentCoverage.push({
@@ -646,21 +714,26 @@ export async function runIngredientTrend(job, io) {
       );
       return save();
     }
-    if (cp.analysisOffset < cp.analysisRecords.length) {
+    const recordCount = cp.analysisRecords?.length ?? cp.analysisRecordCount;
+    if (cp.findingsKey && !cp.findings) {
+      cp.findings = await archive.read(cp.findingsKey);
+      if (!Array.isArray(cp.findings))
+        throw new Error('分析中间结果归档缺失，已停止继续请求');
+    }
+    if (cp.analysisOffset < recordCount) {
       const batch = [];
       let chars = 0;
-      for (const record of cp.analysisRecords.slice(
-        cp.analysisOffset,
-        cp.analysisOffset + 40,
-      )) {
+      for (const record of await analysisBatch(cp, archive)) {
         const size = record.title.length + record.text.length;
         if (batch.length > 0 && chars + size > 40_000) break;
         batch.push(record);
         chars += size;
       }
       await save();
-      const response = await io.collect(
-        job,
+      if (!cp.findings) cp.findings = await archive.read(cp.findingsKey);
+      if (!Array.isArray(cp.findings))
+        throw new Error('分析中间结果归档缺失，已停止继续请求');
+      const response = await timedCollect(
         `ingredient-trend-analysis:${cp.analysisOffset}`,
         { sources: ['ingredient_analysis'], records: batch, focus: plan.focus },
       );
@@ -698,7 +771,7 @@ export async function runIngredientTrend(job, io) {
       cp.calls++;
       cp.modelCalls = (cp.modelCalls || 0) + 1;
       cp.logs.push(
-        `已分析${cp.analysisOffset}/${cp.analysisRecords.length}段资料；${cp.findings.length}种成分有原文引用`,
+        `已分析${cp.analysisOffset}/${recordCount}段资料；${cp.findings.length}种成分有原文引用`,
       );
       return save();
     }
@@ -761,7 +834,7 @@ export async function runIngredientTrend(job, io) {
       window: cp.window,
       communities: plan.communities,
       findings,
-      recordCount: cp.analysisRecords.length,
+      recordCount,
       omittedRecords: cp.omittedRecords,
       comparisonReady: cp.comparisonReady && !cp.omittedRecords,
       postCoverageReady: cp.postCoverageReady,
@@ -785,6 +858,7 @@ export async function runIngredientTrend(job, io) {
       failure(cp, '社区列表覆盖不足或未完成，报告已标记采集不完整');
     delete cp.analysisRecords;
     delete cp.findings;
+    delete cp.findingsKey;
     cp.phase = 'done';
     return save(cp.failures.length > 0 ? 'partial' : 'completed');
   }

@@ -35,6 +35,7 @@ import { taskOverview } from './task-overview.mjs';
 import { taskContext } from './task-context.mjs';
 import { projectJobTasks } from './task-projection.mjs';
 import { initializeTrendQueue, runTrendJob } from './trend-queue.mjs';
+import { createQueueScheduling, ingredientDependencyFilter } from './queue-scheduling.mjs';
 const label = { US: '美国', MX: '墨西哥', VN: '越南' };
 export function jobTasks(job) {
   return projectJobTasks(job, projectKnownJob).map((task) =>
@@ -606,6 +607,12 @@ export async function runJob(job, overrides = {}) {
 }
 async function runLane(signal, trends = false) {
   const lockName = trends ? 'trend-runner' : 'runner';
+  const schedule = createQueueScheduling([
+    () => tickProductWatch().catch(error => console.error('Product watch scheduling unavailable:', error.code || error.name)),
+    () => tickDiscoveryMonitors().catch(error => console.error('Discovery scheduling unavailable:', error.code || error.name)),
+    () => tickDailyDiscovery().catch(error => console.error('Daily discovery unavailable:', error.code || error.name)),
+    () => tickMarketResearch().catch(error => console.error('Market research orchestration unavailable:', error.code || error.name)),
+  ]);
   while (!signal.aborted) {
     let acquired = false;
     let connection;
@@ -619,26 +626,11 @@ async function runLane(signal, trends = false) {
         // oxlint-disable-next-line unicorn/no-process-exit
         lostConnection = () => process.exit(1);
         connection.on('error', lostConnection);
-        if (!trends) {
-          await tickProductWatch().catch((error) => console.error('Product watch scheduling unavailable:', error.code || error.name));
-          await tickDiscoveryMonitors().catch((error) => console.error('Discovery scheduling unavailable:', error.code || error.name));
-          await tickDailyDiscovery().catch((error) => {
-            console.error(
-              'Daily discovery unavailable:',
-              error.code || error.name,
-            );
-          });
-          await tickMarketResearch().catch((error) => {
-            console.error(
-              'Market research orchestration unavailable:',
-              error.code || error.name,
-            );
-          });
-        }
+        const schedulingMs = trends ? 0 : await schedule();
         const { rows } = await pool.query(
           sql(
-            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND ${sourceAnalysisFilter(sql, false)} AND COALESCE(checkpoint->>'trendQueueVersion','0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(checkpoint->>'nextRunAt','0') AS BIGINT) <= $1 ORDER BY updated_at LIMIT 20`,
-            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND ${sourceAnalysisFilter(sql, false)} AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.trendQueueVersion')),'0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.nextRunAt')),'0') AS UNSIGNED) <= $1 ORDER BY updated_at LIMIT 20`,
+            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND ${sourceAnalysisFilter(sql, false)} AND ${ingredientDependencyFilter(sql)} AND COALESCE(checkpoint->>'trendQueueVersion','0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(checkpoint->>'nextRunAt','0') AS BIGINT) <= $1 ORDER BY updated_at LIMIT 20`,
+            `SELECT * FROM research_jobs WHERE status IN ('queued','running') AND cancelled=false AND ${sourceAnalysisFilter(sql, false)} AND ${ingredientDependencyFilter(sql)} AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.trendQueueVersion')),'0') ${trends ? '=' : '<>'} '1' AND CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(checkpoint,'$.nextRunAt')),'0') AS UNSIGNED) <= $1 ORDER BY updated_at LIMIT 20`,
           ),
           [Date.now()],
         );
@@ -651,7 +643,7 @@ async function runLane(signal, trends = false) {
           await withAnalysisTask(next.id, async () => {
           if (trends) await runTrendJob(next);
           else if (next.input.kind === 'product_watch') await runProductWatch(next);
-          else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next);
+          else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next, { schedulingMs });
           else if (
             ['ad_analysis', 'consumer_research', 'evidence_analysis'].includes(
               next.input.kind,
