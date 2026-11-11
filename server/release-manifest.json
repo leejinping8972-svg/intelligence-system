@@ -1,19 +1,19 @@
 {
-  "title": "新品销量证据保留与限定候选原文复核",
+  "title": "独立站监控公开目录与大目录恢复",
   "files": [
-    "server/platform-product-data.mjs",
-    "server/product-raw-evidence.mjs",
-    "server/health-candidate-review.mjs",
-    "server/product-raw-evidence.test.mjs",
-    "server/DISCOVERY-EVIDENCE-REVIEW.md"
+    "server/competitor-monitor-providers.mjs",
+    "server/monitor-site-catalog.mjs",
+    "server/monitor-site-catalog.test.mjs",
+    "server/SITE-MONITOR-CATALOG.md"
   ],
   "featureShas": [
-    "334c8b31e434156249c23a9e98db3eb37046a9ec"
+    "8fbef6e6f645385cae20f907e71cc92b0f76ae04"
   ],
-  "sourceSha": "334c8b31e434156249c23a9e98db3eb37046a9ec",
+  "sourceSha": "8fbef6e6f645385cae20f907e71cc92b0f76ae04",
   "changes": [
-    "详情遗漏销量时保留原始证据，显式零销量保留新观察与时间",
-    "限定候选人工复核继续验证原文连续引用、身份、原窗口及正销量；不调用来源或模型"
+    "已识别Shopify监控优先连续读取公开商品JSON目录，确认空结束页后结束扫描，避免冗余HTML详情429",
+    "旧断点重新验证完整目录后替换备用图，合并栏目/变体链接并收敛重复语言商品sitemap",
+    "保留分页、冷却、基线、每日恢复上限和未知请求保护；本批不包含增量监控方案或手动重跑"
   ],
   "database": {
     "schemaChange": false,
@@ -24,9 +24,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "33/33 focused server tests, new-module isolated lint, node syntax and diff checks passed. One broader ingredient runner test fails identically on unchanged baseline; unrelated and retained.",
-    "release": "Repeated validation and CI wait skipped by user policy. One official frontend and API artifact for frozen SHA.",
-    "limitations": "No general automatic approval. Insufficient retained product evidence remains pending; original list and detail sales conflict preserved."
+    "development": "51/51 focused server and PGlite persistence tests; three-MJS targeted lint/format, syntax, diff checks and isolated server bundle passed. Free public probes: Ambrosia 75 products complete in 3 requests; two larger catalogs 450 products in 9 pages each with page 10 pending.",
+    "release": "Repeat tests, typecheck, lint, isolated database/UI acceptance, validation build and CI wait skipped by user policy. One official frontend and API artifact for the frozen SHA.",
+    "limitations": "Large catalog probes are partial. Persistently blocked sites without usable public catalogs still need individual adaptation. Deployment does not reset recovery caps or replay business collection. Incremental monitoring is excluded."
   },
   "queue": {
     "leaseCount": 23,
@@ -34,12 +34,14 @@
     "unknownRequests": "never-auto-replay"
   },
   "configuration": {
-    "collectionRulesChanged": false,
+    "paidProviderAdded": false,
+    "schemaMigration": false,
     "checkpointMigration": false,
-    "targetedManualReview": true
+    "manualCollectionReplay": false,
+    "incrementalMonitoring": false
   },
-  "id": "20261110112949-d3dc0c0a",
-  "builtAt": "2026-11-10T11:29:49.781Z",
-  "sourceDigest": "d3dc0c0a2bce1a3ce94c612bf42c453076b0cddb8d6b6da1c7b653d0123c789b",
+  "id": "20261111025441-e867e170",
+  "builtAt": "2026-11-11T02:54:41.992Z",
+  "sourceDigest": "e867e1701139a44e42ffadaecaec1385c2313024d2f87a6898fe3f55d289756e",
   "operator": "Codex"
 }
