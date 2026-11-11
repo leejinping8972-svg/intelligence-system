@@ -53,6 +53,7 @@ test('daily product watch SQL: schedule idempotency, product updates, observatio
     const p = {
       id: 'US-watch-synthetic',
       title: 'Synthetic supplement',
+      titleZh: '合成补充剂',
       market: 'US',
       sourceMarket: 'US',
       sourceProvider: 'Sorftime',
@@ -105,14 +106,30 @@ test('daily product watch SQL: schedule idempotency, product updates, observatio
         ])
       ).rows[0];
     let calls = 0;
-    const collect = async (_job, step) => {
+    const collect = async (_job, step, request) => {
       calls++;
+      if (request.monthlyMetric)
+        return {
+          monthlyTrend: {
+            metric: request.monthlyMetric,
+            currency: request.monthlyMetric === 'SalesAmount' ? 'USD' : null,
+            points: [
+              {
+                date: '2026-10',
+                value: request.monthlyMetric === 'SalesAmount' ? 250 : 15,
+              },
+            ],
+            collectedAt: new Date(now).toISOString(),
+          },
+        };
       return step.includes(':detail:')
         ? {
             product: {
               ...p,
               title: 'Synthetic new title',
+              titleZh: '合成更新商品',
               price: 12,
+              sourceMetrics: { monthlySales: 20 },
               resourceRaw: {
                 salesEvidence: { metric: 'monthly_sales_volume', value: 20 },
               },
@@ -126,11 +143,17 @@ test('daily product watch SQL: schedule idempotency, product updates, observatio
       await runProductWatch(job, { collect, now: () => now });
     }
     const complete = await get();
-    assert.equal(complete.status, 'completed');
+    assert.equal(
+      complete.status,
+      'completed',
+      JSON.stringify(complete.checkpoint),
+    );
     assert.equal(complete.checkpoint.succeeded, 1);
-    assert.equal(calls, 2);
+    assert.equal(calls, 4);
     assert.match(jobTasks(complete)[0].title, /商品持续监控/);
-    assert.equal((await readProduct(p.id)).price, 12);
+    const updatedProduct = await readProduct(p.id);
+    assert.equal(updatedProduct.price, 12);
+    assert.equal(updatedProduct.sourceMetrics.monthlySales, 20);
     let history = await productWatchAction(
       { action: 'server_product_watch_history', productId: p.id },
       admin,
@@ -138,6 +161,9 @@ test('daily product watch SQL: schedule idempotency, product updates, observatio
     assert.equal(history.snapshots.length, 1);
     assert.equal(history.snapshots[0].monthlySales, 20);
     assert.equal(history.dailySales[0].value, 3);
+    assert.ok(history.monthlyTrends, JSON.stringify(history));
+    assert.equal(history.monthlyTrends.SalesVolume.points[0].value, 15);
+    assert.equal(history.monthlyTrends.SalesAmount.points[0].value, 250);
     // Simulate restart before the post-write checkpoint: stored observation suppresses paid calls.
     await runProductWatch(
       {
@@ -147,7 +173,7 @@ test('daily product watch SQL: schedule idempotency, product updates, observatio
       },
       { collect, now: () => now },
     );
-    assert.equal(calls, 2);
+    assert.equal(calls, 4);
     await runProductWatch(await get(), { collect, now: () => now });
     await tickProductWatch(now + 86400000);
     const second = (
@@ -172,7 +198,9 @@ test('daily product watch SQL: schedule idempotency, product updates, observatio
     );
     assert.equal(history.snapshots.at(-1).status, 'failed');
     assert.equal(history.snapshots.at(-1).price, undefined);
-    assert.equal((await readProduct(p.id)).price, 12);
+    const preservedProduct = await readProduct(p.id);
+    assert.equal(preservedProduct.price, 12);
+    assert.equal(preservedProduct.sourceMetrics.monthlySales, 20);
     await pool.query('UPDATE research_jobs SET cancelled=true WHERE id=$1', [
       second.id,
     ]);

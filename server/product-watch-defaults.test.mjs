@@ -99,10 +99,15 @@ test('existing monitors enable monthly history for future tasks and preserve sam
     assert.equal(result.rows.length, 1);
     const first = result.rows[0];
     assert.equal(first.input.monthlyHistory, true);
+    assert.equal(first.input.monthlyHistoryCadence, 'watch');
     // Model a task that was already frozen with the previous disabled setting.
     await pool.query('UPDATE research_jobs SET input=$2 WHERE id=$1', [
       first.id,
-      { ...first.input, monthlyHistory: false },
+      {
+        ...first.input,
+        monthlyHistory: false,
+        monthlyHistoryCadence: undefined,
+      },
     ]);
     const existing = await productWatchAction(
       { action: 'server_product_watch_run', market: 'US' },
@@ -115,6 +120,7 @@ test('existing monitors enable monthly history for future tasks and preserve sam
     );
     assert.equal(result.rows.length, 1);
     assert.equal(result.rows[0].input.monthlyHistory, false);
+    assert.equal(result.rows[0].input.monthlyHistoryCadence, undefined);
     await pool.query(
       "UPDATE research_jobs SET status='completed' WHERE id=$1",
       [first.id],
@@ -125,6 +131,7 @@ test('existing monitors enable monthly history for future tasks and preserve sam
     ]);
     assert.equal(result.rows.length, 1);
     assert.equal(result.rows[0].input.monthlyHistory, true);
+    assert.equal(result.rows[0].input.monthlyHistoryCadence, 'watch');
     const saved = await productWatchAction(
       {
         action: 'server_product_watch_save',

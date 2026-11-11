@@ -4,6 +4,7 @@ import {
   monthlyTrendDue,
   monthlyTrendIdentity,
   parseMonthlyTrend,
+  sameMonthlyIdentity,
 } from './product-monthly-trends.mjs';
 import { productWatchSource } from './product-watch-sorftime.mjs';
 import {
@@ -20,6 +21,32 @@ const product = {
   market: 'US',
 };
 const at = '2026-11-10T10:00:00Z';
+
+test('persisted identity accepts reordered JSON keys and still rejects every mismatched identity field', () => {
+  const history = {
+    identity: {
+      variant: '',
+      platform: 'Amazon',
+      market: 'US',
+      asin: product.sourceProductId,
+    },
+  };
+  assert.equal(sameMonthlyIdentity(history, product), true);
+  for (const patch of [
+    { sourceProductId: 'OTHER' },
+    { sourceMarket: 'MX' },
+    { sourcePlatform: 'Shopee' },
+    { sourceVariantId: 'OTHER' },
+  ])
+    assert.equal(sameMonthlyIdentity(history, { ...product, ...patch }), false);
+  assert.equal(
+    sameMonthlyIdentity(
+      { identity: { ...history.identity, variant: undefined } },
+      product,
+    ),
+    false,
+  );
+});
 test('monthly text retains zeros, inserts missing months and marks the current month', () => {
   const r = parseMonthlyTrend(
     '2026年07月=0,2026年09月=346,2026年11月=900',

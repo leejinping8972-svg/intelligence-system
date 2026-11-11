@@ -32,10 +32,13 @@ export function monthlyTrendIdentity(product) {
   };
 }
 export function sameMonthlyIdentity(history, product) {
-  return (
-    history &&
-    JSON.stringify(history.identity) ===
-      JSON.stringify(monthlyTrendIdentity(product))
+  // JSON columns may reorder object keys when persisting the observation.
+  // Identity depends on field values, not their serialization order.
+  return Boolean(
+    history?.identity &&
+      Object.entries(monthlyTrendIdentity(product)).every(
+        ([key, value]) => history.identity[key] === value,
+      ),
   );
 }
 export function monthlyTrendDue(previous, product, metric, at) {

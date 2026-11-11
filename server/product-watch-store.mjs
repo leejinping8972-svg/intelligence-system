@@ -52,6 +52,7 @@ async function submit(config, day, c) {
     seeds: [],
     day,
     monthlyHistory: true,
+    monthlyHistoryCadence: 'watch',
   };
   const checkpoint = {
     submittedAt: new Date().toISOString(),
@@ -290,7 +291,13 @@ export async function runProductWatch(job, overrides = {}) {
         product.sourcePlatform === 'Amazon'
       ) {
         for (const metric of monthlyTrendMetrics) {
-          if (!monthlyTrendDue(monthlyTrends, product, metric, at)) continue;
+          // New tasks refresh both metrics with every observation. Tasks frozen
+          // before this policy retain their original seven-day request plan.
+          if (
+            job.input.monthlyHistoryCadence !== 'watch' &&
+            !monthlyTrendDue(monthlyTrends, product, metric, at)
+          )
+            continue;
           if (await cancelled()) return io.saveCheckpoint(job, cp, 'cancelled');
           const old = monthlyTrends[metric];
           try {
