@@ -1,14 +1,22 @@
 import type { DemoState, Product } from './data';
 import type { RadarFinding } from './radar-engine';
+import { opportunityChineseName } from './opportunity-text';
 
 const marketName = (market: string) => ({ US: '美国', MX: '墨西哥', VN: '越南' } as Record<string, string>)[market] || market;
 export interface OpportunityRow { id: string; title: string; titleZh?: string; count: number; description: string }
 export function opportunityRows(state: Pick<DemoState, 'keywords' | 'products' | 'sites'>, tab: string): OpportunityRow[] {
   const counts = new Map<string, number>();
   for (const p of state.products) counts.set(p.siteId, (counts.get(p.siteId) || 0) + 1);
-  if (tab === 'keyword') return state.keywords.filter(k => (k.growth || 0) > 20).map(k => ({ id: k.id, title: `${k.term} · ${k.market}`, ...(k.termZh?.trim() ? { titleZh: `${k.termZh.trim()} · ${marketName(k.market)}` } : {}), count: 1, description: `${k.category} · 同市场趋势上升信号，仍需独立来源验证。` }));
+  if (tab === 'keyword') return state.keywords.filter(k => (k.growth || 0) > 20).map(k => {
+    const title = `${k.term} · ${k.market}`;
+    const titleZh = opportunityChineseName(title, k.termZh?.trim() ? `${k.termZh.trim()} · ${marketName(k.market)}` : undefined, tab);
+    return { id: k.id, title, ...(titleZh ? { titleZh } : {}), count: 1, description: `${k.category} · 同市场趋势上升信号，仍需独立来源验证。` };
+  });
   if (tab === 'site') return state.sites.map(s => ({ id: s.id, title: s.brand, ...(s.brandZh?.trim() ? { titleZh: s.brandZh.trim() } : {}), count: counts.get(s.id) || 0, description: `${marketName(s.market)} · 目前只有首次样本，尚不能确认持续成长。` }));
-  if (tab === 'new') return state.products.map(p => ({ id: p.id, title: p.title, ...(p.titleZh?.trim() ? { titleZh: p.titleZh.trim() } : {}), count: 1, description: `${p.brand} · ${marketName(p.market)} · 新发现不等于新上市。` }));
+  if (tab === 'new') return state.products.map(p => {
+    const titleZh = opportunityChineseName(p.title, p.titleZh, tab);
+    return { id: p.id, title: p.title, ...(titleZh ? { titleZh } : {}), count: 1, description: `${p.brand} · ${marketName(p.market)} · 新发现不等于新上市。` };
+  });
   const groups = new Map<string, number>();
   const translations = new Map<string, string>();
   for (const p of state.products) {
@@ -18,7 +26,10 @@ export function opportunityRows(state: Pick<DemoState, 'keywords' | 'products' |
     const translated = tab === 'ingredient' ? p.ingredientZh : tab === 'claim' ? p.claimZh : p.categoryZh;
     if (original && translated?.trim() && !translations.has(key)) translations.set(key, translated.trim());
   }
-  return [...groups].map(([title, count]) => ({ id: title, title, ...(translations.has(title) ? { titleZh: translations.get(title) } : {}), count, description: tab === 'claim' ? '竞品文案表达，不能据此认定科学功效。' : '已整理关联商品样本，建议补充趋势、配方与市场反馈。' })).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
+  return [...groups].map(([title, count]) => {
+    const titleZh = opportunityChineseName(title, translations.get(title), tab);
+    return { id: title, title, ...(titleZh ? { titleZh } : {}), count, description: tab === 'claim' ? '竞品文案表达，不能据此认定科学功效。' : '已整理关联商品样本，建议补充趋势、配方与市场反馈。' };
+  }).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
 }
 
 export function formulaOf(product: Product) {

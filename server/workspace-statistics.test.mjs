@@ -112,7 +112,7 @@ test('concept translations preserve raw grouping, saved titles and sample counts
   assert.equal(byTitle.get('Supplement').titleZh, '膳食补充剂');
   assert.equal(byTitle.get('Supplement').count, 1);
   assert.equal(byTitle.get('膳食补充剂').count, 1);
-  assert.equal(byTitle.get('Protein Powder').titleZh, undefined);
+  assert.equal(byTitle.get('Protein Powder').titleZh, '蛋白粉');
   assert.equal(byTitle.get('待补充').titleZh, undefined);
   assert.equal(byTitle.get('待补充').count, 2);
   assert.equal(rows.reduce((total, row) => total + row.count, 0), products.length);
@@ -137,7 +137,7 @@ test('all opportunity tabs retain original identities while exposing saved Chine
   };
   const keywords = opportunityRows(state, 'keyword');
   assert.deepEqual(keywords.map(row => [row.id, row.title, row.titleZh]), [
-    ['k1', 'collagen · US', '胶原蛋白 · 美国'], ['k2', 'protein · MX', undefined],
+    ['k1', 'collagen · US', '胶原蛋白 · 美国'], ['k2', 'protein · MX', '蛋白质 · 墨西哥'],
   ]);
   const ingredients = opportunityRows(state, 'ingredient');
   assert.deepEqual(ingredients.map(row => [row.id, row.count, row.titleZh]), [
@@ -153,6 +153,29 @@ test('all opportunity tabs retain original identities while exposing saved Chine
   assert.deepEqual(opportunityRows(state, 'new').map(row => [row.id, row.title, row.titleZh]), [
     ['p1', 'Collagen capsules', '胶原蛋白胶囊'], ['p2', 'Another product', undefined], ['p3', 'Fallback', undefined],
   ]);
+});
+
+test('historical keywords without saved translations use local names and retain raw identity', () => {
+  const examples = [
+    ['dầu cá omega 3', 'VN', '鱼油 Omega-3脂肪酸 · 越南'],
+    ['l theanine supplement', 'US', 'L-茶氨酸补充剂 · 美国'],
+    ['best menopause supplements', 'US', '最佳更年期补充剂 · 美国'],
+    ['magnesium glycinate powder', 'US', '甘氨酸镁粉剂 · 美国'],
+    ['what is l theanine', 'US', '什么是 L-茶氨酸 · 美国'],
+    ['protein powder for women', 'US', '蛋白粉适用于女性 · 美国'],
+    ['đồng hồ omega', 'VN', '欧米茄手表 · 越南'],
+    ['prebiotic fiber supplement', 'US', '益生元膳食纤维补充剂 · 美国'],
+    ['omega 3 for kids', 'US', 'Omega-3脂肪酸适用于儿童 · 美国'],
+    ['vitamin b supplements', 'US', '维生素B 补充剂 · 美国'],
+  ];
+  const keywords = examples.map(([term, market], i) => ({ id: `k${i}`, term, market, growth: 30 }));
+  const before = structuredClone(keywords);
+  const rows = opportunityRows({ keywords, products: [], sites: [] }, 'keyword');
+  assert.deepEqual(rows.map(row => row.titleZh), examples.map(row => row[2]));
+  assert.deepEqual(rows.map(row => row.title), examples.map(([term, market]) => `${term} · ${market}`));
+  assert.deepEqual(keywords, before);
+  const unknown = opportunityRows({ keywords: [{ id: 'u', term: 'UnfamiliarProperName', market: 'US', growth: 30 }], products: [], sites: [] }, 'keyword');
+  assert.equal(unknown[0].titleZh, undefined);
 });
 
 test('public feed cache makes no requests during TTL and keeps last good feed after outage', async (context) => {

@@ -29,6 +29,7 @@ import { useStatistics } from './statistics-queries';
 import { serverMode } from './session';
 import { opportunityRows } from './statistics-engine';
 import type { OpportunityRow } from './statistics-engine';
+import { opportunityChineseName, opportunityOriginalNote } from './opportunity-text';
 const router = useRouter();
 const tab = ref('concept');
 const savedOnly = ref(false);
@@ -82,11 +83,10 @@ const tabs = [
   },
 ];
 const rows = computed(() => {
-  if (serverMode) return remote.rows.value;
-  const output = opportunityRows({ products: filteredProducts.value, keywords: filteredKeywords.value, sites: filteredSites.value }, tab.value);
+  const output = serverMode ? remote.rows.value : opportunityRows({ products: filteredProducts.value, keywords: filteredKeywords.value, sites: filteredSites.value }, tab.value);
   return output.filter(
     (r) => !savedOnly.value || state.savedOpportunities.includes(r.title),
-  );
+  ).map(row => ({ ...row, titleZh: opportunityChineseName(row.title, row.titleZh, tab.value) || undefined }));
 });
 function save(title: string) {
   const index = state.savedOpportunities.indexOf(title);
@@ -95,9 +95,11 @@ function save(title: string) {
 }
 function report() {
   if (!selected.value) return;
+  const original = opportunityOriginalNote(selected.value.title, selected.value.titleZh)
+    || (selected.value.titleZh && selected.value.titleZh !== selected.value.title ? `原文：${selected.value.title}` : '');
   download(
     `研究摘要-${tab.value}.txt`,
-    `${state.branding.appName} · 研究摘要\n研究方向：${selected.value.titleZh || selected.value.title}${selected.value.titleZh && selected.value.titleZh !== selected.value.title ? `\n原文：${selected.value.title}` : ''}\n市场：${marketName(state.market)}\n关联记录：${selected.value.count}项\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未达到自动确认门槛。\n数据缺口：独立来源、真实配方、持续观察历史、广告或销售证据。\n后续动作：补充资料并完成人工审核。`,
+    `${state.branding.appName} · 研究摘要\n研究方向：${selected.value.titleZh || selected.value.title}${original ? `\n${original}` : ''}\n市场：${marketName(state.market)}\n关联记录：${selected.value.count}项\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未达到自动确认门槛。\n数据缺口：独立来源、真实配方、持续观察历史、广告或销售证据。\n后续动作：补充资料并完成人工审核。`,
   );
   message.success('研究摘要已导出');
 }
@@ -153,7 +155,7 @@ function report() {
         <div>
           <div style="display: flex; gap: 12px; align-items: center">
             <span class="hci-subtle">{{ String(i + 1).padStart(2, '0') }}</span>
-            <h3><ProductText :text="row.title" :translated="row.titleZh" /></h3>
+            <h3><ProductText :text="row.title" :translated="row.titleZh" :original-note="opportunityOriginalNote(row.title, row.titleZh)" /></h3>
             <Tag color="orange">待验证</Tag>
           </div>
           <p class="hci-subtle" style="margin: 12px 0">{{ row.description }}</p>
@@ -181,7 +183,7 @@ function report() {
       @cancel="selected = undefined"
     >
       <template v-if="selected">
-        <h2 style="margin: 16px 0; font-size: 22px"><ProductText :text="selected.title" :translated="selected.titleZh" /></h2>
+        <h2 style="margin: 16px 0; font-size: 22px"><ProductText :text="selected.title" :translated="selected.titleZh" :original-note="opportunityOriginalNote(selected.title, selected.titleZh)" /></h2>
         <Tag color="orange">待验证 · 未参与机会排名</Tag>
         <div class="hci-evidence">
           <b>已整理的观察</b><br />{{ selected.description }}<br />关联
