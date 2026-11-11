@@ -22,7 +22,6 @@ import {
   message,
   Select,
   Table,
-  Tag,
   Tooltip,
 } from 'ant-design-vue';
 
@@ -82,15 +81,6 @@ const labels: Record<string, string> = {
   empty: '未找到站点',
   failed: '采集失败',
   cancelled: '已取消',
-};
-const colors: Record<string, string> = {
-  queued: 'blue',
-  running: 'processing',
-  completed: 'green',
-  partial: 'gold',
-  empty: 'default',
-  failed: 'red',
-  cancelled: 'default',
 };
 const selected = computed(() =>
   filteredKeywords.value.filter((k) => k.reviewStatus === 'selected'),
@@ -184,6 +174,17 @@ watch([search, status, () => state.market], () => {
 watch(selected, () => {
   ids.value = ids.value.filter((id) => selected.value.some((k) => k.id === id));
 });
+function relatedCount(record: Keyword, collection: 'ads' | 'products' | 'sites') {
+  if (serverMode) return record.relatedCounts?.[collection] || 0;
+  if (collection === 'ads') return state.ads.filter((item) => item.keywordIds?.includes(record.id)).length;
+  if (collection === 'products') return state.products.filter((item) => item.keywordIds?.includes(record.id) || record.productIds?.includes(item.id)).length;
+  return state.sites.filter((item) => item.keywordIds?.includes(record.id) || record.siteIds?.includes(item.id)).length;
+}
+function relatedCollection(key: unknown): 'ads' | 'products' | 'sites' {
+  if (key === 'relatedProducts') return 'products';
+  if (key === 'relatedSites') return 'sites';
+  return 'ads';
+}
 const columns = [
   { title: '关键词 / 种子词', key: 'term', width: 195, fixed: 'left' as const },
   { title: '市场 / 品类', key: 'market', width: 100 },
@@ -201,9 +202,15 @@ const columns = [
   { title: 'TK趋势', key: 'tiktok', width: 118 },
   { title: 'INS趋势', key: 'instagram', width: 118 },
   { title: 'FB趋势', key: 'facebook', width: 118 },
-  { title: '站点采集状态', key: 'status', width: 115 },
-  { title: '广告采集状态', key: 'ads', width: 115 },
-  { title: '关联站点', key: 'sites', width: 100 },
+  ...([
+    { title: '关联商品', key: 'relatedProducts', width: 88 },
+    { title: '关联广告', key: 'relatedAds', width: 88 },
+    { title: '关联站点', key: 'relatedSites', width: 98 },
+  ] as const).map((column) => ({
+    ...column,
+    sortDirections: ['descend', 'ascend'] as ('ascend' | 'descend')[],
+    sorter: serverMode ? true : (a: Keyword, b: Keyword) => relatedCount(a, relatedCollection(column.key)) - relatedCount(b, relatedCollection(column.key)),
+  })),
   { title: '采集时间 / 说明', key: 'time', width: 180 },
   { title: '操作', key: 'actions', width: 135, fixed: 'right' as const },
 ];
@@ -411,42 +418,16 @@ async function exportSelectedKeywords() {
               @submitted="loadReports"
             />
           </template>
-          <template v-else-if="column.key === 'status'">
-            <Tag :color="colors[record.siteCollection?.status || 'pending']">
-              {{ labels[record.siteCollection?.status || 'pending'] }}
-            </Tag>
-            <p v-if="record.siteCollection?.target" class="hci-subtle">
-              本次 {{ record.siteCollection.count || 0 }}/{{
-                record.siteCollection.target
-              }}
-              家
-            </p>
-          </template>
-          <template v-else-if="column.key === 'sites'">
+          <template v-else-if="['relatedProducts', 'relatedAds', 'relatedSites'].includes(String(column.key))">
             <Button
               type="link"
-              :disabled="!record.siteIds?.length"
+              size="small"
+              :disabled="relatedCount(record as Keyword, relatedCollection(column.key)) === 0"
               @click="
-                router.push({ path: '/sites', query: { keywordId: record.id } })
+                router.push({ path: `/${relatedCollection(column.key)}`, query: { keywordId: record.id } })
               "
             >
-              {{ record.siteIds?.length || 0 }} 家站点
-            </Button>
-          </template>
-          <template v-else-if="column.key === 'ads'">
-            <Tag :color="colors[record.adCollection?.status || 'pending']">
-              {{ labels[record.adCollection?.status || 'pending'] }}
-</Tag><Button
-              type="link"
-              @click="
-                router.push({ path: '/ads', query: { keywordId: record.id } })
-              "
-            >
-              {{
-                state.ads.filter((ad) => ad.keywordIds?.includes(record.id))
-                  .length
-              }}
-              条广告
+              {{ relatedCount(record as Keyword, relatedCollection(column.key)) }} 条
             </Button>
           </template>
           <template v-else-if="column.key === 'trend'">
