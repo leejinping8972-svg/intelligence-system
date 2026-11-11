@@ -1,52 +1,37 @@
 {
-  "title": "采集任务修复、历史月度默认采集与机会研究双语展示",
+  "title": "商品监控每轮同步商品字段与历史月度曲线",
   "files": [
     "apps/web-antd/src/views/intelligence/components/ProductWatchHistory.vue",
     "apps/web-antd/src/views/intelligence/components/ProductWatchPanel.vue",
-    "apps/web-antd/src/views/intelligence/statistics-engine.ts",
-    "server/OPPORTUNITY-BILINGUAL.md",
-    "server/PRODUCT-INTAKE-TRANSLATION.md",
     "server/PRODUCT-MONTHLY-TRENDS.md",
-    "server/PRODUCT-WATCH-CAPABILITY.md",
-    "server/model.js",
-    "server/product-intake-translation.test.mjs",
-    "server/product-intake.mjs",
+    "server/product-monthly-trends.mjs",
     "server/product-monthly-trends.test.mjs",
-    "server/product-watch-capability.test.mjs",
+    "server/product-monthly-watch.test.mjs",
     "server/product-watch-defaults.test.mjs",
-    "server/product-watch-domain.mjs",
-    "server/product-watch-sorftime.mjs",
     "server/product-watch-store.mjs",
-    "server/source-field-store.mjs",
-    "server/workspace-statistics.mjs",
-    "server/workspace-statistics.test.mjs"
+    "server/product-watch.integration.test.mjs"
   ],
-  "sourceSha": "24a2affa71c6ac0e1d8d1e12eae3276ca9618ff8",
+  "sourceSha": "44f36ee01edd4ef0527e2b92f61ad249494cccf2",
   "featureShas": [
-    "4cc6b4947ebf9add0af552a57ee15eeccf703715",
-    "6d4ce441538d70022db4d0c02601b904ed9758c8",
-    "a0404ec48189d7c32f5c3ca071842a3c980dda1c",
-    "61f5bf46a997d5bcdb6942afc1619ff86cd92dd8"
+    "44f36ee01edd4ef0527e2b92f61ad249494cccf2"
   ],
   "changes": [
-    "后续翻译失败保留已经成功的商品分类、引用及中文字段，避免成功分析重复翻译后无法落库",
-    "Sorftime指标参数兼容明确的说明文字声明，恢复日销量与月度指标能力识别",
-    "历史月销量与月销售额随商品监控默认采集，现有监控下一轮新任务生效，首次及每7天刷新；保留旧任务冻结与同日幂等",
-    "热门关键词、成分观察、营销卖点、成长型站点、新发现商品复用中文优先、原文浅色小2px展示，详情与导出同步"
+    "新建商品监控任务每轮刷新历史月销量和月销售额，商品月销量继续随详情写回，来源口径独立保留",
+    "兼容数据库JSON对象键重排，恢复已保存历史曲线读取，仍严格校验商品身份",
+    "旧冻结任务保留原计划，当日幂等、失败保留上次成功和未知来源请求保护保持"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupDataRepair": false,
     "readModelVersionChange": false,
-    "statisticsVersion": 6,
     "backup": "skipped-by-user-policy-no-schema-change",
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "Focused test groups 34/34, 21/21, 18/18 and 11/11 passed at feature delivery; Web types, isolated development builds and synthetic monthly-default and five-tab bilingual UI checks passed.",
-    "release": "Repeat tests, typecheck, lint, isolated database/UI acceptance, validation builds and CI wait skipped by user policy. Official frontend and API image built once for frozen SHA.",
-    "limitations": "One existing product-watch.integration partial/completed assertion fails on unchanged base 6573f3f; no full suite success claimed. Empty seller responses, insufficient references and historical pending tasks are preserved. Missing translations fall back to original; no new paid calls or task replay."
+    "development": "26/26 focused tests and isolated PGlite passed; final integration 1/1, Web types, development Web build, server bundle, syntax and diff checks passed. Existing lint 29 vs baseline 31, zero introduced.",
+    "release": "Repeat tests, typecheck, lint, UI/database acceptance, validation builds and CI wait skipped by user policy. Official frontend and API image generated once for frozen SHA.",
+    "limitations": "New tasks only; old frozen daily jobs preserve original plan. No paid validation, production replay, schema migration or dependency changes."
   },
   "queue": {
     "leaseCount": 23,
@@ -54,14 +39,12 @@
     "unknownRequests": "never-auto-replay"
   },
   "configuration": {
-    "paidProviderAdded": false,
-    "schemaMigration": false,
-    "checkpointMigration": false,
-    "manualCollectionReplay": false,
-    "monthlyHistoryDefault": true
+    "monthlyHistoryCadence": "watch",
+    "userExplicitlySelectedBothMetrics": true,
+    "manualCollectionReplay": false
   },
-  "id": "20261111041001-e1f0763c",
-  "builtAt": "2026-11-11T04:10:01.983Z",
-  "sourceDigest": "e1f0763cf1e4dc07ccac3ead66810095a2b0a33e498dcb0dc81b8e6fcc8f475e",
+  "id": "20261111062738-13e4f24d",
+  "builtAt": "2026-11-11T06:27:38.706Z",
+  "sourceDigest": "13e4f24d6e947a1c6f0faa1c8854d19a7cdc54f7972d8a33e5a057face00b6dc",
   "operator": "Codex"
 }
