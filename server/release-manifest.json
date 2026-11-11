@@ -1,35 +1,52 @@
 {
-  "title": "商品库与产品概念品类双语显示统一",
+  "title": "采集任务修复、历史月度默认采集与机会研究双语展示",
   "files": [
-    "apps/web-antd/src/views/intelligence/opportunities.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductWatchHistory.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductWatchPanel.vue",
     "apps/web-antd/src/views/intelligence/statistics-engine.ts",
-    "server/CATEGORY-BILINGUAL.md",
+    "server/OPPORTUNITY-BILINGUAL.md",
+    "server/PRODUCT-INTAKE-TRANSLATION.md",
+    "server/PRODUCT-MONTHLY-TRENDS.md",
+    "server/PRODUCT-WATCH-CAPABILITY.md",
     "server/model.js",
+    "server/product-intake-translation.test.mjs",
+    "server/product-intake.mjs",
+    "server/product-monthly-trends.test.mjs",
+    "server/product-watch-capability.test.mjs",
+    "server/product-watch-defaults.test.mjs",
+    "server/product-watch-domain.mjs",
+    "server/product-watch-sorftime.mjs",
+    "server/product-watch-store.mjs",
+    "server/source-field-store.mjs",
     "server/workspace-statistics.mjs",
     "server/workspace-statistics.test.mjs"
   ],
-  "sourceSha": "cba4064ba9fbf100c269fc5a14be07660243afa5",
+  "sourceSha": "24a2affa71c6ac0e1d8d1e12eae3276ca9618ff8",
   "featureShas": [
-    "cba4064ba9fbf100c269fc5a14be07660243afa5"
+    "4cc6b4947ebf9add0af552a57ee15eeccf703715",
+    "6d4ce441538d70022db4d0c02601b904ed9758c8",
+    "a0404ec48189d7c32f5c3ca071842a3c980dda1c",
+    "61f5bf46a997d5bcdb6942afc1619ff86cd92dd8"
   ],
   "changes": [
-    "商品库与产品概念共用中文优先的品类展示，原文浅色且比主文字号小2px",
-    "产品概念统计保存已有中文品类，详情、导出和收藏可访问名称一致显示",
-    "保留原始品类分组、样本计数与收藏键；旧派生快照下次后台检查升级补中文元数据"
+    "后续翻译失败保留已经成功的商品分类、引用及中文字段，避免成功分析重复翻译后无法落库",
+    "Sorftime指标参数兼容明确的说明文字声明，恢复日销量与月度指标能力识别",
+    "历史月销量与月销售额随商品监控默认采集，现有监控下一轮新任务生效，首次及每7天刷新；保留旧任务冻结与同日幂等",
+    "热门关键词、成分观察、营销卖点、成长型站点、新发现商品复用中文优先、原文浅色小2px展示，详情与导出同步"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupDataRepair": false,
     "readModelVersionChange": false,
-    "statisticsVersion": 5,
+    "statisticsVersion": 6,
     "backup": "skipped-by-user-policy-no-schema-change",
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "10/10 focused statistics tests including isolated PGlite persistence and same-day snapshot upgrade; complete Web typecheck, isolated server-mode development frontend build, JS syntax/diff checks and synthetic Edge desktop bilingual/detail/export/favorites checks passed.",
-    "release": "Repeat tests, typecheck, lint, isolated database/UI acceptance, validation build and CI wait skipped by user policy. Build official frontend and API image once for the frozen SHA.",
-    "limitations": "Missing Chinese translations fall back to original text; no new translation requests. Old statistics remain readable until background replacement. Existing mobile sidebar overlay was not changed; full mobile usability not claimed."
+    "development": "Focused test groups 34/34, 21/21, 18/18 and 11/11 passed at feature delivery; Web types, isolated development builds and synthetic monthly-default and five-tab bilingual UI checks passed.",
+    "release": "Repeat tests, typecheck, lint, isolated database/UI acceptance, validation builds and CI wait skipped by user policy. Official frontend and API image built once for frozen SHA.",
+    "limitations": "One existing product-watch.integration partial/completed assertion fails on unchanged base 6573f3f; no full suite success claimed. Empty seller responses, insufficient references and historical pending tasks are preserved. Missing translations fall back to original; no new paid calls or task replay."
   },
   "queue": {
     "leaseCount": 23,
@@ -40,10 +57,11 @@
     "paidProviderAdded": false,
     "schemaMigration": false,
     "checkpointMigration": false,
-    "manualCollectionReplay": false
+    "manualCollectionReplay": false,
+    "monthlyHistoryDefault": true
   },
-  "id": "20261111033916-7e792443",
-  "builtAt": "2026-11-11T03:39:16.785Z",
-  "sourceDigest": "7e7924431a4790e8e593ea50976544c00867f547d27ff26c067f8a54265341ea",
+  "id": "20261111041001-e1f0763c",
+  "builtAt": "2026-11-11T04:10:01.983Z",
+  "sourceDigest": "e1f0763cf1e4dc07ccac3ead66810095a2b0a33e498dcb0dc81b8e6fcc8f475e",
   "operator": "Codex"
 }
