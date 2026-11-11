@@ -1,54 +1,62 @@
 {
-  "title": "机会研究历史关键词中文与来源原文显示纠错",
-  "sourceSha": "d4ec86fd27ee75e855317a305f936729b197f606",
+  "title": "成分风向批量归档、轻量检查点、调度与真实进度",
+  "sourceSha": "ab0074fe0e6715268f7a9bec50fffe3f3736d7b7",
   "featureShas": [
-    "cc389e5c756d8a0a1cd122122d2e8c73577431f4"
+    "ab0074fe0e6715268f7a9bec50fffe3f3736d7b7"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/__tests__/opportunity-text.test.ts",
-    "apps/web-antd/src/views/intelligence/components/ProductText.vue",
-    "apps/web-antd/src/views/intelligence/keyword-names.ts",
-    "apps/web-antd/src/views/intelligence/opportunities.vue",
-    "apps/web-antd/src/views/intelligence/opportunity-text.ts",
-    "apps/web-antd/src/views/intelligence/statistics-engine.ts",
-    "server/Dockerfile",
-    "server/OPPORTUNITY-BILINGUAL.md",
-    "server/model.js",
-    "server/workspace-statistics.mjs",
-    "server/workspace-statistics.test.mjs"
+    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
+    "apps/web-antd/src/views/intelligence/components/TaskDetailPanel.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/task-list.ts",
+    "server/INGREDIENT-THROUGHPUT.md",
+    "server/discovery-monitor-store.mjs",
+    "server/ingredient-throughput.test.mjs",
+    "server/ingredient-trend-checkpoint.mjs",
+    "server/ingredient-trend-documents.mjs",
+    "server/ingredient-trend-progress.mjs",
+    "server/ingredient-trend-quantity-comments.mjs",
+    "server/ingredient-trend-runner.mjs",
+    "server/ingredient-trend-store.mjs",
+    "server/ingredient-trend-timing.mjs",
+    "server/queue-scheduling.mjs",
+    "server/runner.mjs",
+    "server/task-overview.mjs",
+    "tests/ingredient-trend-progress.test.ts"
   ],
   "changes": [
-    "历史关键词未存译名时复用本地词典，覆盖茶氨酸、更年期等词组并区分Omega手表含义；保留已存译名优先",
-    "中文来源在第二行明确显示来源原文（中文），缺配方占位标注暂无来源原文；原文浅色小2px，列表详情与摘要一致",
-    "概念与商品使用已有本地名称规则，前端旧快照同样立即补显示参考；统计派生版本升7，不改分组、ID、计数或收藏键"
+    "评论页事务批量读写和状态批读，保留正文、版本、观测身份与未知请求防重放",
+    "公共计划扫描完成后每30秒执行；分析依赖从可运行队列排除，采集结束或取消后恢复资格",
+    "v2样本与分析资料/中间结果使用不可变引用，旧任务原步骤与偏移可继续，缺失归档明确停止",
+    "列表卡片详情展示真实计数、阶段及最近请求/归档/保存/续跑/调度耗时，等待分析不制造进度"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupDataRepair": false,
     "readModelVersionChange": false,
-    "statisticsVersion": 7,
     "backup": "skipped-by-user-policy-no-schema-change",
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "12/12 statistics and PGlite tests, 4/4 UI and related translation unit tests, full Web typecheck, isolated server-mode Web development build passed. Synthetic UI checked 11 bilingual colors/font sizes in lists/details and missing formula, source export and mobile screenshot; external network blocked and pageerror=0.",
-    "release": "Repeat unit/regression/typecheck/lint/database/UI validation, validation builds and CI wait skipped by user policy. Official frontend and API image built once for frozen candidate.",
-    "limitations": "Local glossary cannot translate all unknown proper names. Sampled source ingredient text is Chinese; no reverse translation is claimed as source original. No historical business repair, paid translation/provider call or task replay. Existing read-model indexing may continue."
+    "development": "61/61 selected server tests, 21/21 frontend tests, Web typecheck, isolated Web build and server bundles passed. Desktop/mobile synthetic UI checked with external traffic blocked and pageerror=0. Three unrelated broad-regression assertions reproduced unchanged baseline failures. Feature lint clean; shared-entry lint adds zero diagnostics.",
+    "release": "Repeat tests/regression/typecheck/lint/database/UI validation, validation builds and CI wait skipped by user policy; official frontend and API image each generated once.",
+    "limitations": "Synthetic SQL and checkpoint reductions do not establish production throughput. MySQL SQL generation checked; workflow tests use PGlite. Old-image rollback after compact checkpoint use requires guarded checkpoint expansion; helper and queue backup retained in release directory."
   },
   "queue": {
     "leaseCount": 23,
     "preserveFrozenJobs": true,
-    "unknownRequests": "never-auto-replay"
+    "unknownRequests": "never-auto-replay",
+    "rollback": "Expand immutable ingredient references under fresh deployment guard before starting an old runner."
   },
   "configuration": {
     "paidProviderAdded": false,
     "schemaMigration": false,
-    "checkpointMigration": false,
+    "checkpointMigration": "lazy-per-existing-job-no-startup-backfill",
     "manualCollectionReplay": false
   },
-  "id": "20261111064239-232766e7",
-  "builtAt": "2026-11-11T06:42:39.712Z",
-  "sourceDigest": "232766e7a30e64a7578b5ea70a4117e5fd72b36c35b67b9eb63871272549604e",
+  "id": "20261111082626-2c7ab296",
+  "builtAt": "2026-11-11T08:26:26.223Z",
+  "sourceDigest": "2c7ab2965db9493fa56ce7b1a5f8e4991a38463fd3518688bf90bab88852c29e",
   "operator": "Codex"
 }
