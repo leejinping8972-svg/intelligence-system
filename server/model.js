@@ -2021,14 +2021,268 @@ function buildRadarReport(findings, windowDays, marketLabel, appName = "\u60C5\u
   ].join("\n");
 }
 
+// server/product-names.mjs
+var ingredients2 = {
+  "dihydromyricetin (dhm)": "\u4E8C\u6C22\u6768\u6885\u7D20 (DHM)",
+  "dihydromyricetin dhm": "\u4E8C\u6C22\u6768\u6885\u7D20 (DHM)",
+  dihydromyricetin: "\u4E8C\u6C22\u6768\u6885\u7D20",
+  "cissus quadrangularis": "\u56DB\u68F1\u767D\u7C89\u85E4",
+  "huperzine a": "\u77F3\u6749\u78B1\u7532",
+  "nootropic stack": "\u4FC3\u667A\u914D\u65B9\u7EC4\u5408",
+  "alpha gpc": "\u7518\u6CB9\u78F7\u9178\u80C6\u78B1",
+  "alpha-gpc": "\u7518\u6CB9\u78F7\u9178\u80C6\u78B1",
+  uridine: "\u5C3F\u82F7",
+  dhea: "\u8131\u6C22\u8868\u96C4\u916E",
+  dhm: "\u4E8C\u6C22\u6768\u6885\u7D20 (DHM)",
+  "magnesium glycinate": "\u7518\u6C28\u9178\u9541",
+  "magnesium citrate": "\u67E0\u6AAC\u9178\u9541",
+  "creatine monohydrate": "\u4E00\u6C34\u808C\u9178",
+  "apple cider vinegar": "\u82F9\u679C\u918B",
+  "fish oil": "\u9C7C\u6CB9",
+  "omega 3": "Omega-3\u8102\u80AA\u9178",
+  "omega-3": "Omega-3\u8102\u80AA\u9178",
+  "vitamin d3": "\u7EF4\u751F\u7D20D3",
+  "vitamin b12": "\u7EF4\u751F\u7D20B12",
+  "vitamin c": "\u7EF4\u751F\u7D20C",
+  "vitamin d": "\u7EF4\u751F\u7D20D",
+  "protein powder": "\u86CB\u767D\u7C89",
+  "whey protein": "\u4E73\u6E05\u86CB\u767D",
+  "l-theanine": "L-\u8336\u6C28\u9178",
+  "n-acetyl cysteine": "N-\u4E59\u9170\u534A\u80F1\u6C28\u9178",
+  "n-acetyl-l-cysteine": "N-\u4E59\u9170\u534A\u80F1\u6C28\u9178",
+  creatine: "\u808C\u9178",
+  magnesium: "\u9541",
+  collagen: "\u80F6\u539F\u86CB\u767D",
+  probiotics: "\u76CA\u751F\u83CC",
+  prebiotics: "\u76CA\u751F\u5143",
+  melatonin: "\u892A\u9ED1\u7D20",
+  ashwagandha: "\u5357\u975E\u9189\u8304",
+  berberine: "\u5C0F\u6A97\u78B1",
+  turmeric: "\u59DC\u9EC4",
+  curcumin: "\u59DC\u9EC4\u7D20",
+  multivitamins: "\u590D\u5408\u7EF4\u751F\u7D20",
+  multivitamin: "\u590D\u5408\u7EF4\u751F\u7D20",
+  electrolytes: "\u7535\u89E3\u8D28",
+  electrolyte: "\u7535\u89E3\u8D28",
+  protein: "\u86CB\u767D\u8D28",
+  zinc: "\u950C",
+  iron: "\u94C1",
+  calcium: "\u9499",
+  fiber: "\u81B3\u98DF\u7EA4\u7EF4",
+  psyllium: "\u6D0B\u8F66\u524D\u5B50",
+  coq10: "\u8F85\u9176Q10"
+};
+var descriptors = {
+  "dietary supplements": "\u81B3\u98DF\u8865\u5145\u5242",
+  "dietary supplement": "\u81B3\u98DF\u8865\u5145\u5242",
+  supplements: "\u8865\u5145\u5242",
+  supplement: "\u8865\u5145\u5242",
+  extracts: "\u63D0\u53D6\u7269",
+  extract: "\u63D0\u53D6\u7269",
+  softgels: "\u8F6F\u80F6\u56CA",
+  capsules: "\u80F6\u56CA",
+  capsule: "\u80F6\u56CA",
+  tablets: "\u7247\u5242",
+  tablet: "\u7247\u5242",
+  gummies: "\u8F6F\u7CD6",
+  gummy: "\u8F6F\u7CD6",
+  powder: "\u7C89\u5242",
+  drops: "\u6EF4\u5242",
+  liquid: "\u6DB2\u4F53"
+};
+var escape = (value) => value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+function glossaryPattern(glossary2) {
+  const terms = Object.keys(glossary2).sort((a, b) => b.length - a.length).map(escape).join("|");
+  return new RegExp(`(?<![\\p{L}\\p{N}])(?:${terms})(?![\\p{L}\\p{N}])`, "giu");
+}
+var ingredientPattern = glossaryPattern(ingredients2);
+var descriptorPattern = glossaryPattern(descriptors);
+function productChineseName(record) {
+  if (typeof record?.titleZh === "string" && record.titleZh.trim())
+    return record.titleZh.trim();
+  if (typeof record?.title !== "string" || !record.title.trim()) return "";
+  const title = record.title.trim();
+  const brand = typeof record.brand === "string" ? record.brand.trim() : "";
+  const parts = brand ? title.split(new RegExp(`(${escape(brand)})`, "giu")) : [title];
+  let matched = false;
+  const translated = parts.map((part, index) => {
+    if (brand && index % 2) return part;
+    return part.replace(ingredientPattern, (word) => {
+      matched = true;
+      return ingredients2[word.toLowerCase()];
+    });
+  });
+  if (!matched) return new RegExp("\\p{Script=Han}", "u").test(title) ? title : "";
+  return translated.map((part, index) => brand && index % 2 ? part : part.replace(descriptorPattern, (word) => descriptors[word.toLowerCase()])).join("").replaceAll(/([\p{Script=Han}])\s+(?=[\p{Script=Han}])/gu, "$1");
+}
+
+// apps/web-antd/src/views/intelligence/keyword-names.ts
+var glossary = {
+  "l theanine": "L-\u8336\u6C28\u9178",
+  "l-theanine": "L-\u8336\u6C28\u9178",
+  "prebiotic fiber": "\u76CA\u751F\u5143\u81B3\u98DF\u7EA4\u7EF4",
+  "vitamin b": "\u7EF4\u751F\u7D20B",
+  "goat milk formula": "\u7F8A\u5976\u914D\u65B9",
+  "infant formula": "\u5A74\u513F\u914D\u65B9\u5976\u7C89",
+  "electrolyte powder": "\u7535\u89E3\u8D28\u7C89",
+  "pre-workout": "\u8FD0\u52A8\u524D\u8865\u5145\u5242",
+  "\u0111\u1ED3ng h\u1ED3": "\u624B\u8868",
+  menopause: "\u66F4\u5E74\u671F",
+  supplements: "\u8865\u5145\u5242",
+  supplement: "\u8865\u5145\u5242",
+  prebiotic: "\u76CA\u751F\u5143",
+  probiotic: "\u76CA\u751F\u83CC",
+  "magnesium glycinate": "\u7518\u6C28\u9178\u9541",
+  "magnesium citrate": "\u67E0\u6AAC\u9178\u9541",
+  "creatine monohydrate": "\u4E00\u6C34\u808C\u9178",
+  "fish oil": "\u9C7C\u6CB9",
+  "omega 3": "Omega-3\u8102\u80AA\u9178",
+  "omega-3": "Omega-3\u8102\u80AA\u9178",
+  "long ch\xE2u": "Long Ch\xE2u\u836F\u623F",
+  "d\u1EA7u c\xE1": "\u9C7C\u6CB9",
+  nh\u1EADt: "\u65E5\u672C",
+  "side effects": "\u526F\u4F5C\u7528",
+  "sugar free": "\u65E0\u7CD6",
+  "sugar-free": "\u65E0\u7CD6",
+  "no sugar": "\u65E0\u7CD6",
+  "weight loss": "\u4F53\u91CD\u7BA1\u7406",
+  "apple cider vinegar": "\u82F9\u679C\u918B",
+  "vitamin d3": "\u7EF4\u751F\u7D20D3",
+  "vitamin c": "\u7EF4\u751F\u7D20C",
+  "vitamin d": "\u7EF4\u751F\u7D20D",
+  "vitamin b12": "\u7EF4\u751F\u7D20B12",
+  "for women": "\u9002\u7528\u4E8E\u5973\u6027",
+  "for men": "\u9002\u7528\u4E8E\u7537\u6027",
+  "for kids": "\u9002\u7528\u4E8E\u513F\u7AE5",
+  "for sleep": "\u7528\u4E8E\u7761\u7720",
+  "for anxiety": "\u7528\u4E8E\u7126\u8651\u76F8\u5173\u641C\u7D22",
+  "gut health": "\u80A0\u9053\u5065\u5EB7",
+  "protein powder": "\u86CB\u767D\u7C89",
+  electrolyte: "\u7535\u89E3\u8D28",
+  electrolytes: "\u7535\u89E3\u8D28",
+  "dietary supplement": "\u81B3\u98DF\u8865\u5145\u5242",
+  "dietary supplements": "\u81B3\u98DF\u8865\u5145\u5242",
+  "nsf certified": "NSF\u8BA4\u8BC1",
+  "third party tested": "\u7B2C\u4E09\u65B9\u68C0\u6D4B",
+  creatine: "\u808C\u9178",
+  creatina: "\u808C\u9178",
+  magnesium: "\u9541",
+  magnesio: "\u9541",
+  magie: "\u9541",
+  gummies: "\u8F6F\u7CD6",
+  gummy: "\u8F6F\u7CD6",
+  gomitas: "\u8F6F\u7CD6",
+  "k\u1EB9o d\u1EBBo": "\u8F6F\u7CD6",
+  capsules: "\u80F6\u56CA",
+  capsule: "\u80F6\u56CA",
+  tablets: "\u7247\u5242",
+  tablet: "\u7247\u5242",
+  powder: "\u7C89\u5242",
+  pills: "\u4E38\u5242",
+  liquid: "\u6DB2\u4F53",
+  drops: "\u6EF4\u5242",
+  collagen: "\u80F6\u539F\u86CB\u767D",
+  col\u00E1geno: "\u80F6\u539F\u86CB\u767D",
+  probiotics: "\u76CA\u751F\u83CC",
+  prebiotics: "\u76CA\u751F\u5143",
+  melatonin: "\u892A\u9ED1\u7D20",
+  ashwagandha: "\u5357\u975E\u9189\u8304",
+  berberine: "\u5C0F\u6A97\u78B1",
+  turmeric: "\u59DC\u9EC4",
+  curcumin: "\u59DC\u9EC4\u7D20",
+  multivitamin: "\u590D\u5408\u7EF4\u751F\u7D20",
+  multivitamins: "\u590D\u5408\u7EF4\u751F\u7D20",
+  protein: "\u86CB\u767D\u8D28",
+  whey: "\u4E73\u6E05",
+  zinc: "\u950C",
+  iron: "\u94C1",
+  calcium: "\u9499",
+  fiber: "\u81B3\u98DF\u7EA4\u7EF4",
+  psyllium: "\u6D0B\u8F66\u524D\u5B50",
+  coq10: "\u8F85\u9176Q10",
+  vegan: "\u7EAF\u7D20",
+  organic: "\u6709\u673A",
+  benefits: "\u4F5C\u7528\u76F8\u5173\u4FE1\u606F",
+  dosage: "\u7528\u91CF",
+  reviews: "\u8BC4\u4EF7",
+  review: "\u8BC4\u4EF7",
+  best: "\u6700\u4F73",
+  vs: "\u5BF9\u6BD4",
+  versus: "\u5BF9\u6BD4",
+  sleep: "\u7761\u7720",
+  women: "\u5973\u6027",
+  men: "\u7537\u6027",
+  kids: "\u513F\u7AE5"
+};
+var escape2 = (value) => value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+var patterns = Object.entries(glossary).toSorted((a, b) => b[0].length - a[0].length).map(
+  ([word, name]) => [
+    new RegExp(
+      `(?<![\\p{L}\\p{N}])${escape2(word)}(?![\\p{L}\\p{N}])`,
+      "giu"
+    ),
+    name
+  ]
+);
+function keywordChineseName(record) {
+  if (record.termZh?.trim()) return record.termZh.trim();
+  let text = record.term.normalize("NFKC").trim();
+  if (/^đồng hồ omega$/iu.test(text)) return "\u6B27\u7C73\u8304\u624B\u8868";
+  if (/^omega[- ]?3\s+6\s+9$/i.test(text)) return "Omega-3-6-9\u8102\u80AA\u9178";
+  if (/^uống mấy viên (.+) mỗi ngày\??$/iu.test(text))
+    text = text.replace(
+      /^uống mấy viên (.+) mỗi ngày\??$/iu,
+      "\u6BCF\u5929\u670D\u7528\u51E0\u7C92 $1"
+    );
+  else if (/^(.+) có tác dụng gì\??$/iu.test(text))
+    text = text.replace(/^(.+) có tác dụng gì\??$/iu, "$1 \u6709\u4EC0\u4E48\u4F5C\u7528");
+  else if (/^tác dụng của (.+)$/iu.test(text))
+    text = text.replace(/^tác dụng của (.+)$/iu, "$1 \u7684\u4F5C\u7528");
+  else if (/^tác dụng (.+)$/iu.test(text))
+    text = text.replace(/^tác dụng (.+)$/iu, "$1 \u7684\u4F5C\u7528");
+  else if (/^thuốc (.+)$/iu.test(text))
+    text = text.replace(/^thuốc (.+)$/iu, "$1 \u5236\u5242");
+  else if (/^what is (.+) good for\??$/i.test(text))
+    text = text.replace(/^what is (.+) good for\??$/i, "$1 \u6709\u4EC0\u4E48\u4F5C\u7528");
+  else if (/^what is (.+)\??$/i.test(text))
+    text = text.replace(/^what is (.+?)\??$/i, "\u4EC0\u4E48\u662F $1");
+  else if (/^how much (.+) should i take\??$/i.test(text))
+    text = text.replace(/^how much (.+) should i take\??$/i, "$1 \u5E94\u6444\u5165\u591A\u5C11");
+  for (const [pattern, name] of patterns) text = text.replace(pattern, name);
+  return /[\p{Script=Han}]/u.test(text) ? text.replaceAll(/([\p{Script=Han}])\s+(?=[\p{Script=Han}])/gu, "$1") : "";
+}
+
+// apps/web-antd/src/views/intelligence/opportunity-text.ts
+var marketNames = { US: "\u7F8E\u56FD", MX: "\u58A8\u897F\u54E5", VN: "\u8D8A\u5357" };
+function opportunityChineseName(title, saved, tab) {
+  if (saved?.trim()) return saved.trim();
+  if (tab === "site") return "";
+  if (tab === "keyword") {
+    const parts = /^(.*) · (US|MX|VN)$/.exec(title);
+    const term = parts?.[1] || title;
+    const name2 = keywordChineseName({ term });
+    return name2 ? `${name2}${parts ? ` \xB7 ${marketNames[parts[2]]}` : ""}` : "";
+  }
+  if (new RegExp("\\p{Script=Han}", "u").test(title)) return "";
+  const name = tab === "new" ? productChineseName({ title }) : keywordChineseName({ term: title });
+  return name === title ? "" : name;
+}
+
 // apps/web-antd/src/views/intelligence/statistics-engine.ts
 var marketName = (market) => ({ US: "\u7F8E\u56FD", MX: "\u58A8\u897F\u54E5", VN: "\u8D8A\u5357" })[market] || market;
 function opportunityRows(state, tab) {
   const counts = /* @__PURE__ */ new Map();
   for (const p of state.products) counts.set(p.siteId, (counts.get(p.siteId) || 0) + 1);
-  if (tab === "keyword") return state.keywords.filter((k) => (k.growth || 0) > 20).map((k) => ({ id: k.id, title: `${k.term} \xB7 ${k.market}`, ...k.termZh?.trim() ? { titleZh: `${k.termZh.trim()} \xB7 ${marketName(k.market)}` } : {}, count: 1, description: `${k.category} \xB7 \u540C\u5E02\u573A\u8D8B\u52BF\u4E0A\u5347\u4FE1\u53F7\uFF0C\u4ECD\u9700\u72EC\u7ACB\u6765\u6E90\u9A8C\u8BC1\u3002` }));
+  if (tab === "keyword") return state.keywords.filter((k) => (k.growth || 0) > 20).map((k) => {
+    const title = `${k.term} \xB7 ${k.market}`;
+    const titleZh = opportunityChineseName(title, k.termZh?.trim() ? `${k.termZh.trim()} \xB7 ${marketName(k.market)}` : void 0, tab);
+    return { id: k.id, title, ...titleZh ? { titleZh } : {}, count: 1, description: `${k.category} \xB7 \u540C\u5E02\u573A\u8D8B\u52BF\u4E0A\u5347\u4FE1\u53F7\uFF0C\u4ECD\u9700\u72EC\u7ACB\u6765\u6E90\u9A8C\u8BC1\u3002` };
+  });
   if (tab === "site") return state.sites.map((s) => ({ id: s.id, title: s.brand, ...s.brandZh?.trim() ? { titleZh: s.brandZh.trim() } : {}, count: counts.get(s.id) || 0, description: `${marketName(s.market)} \xB7 \u76EE\u524D\u53EA\u6709\u9996\u6B21\u6837\u672C\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u6301\u7EED\u6210\u957F\u3002` }));
-  if (tab === "new") return state.products.map((p) => ({ id: p.id, title: p.title, ...p.titleZh?.trim() ? { titleZh: p.titleZh.trim() } : {}, count: 1, description: `${p.brand} \xB7 ${marketName(p.market)} \xB7 \u65B0\u53D1\u73B0\u4E0D\u7B49\u4E8E\u65B0\u4E0A\u5E02\u3002` }));
+  if (tab === "new") return state.products.map((p) => {
+    const titleZh = opportunityChineseName(p.title, p.titleZh, tab);
+    return { id: p.id, title: p.title, ...titleZh ? { titleZh } : {}, count: 1, description: `${p.brand} \xB7 ${marketName(p.market)} \xB7 \u65B0\u53D1\u73B0\u4E0D\u7B49\u4E8E\u65B0\u4E0A\u5E02\u3002` };
+  });
   const groups = /* @__PURE__ */ new Map();
   const translations = /* @__PURE__ */ new Map();
   for (const p of state.products) {
@@ -2038,7 +2292,10 @@ function opportunityRows(state, tab) {
     const translated = tab === "ingredient" ? p.ingredientZh : tab === "claim" ? p.claimZh : p.categoryZh;
     if (original && translated?.trim() && !translations.has(key)) translations.set(key, translated.trim());
   }
-  return [...groups].map(([title, count]) => ({ id: title, title, ...translations.has(title) ? { titleZh: translations.get(title) } : {}, count, description: tab === "claim" ? "\u7ADE\u54C1\u6587\u6848\u8868\u8FBE\uFF0C\u4E0D\u80FD\u636E\u6B64\u8BA4\u5B9A\u79D1\u5B66\u529F\u6548\u3002" : "\u5DF2\u6574\u7406\u5173\u8054\u5546\u54C1\u6837\u672C\uFF0C\u5EFA\u8BAE\u8865\u5145\u8D8B\u52BF\u3001\u914D\u65B9\u4E0E\u5E02\u573A\u53CD\u9988\u3002" })).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
+  return [...groups].map(([title, count]) => {
+    const titleZh = opportunityChineseName(title, translations.get(title), tab);
+    return { id: title, title, ...titleZh ? { titleZh } : {}, count, description: tab === "claim" ? "\u7ADE\u54C1\u6587\u6848\u8868\u8FBE\uFF0C\u4E0D\u80FD\u636E\u6B64\u8BA4\u5B9A\u79D1\u5B66\u529F\u6548\u3002" : "\u5DF2\u6574\u7406\u5173\u8054\u5546\u54C1\u6837\u672C\uFF0C\u5EFA\u8BAE\u8865\u5145\u8D8B\u52BF\u3001\u914D\u65B9\u4E0E\u5E02\u573A\u53CD\u9988\u3002" };
+  }).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
 }
 function formulaOf(product) {
   if (product.formula?.fingerprint) return product.formula;

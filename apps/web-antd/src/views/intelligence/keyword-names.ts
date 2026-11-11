@@ -3,6 +3,20 @@ import type { Keyword } from './data';
 // A local reading aid, not a claim that an unknown brand/proper noun was translated.
 // Explicit saved translations take precedence; browsing never calls a paid model.
 const glossary: Record<string, string> = {
+  'l theanine': 'L-茶氨酸',
+  'l-theanine': 'L-茶氨酸',
+  'prebiotic fiber': '益生元膳食纤维',
+  'vitamin b': '维生素B',
+  'goat milk formula': '羊奶配方',
+  'infant formula': '婴儿配方奶粉',
+  'electrolyte powder': '电解质粉',
+  'pre-workout': '运动前补充剂',
+  'đồng hồ': '手表',
+  menopause: '更年期',
+  supplements: '补充剂',
+  supplement: '补充剂',
+  prebiotic: '益生元',
+  probiotic: '益生菌',
   'magnesium glycinate': '甘氨酸镁',
   'magnesium citrate': '柠檬酸镁',
   'creatine monohydrate': '一水肌酸',
@@ -102,6 +116,8 @@ const patterns = Object.entries(glossary)
 export function keywordChineseName(record: Pick<Keyword, 'term' | 'termZh'>) {
   if (record.termZh?.trim()) return record.termZh.trim();
   let text = record.term.normalize('NFKC').trim();
+  // Omega watches are unrelated to omega-3; preserve the brand meaning.
+  if (/^đồng hồ omega$/iu.test(text)) return '欧米茄手表';
   if (/^omega[- ]?3\s+6\s+9$/i.test(text)) return 'Omega-3-6-9脂肪酸';
   if (/^uống mấy viên (.+) mỗi ngày\??$/iu.test(text))
     text = text.replace(
@@ -118,6 +134,8 @@ export function keywordChineseName(record: Pick<Keyword, 'term' | 'termZh'>) {
     text = text.replace(/^thuốc (.+)$/iu, '$1 制剂');
   else if (/^what is (.+) good for\??$/i.test(text))
     text = text.replace(/^what is (.+) good for\??$/i, '$1 有什么作用');
+  else if (/^what is (.+)\??$/i.test(text))
+    text = text.replace(/^what is (.+?)\??$/i, '什么是 $1');
   else if (/^how much (.+) should i take\??$/i.test(text))
     text = text.replace(/^how much (.+) should i take\??$/i, '$1 应摄入多少');
   for (const [pattern, name] of patterns) text = text.replace(pattern, name);

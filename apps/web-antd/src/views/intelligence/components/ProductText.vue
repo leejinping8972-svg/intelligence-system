@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-const props = defineProps<{ text?: string; translated?: string }>();
+const props = defineProps<{ text?: string; translated?: string; originalNote?: string }>();
 const primary = computed(
   () => props.translated?.trim() || props.text?.trim() || '未返回',
 );
@@ -9,10 +9,10 @@ const primary = computed(
   <span class="product-bilingual">
     <span class="product-text-primary" :title="primary">{{ primary }}</span>
     <span
-      v-if="text && translated && text.trim() !== translated.trim()"
+      v-if="originalNote || (text && translated && text.trim() !== translated.trim())"
       class="product-text-original"
-      :title="text"
-      >{{ text }}</span
+      :title="originalNote || text"
+      >{{ originalNote || text }}</span
     >
   </span>
 </template>
