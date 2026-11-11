@@ -40,7 +40,14 @@ export async function productWatchSource(request, overrides = {}) {
       'product_trend_type',
       'trend_type',
       'productTrendType',
-    ].find((key) => properties[key]?.enum?.includes(metric));
+    ].find((key) => {
+      const schema = properties[key];
+      if (Array.isArray(schema?.enum)) return schema.enum.includes(metric);
+      // Sorftime also declares supported dimensions as "Metric=meaning" in
+      // the string parameter's description, without a structured enum.
+      return schema?.type === 'string' && schema.enum === undefined &&
+        new RegExp(`(?:^|[\\s;；,:，：])${metric}\\s*[=＝:：]`).test(schema.description || '');
+    });
     if (!typeField)
       return {
         unsupported: true,
