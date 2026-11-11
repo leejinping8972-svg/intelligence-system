@@ -1,4 +1,3 @@
-import { monitorCatalogUrl } from './monitor-catalog-rules.mjs';
 import { setTimeout as pause } from 'node:timers/promises';
 
 import { collectAds } from './ads-provider.mjs';
@@ -36,6 +35,13 @@ import {
   fetchFallbackPage,
   renderedPageNeeded,
 } from './site-page-fallbacks.mjs';
+import {
+  advanceMonitorShopifyFeed,
+  monitorProductUrl,
+  monitorShopifyFeed,
+  monitorShopifyFeedUrl,
+  monitorSitemapLinks,
+} from './monitor-site-catalog.mjs';
 
 export async function scanSite(
   site,
@@ -52,25 +58,52 @@ export async function scanSite(
     options.fetchBrowser ||
     ((url, source) => fetchFallbackPage(url, source, 'browser'));
   const base = siteBase(site);
+  const shopify = site.platform === 'Shopify';
+  const canonical = (url) => monitorProductUrl(url, base, shopify);
   const catalogScopeKey = isWestmonth(site)
     ? westmonthCatalogScope(site)
     : undefined;
   if (catalogScopeKey && progress?.catalogScopeKey !== catalogScopeKey)
     progress = { nextRunAt: progress?.nextRunAt || 0 };
-  const queue = (progress?.queue || [
-    ...(site.platform === 'Shopify'
-      ? [`${base}/products.json?limit=50&page=1`]
-      : []),
-    ...(isWestmonth(site)
-      ? [westmonthEntry(false, site.market)]
-      : fallbackProductUrls(site)),
-  ]).map(url => monitorCatalogUrl(url, base)).filter(Boolean);
+  const queue = [
+    ...new Set(
+      (
+        progress?.queue || [
+          ...(isWestmonth(site)
+            ? [westmonthEntry(false, site.market)]
+            : fallbackProductUrls(site)),
+        ]
+      )
+        .map((url) => canonical(url))
+        .filter(Boolean),
+    ),
+  ];
   const attempted = new Set();
   const errors = [];
   const products = new Map();
-  const visited = new Set(progress?.visited || []);
+  const visited = new Set(
+    (progress?.visited || []).map((url) => canonical(url)).filter(Boolean),
+  );
+  const methods = Object.fromEntries(
+    Object.entries(progress?.methods || {})
+      .map(([url, mode]) => [canonical(url), mode])
+      .filter(([url]) => url),
+  );
+  let shopifyFeed = shopify ? monitorShopifyFeed(progress?.shopifyFeed) : null;
+  if (shopify && progress?.shopifyFeed?.version !== shopifyFeed.version) {
+    // An old crawl may already have consumed JSON and then become trapped in
+    // thousands of HTML/variant links. Re-enumerate the feed with its own cursor;
+    // the request journal still prevents replay of any unconfirmed request.
+    for (let i = queue.length - 1; i >= 0; i--)
+      if (/\/products\.json$/i.test(new URL(queue[i]).pathname))
+        queue.splice(i, 1);
+    const first = canonical(monitorShopifyFeedUrl(base, 1));
+    visited.delete(first);
+    const browserIndex = queue.findIndex((url) => methods[url] === 'browser');
+    if (browserIndex === -1) queue.unshift(first);
+    else queue.splice(browserIndex + 1, 0, first);
+  }
   let truncated = progress?.truncated === true;
-  const methods = { ...progress?.methods };
   const failures = progress?.day === day ? { ...progress?.failures } : {};
   let browserPages = progress?.day === day ? progress.browserPages || 0 : 0;
   let nextRunAt = progress?.nextRunAt || 0,
@@ -89,6 +122,7 @@ export async function scanSite(
         visited: [...visited],
         nextRunAt,
         day,
+        shopifyFeed,
       },
       retryAt: nextRunAt,
     };
@@ -117,17 +151,17 @@ export async function scanSite(
       if (mode === 'browser') browserPages++;
       const page = await request(
         mode === 'browser' ? `browser:${url}` : url,
-        () =>
-          mode === 'browser'
-            ? fetchBrowser(url, site)
-            : isWestmonthCatalog(url, site)
-              ? fetchWestmonthCatalog(url, site, fetchPage)
-              : fetchPage(url, 0, [
-                  'text/html',
-                  'application/xml',
-                  'text/xml',
-                  'application/json',
-                ]),
+        () => {
+          if (mode === 'browser') return fetchBrowser(url, site);
+          if (isWestmonthCatalog(url, site))
+            return fetchWestmonthCatalog(url, site, fetchPage);
+          return fetchPage(url, 0, [
+            'text/html',
+            'application/xml',
+            'text/xml',
+            'application/json',
+          ]);
+        },
       );
       if (!canonicalCatalogUrl(page.url, base))
         throw new Error('页面跳转至其他站点，未作为本站商品证据');
@@ -140,6 +174,7 @@ export async function scanSite(
           status: 403,
         });
       let list;
+      let completedFeed = false;
       if (page.catalogProducts) {
         list = page.catalogProducts;
         for (const next of page.catalogLinks)
@@ -147,7 +182,21 @@ export async function scanSite(
       } else if (/\/products\.json/.test(url)) {
         const data = JSON.parse(page.html);
         list = shopifyCatalogProducts(data, base, site);
-        if (data.products.length === 50) {
+        if (
+          shopifyFeed &&
+          Number(new URL(url).searchParams.get('page') || 1) ===
+            shopifyFeed.nextPage
+        ) {
+          const advanced = advanceMonitorShopifyFeed(shopifyFeed, data);
+          if (list.length !== data.products.length)
+            throw new Error('官网商品目录含无法验证的商品，未确认完整目录');
+          shopifyFeed = advanced;
+          completedFeed = shopifyFeed.complete === true;
+          if (!shopifyFeed.exhausted)
+            queue.unshift(
+              canonical(monitorShopifyFeedUrl(base, shopifyFeed.nextPage)),
+            );
+        } else if (data.products.length === 50) {
           const next = new URL(url);
           next.searchParams.set(
             'page',
@@ -164,9 +213,11 @@ export async function scanSite(
         if (metadata) list.push(metadata);
         for (const link of [
           ...productPageUrls(page.html, page.url, 1000),
-          ...catalogLinks(page.html, page.url, /sitemap.*\.xml/.test(url)),
+          ...(/sitemap.*\.xml/i.test(new URL(url).pathname)
+            ? monitorSitemapLinks(page.html, page.url)
+            : catalogLinks(page.html, page.url)),
         ]) {
-          const next = monitorCatalogUrl(link, base);
+          const next = canonical(link);
           if (next && !visited.has(next) && !queue.includes(next)) {
             if (queue.length < 5000 && visited.size < 10_000) queue.push(next);
             else truncated = true;
@@ -205,6 +256,14 @@ export async function scanSite(
         }
       }
       visited.add(url);
+      lastHttpStatus = page.statusCode || 200;
+      if (completedFeed) {
+        // Only an unbroken, nonempty feed followed by an empty terminal page
+        // replaces the fallback graph, including any old truncation marker.
+        queue.length = 0;
+        truncated = false;
+        break;
+      }
     } catch (error) {
       if (
         [404, 410].includes(error.status) &&
@@ -262,6 +321,7 @@ export async function scanSite(
       nextRunAt,
       lastHttpStatus,
       manualRequired,
+      shopifyFeed,
     },
     retryAt: nextRunAt,
     manualRequired,
