@@ -2026,15 +2026,17 @@ var marketName = (market) => ({ US: "\u7F8E\u56FD", MX: "\u58A8\u897F\u54E5", VN
 function opportunityRows(state, tab) {
   const counts = /* @__PURE__ */ new Map();
   for (const p of state.products) counts.set(p.siteId, (counts.get(p.siteId) || 0) + 1);
-  if (tab === "keyword") return state.keywords.filter((k) => (k.growth || 0) > 20).map((k) => ({ id: k.id, title: `${k.term} \xB7 ${k.market}`, count: 1, description: `${k.category} \xB7 \u540C\u5E02\u573A\u8D8B\u52BF\u4E0A\u5347\u4FE1\u53F7\uFF0C\u4ECD\u9700\u72EC\u7ACB\u6765\u6E90\u9A8C\u8BC1\u3002` }));
-  if (tab === "site") return state.sites.map((s) => ({ id: s.id, title: s.brand, count: counts.get(s.id) || 0, description: `${marketName(s.market)} \xB7 \u76EE\u524D\u53EA\u6709\u9996\u6B21\u6837\u672C\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u6301\u7EED\u6210\u957F\u3002` }));
-  if (tab === "new") return state.products.map((p) => ({ id: p.id, title: p.title, count: 1, description: `${p.brand} \xB7 ${marketName(p.market)} \xB7 \u65B0\u53D1\u73B0\u4E0D\u7B49\u4E8E\u65B0\u4E0A\u5E02\u3002` }));
+  if (tab === "keyword") return state.keywords.filter((k) => (k.growth || 0) > 20).map((k) => ({ id: k.id, title: `${k.term} \xB7 ${k.market}`, ...k.termZh?.trim() ? { titleZh: `${k.termZh.trim()} \xB7 ${marketName(k.market)}` } : {}, count: 1, description: `${k.category} \xB7 \u540C\u5E02\u573A\u8D8B\u52BF\u4E0A\u5347\u4FE1\u53F7\uFF0C\u4ECD\u9700\u72EC\u7ACB\u6765\u6E90\u9A8C\u8BC1\u3002` }));
+  if (tab === "site") return state.sites.map((s) => ({ id: s.id, title: s.brand, ...s.brandZh?.trim() ? { titleZh: s.brandZh.trim() } : {}, count: counts.get(s.id) || 0, description: `${marketName(s.market)} \xB7 \u76EE\u524D\u53EA\u6709\u9996\u6B21\u6837\u672C\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u6301\u7EED\u6210\u957F\u3002` }));
+  if (tab === "new") return state.products.map((p) => ({ id: p.id, title: p.title, ...p.titleZh?.trim() ? { titleZh: p.titleZh.trim() } : {}, count: 1, description: `${p.brand} \xB7 ${marketName(p.market)} \xB7 \u65B0\u53D1\u73B0\u4E0D\u7B49\u4E8E\u65B0\u4E0A\u5E02\u3002` }));
   const groups = /* @__PURE__ */ new Map();
   const translations = /* @__PURE__ */ new Map();
   for (const p of state.products) {
     const key = (tab === "ingredient" ? p.ingredient : tab === "claim" ? p.claim : p.category) || "\u5F85\u8865\u5145";
     groups.set(key, (groups.get(key) || 0) + 1);
-    if (tab === "concept" && p.category && p.categoryZh?.trim() && !translations.has(key)) translations.set(key, p.categoryZh.trim());
+    const original = tab === "ingredient" ? p.ingredient : tab === "claim" ? p.claim : p.category;
+    const translated = tab === "ingredient" ? p.ingredientZh : tab === "claim" ? p.claimZh : p.categoryZh;
+    if (original && translated?.trim() && !translations.has(key)) translations.set(key, translated.trim());
   }
   return [...groups].map(([title, count]) => ({ id: title, title, ...translations.has(title) ? { titleZh: translations.get(title) } : {}, count, description: tab === "claim" ? "\u7ADE\u54C1\u6587\u6848\u8868\u8FBE\uFF0C\u4E0D\u80FD\u636E\u6B64\u8BA4\u5B9A\u79D1\u5B66\u529F\u6548\u3002" : "\u5DF2\u6574\u7406\u5173\u8054\u5546\u54C1\u6837\u672C\uFF0C\u5EFA\u8BAE\u8865\u5145\u8D8B\u52BF\u3001\u914D\u65B9\u4E0E\u5E02\u573A\u53CD\u9988\u3002" })).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
 }

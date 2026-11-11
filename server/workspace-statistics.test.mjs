@@ -118,6 +118,43 @@ test('concept translations preserve raw grouping, saved titles and sample counts
   assert.equal(rows.reduce((total, row) => total + row.count, 0), products.length);
   assert.ok(opportunityRows(state, 'ingredient').every(row => !row.titleZh));
 });
+test('all opportunity tabs retain original identities while exposing saved Chinese names', () => {
+  const state = {
+    keywords: [
+      { id: 'k1', term: 'collagen', termZh: ' 胶原蛋白 ', market: 'US', growth: 30 },
+      { id: 'k2', term: 'protein', termZh: ' ', market: 'MX', growth: 25 },
+      { id: 'k3', term: 'excluded', termZh: '未入选', market: 'US', growth: 10 },
+    ],
+    sites: [
+      { id: 's1', brand: 'Example', brandZh: ' 示例品牌 ', market: 'US' },
+      { id: 's2', brand: 'Untranslated', market: 'US' },
+    ],
+    products: [
+      { id: 'p1', title: 'Collagen capsules', titleZh: ' 胶原蛋白胶囊 ', siteId: 's1', market: 'US', ingredient: 'Collagen', ingredientZh: ' 胶原蛋白 ', claim: 'Joint support', claimZh: ' 关节支持 ' },
+      { id: 'p2', title: 'Another product', siteId: 's1', market: 'US', ingredient: 'Collagen', ingredientZh: '另一译名', claim: 'Supports joints', claimZh: '关节支持' },
+      { id: 'p3', title: 'Fallback', siteId: 's2', market: 'US', ingredient: '', ingredientZh: '不能替代缺失原文', claim: 'No translation', claimZh: ' ' },
+    ],
+  };
+  const keywords = opportunityRows(state, 'keyword');
+  assert.deepEqual(keywords.map(row => [row.id, row.title, row.titleZh]), [
+    ['k1', 'collagen · US', '胶原蛋白 · 美国'], ['k2', 'protein · MX', undefined],
+  ]);
+  const ingredients = opportunityRows(state, 'ingredient');
+  assert.deepEqual(ingredients.map(row => [row.id, row.count, row.titleZh]), [
+    ['Collagen', 2, '胶原蛋白'], ['待补充', 1, undefined],
+  ]);
+  const claims = opportunityRows(state, 'claim');
+  assert.equal(claims.length, 3);
+  assert.equal(claims.filter(row => row.titleZh === '关节支持').length, 2);
+  assert.equal(claims.find(row => row.title === 'No translation').titleZh, undefined);
+  assert.deepEqual(opportunityRows(state, 'site').map(row => [row.id, row.count, row.titleZh]), [
+    ['s1', 2, '示例品牌'], ['s2', 1, undefined],
+  ]);
+  assert.deepEqual(opportunityRows(state, 'new').map(row => [row.id, row.title, row.titleZh]), [
+    ['p1', 'Collagen capsules', '胶原蛋白胶囊'], ['p2', 'Another product', undefined], ['p3', 'Fallback', undefined],
+  ]);
+});
+
 test('public feed cache makes no requests during TTL and keeps last good feed after outage', async (context) => {
   let requests = 0;
   let now = Date.now(), offline = false;
@@ -204,9 +241,9 @@ test('cold radar pagination is bounded; daily refresh survives restart and failu
     reads.length = 0;
     await create().rebuild(connection, 'same-day-after-upgrade');
     assert.ok(reads.every(row => !row.statement.includes('FROM workspace_read_rows')));
-    // Existing same-day snapshots gain bilingual concept names on one background refresh.
-    await connection.query("UPDATE workspace_read_rows SET payload=payload || $1::jsonb WHERE id='p0'", [{ category: 'Multivitamin', categoryZh: '复合维生素' }]);
-    await putDocument('', 'read:statistics-version', { at: now, version: 4, radarRulesVersion: RADAR_RULES_VERSION }, false, connection);
+    // Existing same-day snapshots gain saved translations across opportunity tabs.
+    await connection.query("UPDATE workspace_read_rows SET payload=payload || $1::jsonb WHERE id='p0'", [{ category: 'Multivitamin', categoryZh: '复合维生素', ingredient: 'Collagen', ingredientZh: '胶原蛋白', claim: 'Joint support', claimZh: '关节支持', titleZh: '示例商品' }]);
+    await putDocument('', 'read:statistics-version', { at: now, version: 5, radarRulesVersion: RADAR_RULES_VERSION }, false, connection);
     reads.length = 0;
     await rebuild('bilingual-upgrade');
     assert.ok(reads.some(row => row.statement.includes('FROM workspace_read_rows')));
@@ -214,6 +251,11 @@ test('cold radar pagination is bounded; daily refresh survives restart and failu
     assert.equal(concepts.rows[0].title, 'Multivitamin');
     assert.equal(concepts.rows[0].titleZh, '复合维生素');
     assert.equal(concepts.rows[0].count, 1);
+    for (const [tab, title, titleZh] of [['ingredient', 'Collagen', '胶原蛋白'], ['claim', 'Joint support', '关节支持'], ['new', 'Product 0', '示例商品']]) {
+      const result = await create().read({ kind: 'opportunities', tab, saved: [title] });
+      assert.equal(result.rows[0].title, title);
+      assert.equal(result.rows[0].titleZh, titleZh);
+    }
     reads.length = 0;
     await create().rebuild(connection, 'same-day-after-bilingual-upgrade');
     assert.ok(reads.every(row => !row.statement.includes('FROM workspace_read_rows')));
