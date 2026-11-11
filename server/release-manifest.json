@@ -1,32 +1,35 @@
 {
-  "title": "独立站监控公开目录与大目录恢复",
+  "title": "商品库与产品概念品类双语显示统一",
   "files": [
-    "server/competitor-monitor-providers.mjs",
-    "server/monitor-site-catalog.mjs",
-    "server/monitor-site-catalog.test.mjs",
-    "server/SITE-MONITOR-CATALOG.md"
+    "apps/web-antd/src/views/intelligence/opportunities.vue",
+    "apps/web-antd/src/views/intelligence/statistics-engine.ts",
+    "server/CATEGORY-BILINGUAL.md",
+    "server/model.js",
+    "server/workspace-statistics.mjs",
+    "server/workspace-statistics.test.mjs"
   ],
+  "sourceSha": "cba4064ba9fbf100c269fc5a14be07660243afa5",
   "featureShas": [
-    "8fbef6e6f645385cae20f907e71cc92b0f76ae04"
+    "cba4064ba9fbf100c269fc5a14be07660243afa5"
   ],
-  "sourceSha": "8fbef6e6f645385cae20f907e71cc92b0f76ae04",
   "changes": [
-    "已识别Shopify监控优先连续读取公开商品JSON目录，确认空结束页后结束扫描，避免冗余HTML详情429",
-    "旧断点重新验证完整目录后替换备用图，合并栏目/变体链接并收敛重复语言商品sitemap",
-    "保留分页、冷却、基线、每日恢复上限和未知请求保护；本批不包含增量监控方案或手动重跑"
+    "商品库与产品概念共用中文优先的品类展示，原文浅色且比主文字号小2px",
+    "产品概念统计保存已有中文品类，详情、导出和收藏可访问名称一致显示",
+    "保留原始品类分组、样本计数与收藏键；旧派生快照下次后台检查升级补中文元数据"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupDataRepair": false,
     "readModelVersionChange": false,
+    "statisticsVersion": 5,
     "backup": "skipped-by-user-policy-no-schema-change",
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "51/51 focused server and PGlite persistence tests; three-MJS targeted lint/format, syntax, diff checks and isolated server bundle passed. Free public probes: Ambrosia 75 products complete in 3 requests; two larger catalogs 450 products in 9 pages each with page 10 pending.",
-    "release": "Repeat tests, typecheck, lint, isolated database/UI acceptance, validation build and CI wait skipped by user policy. One official frontend and API artifact for the frozen SHA.",
-    "limitations": "Large catalog probes are partial. Persistently blocked sites without usable public catalogs still need individual adaptation. Deployment does not reset recovery caps or replay business collection. Incremental monitoring is excluded."
+    "development": "10/10 focused statistics tests including isolated PGlite persistence and same-day snapshot upgrade; complete Web typecheck, isolated server-mode development frontend build, JS syntax/diff checks and synthetic Edge desktop bilingual/detail/export/favorites checks passed.",
+    "release": "Repeat tests, typecheck, lint, isolated database/UI acceptance, validation build and CI wait skipped by user policy. Build official frontend and API image once for the frozen SHA.",
+    "limitations": "Missing Chinese translations fall back to original text; no new translation requests. Old statistics remain readable until background replacement. Existing mobile sidebar overlay was not changed; full mobile usability not claimed."
   },
   "queue": {
     "leaseCount": 23,
@@ -37,11 +40,10 @@
     "paidProviderAdded": false,
     "schemaMigration": false,
     "checkpointMigration": false,
-    "manualCollectionReplay": false,
-    "incrementalMonitoring": false
+    "manualCollectionReplay": false
   },
-  "id": "20261111025441-e867e170",
-  "builtAt": "2026-11-11T02:54:41.992Z",
-  "sourceDigest": "e867e1701139a44e42ffadaecaec1385c2313024d2f87a6898fe3f55d289756e",
+  "id": "20261111033916-7e792443",
+  "builtAt": "2026-11-11T03:39:16.785Z",
+  "sourceDigest": "7e7924431a4790e8e593ea50976544c00867f547d27ff26c067f8a54265341ea",
   "operator": "Codex"
 }
