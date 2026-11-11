@@ -1,37 +1,40 @@
 {
-  "title": "商品监控每轮同步商品字段与历史月度曲线",
-  "files": [
-    "apps/web-antd/src/views/intelligence/components/ProductWatchHistory.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductWatchPanel.vue",
-    "server/PRODUCT-MONTHLY-TRENDS.md",
-    "server/product-monthly-trends.mjs",
-    "server/product-monthly-trends.test.mjs",
-    "server/product-monthly-watch.test.mjs",
-    "server/product-watch-defaults.test.mjs",
-    "server/product-watch-store.mjs",
-    "server/product-watch.integration.test.mjs"
-  ],
-  "sourceSha": "44f36ee01edd4ef0527e2b92f61ad249494cccf2",
+  "title": "机会研究历史关键词中文与来源原文显示纠错",
+  "sourceSha": "d4ec86fd27ee75e855317a305f936729b197f606",
   "featureShas": [
-    "44f36ee01edd4ef0527e2b92f61ad249494cccf2"
+    "cc389e5c756d8a0a1cd122122d2e8c73577431f4"
+  ],
+  "files": [
+    "apps/web-antd/src/views/intelligence/__tests__/opportunity-text.test.ts",
+    "apps/web-antd/src/views/intelligence/components/ProductText.vue",
+    "apps/web-antd/src/views/intelligence/keyword-names.ts",
+    "apps/web-antd/src/views/intelligence/opportunities.vue",
+    "apps/web-antd/src/views/intelligence/opportunity-text.ts",
+    "apps/web-antd/src/views/intelligence/statistics-engine.ts",
+    "server/Dockerfile",
+    "server/OPPORTUNITY-BILINGUAL.md",
+    "server/model.js",
+    "server/workspace-statistics.mjs",
+    "server/workspace-statistics.test.mjs"
   ],
   "changes": [
-    "新建商品监控任务每轮刷新历史月销量和月销售额，商品月销量继续随详情写回，来源口径独立保留",
-    "兼容数据库JSON对象键重排，恢复已保存历史曲线读取，仍严格校验商品身份",
-    "旧冻结任务保留原计划，当日幂等、失败保留上次成功和未知来源请求保护保持"
+    "历史关键词未存译名时复用本地词典，覆盖茶氨酸、更年期等词组并区分Omega手表含义；保留已存译名优先",
+    "中文来源在第二行明确显示来源原文（中文），缺配方占位标注暂无来源原文；原文浅色小2px，列表详情与摘要一致",
+    "概念与商品使用已有本地名称规则，前端旧快照同样立即补显示参考；统计派生版本升7，不改分组、ID、计数或收藏键"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
     "startupDataRepair": false,
     "readModelVersionChange": false,
+    "statisticsVersion": 7,
     "backup": "skipped-by-user-policy-no-schema-change",
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "26/26 focused tests and isolated PGlite passed; final integration 1/1, Web types, development Web build, server bundle, syntax and diff checks passed. Existing lint 29 vs baseline 31, zero introduced.",
-    "release": "Repeat tests, typecheck, lint, UI/database acceptance, validation builds and CI wait skipped by user policy. Official frontend and API image generated once for frozen SHA.",
-    "limitations": "New tasks only; old frozen daily jobs preserve original plan. No paid validation, production replay, schema migration or dependency changes."
+    "development": "12/12 statistics and PGlite tests, 4/4 UI and related translation unit tests, full Web typecheck, isolated server-mode Web development build passed. Synthetic UI checked 11 bilingual colors/font sizes in lists/details and missing formula, source export and mobile screenshot; external network blocked and pageerror=0.",
+    "release": "Repeat unit/regression/typecheck/lint/database/UI validation, validation builds and CI wait skipped by user policy. Official frontend and API image built once for frozen candidate.",
+    "limitations": "Local glossary cannot translate all unknown proper names. Sampled source ingredient text is Chinese; no reverse translation is claimed as source original. No historical business repair, paid translation/provider call or task replay. Existing read-model indexing may continue."
   },
   "queue": {
     "leaseCount": 23,
@@ -39,12 +42,13 @@
     "unknownRequests": "never-auto-replay"
   },
   "configuration": {
-    "monthlyHistoryCadence": "watch",
-    "userExplicitlySelectedBothMetrics": true,
+    "paidProviderAdded": false,
+    "schemaMigration": false,
+    "checkpointMigration": false,
     "manualCollectionReplay": false
   },
-  "id": "20261111062738-13e4f24d",
-  "builtAt": "2026-11-11T06:27:38.706Z",
-  "sourceDigest": "13e4f24d6e947a1c6f0faa1c8854d19a7cdc54f7972d8a33e5a057face00b6dc",
+  "id": "20261111064239-232766e7",
+  "builtAt": "2026-11-11T06:42:39.712Z",
+  "sourceDigest": "232766e7a30e64a7578b5ea70a4117e5fd72b36c35b67b9eb63871272549604e",
   "operator": "Codex"
 }
