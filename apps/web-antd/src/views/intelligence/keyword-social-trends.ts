@@ -44,11 +44,32 @@ export interface TrendPlan {
   sources: string[];
   markets: string[];
   maxPages: number;
+  relatedSources: string[];
+  productProviders: string[];
+  relatedProducts: number;
+  relatedAdPages: number;
+  relatedAds: number;
+  relatedSites: number;
 }
 export interface TrendSnapshot {
   requiresPlanReview?: boolean;
   plan: TrendPlan;
   summaries: SocialSummary[];
+  relatedRun?: null | {
+    day: string;
+    selectedCount: number;
+    total: number;
+    pending: number;
+    work: Array<{
+      key: string;
+      term: string;
+      market: string;
+      kind: string;
+      status: string;
+      reason?: string;
+      jobId?: string;
+    }>;
+  };
   run: null | {
     day: string;
     total: number;

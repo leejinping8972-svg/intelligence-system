@@ -156,10 +156,16 @@ export async function trendAction(input, user, io) {
         });
     }
     const savedPlan = await db.read(`${P}plan`);
+    const related = io.latestRelatedRun ? await io.latestRelatedRun() : await db.read(`${P}related-run:${trendDay(now)}`);
     return {
       plan: currentTrendPlan(savedPlan),
       requiresPlanReview: !!savedPlan && savedPlan.comparisonVersion !== 2,
       summaries,
+      relatedRun: related ? {
+        day: related.day, selectedCount: related.selectedCount, total: related.work.length,
+        pending: related.work.filter((w) => w.status === 'pending').length,
+        work: related.work.slice(-40),
+      } : null,
       run: run
         ? {
             day: run.day,

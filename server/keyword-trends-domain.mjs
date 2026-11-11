@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { defaultRelatedPlan, validateRelatedPlan } from './keyword-related-plan.mjs';
 
 export const TREND_SOURCES = ['google', 'tiktok', 'instagram', 'facebook'];
 export const defaultTrendPlan = {
@@ -8,6 +9,7 @@ export const defaultTrendPlan = {
   sources: TREND_SOURCES,
   markets: ['US', 'MX', 'VN'],
   maxPages: 11,
+  ...defaultRelatedPlan,
 };
 const DAY = 86_400_000;
 export const trendDigest = (value) =>
@@ -39,6 +41,7 @@ export function validateTrendPlan(input) {
     if (!Number.isInteger(p[key]) || p[key] < 1 || p[key] > max)
       throw new Error('采集预算或分页上限无效');
   }
+  validateRelatedPlan(p);
   if (p.enabled && input.budgetAcknowledged !== true)
     throw new Error('启用每日采集前请确认来源额度预算');
   return Object.fromEntries(
@@ -285,6 +288,6 @@ export function presentSocialSummary(summary) {
 export function currentTrendPlan(saved) {
   if (!saved) return defaultTrendPlan;
   return saved.comparisonVersion === 2
-    ? saved
+    ? { ...defaultTrendPlan, ...saved }
     : { ...defaultTrendPlan, ...saved, enabled: false, comparisonVersion: 2 };
 }

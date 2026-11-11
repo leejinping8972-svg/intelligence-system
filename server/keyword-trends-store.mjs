@@ -2,6 +2,10 @@
 import { randomUUID } from 'node:crypto';
 
 import { openAdsKey } from './ads-provider.mjs';
+import { readKeyword, submitEnrichment } from './enrichment-jobs.mjs';
+import { submitMarketJob } from './market-jobs.mjs';
+import { submitPlatformProducts } from './platform-products-jobs.mjs';
+import { advanceRelatedDaily, RELATED_RUN } from './keyword-related-daily.mjs';
 import { maintenance } from './database-admin.mjs';
 import { lock, pool, putDocument, unlock } from './database.mjs';
 import { validateJob } from './domain.mjs';
@@ -97,6 +101,16 @@ export function keywordTrendIO(c = pool, overrides = {}) {
       return record ? openAdsKey(record) : '';
     },
     fetch: fetchSocialTrend,
+    latestRelatedRun: async () => (await c.query(
+      'SELECT value FROM workspace_documents WHERE name LIKE $1 ORDER BY name DESC LIMIT 1',
+      [RELATED_RUN + '%'],
+    )).rows[0]?.value,
+    relatedJob: async (id) => (await c.query('SELECT * FROM research_jobs WHERE id=$1', [id])).rows[0],
+    findRelatedRequest: async (id) => (await c.query('SELECT * FROM research_jobs WHERE request_id=$1', [id])).rows[0],
+    relatedKeyword: (id) => readKeyword(id, c),
+    submitRelated: (kind, input) => kind === 'products'
+      ? submitPlatformProducts(input, { discoveryDay: input.discoveryDay })
+      : kind === 'ads' ? submitMarketJob(input) : submitEnrichment(input),
     researchActive: async (id) => {
       const job = (
         await c.query('SELECT cancelled FROM research_jobs WHERE id=$1', [id])
@@ -257,6 +271,7 @@ export async function tickKeywordTrends(c, overrides = {}) {
   if (maintenance) return;
   const io = keywordTrendIO(c, overrides);
   await drainTrendInbox(c, io);
+  await advanceRelatedDaily(io);
   await advanceTrendQueue(io);
 }
 export async function submitResearchTrends(job, words, now) {
