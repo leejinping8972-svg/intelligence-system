@@ -77,6 +77,18 @@ export async function prepareProductIntake(job, original, io, options = {}) {
     }
   }
   if (options.skipAnalysis) return { product, analysis: product.fieldAnalysis, errors };
+  const translate = async () => {
+    if (io.translate) {
+      try {
+        [product] = await io.translate('products', [product]);
+      } catch (error) {
+        // Translation has its own saved response and validation state. Keep
+        // successful extraction/classification even when that later step fails.
+        errors.push(`翻译：${String(error.message).slice(0, 350)}`);
+      }
+    }
+    return { product, analysis: product.fieldAnalysis, errors };
+  };
   const sample = healthProductSample(sourceFieldSample('products', product), options.healthProductPolicy);
   if (
     !options.forceAnalysis &&
@@ -84,7 +96,7 @@ export async function prepareProductIntake(job, original, io, options = {}) {
     product.fieldAnalysis.status === 'analyzed' &&
     product.fieldAnalysis.fingerprint === sample.fingerprint
   )
-    return { product: io.translate ? (await io.translate('products', [product]))[0] : product, analysis: product.fieldAnalysis, errors };
+    return translate();
   if (await io.isCancelled?.()) return { product, errors, cancelled: true };
   try {
     const result = await request(
@@ -111,8 +123,7 @@ export async function prepareProductIntake(job, original, io, options = {}) {
         sources: sample.sources,
       },
     };
-    if (io.translate) [product] = await io.translate('products', [product]);
-    return { product, analysis: product.fieldAnalysis, errors };
+    return translate();
   } catch (error) {
     errors.push(`AI：${String(error.message).slice(0, 350)}`);
     return {
