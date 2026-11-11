@@ -7,7 +7,7 @@ export const watchDefaults = (market = 'US') => ({
   enabled: false,
   time: '01:00',
   frequency: 'daily',
-  monthlyHistory: false,
+  monthlyHistory: true,
 });
 export function watchConfig(input) {
   if (!['MX', 'US', 'VN'].includes(input.market))
@@ -23,7 +23,9 @@ export function watchConfig(input) {
     ...watchDefaults(input.market),
     enabled: input.enabled,
     time: input.time,
-    monthlyHistory: input.monthlyHistory === true,
+    // Historical monthly metrics are now part of every new watch task. Accept
+    // the legacy boolean field, but normalize old opt-out configurations.
+    monthlyHistory: true,
   };
 }
 export function parseAmazonDaily(value, product, at) {

@@ -103,9 +103,11 @@ export async function runSourceFields(job, overrides = {}) {
     } else result = await io.collect(job, 'field-analysis', {
       sources: ['field_analysis'], sample: job.input.sample,
     });
-    // Extraction may add new category/ingredient/claim fields. Translate these
-    // before the write, while retaining the source request journal on failure.
-    [result.patch] = await io.translate(job.input.targetKind, [result.patch]);
+    // Product intake already translates the extracted fields and reports its
+    // gaps. A second attempt would throw the same saved validation error and
+    // prevent the successful analysis from being written.
+    if (!prepared)
+      [result.patch] = await io.translate(job.input.targetKind, [result.patch]);
     const c = await io.pool.connect();
     try {
       await c.query('BEGIN');

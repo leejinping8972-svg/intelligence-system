@@ -93,7 +93,7 @@ test('refresh uses seven-day per-metric checks including failures and identity c
   );
   assert.equal(
     watchConfig({ market: 'US', enabled: true, time: '01:00' }).monthlyHistory,
-    false,
+    true,
   );
   assert.throws(() =>
     watchConfig({
