@@ -11,7 +11,7 @@ const market = computed(() => (state.market === 'ALL' ? 'US' : state.market));
 const config = ref({
   market: market.value,
   enabled: false,
-  monthlyHistory: false,
+  monthlyHistory: true,
   time: '01:00',
   lastJobId: '',
 });
@@ -30,7 +30,7 @@ async function load() {
     if (current === market.value) {
       config.value = {
         ...result.config,
-        monthlyHistory: result.config.monthlyHistory === true,
+        monthlyHistory: true,
       };
       error.value = '';
     }
@@ -93,12 +93,6 @@ defineExpose({ refresh: load });
       <Form.Item label="启用"
         ><Switch v-model:checked="config.enabled" :disabled="!editable || busy"
       /></Form.Item>
-      <Form.Item label="历史月销量与销售额（每7天刷新）">
-        <Switch
-          v-model:checked="config.monthlyHistory"
-          :disabled="!editable || busy"
-        />
-      </Form.Item>
       <Button
         html-type="submit"
         type="primary"
@@ -123,7 +117,7 @@ defineExpose({ refresh: load });
     </Form>
     <p class="hci-subtle">
       默认01:00，可调整。每商品每日最多查询一次详情；Amazon额外查询一次每日销量。重复提交返回同一天任务，未知请求不会自动重放。趋势在商品详情的“持续观察趋势”查看。
-      历史月度默认关闭；保存开启后，下一次新建任务将为新品池内Amazon商品首次及每隔7天额外查询月销量、月销售额各一次，消耗Sorftime额度。已创建的当日任务不追加查询；打开详情仅查看已保存数据。
+      历史月销量与月销售额默认采集，无需单独开启；新品池内Amazon商品首次及每隔7天各查询一次，消耗Sorftime额度。现有监控从下一轮新建任务开始采集；已创建的当日任务不追加查询，打开详情仅查看已保存数据。
     </p>
   </section>
 </template>

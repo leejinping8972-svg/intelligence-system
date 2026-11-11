@@ -51,7 +51,7 @@ async function submit(config, day, c) {
     markets: [config.market],
     seeds: [],
     day,
-    monthlyHistory: config.monthlyHistory === true,
+    monthlyHistory: true,
   };
   const checkpoint = {
     submittedAt: new Date().toISOString(),
@@ -84,7 +84,13 @@ export async function productWatchAction(input, user) {
     throw new Error('请选择监控市场');
   const key = `product-watch:config:${input.market}`;
   if (input.action === 'server_product_watch_config')
-    return { config: (await read(key)) || watchDefaults(input.market) };
+    return {
+      config: {
+        ...watchDefaults(input.market),
+        ...(await read(key)),
+        monthlyHistory: true,
+      },
+    };
   requireAdmin(user);
   const c = await pool.connect();
   let held = false;
