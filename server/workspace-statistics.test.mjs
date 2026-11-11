@@ -91,6 +91,33 @@ test('opportunity grouping preserves whole-dataset site counts and repeated titl
   assert.equal(opportunityRows(state, 'ingredient')[0].count, 80);
   assert.equal(new Set(opportunityRows(state, 'new').map(r => r.id)).size, 80);
 });
+
+test('concept translations preserve raw grouping, saved titles and sample counts', () => {
+  const products = [
+    { category: 'Multivitamin', categoryZh: '' },
+    { category: 'Multivitamin', categoryZh: '  复合维生素  ' },
+    { category: 'Multivitamin', categoryZh: '多种维生素' },
+    { category: 'Supplement', categoryZh: '膳食补充剂' },
+    { category: '膳食补充剂' },
+    { category: 'Protein Powder', categoryZh: ' ' },
+    { category: '', categoryZh: '不能用译名替代缺失品类' },
+    { category: '' },
+  ];
+  const state = { products, keywords: [], sites: [] };
+  const rows = opportunityRows(state, 'concept');
+  const byTitle = new Map(rows.map(row => [row.title, row]));
+  assert.equal(byTitle.get('Multivitamin').titleZh, '复合维生素');
+  assert.equal(byTitle.get('Multivitamin').id, 'Multivitamin');
+  assert.equal(byTitle.get('Multivitamin').count, 3);
+  assert.equal(byTitle.get('Supplement').titleZh, '膳食补充剂');
+  assert.equal(byTitle.get('Supplement').count, 1);
+  assert.equal(byTitle.get('膳食补充剂').count, 1);
+  assert.equal(byTitle.get('Protein Powder').titleZh, undefined);
+  assert.equal(byTitle.get('待补充').titleZh, undefined);
+  assert.equal(byTitle.get('待补充').count, 2);
+  assert.equal(rows.reduce((total, row) => total + row.count, 0), products.length);
+  assert.ok(opportunityRows(state, 'ingredient').every(row => !row.titleZh));
+});
 test('public feed cache makes no requests during TTL and keeps last good feed after outage', async (context) => {
   let requests = 0;
   let now = Date.now(), offline = false;
@@ -176,6 +203,19 @@ test('cold radar pagination is bounded; daily refresh survives restart and failu
     assert.equal(upgraded.snapshot.radarRulesVersion, RADAR_RULES_VERSION);
     reads.length = 0;
     await create().rebuild(connection, 'same-day-after-upgrade');
+    assert.ok(reads.every(row => !row.statement.includes('FROM workspace_read_rows')));
+    // Existing same-day snapshots gain bilingual concept names on one background refresh.
+    await connection.query("UPDATE workspace_read_rows SET payload=payload || $1::jsonb WHERE id='p0'", [{ category: 'Multivitamin', categoryZh: '复合维生素' }]);
+    await putDocument('', 'read:statistics-version', { at: now, version: 4, radarRulesVersion: RADAR_RULES_VERSION }, false, connection);
+    reads.length = 0;
+    await rebuild('bilingual-upgrade');
+    assert.ok(reads.some(row => row.statement.includes('FROM workspace_read_rows')));
+    const concepts = await create().read({ kind: 'opportunities', tab: 'concept', saved: ['Multivitamin'] });
+    assert.equal(concepts.rows[0].title, 'Multivitamin');
+    assert.equal(concepts.rows[0].titleZh, '复合维生素');
+    assert.equal(concepts.rows[0].count, 1);
+    reads.length = 0;
+    await create().rebuild(connection, 'same-day-after-bilingual-upgrade');
     assert.ok(reads.every(row => !row.statement.includes('FROM workspace_read_rows')));
     await putDocument('', 'read:statistics-version', { at: now - 86400000 }, false, connection);
     reads.length = 0;

@@ -16,6 +16,7 @@ import {
 } from 'ant-design-vue';
 
 import PageHeader from './components/PageHeader.vue';
+import ProductText from './components/ProductText.vue';
 import {
   download,
   filteredKeywords,
@@ -35,7 +36,7 @@ const page = ref(1), pageSize = ref(20);
 watch(() => [state.market, tab.value, savedOnly.value], () => { page.value = 1; });
 const remote = useStatistics<OpportunityRow>(computed(() => ({ kind: 'opportunities', market: state.market, tab: tab.value, page: page.value, pageSize: pageSize.value, ...(savedOnly.value ? { saved: state.savedOpportunities } : {}) })));
 watch(remote.pagination, value => { page.value = value.page; });
-const selected = ref<{ title: string; count: number; description: string }>();
+const selected = ref<OpportunityRow>();
 watch(
   () => state.market,
   () => {
@@ -96,7 +97,7 @@ function report() {
   if (!selected.value) return;
   download(
     `研究摘要-${tab.value}.txt`,
-    `${state.branding.appName} · 研究摘要\n研究方向：${selected.value.title}\n市场：${marketName(state.market)}\n关联记录：${selected.value.count}项\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未达到自动确认门槛。\n数据缺口：独立来源、真实配方、持续观察历史、广告或销售证据。\n后续动作：补充资料并完成人工审核。`,
+    `${state.branding.appName} · 研究摘要\n研究方向：${selected.value.titleZh || selected.value.title}${selected.value.titleZh && selected.value.titleZh !== selected.value.title ? `\n原文：${selected.value.title}` : ''}\n市场：${marketName(state.market)}\n关联记录：${selected.value.count}项\n状态：待验证\n\n观察：${selected.value.description}\n\n假设：这一方向可能值得进一步调研，尚未达到自动确认门槛。\n数据缺口：独立来源、真实配方、持续观察历史、广告或销售证据。\n后续动作：补充资料并完成人工审核。`,
   );
   message.success('研究摘要已导出');
 }
@@ -152,7 +153,7 @@ function report() {
         <div>
           <div style="display: flex; gap: 12px; align-items: center">
             <span class="hci-subtle">{{ String(i + 1).padStart(2, '0') }}</span>
-            <h3>{{ row.title }}</h3>
+            <h3><ProductText :text="row.title" :translated="row.titleZh" /></h3>
             <Tag color="orange">待验证</Tag>
           </div>
           <p class="hci-subtle" style="margin: 12px 0">{{ row.description }}</p>
@@ -161,7 +162,7 @@ function report() {
         <div style="display: flex; gap: 12px; align-items: center">
           <button
             class="hci-favorite"
-            :aria-label="`收藏${row.title}`"
+            :aria-label="`收藏${row.titleZh || row.title}`"
             @click="save(row.title)"
           >
             {{
@@ -180,7 +181,7 @@ function report() {
       @cancel="selected = undefined"
     >
       <template v-if="selected">
-        <h2 style="margin: 16px 0; font-size: 22px">{{ selected.title }}</h2>
+        <h2 style="margin: 16px 0; font-size: 22px"><ProductText :text="selected.title" :translated="selected.titleZh" /></h2>
         <Tag color="orange">待验证 · 未参与机会排名</Tag>
         <div class="hci-evidence">
           <b>已整理的观察</b><br />{{ selected.description }}<br />关联

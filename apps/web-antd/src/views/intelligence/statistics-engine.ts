@@ -2,7 +2,7 @@ import type { DemoState, Product } from './data';
 import type { RadarFinding } from './radar-engine';
 
 const marketName = (market: string) => ({ US: '美国', MX: '墨西哥', VN: '越南' } as Record<string, string>)[market] || market;
-export interface OpportunityRow { id: string; title: string; count: number; description: string }
+export interface OpportunityRow { id: string; title: string; titleZh?: string; count: number; description: string }
 export function opportunityRows(state: Pick<DemoState, 'keywords' | 'products' | 'sites'>, tab: string): OpportunityRow[] {
   const counts = new Map<string, number>();
   for (const p of state.products) counts.set(p.siteId, (counts.get(p.siteId) || 0) + 1);
@@ -10,11 +10,13 @@ export function opportunityRows(state: Pick<DemoState, 'keywords' | 'products' |
   if (tab === 'site') return state.sites.map(s => ({ id: s.id, title: s.brand, count: counts.get(s.id) || 0, description: `${marketName(s.market)} · 目前只有首次样本，尚不能确认持续成长。` }));
   if (tab === 'new') return state.products.map(p => ({ id: p.id, title: p.title, count: 1, description: `${p.brand} · ${marketName(p.market)} · 新发现不等于新上市。` }));
   const groups = new Map<string, number>();
+  const translations = new Map<string, string>();
   for (const p of state.products) {
     const key = (tab === 'ingredient' ? p.ingredient : tab === 'claim' ? p.claim : p.category) || '待补充';
     groups.set(key, (groups.get(key) || 0) + 1);
+    if (tab === 'concept' && p.category && p.categoryZh?.trim() && !translations.has(key)) translations.set(key, p.categoryZh.trim());
   }
-  return [...groups].map(([title, count]) => ({ id: title, title, count, description: tab === 'claim' ? '竞品文案表达，不能据此认定科学功效。' : '已整理关联商品样本，建议补充趋势、配方与市场反馈。' })).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
+  return [...groups].map(([title, count]) => ({ id: title, title, ...(translations.has(title) ? { titleZh: translations.get(title) } : {}), count, description: tab === 'claim' ? '竞品文案表达，不能据此认定科学功效。' : '已整理关联商品样本，建议补充趋势、配方与市场反馈。' })).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
 }
 
 export function formulaOf(product: Product) {

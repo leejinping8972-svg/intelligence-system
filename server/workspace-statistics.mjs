@@ -5,7 +5,7 @@ import {
   buildSourceCoverage, buildRadarReport, opportunityRows, formulaStatistics, radarStatistics, RADAR_RULES_VERSION,
 } from './model.js';
 
-const VERSION = 4;
+const VERSION = 5;
 const DAY_MS = 86_400_000;
 export function statisticsRefreshSchedule(previous, now = Date.now()) {
   // Shanghai stays UTC+8; UTC accessors keep the schedule independent of host TZ.
@@ -64,7 +64,7 @@ export function createWorkspaceStatistics({ pool, sql, putDocument, loadPublic =
     const now = Date.now();
     const previous = (await connection.query("SELECT value FROM workspace_documents WHERE name='read:statistics-version'")).rows[0]?.value;
     const schedule = statisticsRefreshSchedule(previous, now);
-    if (!schedule.due && previous?.radarRulesVersion === RADAR_RULES_VERSION) {
+    if (!schedule.due && previous?.version === VERSION && previous?.radarRulesVersion === RADAR_RULES_VERSION) {
       nextCheck = schedule.nextAt;
       return;
     }
