@@ -1,34 +1,16 @@
 {
-  "title": "成分风向批量归档、轻量检查点、调度与真实进度",
-  "sourceSha": "ab0074fe0e6715268f7a9bec50fffe3f3736d7b7",
+  "title": "已入选关键词显示关联商品、关联广告、关联站点数量",
+  "sourceSha": "070fe9ce136e5ad050af370451fece4d074154f5",
   "featureShas": [
-    "ab0074fe0e6715268f7a9bec50fffe3f3736d7b7"
+    "070fe9ce136e5ad050af370451fece4d074154f5"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ResearchTaskList.vue",
-    "apps/web-antd/src/views/intelligence/components/TaskDetailPanel.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/task-list.ts",
-    "server/INGREDIENT-THROUGHPUT.md",
-    "server/discovery-monitor-store.mjs",
-    "server/ingredient-throughput.test.mjs",
-    "server/ingredient-trend-checkpoint.mjs",
-    "server/ingredient-trend-documents.mjs",
-    "server/ingredient-trend-progress.mjs",
-    "server/ingredient-trend-quantity-comments.mjs",
-    "server/ingredient-trend-runner.mjs",
-    "server/ingredient-trend-store.mjs",
-    "server/ingredient-trend-timing.mjs",
-    "server/queue-scheduling.mjs",
-    "server/runner.mjs",
-    "server/task-overview.mjs",
-    "tests/ingredient-trend-progress.test.ts"
+    "apps/web-antd/src/views/intelligence/selected-keywords.vue"
   ],
   "changes": [
-    "评论页事务批量读写和状态批读，保留正文、版本、观测身份与未知请求防重放",
-    "公共计划扫描完成后每30秒执行；分析依赖从可运行队列排除，采集结束或取消后恢复资格",
-    "v2样本与分析资料/中间结果使用不可变引用，旧任务原步骤与偏移可继续，缺失归档明确停止",
-    "列表卡片详情展示真实计数、阶段及最近请求/归档/保存/续跑/调度耗时，等待分析不制造进度"
+    "三列依次替换为关联商品、关联广告、关联站点，按关键词列表统一显示数量条数",
+    "服务端使用relatedCounts关联总数，数量支持排序及keywordId过滤跳转；零值禁用链接",
+    "移除旧采集状态标签与本次目标进度，保留采集筛选和原任务入口"
   ],
   "database": {
     "schemaChange": false,
@@ -39,24 +21,23 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "61/61 selected server tests, 21/21 frontend tests, Web typecheck, isolated Web build and server bundles passed. Desktop/mobile synthetic UI checked with external traffic blocked and pageerror=0. Three unrelated broad-regression assertions reproduced unchanged baseline failures. Feature lint clean; shared-entry lint adds zero diagnostics.",
+    "development": "6/6 existing related frontend tests, full Web typecheck and independent development build passed; five desktop/mobile synthetic UI scenarios passed, pageerror=0, external requests blocked.",
     "release": "Repeat tests/regression/typecheck/lint/database/UI validation, validation builds and CI wait skipped by user policy; official frontend and API image each generated once.",
-    "limitations": "Synthetic SQL and checkpoint reductions do not establish production throughput. MySQL SQL generation checked; workflow tests use PGlite. Old-image rollback after compact checkpoint use requires guarded checkpoint expansion; helper and queue backup retained in release directory."
+    "limitations": "Synthetic UI acceptance; no authenticated production UI acceptance or full-repository lint performed."
   },
   "queue": {
     "leaseCount": 23,
     "preserveFrozenJobs": true,
     "unknownRequests": "never-auto-replay",
-    "rollback": "Expand immutable ingredient references under fresh deployment guard before starting an old runner."
+    "changed": false
   },
   "configuration": {
     "paidProviderAdded": false,
     "schemaMigration": false,
-    "checkpointMigration": "lazy-per-existing-job-no-startup-backfill",
     "manualCollectionReplay": false
   },
-  "id": "20261111082626-2c7ab296",
-  "builtAt": "2026-11-11T08:26:26.223Z",
-  "sourceDigest": "2c7ab2965db9493fa56ce7b1a5f8e4991a38463fd3518688bf90bab88852c29e",
+  "id": "20261111092635-f4dcaf6e",
+  "builtAt": "2026-11-11T09:26:35.763Z",
+  "sourceDigest": "f4dcaf6e4cbd47d1d6247e68a1c715b376bea32c4357cc4f4aeb733dd756e6f4",
   "operator": "Codex"
 }
