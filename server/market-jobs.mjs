@@ -25,7 +25,7 @@ const readDoc = async (key) =>
   ).rows[0]?.value;
 export async function mergeBusiness(key, patch, options = {}) {
   if (!options.evidenceOnlyIfExists)
-    [patch] = await translateCollectionRecords(key.split(':')[0], [patch]);
+    [patch] = await translateCollectionRecords(key.split(':')[0], [patch], undefined, { optional: true });
   const c = await pool.connect();
   try {
     await c.query('BEGIN');

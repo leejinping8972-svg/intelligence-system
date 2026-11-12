@@ -75,11 +75,27 @@ export function planTranslations(kind, records) {
   return { items: [...items.values()], plans };
 }
 
-export function applyTranslations(records, plan, translated) {
+export function applyTranslations(records, plan, translated, issues) {
   return records.map((record, index) => {
     const result = { ...record };
     const proof = { ...record.collectionTranslation?.fields };
+    const warnings = new Set(
+      [...(record.trendRelatedTop || []), ...(record.trendRelatedRising || [])]
+        .filter((query) => query.collectionTranslation?.status === 'partial')
+        .map((query) => query.collectionTranslation.message),
+    );
     for (const { field, original, parts, brand } of plan.plans[index]) {
+      const missing = parts.flat().filter((text) =>
+        needsTranslation(text) && !translated.has(translationKey(text, brand)),
+      );
+      if (missing.length && issues) {
+        for (const text of missing)
+          warnings.add((issues.get(translationKey(text, brand)) || '采集翻译未完整返回').replace(/^(?:中文翻译未完成，已保留原文：)+/u, ''));
+        // Do not retain a machine translation whose source text has changed.
+        delete result[`${field}Zh`];
+        delete proof[field];
+        continue;
+      }
       const values = parts.map((group) =>
         group
           .map((text) => {
@@ -94,11 +110,12 @@ export function applyTranslations(records, plan, translated) {
       result[`${field}Zh`] = Array.isArray(original) ? values : values[0] || '';
       proof[field] = translationHash(JSON.stringify(original));
     }
-    if (plan.plans[index].length)
+    if (plan.plans[index].length || warnings.size || record.collectionTranslation?.status === 'partial')
       result.collectionTranslation = {
         version: 1,
-        status: 'complete',
+        status: warnings.size ? 'partial' : 'complete',
         fields: proof,
+        ...(warnings.size ? { message: `中文翻译未完成，已保留原文：${[...warnings].join('；')}` } : {}),
       };
     const previousFallback = record.headlineZh || record.copyZh;
     if (

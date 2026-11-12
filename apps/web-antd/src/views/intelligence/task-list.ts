@@ -29,6 +29,11 @@ export function taskStatus(task: Task) {
 }
 
 export function taskStatusInfo(task: Task) {
+  if (task.overview?.outcome.startsWith('采集完成') && task.sourceAnalysis) {
+    if (task.sourceAnalysis.pending) return { label: '采集完成 · 分析中', color: 'blue' };
+    if (task.sourceAnalysis.failed || task.sourceAnalysis.cancelled)
+      return { label: '采集完成 · 分析未完成', color: 'orange' };
+  }
   return task.status === 'running' && task.overview?.ingredientTrend?.waiting
     ? { label: '等待采集', color: 'default' }
     : taskStatuses[taskStatus(task)];

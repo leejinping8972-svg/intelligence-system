@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { putDocument, sql } from './database.mjs';
+import { decorateTaskStopEvidence } from './task-stop-evidence.mjs';
 
 const context = new AsyncLocalStorage();
 export const withAnalysisTask = (id, work) => context.run(id, work);
@@ -312,7 +313,7 @@ export async function decorateAnalysisTasks(
     }
     results.push(next);
   }
-  return results;
+  return decorateTaskStopEvidence(results, jobs, pool, sql);
 }
 
 export async function cancelAnalysisChildren(parentId, pool, sql) {

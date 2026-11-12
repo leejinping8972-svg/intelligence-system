@@ -112,7 +112,7 @@ export const mysqlSchema = [
   `CREATE TABLE IF NOT EXISTS provider_configs (name varchar(160) PRIMARY KEY, value json NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS workspace_documents (name varchar(180) PRIMARY KEY, value json NOT NULL, revision integer NOT NULL DEFAULT 1)`,
 ];
-export const saveKeyword = createKeywordSaver({ pool, sql, prepare: async (record) => (await translateCollectionRecords('keywords', [record]))[0] });
+export const saveKeyword = createKeywordSaver({ pool, sql, prepare: async (record) => (await translateCollectionRecords('keywords', [record], undefined, { optional: true }))[0] });
 export async function saveCheckpoint(job, checkpoint, status = 'running', connection = pool) {
   await connection.query(
     "UPDATE research_jobs SET checkpoint=$2,status=CASE WHEN cancelled THEN 'cancelled' ELSE $3 END,updated_at=now() WHERE id=$1",
@@ -124,7 +124,7 @@ export async function collect(job, step, request) {
   // The source response is committed first. A translation failure must never
   // turn a successful paid collection into an unknown request or replay it.
   const result = await collectRaw(job, step, request);
-  return translateCollectedResult(result, (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step }));
+  return translateCollectedResult(result, (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step, optional: true }));
 }
 async function collectRaw(job, step, request) {
   const cached = await pool.query(

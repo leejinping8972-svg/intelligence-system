@@ -10,6 +10,7 @@ import {
   partialTaskCanContinue,
   taskStatus,
   taskStatuses,
+  taskStatusInfo,
   taskSummary,
   taskTitle,
 } from '../apps/web-antd/src/views/intelligence/task-list';
@@ -24,6 +25,15 @@ const task = (id: string, extra: Partial<Task> = {}): Task => ({
   ...extra,
 });
 describe('monitor task grouping', () => {
+  it('labels completed collection with failed AI analysis by the actual failed stage', () => {
+    const item = task('ad-task', {
+      status: 'partial',
+      sourceAnalysis: { total: 50, completed: 46, failed: 4, cancelled: 0, queued: 0, running: 0, pending: 0, processed: 50 },
+      overview: { status: 'partial', outcome: '采集完成 · AI分析部分完成' } as Task['overview'],
+    });
+    expect(taskStatusInfo(item)?.label).toBe('采集完成 · 分析未完成');
+    expect(taskStatusInfo(task('source-failed', { status: 'partial' }))?.label).toBe('已停止 · 未采集完');
+  });
   it('shows persisted bulk states and an unrecorded market without inventing progress', () => {
     const bulk = task('bulk:US', {
       cloudJobId: 'bulk',
