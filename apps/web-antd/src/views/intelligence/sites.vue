@@ -31,7 +31,10 @@ import SelectionBar from './components/SelectionBar.vue';
 import SiteDrawer from './components/SiteDrawer.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
+import { useListFilterMemory } from './list-filter-memory';
+const listMemory = useListFilterMemory('sites');
 const core = useCoreList('sites');
+listMemory.bind('period', core.period);
 import BulkSiteWatch from './components/BulkSiteWatch.vue';
 import { emptyScoreFilter, matchesScore, useFilteredSelection } from './resource-list';
 import ProductCollectDialog from './components/ProductCollectDialog.vue';
@@ -50,8 +53,8 @@ const sources = (s: Site) =>
   s.sources?.length
     ? s.sources
     : [s.dataNature === 'imported' ? '人工导入' : '历史采集 · 来源待核对'];
-const source = ref('ALL');
-const scoreFilter = ref(emptyScoreFilter());
+const source = listMemory.field('source', 'ALL');
+const scoreFilter = listMemory.field('scoreFilter', emptyScoreFilter());
 const sourceOptions = computed(() => [
   { label: '全部数据来源', value: 'ALL' },
   ...(serverMode ? remote.facets.value.source || [] : [...new Set(filteredSites.value.flatMap(sources))]).map((value) => ({
@@ -83,22 +86,29 @@ async function scoreSelected() {
 }
 
 const route = useRoute();
-const sourceSiteFilter = computed(() => sourceSiteDomain(route.query.sourceSite));
-const collectedRange = ref<string[]>([]);
-const search = ref('');
-const platform = ref('ALL');
-const category = ref('ALL');
-const ownership = ref('ALL');
-const keywordFilter = useSiteKeywordFilter();
+const sourceSiteFilter = listMemory.field('sourceSiteFilter', '');
+watch(() => route.query.sourceSite, (value, previous) => {
+  if (route.path !== '/sites' || (value === undefined && previous === undefined)) return;
+  sourceSiteFilter.value = sourceSiteDomain(value);
+}, { immediate: true });
+const collectedRange = listMemory.field<string[]>('collectedRange', []);
+const search = listMemory.field('search', '');
+const platform = listMemory.field('platform', 'ALL');
+const category = listMemory.field('category', 'ALL');
+const ownership = listMemory.field('ownership', 'ALL');
+const keywordFilter = useSiteKeywordFilter(listMemory.field('keywordFilter', ''));
 const selected = ref<Site>();
-const page = ref(1);
-const pageSize = ref(8);
+const page = listMemory.field('page', 1);
+const pageSize = listMemory.field('pageSize', 8);
 const remote = useWorkspaceList<Site>('sites', computed(() => ({ market: state.market,
   search: search.value, platform: platform.value, category: category.value, ownership: ownership.value,
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   keywordId: keywordFilter.value || undefined, source: source.value, score: scoreFilter.value,
   siteDomain: sourceSiteFilter.value || undefined,
 })), page, pageSize);
+remote.sort.value = 'score';
+listMemory.bind('sort', remote.sort);
+listMemory.bind('order', remote.order);
 const linkedKeyword = computed(() =>
   state.keywords.find((item) => item.id === route.query.keywordId),
 );
@@ -155,6 +165,7 @@ async function filterSourceSite(domain: string, site: Site) {
   await router.push({ path: '/sites', query: { sourceSite: domain } });
 }
 function clearSourceSite() {
+  sourceSiteFilter.value = '';
   const { sourceSite: _sourceSite, ...query } = route.query;
   void router.replace({ path: route.path, query });
 }
@@ -279,7 +290,6 @@ const columns = [
     title: '站点评分',
     key: 'assessment',
     width: 120,
-    defaultSortOrder: 'descend' as const,
     sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
     sorter: serverMode ? true : (a: Site, b: Site) =>
       (a.assessment?.score ?? -1) - (b.assessment?.score ?? -1),
@@ -289,6 +299,13 @@ const columns = [
   { title: '股权背景（官网）', key: 'ownership', width: 220 },
   { title: '操作', key: 'actions', width: 190, fixed: 'right' as const },
 ];
+const displayColumns = computed(() => core.columns(columns).map((column) => ({
+  ...column,
+  ...('sorter' in column ? {
+    sortOrder: remote.sort.value === (column.key === 'assessment' ? 'score' : column.key)
+      ? remote.order.value as 'ascend' | 'descend' : null,
+  } : {}),
+})));
 watch(collectedRange, () => { page.value = 1; ids.value = []; });
 </script>
 <template>
@@ -382,7 +399,7 @@ watch(collectedRange, () => { page.value = 1; ids.value = []; });
         class="hci-resource-table"
         size="small"
         :row-selection="rowSelection"
-        :columns="core.columns(columns)"
+        :columns="displayColumns"
         :data-source="rows"
         row-key="id"
         :scroll="{ x: 'max-content' }"

@@ -27,6 +27,7 @@ import {
 import {
   cloudWorkspace,
   loadWorkspaceDetail,
+  saveKeywordReviews,
   syncCloudWorkspace,
 } from './cloud-workspace';
 import { researchSourceTags } from './competitor-monitor';
@@ -75,10 +76,13 @@ import { emptyScoreFilter, matchesScore } from './resource-list';
 import { serverMode } from './session';
 import { keywordSourceStatus } from './site-discovery';
 import { useCoreList } from './use-core-list';
+import { useListFilterMemory } from './list-filter-memory';
+const listMemory = useListFilterMemory('research');
 import { useWorkspaceList } from './workspace-queries';
 
 const core = useCoreList('keywords');
 const { period: corePeriod } = core;
+listMemory.bind('period', corePeriod);
 const route = useRoute();
 const router = useRouter();
 const open = ref(false);
@@ -89,17 +93,18 @@ const semrushRefreshMetrics = ref(false);
 const researchError = ref('');
 const checkingSource = ref(false);
 const researchSubmitting = ref(false);
-const collectedRange = ref<string[]>([]);
-const search = ref('');
-const batchFilter = ref('');
-const category = ref('ALL');
-const rating = ref('ALL');
-const ratingStatus = ref('ALL');
-const scoreFilter = ref(emptyScoreFilter());
-const tagFilter = ref<string[]>([]);
-const timeRange = ref('ALL');
-const reviewFilter = ref('ALL');
-const favoritesOnly = ref(false);
+const reviewSaving = ref(false);
+const collectedRange = listMemory.field<string[]>('collectedRange', []);
+const search = listMemory.field('search', '');
+const batchFilter = listMemory.field('batchFilter', '');
+const category = listMemory.field('category', 'ALL');
+const rating = listMemory.field('rating', 'ALL');
+const ratingStatus = listMemory.field('ratingStatus', 'ALL');
+const scoreFilter = listMemory.field('scoreFilter', emptyScoreFilter());
+const tagFilter = listMemory.field<string[]>('tagFilter', []);
+const timeRange = listMemory.field('timeRange', 'ALL');
+const reviewFilter = listMemory.field('reviewFilter', 'ALL');
+const favoritesOnly = listMemory.field('favoritesOnly', false);
 const selectedIds = ref<string[]>([]);
 const selectionSnapshots = ref<ReturnType<typeof rememberSelection>>(new Map());
 function clearSelection() {
@@ -123,8 +128,8 @@ watch(
     tagFilter.value = [];
   },
 );
-const pageSize = ref(10);
-const currentPage = ref(1);
+const pageSize = listMemory.field('pageSize', 10);
+const currentPage = listMemory.field('currentPage', 1);
 const remote = useWorkspaceList<Keyword>(
   'keywords',
   computed(() => ({
@@ -146,6 +151,8 @@ const remote = useWorkspaceList<Keyword>(
   pageSize,
 );
 remote.sort.value = 'score';
+listMemory.bind('sort', remote.sort);
+listMemory.bind('order', remote.order);
 const viewFilters = computed<KeywordViewFilters>(() => ({
   collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   market: state.market,
@@ -387,7 +394,7 @@ const rowSelection = computed(() => ({
     );
   },
   getCheckboxProps: (record: Keyword) => ({
-    disabled: supplementSubmitting.value || record.dataNature === 'demo',
+    disabled: supplementSubmitting.value || reviewSaving.value || record.dataNature === 'demo',
   }),
 }));
 const pagination = computed(() => ({
@@ -509,21 +516,22 @@ function openRelated(collection: 'ads' | 'products' | 'sites', id: string) {
   const query = { keywordId: id };
   void router.push({ path, query });
 }
-function markRecords(
+async function markRecords(
   records: Keyword[],
   status: 'excluded' | 'pending' | 'selected',
 ) {
-  for (const item of records) {
-    const record = state.keywords.find((row) => row.id === item.id) || item;
-    record.reviewStatus = status;
-    record.assessment = assessKeyword(record);
-    audit(
-      '关键词人工筛选',
-      `${record.term} / ${reviewLabel(status)}`,
-      record.market,
-    );
+  if (reviewSaving.value) return;
+  reviewSaving.value = true;
+  try {
+    await saveKeywordReviews(records.map((record) => record.id), status);
+    for (const record of records)
+      audit('关键词人工筛选', `${record.term} / ${reviewLabel(status)}`, record.market);
+    message.success(`已保存${records.length}个词为${reviewLabel(status)}`);
+  } catch (error) {
+    message.error(`筛选状态未确认保存：${(error as Error).message}，请重试`);
+  } finally {
+    reviewSaving.value = false;
   }
-  message.success(`已将${records.length}个词标为${reviewLabel(status)}`);
 }
 function toggleFavorite(record: Record<string, unknown>) {
   const current = state.keywords.find((item) => item.id === record.id);
@@ -986,7 +994,7 @@ watch(timeRange, () => { if (timeRange.value !== 'ALL') collectedRange.value = [
                 selectedIds.length > 100 ||
                 selection.missing.length > 0 ||
                 researchSubmitting ||
-                supplementSubmitting
+                supplementSubmitting || reviewSaving
               "
               :loading="supplementSubmitting"
               @click="semrushRefreshMetrics = false; supplementOpen = true"
@@ -1000,8 +1008,9 @@ watch(timeRange, () => { if (timeRange.value !== 'ALL') collectedRange.value = [
           :disabled="
             !selected.length ||
             selection.missing.length > 0 ||
-            supplementSubmitting
+            supplementSubmitting || reviewSaving
           "
+          :loading="reviewSaving"
           @click="markRecords(selected, 'selected')"
         >
           标为入选
@@ -1010,7 +1019,7 @@ watch(timeRange, () => { if (timeRange.value !== 'ALL') collectedRange.value = [
           :disabled="
             !selected.length ||
             selection.missing.length > 0 ||
-            supplementSubmitting
+            supplementSubmitting || reviewSaving
           "
           @click="markRecords(selected, 'excluded')"
         >

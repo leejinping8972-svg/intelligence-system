@@ -596,3 +596,128 @@ describe('paged server workspace', () => {
     });
   });
 });
+
+describe('confirmed keyword review saves', () => {
+  async function ready(count = 1, initialize = true) {
+    mock.request.mockResolvedValue({
+      entries: [],
+      revisions: { published: 'qa' },
+      active: 0,
+      generatedAt: 'now',
+      indexing: false,
+    });
+    const cloud =
+      await import('../apps/web-antd/src/views/intelligence/cloud-workspace');
+    if (initialize) await cloud.syncCloudWorkspace();
+    mock.state.keywords.splice(0);
+    cloud.applyWorkspaceRecords(
+      'keywords',
+      Array.from({ length: count }, (_, index) => ({
+        id: `review-${index}`,
+        term: `term-${index}`,
+        reviewStatus: 'pending',
+      })),
+    );
+    return cloud;
+  }
+  it('saves a review even when the list arrived before workspace initialization', async () => {
+    const cloud = await ready(1, false);
+    await cloud.saveKeywordReviews(['review-0'], 'selected');
+    expect(mock.request).toHaveBeenCalledWith(
+      'server_patch_keywords',
+      {
+        updates: [
+          {
+            id: 'review-0',
+            patch: expect.objectContaining({ reviewStatus: 'selected' }),
+          },
+        ],
+      },
+      30_000,
+    );
+    expect(mock.state.keywords[0].reviewStatus).toBe('selected');
+  });
+  it('waits for an existing background read and then the actual save acknowledgment', async () => {
+    const cloud = await ready();
+    let finishRead!: (value: unknown) => void;
+    let finishSave!: (value: unknown) => void;
+    mock.request.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRead = resolve;
+        }),
+    );
+    const background = cloud.syncCloudWorkspace();
+    await vi.waitFor(() => expect(finishRead).toBeTypeOf('function'));
+    let completed = false;
+    const saving = cloud
+      .saveKeywordReviews(['review-0'], 'selected')
+      .then(() => {
+        completed = true;
+      });
+    mock.request.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    finishRead({
+      entries: [],
+      revisions: { published: 'qa' },
+      active: 0,
+      generatedAt: 'now',
+    });
+    await background;
+    await vi.waitFor(() => expect(finishSave).toBeTypeOf('function'));
+    expect(completed).toBe(false);
+    finishSave({ saved: true });
+    await saving;
+    expect(completed).toBe(true);
+    expect(mock.state.keywords[0].reviewStatus).toBe('selected');
+  });
+  it('awaits every batch when more than 100 filtered keywords are selected', async () => {
+    const cloud = await ready(205);
+    await cloud.saveKeywordReviews(
+      mock.state.keywords.map((row: any) => row.id),
+      'selected',
+    );
+    const batches = mock.request.mock.calls
+      .filter(([action]) => action === 'server_patch_keywords')
+      .map(([, input]) => input.updates);
+    expect(batches.map((batch) => batch.length)).toEqual([100, 100, 5]);
+    expect(new Set(batches.flat().map((row) => row.id)).size).toBe(205);
+    expect(
+      batches.flat().every((row) => row.patch.reviewStatus === 'selected'),
+    ).toBe(true);
+  });
+  it('rejects failed writes and retains the edit for a successful retry', async () => {
+    const cloud = await ready();
+    mock.request.mockImplementation(async (action) => {
+      if (action === 'server_patch_keywords') throw new Error('save offline');
+      return {
+        entries: [],
+        revisions: { published: 'qa' },
+        active: 0,
+        generatedAt: 'now',
+      };
+    });
+    await expect(
+      cloud.saveKeywordReviews(['review-0'], 'selected'),
+    ).rejects.toThrow('save offline');
+    mock.request.mockResolvedValue({
+      entries: [],
+      revisions: { published: 'qa' },
+      active: 0,
+      generatedAt: 'now',
+    });
+    await cloud.syncCloudWorkspace();
+    expect(
+      mock.request.mock.calls.filter(
+        ([action]) => action === 'server_patch_keywords',
+      ),
+    ).toHaveLength(2);
+    await expect(
+      cloud.saveKeywordReviews(['missing'], 'selected'),
+    ).rejects.toThrow('部分关键词');
+  });
+});

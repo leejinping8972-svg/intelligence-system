@@ -29,15 +29,18 @@ import {
   cancelCloudJob,
   cloudRequest,
   cloudWorkspace,
-  syncCloudWorkspace,
+  saveKeywordReviews,
 } from './cloud-workspace';
 import PageHeader from './components/PageHeader.vue';
 import CoreListControls from './components/CoreListControls.vue';
 import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
+import { useListFilterMemory } from './list-filter-memory';
+const listMemory = useListFilterMemory('selected-keywords');
 const core = useCoreList('keywords');
 const { period: corePeriod } = core;
+listMemory.bind('period', corePeriod);
 const evidenceKeyword = ref<Keyword>();
 import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
@@ -63,14 +66,19 @@ import { platformProductSelection } from './platform-product-selection';
 import { serverMode } from './session';
 import { useOverviewSnapshot, useWorkspaceList } from './workspace-queries';
 import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
+import CollectionTime from './components/CollectionTime.vue';
+import { collectionTimeOrder } from './resource-metadata';
 
 const router = useRouter();
 const ids = ref<string[]>([]);
-const search = ref('');
-const status = ref('ALL');
-const page = ref(1);
-const pageSize = ref(20);
+const search = listMemory.field('search', '');
+const status = listMemory.field('status', 'ALL');
+const page = listMemory.field('page', 1);
+const pageSize = listMemory.field('pageSize', 20);
 const remote = useWorkspaceList<Keyword>('keywords', computed(() => ({ market: state.market, search: search.value, review: 'selected', status: status.value })), page, pageSize);
+remote.sort.value = 'score';
+listMemory.bind('sort', remote.sort);
+listMemory.bind('order', remote.order);
 const overview = useOverviewSnapshot();
 const labels: Record<string, string> = {
   pending: '尚未采集',
@@ -192,7 +200,6 @@ const columns = [
     title: '研究评分',
     key: 'score',
     width: 88,
-    defaultSortOrder: 'descend' as const,
     sortDirections: ['descend', 'ascend'] as ('descend' | 'ascend')[],
     sorter: serverMode ? true : (a: { score: null | number }, b: { score: null | number }) =>
       (a.score ?? -1) - (b.score ?? -1),
@@ -211,18 +218,39 @@ const columns = [
     sortDirections: ['descend', 'ascend'] as ('ascend' | 'descend')[],
     sorter: serverMode ? true : (a: Keyword, b: Keyword) => relatedCount(a, relatedCollection(column.key)) - relatedCount(b, relatedCollection(column.key)),
   })),
-  { title: '采集时间 / 说明', key: 'time', width: 180 },
+  {
+    title: '采集时间（北京时间）/ 说明', key: 'collectedAt', width: 180,
+    sortDirections: ['descend', 'ascend'] as ('ascend' | 'descend')[],
+    sorter: serverMode ? true : (a: Keyword, b: Keyword) =>
+      collectionTimeOrder(a.collectedAt) - collectionTimeOrder(b.collectedAt),
+  },
   { title: '操作', key: 'actions', width: 135, fixed: 'right' as const },
 ];
+const displayColumns = computed(() => core.columns(columns).map((column) => ({
+  ...column,
+  ...('sorter' in column ? {
+    sortOrder: remote.sort.value === column.key ? remote.order.value as 'ascend' | 'descend' : null,
+  } : {}),
+})));
+function tableChange(...args: Parameters<typeof remote.tableChange>) {
+  const previousSort = `${remote.sort.value}:${remote.order.value}`;
+  const sorter = Array.isArray(args[2]) ? args[2][0] || {} : args[2];
+  remote.tableChange(args[0], args[1], sorter.order ? sorter : { columnKey: 'score', order: 'descend' });
+  if (previousSort !== `${remote.sort.value}:${remote.order.value}`) page.value = 1;
+}
+const reviewSaving = ref(false);
 async function remove(r: Keyword) {
-  const current = state.keywords.find((row) => row.id === r.id);
-  if (current) current.reviewStatus = 'pending';
-  audit('移出入选关键词', r.term);
+  if (reviewSaving.value) return;
+  reviewSaving.value = true;
   try {
-    await syncCloudWorkspace();
+    await saveKeywordReviews([r.id], 'pending');
+    audit('移出入选关键词', r.term);
+    if (serverMode) await remote.reload(true);
     message.success('已移出入选列表，采集结果保留');
   } catch (error) {
     message.error((error as Error).message);
+  } finally {
+    reviewSaving.value = false;
   }
 }
 async function cancel(r: Keyword) {
@@ -237,10 +265,6 @@ async function cancel(r: Keyword) {
     message.error((error as Error).message);
   }
 }
-const time = (r: Keyword) =>
-  r.siteCollection?.finishedAt ||
-  r.siteCollection?.startedAt ||
-  r.siteCollection?.submittedAt;
 async function exportSelectedKeywords() {
   try {
     const records = serverMode ? await remote.exportRows(ids.value) : rows.value.filter((row) => !ids.value.length || ids.value.includes(row.id));
@@ -295,11 +319,13 @@ async function exportSelectedKeywords() {
               : ''
           "
         />
-        <Input
+        <Input.Search
           v-model:value="search"
           placeholder="搜索中英文入选关键词、种子词或品类"
           aria-label="搜索入选关键词"
           allow-clear
+          enter-button="检索"
+          @search="remote.reload(true)"
           style="width: 310px"
         />
         <Select
@@ -326,10 +352,10 @@ async function exportSelectedKeywords() {
       <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
       <CoreListControls v-model:period="corePeriod" kind="keywords" />
       <Table
-        @change="remote.tableChange"
+        @change="tableChange"
         class="hci-resource-table keyword-compact-table"
         size="small"
-        :columns="core.columns(columns)"
+        :columns="displayColumns"
         :data-source="rows"
         :loading="
           serverMode ? remote.loading.value : cloudWorkspace.syncing && !cloudWorkspace.ready && rows.length === 0
@@ -440,12 +466,8 @@ async function exportSelectedKeywords() {
           <template v-else-if="['tiktok', 'instagram', 'facebook'].includes(String(column.key))">
             <SocialTrendCell :keyword="record as Keyword" :source="String(column.key)" />
           </template>
-          <template v-else-if="column.key === 'time'">
-            <span>{{
-              time(record as Keyword)
-                ? new Date(time(record as Keyword)!).toLocaleString('zh-CN')
-                : '—'
-            }}</span>
+          <template v-else-if="column.key === 'collectedAt'">
+            <CollectionTime :at="record.collectedAt" />
             <p class="hci-subtle">
               {{
                 record.siteCollection?.message || '人工入选后尚未提交站点采集'

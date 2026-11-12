@@ -380,6 +380,38 @@ async function flushWorkspaceChanges() {
 export function syncCloudWorkspace() {
   return syncFlight.run(runCloudSync);
 }
+export async function saveKeywordReviews(
+  ids: string[],
+  status: 'excluded' | 'pending' | 'selected',
+) {
+  const keys = [...new Set(ids)];
+  if (!keys.length) throw new Error('请先选择关键词');
+  const connected =
+    serverMode ||
+    !!(state.settings.researchApiUrl && state.settings.researchAccessKey);
+  // Finish initialization / an existing background save before queuing this edit.
+  if (connected) await syncCloudWorkspace();
+  const byId = new Map(state.keywords.map((record) => [record.id, record]));
+  const records = keys.map((id) => byId.get(id));
+  if (records.some((record) => !record || record.dataNature === 'demo'))
+    throw new Error('部分关键词已变化，请刷新后重新选择');
+  for (const record of records) {
+    record!.reviewStatus = status;
+    if (connected)
+      pending.set(record!.id, {
+        ...pending.get(record!.id),
+        reviewStatus: status,
+      });
+  }
+  if (!connected) return;
+  // A shared flight may already have passed its upload phase; a bulk selection
+  // may also exceed the 100-record request limit. Await all selected edits.
+  await flushWorkspaceChanges();
+  while (keys.some((id) => pending.has(id))) {
+    await syncCloudWorkspace();
+    await flushWorkspaceChanges();
+  }
+}
 async function runCloudSync() {
   if (serverMode && readMode.value !== 'legacy') return runPagedSync();
   if (

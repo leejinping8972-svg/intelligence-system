@@ -26,8 +26,11 @@ import SourceFieldsButton from './components/SourceFieldsButton.vue';
 import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import { useCoreList } from './use-core-list';
+import { useListFilterMemory } from './list-filter-memory';
+const listMemory = useListFilterMemory('ads');
 const core = useCoreList('ads');
-const displayMode = ref('list');
+listMemory.bind('period', core.period);
+const displayMode = listMemory.field('displayMode', 'list');
 const adColumns = [{ title: '广告主 / 素材', key: 'brand', width: 290, fixed: 'left' as const }, { title: '关联关键词', key: 'keywords', width: 190 }, { title: '抓取批次', key: 'batch', width: 140 }, { title: '市场', key: 'market', width: 90 }, { title: '平台', key: 'platform', dataIndex: 'platform', width: 100 }, { title: '数据来源', key: 'source', dataIndex: 'source', width: 150 }, { title: '操作', key: 'actions', width: 100, fixed: 'right' as const }];
 import SelectionBar from './components/SelectionBar.vue';
 import { useFilteredSelection } from './resource-list';
@@ -46,17 +49,17 @@ import { useWorkspaceList } from './workspace-queries';
 import WorkspaceReadStatus from './components/WorkspaceReadStatus.vue';
 const route = useRoute(),
   router = useRouter();
-const collectedRange = ref<string[]>([]);
-const search = ref(''),
-  newness = ref('ALL'),
-  status = ref('ALL'),
+const collectedRange = listMemory.field<string[]>('collectedRange', []);
+const search = listMemory.field('search', ''),
+  newness = listMemory.field('newness', 'ALL'),
+  status = listMemory.field('status', 'ALL'),
   selected = ref<Ad>(),
   open = ref(false),
   busy = ref(false),
   error = ref('');
-const platformFilter = ref('ALL'), sourceFilter = ref('ALL'), batchFilter = ref('');
-const linkedProduct = ref<string>(), linkedSite = ref<string>();
-const keywordFilter = ref<string>();
+const platformFilter = listMemory.field('platformFilter', 'ALL'), sourceFilter = listMemory.field('sourceFilter', 'ALL'), batchFilter = listMemory.field('batchFilter', '');
+const linkedProduct = listMemory.field<string | undefined>('linkedProduct', undefined), linkedSite = listMemory.field<string | undefined>('linkedSite', undefined);
+const keywordFilter = listMemory.field<string | undefined>('keywordFilter', undefined);
 const productSearch = ref(''), siteSearch = ref('');
 const platformOptions = computed(() => [{ label: '全部平台', value: 'ALL' }, ...(serverMode ? remote.facets.value.platform || [] : [...new Set(state.ads.map(a => a.platform))]).map(value => ({label: value, value}))]);
 const sourceOptions = computed(() => [{ label: '全部数据来源', value: 'ALL' }, ...(serverMode ? remote.facets.value.source || [] : [...new Set(state.ads.map(a => a.source).filter(Boolean))]).map(value => ({label: value, value}))]);
@@ -71,7 +74,8 @@ watch(() => [route.query.tab, route.query.report], () => {
     void router.replace({ path: route.query.report ? '/ad-reports' : '/advertisers', query });
   }
 }, { immediate: true });
-watch(() => route.query.site, value => {
+watch(() => route.query.site, (value, previous) => {
+  if (route.path !== '/ads' || (value === undefined && previous === undefined)) return;
   linkedSite.value = typeof value === 'string' ? value : undefined;
   if (linkedSite.value) {
     search.value = batchFilter.value = '';
@@ -80,7 +84,7 @@ watch(() => route.query.site, value => {
     collectedRange.value = [];
   }
 }, { immediate: true });
-watch(() => route.query.keywordId, value => { keywordFilter.value = typeof value === 'string' ? value : undefined; }, { immediate: true });
+watch(() => route.query.keywordId, (value, previous) => { if (route.path !== '/ads' || (value === undefined && previous === undefined)) return; keywordFilter.value = typeof value === 'string' ? value : undefined; }, { immediate: true });
 watch(() => route.query.pageId, (value) => {
   if (value) { search.value = String(value); status.value = 'ALL'; newness.value = 'ALL'; }
 }, { immediate: true });
@@ -123,12 +127,14 @@ const rows = computed(() => serverMode ? remote.rows.value :
       ),
     ),
 );
-const page = ref(1);
-const pageSize = ref(20);
+const page = listMemory.field('page', 1);
+const pageSize = listMemory.field('pageSize', 20);
 const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.market, search: search.value,
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   enabled: viewTab.value !== 'advertisers', platform: platformFilter.value, source: sourceFilter.value, batch: batchFilter.value, status: status.value, newness: newness.value, keywordId: keywordFilter.value || route.query.keywordId, linkedSite: linkedSite.value, linkedProduct: linkedProduct.value,
 })), page, pageSize);
+listMemory.bind('sort', remote.sort);
+listMemory.bind('order', remote.order);
 const productLookup = useWorkspaceList<Product>('products', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: productSearch.value })), ref(1), ref(50));
 const siteLookup = useWorkspaceList<Site>('sites', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: siteSearch.value })), ref(1), ref(50));
 const productOptions = computed(() => (serverMode ? productLookup.rows.value : state.products.filter(p => inMarket(p.market))).map(p => ({ value: p.id, label: `${p.titleZh || p.title} · ${p.market} · ${p.sourcePlatform || '未记录平台'} · ${p.sourceProductId || p.id}` })));
@@ -143,7 +149,7 @@ watch(() => selected.value?.id, async (id) => {
   } catch (cause) { message.error((cause as Error).message); }
 });
 const adResearch = ref<InstanceType<typeof AdsResearchPanel>>();
-watch([search, status, newness, platformFilter, sourceFilter, batchFilter, linkedProduct, linkedSite, keywordFilter, () => state.market, () => route.query], () => { page.value = 1; clear(); });
+watch([search, status, newness, platformFilter, sourceFilter, batchFilter, linkedProduct, linkedSite, keywordFilter, () => state.market], () => { page.value = 1; clear(); });
 watch([keywordInput, () => form.market, () => form.batch, () => form.maxPages, () => form.maxAds, () => form.maxSites, () => form.adStatus], () => {
   pendingRequest = '';
 });
