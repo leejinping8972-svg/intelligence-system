@@ -1,16 +1,25 @@
 {
-  "title": "已入选关键词显示关联商品、关联广告、关联站点数量",
-  "sourceSha": "070fe9ce136e5ad050af370451fece4d074154f5",
+  "title": "入选关键词每日监控加入关联商品、广告和独立站采集",
+  "sourceSha": "e859c6fbc801e4f2ef4db991cb8700628aca524f",
   "featureShas": [
-    "070fe9ce136e5ad050af370451fece4d074154f5"
+    "e859c6fbc801e4f2ef4db991cb8700628aca524f"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue"
+    "apps/web-antd/src/views/intelligence/components/KeywordTrendsControl.vue",
+    "apps/web-antd/src/views/intelligence/keyword-social-trends.ts",
+    "server/KEYWORD-MULTICHANNEL-TRENDS.md",
+    "server/keyword-related-daily.integration.test.mjs",
+    "server/keyword-related-daily.mjs",
+    "server/keyword-related-daily.test.mjs",
+    "server/keyword-related-plan.mjs",
+    "server/keyword-trends-domain.mjs",
+    "server/keyword-trends-engine.mjs",
+    "server/keyword-trends-store.mjs"
   ],
   "changes": [
-    "三列依次替换为关联商品、关联广告、关联站点，按关键词列表统一显示数量条数",
-    "服务端使用relatedCounts关联总数，数量支持排序及keywordId过滤跳转；零值禁用链接",
-    "移除旧采集状态标签与本次目标进度，保留采集筛选和原任务入口"
+    "每日计划增加商品、广告、独立站三类关联采集与来源和数量上限配置",
+    "按所选市场全部入选词生成当日名单，复用已有采集队列和原关键词关联，稳定任务编号支持同日去重与崩溃恢复",
+    "暂停、关键词变化、跨日和未知结果保护；任务状态和详情跳转；旧计划关联采集保持关闭，保存后启用"
   ],
   "database": {
     "schemaChange": false,
@@ -21,23 +30,24 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "6/6 existing related frontend tests, full Web typecheck and independent development build passed; five desktop/mobile synthetic UI scenarios passed, pageerror=0, external requests blocked.",
-    "release": "Repeat tests/regression/typecheck/lint/database/UI validation, validation builds and CI wait skipped by user policy; official frontend and API image each generated once.",
-    "limitations": "Synthetic UI acceptance; no authenticated production UI acceptance or full-repository lint performed."
+    "development": "34/34 server tests including 11 scheduling and isolated SQL submission/recovery cases; full Web typecheck, server-mode build, new-module lint/format and four desktop/mobile synthetic UI scenarios passed. pageerror=0; external calls blocked.",
+    "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI validation, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
+    "limitations": "No real provider coverage or MySQL execution validation; no authenticated production UI acceptance or full-repository lint."
   },
   "queue": {
     "leaseCount": 23,
     "preserveFrozenJobs": true,
     "unknownRequests": "never-auto-replay",
-    "changed": false
+    "existingLanesReused": true
   },
   "configuration": {
-    "paidProviderAdded": false,
-    "schemaMigration": false,
-    "manualCollectionReplay": false
+    "newRelatedScheduling": "opt-in-on-save",
+    "existingPlansAutoExpanded": false,
+    "manualCollectionReplay": false,
+    "paidCallsForRelease": 0
   },
-  "id": "20261111092635-f4dcaf6e",
-  "builtAt": "2026-11-11T09:26:35.763Z",
-  "sourceDigest": "f4dcaf6e4cbd47d1d6247e68a1c715b376bea32c4357cc4f4aeb733dd756e6f4",
+  "id": "20261112013853-21d4a9e7",
+  "builtAt": "2026-11-12T01:38:53.107Z",
+  "sourceDigest": "21d4a9e7ea655cc0702fd9cba7a8925b7ff5f2294cd397921ee17169a03f1ce4",
   "operator": "Codex"
 }
