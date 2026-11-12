@@ -155,9 +155,19 @@ async function collectProductData(request, overrides = {}) {
       for (const key of Object.keys(args))
         if (!tool.inputSchema?.properties?.[key])
           throw new Error(`Sorftime 商品工具参数 ${key} 已变化，请重新适配`);
-      const value = payload(
-        await c.rpc('tools/call', { name, arguments: args }),
-      );
+      const response = await c.rpc('tools/call', { name, arguments: args });
+      // Sorftime reports an empty name search as plain text, outside JSON.
+      // Keep the exact sentinel scoped to search; errors and details still parse normally.
+      const noData =
+        request.op === 'search' &&
+        !response?.isError &&
+        response?.structuredContent == null &&
+        Array.isArray(response?.content) &&
+        response.content.length === 1 &&
+        response.content[0]?.type === 'text' &&
+        typeof response.content[0]?.text === 'string' &&
+        response.content[0].text.trim() === 'No data available.';
+      const value = noData ? { data: [] } : payload(response);
       if (request.op === 'search') {
         const sourceRows = records(value);
         const normalized = sourceRows
@@ -180,7 +190,10 @@ async function collectProductData(request, overrides = {}) {
           rejected: normalized.length - products.length,
           collectedAt: at,
           providerCalls: 1,
-          message: `平台返回${sourceRows.length}件，标题/副标题匹配${products.length}件，排除不相关${normalized.length - products.length}件`,
+          ...(noData ? { sourceMessage: 'No data available.' } : {}),
+          message: noData
+            ? 'Sorftime 返回无数据，未找到商品；本次搜索已完成'
+            : `平台返回${sourceRows.length}件，标题/副标题匹配${products.length}件，排除不相关${normalized.length - products.length}件`,
         };
       }
       if (request.op === 'detail') {
