@@ -1,25 +1,26 @@
 {
-  "title": "入选关键词每日监控加入关联商品、广告和独立站采集",
-  "sourceSha": "e859c6fbc801e4f2ef4db991cb8700628aca524f",
+  "title": "公共内容AI翻译不限条数与搜索置灰原因提示",
+  "sourceSha": "cc7de6699181b606cb59d129073922be9fec245b",
   "featureShas": [
-    "e859c6fbc801e4f2ef4db991cb8700628aca524f"
+    "cc7de6699181b606cb59d129073922be9fec245b"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/KeywordTrendsControl.vue",
-    "apps/web-antd/src/views/intelligence/keyword-social-trends.ts",
-    "server/KEYWORD-MULTICHANNEL-TRENDS.md",
-    "server/keyword-related-daily.integration.test.mjs",
-    "server/keyword-related-daily.mjs",
-    "server/keyword-related-daily.test.mjs",
-    "server/keyword-related-plan.mjs",
-    "server/keyword-trends-domain.mjs",
-    "server/keyword-trends-engine.mjs",
-    "server/keyword-trends-store.mjs"
+    "apps/web-antd/src/views/intelligence/components/PublicContentPanel.vue",
+    "apps/web-antd/src/views/intelligence/public-content.ts",
+    "server/PUBLIC-CONTENT-SEARCH.md",
+    "server/public-content-ai-runner.mjs",
+    "server/public-content-ai-runner.test.mjs",
+    "server/public-content-ai.mjs",
+    "server/public-content-engine.mjs",
+    "server/public-content-store.mjs",
+    "server/public-content-store.test.mjs",
+    "server/public-content.test.mjs",
+    "tests/public-content.test.ts"
   ],
   "changes": [
-    "每日计划增加商品、广告、独立站三类关联采集与来源和数量上限配置",
-    "按所选市场全部入选词生成当日名单，复用已有采集队列和原关键词关联，稳定任务编号支持同日去重与崩溃恢复",
-    "暂停、关键词变化、跨日和未知结果保护；任务状态和详情跳转；旧计划关联采集保持关闭，保存后启用"
+    "AI翻译覆盖本次全部搜索结果，分批保存返回结果与译文，复用已有翻译并保留中断恢复和未知请求防重放",
+    "明确提示缺少来源的检索范围及适用来源，来源下拉按显示名称搜索",
+    "展示累计整理数量、模型调用次数与tokens；失败批次保留原文和其他成果并显示部分完成"
   ],
   "database": {
     "schemaChange": false,
@@ -30,9 +31,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "34/34 server tests including 11 scheduling and isolated SQL submission/recovery cases; full Web typecheck, server-mode build, new-module lint/format and four desktop/mobile synthetic UI scenarios passed. pageerror=0; external calls blocked.",
-    "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI validation, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "No real provider coverage or MySQL execution validation; no authenticated production UI acceptance or full-repository lint."
+    "development": "53 server, 1 PGlite and 7 frontend tests passed; full Web typecheck, server-mode build, targeted lint/format and desktop/390px synthetic UI passed; pageerror=0.",
+    "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
+    "limitations": "No real supplier/model calls, production authenticated UI acceptance or full repository lint."
   },
   "queue": {
     "leaseCount": 23,
@@ -41,13 +42,13 @@
     "existingLanesReused": true
   },
   "configuration": {
-    "newRelatedScheduling": "opt-in-on-save",
     "existingPlansAutoExpanded": false,
-    "manualCollectionReplay": false,
-    "paidCallsForRelease": 0
+    "historicalJobsReplayed": false,
+    "paidCallsForRelease": 0,
+    "searchResultLimitUnchanged": true
   },
-  "id": "20261112013853-21d4a9e7",
-  "builtAt": "2026-11-12T01:38:53.107Z",
-  "sourceDigest": "21d4a9e7ea655cc0702fd9cba7a8925b7ff5f2294cd397921ee17169a03f1ce4",
+  "id": "20261112031800-3024900a",
+  "builtAt": "2026-11-12T03:18:00.355Z",
+  "sourceDigest": "3024900a6c9a6f9bb0915d2b48b91293001f9f0dfcbc14636f51133780ccc112",
   "operator": "Codex"
 }
