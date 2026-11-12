@@ -1,27 +1,18 @@
 {
-  "title": "关键词入选保存、已入选检索和采集时间排序、列表筛选记忆",
-  "sourceSha": "177b2e77ee8d0e4e2f38770b624f7daf48c8ff76",
+  "title": "广告列表等待加载反馈",
+  "sourceSha": "270127acc8029d035b9adb603d724eee187c817a",
   "featureShas": [
-    "177b2e77ee8d0e4e2f38770b624f7daf48c8ff76"
+    "270127acc8029d035b9adb603d724eee187c817a"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/LIST-FILTER-MEMORY.md",
-    "apps/web-antd/src/views/intelligence/__tests__/site-keyword-filter.test.ts",
     "apps/web-antd/src/views/intelligence/ads.vue",
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/list-filter-memory.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
-    "apps/web-antd/src/views/intelligence/site-keyword-filter.ts",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "tests/cloud-workspace.test.ts",
-    "tests/list-filter-memory.test.ts"
+    "apps/web-antd/src/views/intelligence/workspace-queries.ts",
+    "tests/workspace-queries.test.ts"
   ],
   "changes": [
-    "关键词入选、排除与移出等待后台保存确认，失败可重试，刷新保留状态",
-    "已入选关键词增加中英文检索按钮、真实采集时间显示及全结果双向排序",
-    "关键词、已入选关键词、商品、独立站、广告列表按账号和浏览器保留筛选、排序与分页，显式链接参数优先"
+    "广告列表及素材视图首次进入、筛选、翻页和重试时显示转圈与加载提示，加载期间不展示0条和空状态",
+    "列表检索防抖期间立即显示加载反馈，已缓存结果和后台刷新继续可交互，读取失败保留错误及重试",
+    "采集弹窗说明本次数量不代表广告库全部投放广告；不改变采集上限或补采现有任务"
   ],
   "database": {
     "schemaChange": false,
@@ -32,9 +23,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "41/41 targeted tests; six TypeScript files lint/format; isolated server-mode frontend build; synthetic browser checks of five lists, review persistence, sorting, paging, site filter clearing and product pool; desktop and 390px, zero script errors.",
+    "development": "16/16 frontend tests; full web typecheck passed; isolated server-mode build; 7 synthetic browser scenarios on desktop and 390px; zero page errors; targeted lint compared to baseline, no new diagnostics.",
     "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "Full web typecheck has one pre-existing basic.vue:74 closeMenu slot error, no added diagnostic. Filters are local to browser/account. No production login or paid provider/model acceptance."
+    "limitations": "79 existing ads.vue lint diagnostics remain unchanged. Production authenticated UI and paid collection acceptance are not performed."
   },
   "queue": {
     "leaseCount": 23,
@@ -48,8 +39,8 @@
     "backendChanges": false,
     "dependenciesChanged": false
   },
-  "id": "20261112074743-723ae9b0",
-  "builtAt": "2026-11-12T07:47:43.387Z",
-  "sourceDigest": "723ae9b053299282ac3a1592c3093d38823a8ed56b76a170f46de585675d0ece",
+  "id": "20261112084137-ef368a7e",
+  "builtAt": "2026-11-12T08:41:37.220Z",
+  "sourceDigest": "ef368a7e3c71762f1da9bc76490497b0fa1cc6ce6645c539142aa878bd0da7f9",
   "operator": "Codex"
 }
