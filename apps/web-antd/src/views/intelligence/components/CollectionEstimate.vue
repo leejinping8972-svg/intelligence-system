@@ -4,9 +4,9 @@ import { onUnmounted, ref, watch } from 'vue';
 import { cloudRequest } from '../cloud-workspace';
 const props = defineProps<{ input: Record<string, unknown> }>();
 const result = ref<{
-  minSeconds: number;
-  maxSeconds: number;
-  estimatedCalls: number;
+  minSeconds: null | number;
+  maxSeconds: null | number;
+  estimatedCalls: null | number;
   ahead: number;
   basis: string;
   note: string;
@@ -47,11 +47,12 @@ const duration = (seconds: number) =>
 <template>
   <aside class="estimate" role="status">
     <template v-if="result">
-      <strong
-        >预计采集耗时：{{ duration(result.minSeconds) }}～{{
+      <strong v-if="result.minSeconds !== null && result.maxSeconds !== null">
+        预计采集耗时：{{ duration(result.minSeconds) }}～{{
           duration(result.maxSeconds)
-        }}</strong
-      >
+        }}
+      </strong>
+      <strong v-else>广告采集耗时随实际分页变化</strong>
       <p>{{ result.basis }}；同类待完成任务 {{ result.ahead }} 项。</p>
       <small>{{ result.note }}</small>
     </template>

@@ -101,6 +101,16 @@ export function estimateTask(input = {}, history = [], active = []) {
       (j.input?.kind || 'keyword_research') === kind &&
       ['queued', 'running'].includes(j.status),
   ).length;
+  if (kind === 'ads' && input.adPagination === 'until_target')
+    return {
+      minSeconds: null,
+      maxSeconds: null,
+      estimatedCalls: null,
+      ahead: queued,
+      basis: '广告不限查询页数，耗时取决于来源分页与返回数量',
+      samples: matches.length,
+      note: `每词最多采集${input.maxAds ?? 1000}条广告；达到数量上限或来源分页结束时停止。按实际请求计费，排队、限流及官网核验会增加耗时。`,
+    };
   return {
     minSeconds: Math.max(5, Math.ceil(calls * low)),
     maxSeconds: Math.max(15, Math.ceil(calls * high)),

@@ -1,22 +1,24 @@
 {
-  "title": "公共内容视频平台登录复用",
-  "sourceSha": "4a17550355aae2c24229bb4b0a939e82a31c9332",
+  "title": "广告手动采集不限页数与每词1000条",
+  "sourceSha": "6e8e7968705714d5c827391c7135dd7a534d6280",
   "featureShas": [
-    "4a17550355aae2c24229bb4b0a939e82a31c9332"
+    "6e8e7968705714d5c827391c7135dd7a534d6280"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/PublicContentDrawer.vue",
-    "apps/web-antd/src/views/intelligence/components/PublicContentPanel.vue",
-    "apps/web-antd/src/views/intelligence/components/PublicVideoPlayer.vue",
-    "apps/web-antd/src/views/intelligence/public-video-session.ts",
-    "server/PUBLIC-VIDEO-SESSIONS.md",
-    "tests/public-video-session.test.ts"
+    "apps/web-antd/src/views/intelligence/ads.vue",
+    "apps/web-antd/src/views/intelligence/components/AdsCollectDialog.vue",
+    "apps/web-antd/src/views/intelligence/components/CollectionEstimate.vue",
+    "apps/web-antd/src/views/intelligence/components/RepeatResearchDialog.vue",
+    "server/ads-pagination.test.mjs",
+    "server/combined-discovery.test.mjs",
+    "server/market-jobs.mjs",
+    "server/task-estimate.mjs",
+    "server/task-research.mjs"
   ],
   "changes": [
-    "YouTube使用常规播放器域名，详情提供平台观看与刷新预览；iframe加载不冒充登录或播放成功",
-    "同一浏览器在平台完成一次登录后复用有效Cookie，按平台记忆观看偏好；列表和详情共用观看入口，不读取或保存平台凭据",
-    "不同视频安全打开平台页面，同平台最近同一视频可聚焦已有窗口；登录过期或清除Cookie后由用户重新登录",
-    "仅记录官方渠道视频下载能力核验，无OSS接入、下载或额外收费调用"
+    "广告观察页及入选关键词采集移除广告页数输入，数量默认及上限1000",
+    "手动任务按本词去重数量或来源分页结束停止，无隐含页数限制，保留循环游标停止及断点账本保护",
+    "重新研究保留新分页模式，耗时与请求次数按实际分页说明；旧冻结及定时任务页数预算保持原配置"
   ],
   "database": {
     "schemaChange": false,
@@ -27,9 +29,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "22/22 frontend tests; full web typecheck; targeted lint and format; isolated server-mode build; 11 synthetic Edge scenarios on desktop and 390px; zero page errors.",
+    "development": "71/71 server tests including isolated PGlite; full web typecheck; official-like isolated web build and backend bundle; zero added lint diagnostics; four synthetic browser groups at desktop and 390px.",
     "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "Actual platform account login and real-video playback require user acceptance. Third-party cookie restrictions, platform challenges and session expiry still apply. Download capability verified from official documentation only; OSS not integrated."
+    "limitations": "1000 is an upper target, not guaranteed available data or source total. Existing frozen jobs keep their original page budget. No historical batch recollection or paid provider acceptance."
   },
   "queue": {
     "leaseCount": 23,
@@ -40,11 +42,11 @@
   "configuration": {
     "historicalJobsAutoReplayed": false,
     "paidCallsForRelease": 0,
-    "backendChanges": false,
+    "backendChanges": true,
     "dependenciesChanged": false
   },
-  "id": "20261112092916-771cf35b",
-  "builtAt": "2026-11-12T09:29:16.181Z",
-  "sourceDigest": "771cf35b3d2937348aaae7dc75c1c24840112822bd9c588d4bcc1544f10fe555",
+  "id": "20261112102037-d5e2e73f",
+  "builtAt": "2026-11-12T10:20:37.698Z",
+  "sourceDigest": "d5e2e73f8bf50fea809a65514874a39600b9be44969fbfd19f96b303eef1297e",
   "operator": "Codex"
 }
