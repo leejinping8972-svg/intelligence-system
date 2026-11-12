@@ -1,37 +1,22 @@
 {
-  "title": "采集翻译异常隔离与历史任务停止原因",
-  "sourceSha": "9181a0d50455d94c02a8960a091d636b4db50d0d",
+  "title": "全站同步与交互性能优化",
+  "sourceSha": "3d3559f139ad4974d50f2df52ab05367e0d123df",
   "featureShas": [
-    "9181a0d50455d94c02a8960a091d636b4db50d0d"
+    "3d3559f139ad4974d50f2df52ab05367e0d123df"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/TaskProgress.vue",
-    "apps/web-antd/src/views/intelligence/task-list.ts",
-    "server/KEYWORD-TRANSLATION-ISOLATION.md",
-    "server/collection-translation-domain.mjs",
-    "server/collection-translation-optional.test.mjs",
-    "server/collection-translation.integration.test.mjs",
-    "server/collection-translation.mjs",
-    "server/discovery-ai.mjs",
-    "server/discovery-monitor-store.mjs",
-    "server/job-progress.mjs",
-    "server/keyword-store.mjs",
-    "server/market-jobs.mjs",
-    "server/platform-products-jobs.mjs",
-    "server/platform-products-provider.mjs",
-    "server/source-analysis-stage.mjs",
-    "server/source-field-store.mjs",
-    "server/store.mjs",
-    "server/task-overview.mjs",
-    "server/task-stop-evidence.mjs",
-    "server/task-stop-evidence.test.mjs",
-    "server/task-stop-reason.mjs",
-    "tests/task-list.test.ts"
+    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
+    "apps/web-antd/src/views/intelligence/workspace-change-tracker.ts",
+    "apps/web-antd/src/views/intelligence/workspace-queries.ts",
+    "server/WORKSPACE-SYNC-PERFORMANCE.md",
+    "tests/cloud-workspace.test.ts",
+    "tests/workspace-change-tracker.test.ts",
+    "tests/workspace-queries.test.ts"
   ],
   "changes": [
-    "关键词、商品、广告采集和入库保留原文并隔离翻译异常，复用有效翻译，不自动重放未知请求",
-    "历史停止任务从检查点、请求账本和分析子任务显示具体原因，明确区分已完成采集与未完成分析",
-    "Sorftime和模型异常保留脱敏返回预览，历史无证据时明确标记未记录"
+    "业务与关键词同步按记录批处理，消除每次变化同步扫描并序列化全部缓存的数据热点",
+    "回读前保留同轮本地编辑，独立请求快照保护保存途中的后续修改",
+    "复用已展示缓存页，批量建立ID索引以减少分页更新成本"
   ],
   "database": {
     "schemaChange": false,
@@ -42,9 +27,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "Server regression 117/121 passed; all four failures reproduced at unchanged baseline. Direct-save regressions 28/28 and frontend 16/16 passed; Web typecheck, server-mode development build and server bundles passed; no added lint diagnostics. Read-only MySQL probe verified all five screenshot task reasons.",
+    "development": "34/34 related tests, targeted lint/format/diff, server-mode development build and local synthetic UI passed. Full Web typecheck has one existing closeMenu slot error reproduced identically at unchanged baseline; no new diagnostics. Synthetic 600-record/20-row refresh mean 419.36ms to 16.16ms; 580 untouched records serialized zero times instead of 2900. Bulk cold initialization 410.19ms to 472.09ms.",
     "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "No paid provider/model acceptance or production authenticated browser acceptance. Historical Sorftime error payload was not saved and cannot be reconstructed."
+    "limitations": "Synthetic measurements do not establish production latency. No real provider/model or authenticated production browser acceptance; API latency may remain."
   },
   "queue": {
     "leaseCount": 23,
@@ -55,10 +40,10 @@
   "configuration": {
     "historicalJobsReplayed": false,
     "paidCallsForRelease": 0,
-    "strictExplicitTranslationRetained": true
+    "apiBehaviorChanged": false
   },
-  "id": "20261112033428-110a7c70",
-  "builtAt": "2026-11-12T03:34:28.724Z",
-  "sourceDigest": "110a7c7018c2440106bb26e86477f8bc2f287815d0b71a7e800b24704be30c1c",
+  "id": "20261112041107-b98b6516",
+  "builtAt": "2026-11-12T04:11:07.723Z",
+  "sourceDigest": "b98b65166bde9a1594b6f093d1631cb9daee62272297b6677885b6a53d544222",
   "operator": "Codex"
 }
