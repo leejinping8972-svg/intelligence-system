@@ -47,6 +47,7 @@ import {
   contentInMarket,
   contentRequest,
   contentScopes,
+  contentScopeWarning,
   contentStates,
   contentTypes,
   filterContent,
@@ -129,8 +130,10 @@ const scopedItems = computed(() =>
   items.value.filter((item) => contentInMarket(item, browseMarket.value)),
 );
 const scopedJobs = computed(() =>
-  jobs.value.filter((item) =>
-    browseMarket.value === 'ALL' || item.input.market === browseMarket.value),
+  jobs.value.filter(
+    (item) =>
+      browseMarket.value === 'ALL' || item.input.market === browseMarket.value,
+  ),
 );
 const result = computed(() => filterContent(scopedItems.value, filter));
 const paged = computed(() =>
@@ -165,17 +168,11 @@ const sourceOptions = computed(() =>
       label: `${s.label}${s.configured ? '' : '（未配置）'}`,
     })),
 );
-const selectedSources = computed(() =>
-  (sourceStatus.value?.sources || []).filter(
-    (source) =>
-      form.sources.includes(source.id) &&
-      source.scopes.some((scope) => form.scopes.includes(scope)),
-  ),
-);
-const missingScope = computed(() =>
-  form.scopes.some(
-    (scope) =>
-      !selectedSources.value.some((source) => source.scopes.includes(scope)),
+const scopeWarning = computed(() =>
+  contentScopeWarning(
+    form.scopes,
+    form.sources,
+    sourceStatus.value?.sources || [],
   ),
 );
 watch(
@@ -294,9 +291,12 @@ async function refresh() {
     );
     if (disposed || call !== sequence) return;
     jobs.value = data.jobs;
-    job.value = data.job &&
-      (browseMarket.value === 'ALL' || data.job.input.market === browseMarket.value)
-      ? data.job : null;
+    job.value =
+      data.job &&
+      (browseMarket.value === 'ALL' ||
+        data.job.input.market === browseMarket.value)
+        ? data.job
+        : null;
     items.value = data.items;
     errorMessage.value = '';
     if (!activeJob.value) {
@@ -324,10 +324,9 @@ async function submit() {
   if (
     form.query.trim().length < 2 ||
     form.scopes.length === 0 ||
-    missingScope.value
+    scopeWarning.value
   ) {
-    errorMessage.value =
-      '请填写关键词、勾选检索范围，并为每个范围选择至少一个来源';
+    errorMessage.value = scopeWarning.value || '请填写关键词并勾选检索范围';
     return;
   }
   submitting.value = true;
@@ -558,15 +557,16 @@ onUnmounted(() => {
             v-model:value="form.sources"
             mode="multiple"
             :options="sourceOptions"
+            option-filter-prop="label"
             aria-label="公共内容数据来源"
             placeholder="选择来源"
           />
         </Form.Item>
         <Alert
-          v-if="missingScope && form.scopes.length"
+          v-if="scopeWarning && form.scopes.length"
           type="warning"
           show-icon
-          message="每个已勾选范围至少选择一个适用来源"
+          :message="scopeWarning"
           style="margin-bottom: 12px"
         />
         <p class="hci-subtle">
@@ -610,9 +610,12 @@ onUnmounted(() => {
             v-model:checked="form.organize"
             :disabled="!sourceStatus?.modelConfigured"
           >
-            AI翻译与摘要（最多10条，一次模型调用）
+            AI翻译与摘要（全部结果，不限条数）
           </Checkbox>
         </div>
+        <p v-if="form.organize" class="hci-subtle">
+          按批翻译本次全部结果，复用已有译文；模型调用次数和消耗随待翻译内容增加。
+        </p>
         <p class="hci-subtle">
           按需搜索，不创建定时监测。社媒和网页索引可能扣除 ScrapeCreators
           credits，YouTube 消耗 API
@@ -632,7 +635,9 @@ onUnmounted(() => {
           html-type="submit"
           :form="searchFormId"
           :loading="submitting"
-          :disabled="!serverMode || !form.scopes.length || missingScope"
+          :disabled="
+            !serverMode || !form.scopes.length || Boolean(scopeWarning)
+          "
           >搜索公共内容</Button
         >
       </template>
@@ -731,6 +736,14 @@ onUnmounted(() => {
               : contentStates[job.aiStatus] || job.aiStatus
           }}
           {{ job.aiMessage }}
+          <template
+            v-if="job.aiTotal !== undefined && job.aiStatus !== 'completed'"
+          >
+            · 已整理{{ job.aiCount ?? 0 }}/{{ job.aiTotal }}条
+          </template>
+          <template v-if="job.aiRequests !== undefined">
+            · 模型调用{{ job.aiRequests }}次
+          </template>
         </p>
       </div>
       <Tabs v-model:active-key="filter.category">

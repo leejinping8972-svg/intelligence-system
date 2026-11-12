@@ -253,7 +253,7 @@ export async function publicContentAction(input, user) {
       })),
       modelConfigured: Boolean(model),
       maxQueries: 3,
-      maxAiItems: 10,
+      maxAiItems: null,
     };
   }
   if (

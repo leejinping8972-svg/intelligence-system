@@ -15,10 +15,12 @@ export function itemScopes(item: ContentItem): ContentScope[] {
 }
 // This is the research market, not proof of the author's country or audience.
 export function contentInMarket(item: ContentItem, market: string) {
-  return (market === 'ALL' ||
+  return (
+    market === 'ALL' ||
     (item.searchContexts?.length
       ? item.searchContexts.some((context) => context.market === market)
-      : item.searchMarket === market));
+      : item.searchMarket === market)
+  );
 }
 export const contentCategories = {
   social: '社媒内容',
@@ -147,6 +149,8 @@ export interface ContentJob {
   aiStatus: string;
   aiMessage?: string;
   aiCount?: number;
+  aiTotal?: number;
+  aiRequests?: number;
   aiModel?: string;
   aiUsage?: { total_tokens?: number };
 }
@@ -164,6 +168,29 @@ export interface ContentStatus {
     scopes: ContentScope[];
   }[];
   modelConfigured: boolean;
+}
+export function contentScopeWarning(
+  scopes: ContentScope[],
+  selectedIds: string[],
+  sources: ContentStatus['sources'],
+) {
+  return scopes
+    .filter(
+      (scope) =>
+        !sources.some(
+          (source) =>
+            selectedIds.includes(source.id) && source.scopes.includes(scope),
+        ),
+    )
+    .map((scope) => {
+      const options = sources.filter((source) => source.scopes.includes(scope));
+      const configured = options.filter((source) => source.configured);
+      const labels = (configured.length ? configured : options)
+        .map((source) => source.label)
+        .join('、');
+      return `“${contentScopes[scope]}”尚未选择适用来源${labels ? `，可选择${labels}` : ''}；也可取消勾选该检索范围。`;
+    })
+    .join(' ');
 }
 export async function contentRequest<T>(
   action: string,

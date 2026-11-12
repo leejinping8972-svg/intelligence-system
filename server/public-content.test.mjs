@@ -443,7 +443,7 @@ test('AI rejects invented quotes and unknown references; original items remain a
   assert.equal(io.items.size, 1);
   assert.equal(job.status, 'partial');
 });
-test('AI receives at most ten samples and reuses already organized content', async () => {
+test('AI includes every sample, balances categories and reuses already organized content', async () => {
   const diverse = contentAiInput([
     ...Array.from({ length: 12 }, (_, i) => item(String(i))),
     { ...item('health'), category: 'health' },
@@ -453,7 +453,7 @@ test('AI receives at most ten samples and reuses already organized content', asy
   assert.equal(
     contentAiInput(Array.from({ length: 20 }, (_, i) => item(String(i))))
       .length,
-    10,
+    20,
   );
   const job = newContentJob(
     input({ sources: ['youtube'], organize: true }),

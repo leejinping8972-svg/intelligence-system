@@ -67,6 +67,7 @@ test(
       const user = { id: 'qa', role: 'researcher' };
       const status = await api({ action: 'server_content_status' }, user);
       assert.equal(status.sources.length, 11);
+      assert.equal(status.maxAiItems, null);
       const cacheInput = {
         limit: 30,
         market: 'VN',

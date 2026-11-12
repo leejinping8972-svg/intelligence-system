@@ -3,7 +3,7 @@ import {
   collectArticleStep,
   executeArticleJob,
 } from './public-article-details.mjs';
-import { contentAiInput, validateContentAi } from './public-content-ai.mjs';
+import { executeContentAi } from './public-content-ai-runner.mjs';
 import {
   contentPlan,
   mergeContent,
@@ -62,7 +62,7 @@ export async function executeContentJob(job, io) {
         step.accounted = true;
       }
     }
-  if (job.aiStatus === 'running') {
+  if (job.aiStatus === 'running' && !job.aiBatches) {
     job.aiStatus = 'unknown';
     job.aiMessage = '模型结果未确认，未自动重复计费';
   }
@@ -232,59 +232,15 @@ export async function executeContentJob(job, io) {
     await save();
     if (io.signal?.aborted) return;
   }
-  if (job.aiStatus === 'pending') {
-    if (io.signal?.aborted || io.leaseSignal?.aborted) return;
-    if (await isCancelled()) return;
-    const rawRecords = await Promise.all(
-      job.itemIds.map((id) => io.getItem(id)),
-    );
-    const records = rawRecords.filter(Boolean);
-    if (records.length === 0) {
-      job.aiStatus = 'skipped';
-      job.aiMessage = '没有可整理的内容';
-    } else {
-      job.aiStatus = 'running';
-      job.aiUsageAt = new Date().toISOString();
-      await save();
-      try {
-        const sample = contentAiInput(records.filter((r) => !r.ai));
-        const result =
-          sample.length > 0
-            ? await io.organize(sample)
-            : { parsed: { items: [] }, usage: null, model: '复用已有整理' };
-        if (io.leaseSignal?.aborted) return;
-        if (sample.length === 0) {
-          job.aiStatus = 'completed';
-          job.aiCount = records.length;
-          job.aiModel = result.model;
-          job.aiPromptVersion = result.promptVersion;
-          await save();
-        }
-        if (sample.length > 0) {
-          const updates = validateContentAi(result.parsed, sample);
-          for (const [id, ai] of updates)
-            await io.updateItem(id, (old) => ({ ...old, ai }));
-          job.aiStatus = 'completed';
-          job.aiCount = updates.size;
-          job.aiUsage = result.usage;
-          job.aiModel = result.model;
-          job.aiPromptVersion = result.promptVersion;
-        }
-      } catch (error) {
-        job.aiStatus = 'failed';
-        job.aiMessage =
-          error.safeMessage ||
-          'AI整理未完成，原始内容已保留；请检查模型配置或额度';
-      }
-    }
-  }
+  await executeContentAi(job, io, { save, isCancelled });
+  if (io.signal?.aborted || io.leaseSignal?.aborted) return;
   if (await isCancelled()) return;
   const failures =
     job.steps.some(
       (s) =>
         !['skipped', 'success'].includes(s.status) ||
         (job.mode === 'enrichment' && s.status === 'skipped'),
-    ) || ['failed', 'unknown'].includes(job.aiStatus);
+    ) || ['failed', 'partial', 'unknown'].includes(job.aiStatus);
   const failureStatus = job.itemIds.length > 0 ? 'partial' : 'failed';
   job.status = failures ? failureStatus : 'completed';
   job.finishedAt = new Date().toISOString();

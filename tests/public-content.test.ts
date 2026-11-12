@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   contentCsv,
   contentDate,
+  contentScopeWarning,
   filterContent,
   itemScopes,
 } from '../apps/web-antd/src/views/intelligence/public-content';
@@ -44,6 +45,59 @@ const all = {
   favorites: false,
 };
 describe('public content search result presentation', () => {
+  it('identifies the missing global scope and suggests compatible sources', () => {
+    const sources = [
+      {
+        id: 'youtube',
+        label: 'YouTube',
+        category: 'social' as const,
+        configured: true,
+        scopes: ['local' as const],
+      },
+      {
+        id: 'medlineplus',
+        label: 'MedlinePlus',
+        category: 'health' as const,
+        configured: true,
+        scopes: ['global' as const],
+      },
+    ];
+    const warning = contentScopeWarning(
+      ['local', 'global'],
+      ['youtube'],
+      sources,
+    );
+    expect(warning).toContain('“全球参考证据”尚未选择适用来源');
+    expect(warning).toContain('MedlinePlus');
+    expect(warning).toContain('取消勾选');
+    expect(contentScopeWarning(['local'], ['youtube'], sources)).toBe('');
+    expect(
+      contentScopeWarning(
+        ['local', 'global'],
+        ['youtube', 'medlineplus'],
+        sources,
+      ),
+    ).toBe('');
+  });
+  it('accepts one source covering both scopes and does not select sources automatically', () => {
+    const selected = ['web'];
+    const sources = [
+      {
+        id: 'web',
+        label: '网页文章',
+        category: 'web' as const,
+        configured: true,
+        scopes: ['local' as const, 'global' as const],
+      },
+    ];
+    expect(contentScopeWarning(['local', 'global'], selected, sources)).toBe(
+      '',
+    );
+    expect(contentScopeWarning(['local', 'global'], [], sources)).toContain(
+      '目标市场本地素材',
+    );
+    expect(selected).toEqual(['web']);
+  });
   it('filters multi-scope records without relabelling old records as local evidence', () => {
     const records = [
       make('old'),

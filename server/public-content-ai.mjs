@@ -9,13 +9,9 @@ export function contentAiInput(records) {
     groups.get(record.category).push(record);
   }
   const balanced = [];
-  while (
-    balanced.length < 10 &&
-    [...groups.values()].some((group) => group.length)
-  )
+  while ([...groups.values()].some((group) => group.length))
     for (const group of groups.values())
-      if (group.length > 0 && balanced.length < 10)
-        balanced.push(group.shift());
+      if (group.length > 0) balanced.push(group.shift());
   return balanced.map((item) => ({
     id: item.id,
     title: item.title,
