@@ -53,6 +53,7 @@ import {
   filterContent,
   itemScopes,
 } from '../public-content';
+import { followPublicVideo } from '../public-video-session';
 import { serverMode } from '../session';
 import PublicContentDrawer from './PublicContentDrawer.vue';
 import PublicContentHistory from './PublicContentHistory.vue';
@@ -868,9 +869,12 @@ onUnmounted(() => {
             </p>
             <div class="hci-toolbar">
               <Button size="small" @click="detailId = item.id">查看详情</Button
-              ><a :href="item.url" target="_blank" rel="noopener noreferrer">{{
-                item.type === 'video' ? '原平台观看' : '查看原文'
-              }}</a
+              ><a
+                :href="item.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                @click="followPublicVideo($event, item)"
+                >{{ item.type === 'video' ? '原平台观看' : '查看原文' }}</a
               ><Button
                 size="small"
                 :loading="saving === item.id"

@@ -6,7 +6,7 @@
  */
 import type { ContentItem } from '../public-content';
 
-import { computed, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 
 import { Button, Drawer, Form, Select, Tag } from 'ant-design-vue';
 
@@ -18,7 +18,9 @@ import {
   contentTypes,
   itemScopes,
 } from '../public-content';
+import { followPublicVideo } from '../public-video-session';
 import PublicArticleDetails from './PublicArticleDetails.vue';
+import PublicVideoPlayer from './PublicVideoPlayer.vue';
 
 const props = defineProps<{
   item: ContentItem | undefined;
@@ -37,10 +39,6 @@ const draft = reactive({
   keywordIds: [] as string[],
   productIds: [] as string[],
 });
-const preview = ref(false);
-const previewWaiting = ref(false);
-const previewError = ref(false);
-let previewTimer: ReturnType<typeof setTimeout> | undefined;
 const title = computed(
   () => props.item?.ai?.titleZh || props.item?.title || '公共内容详情',
 );
@@ -69,36 +67,14 @@ const paragraphs = (value?: string) =>
     .split(/\n\s*\n|\n/)
     .map((p) => p.trim())
     .filter(Boolean);
-function stopPreviewTimer() {
-  if (previewTimer) clearTimeout(previewTimer);
-}
-function loadPreview() {
-  preview.value = true;
-  previewWaiting.value = true;
-  previewError.value = false;
-  stopPreviewTimer();
-  previewTimer = setTimeout(() => {
-    previewWaiting.value = false;
-    previewError.value = true;
-  }, 12_000);
-}
-function previewLoaded() {
-  stopPreviewTimer();
-  previewWaiting.value = false;
-}
 watch(
   () => props.item?.id,
   () => {
     draft.keywordIds = [...(props.item?.keywordIds || [])];
     draft.productIds = [...(props.item?.productIds || [])];
-    preview.value = false;
-    previewWaiting.value = false;
-    previewError.value = false;
-    stopPreviewTimer();
   },
   { immediate: true },
 );
-onUnmounted(stopPreviewTimer);
 </script>
 
 <template>
@@ -134,58 +110,7 @@ onUnmounted(stopPreviewTimer);
       </header>
       <div class="detail-layout">
         <main class="detail-main">
-          <section
-            v-if="item.source === 'youtube' && item.videoId"
-            class="detail-block detail-media"
-            aria-label="视频预览"
-          >
-            <div class="detail-section-head">
-              <h3>视频素材</h3>
-              <a :href="item.url" target="_blank" rel="noopener noreferrer"
-                >原平台观看 ↗</a
-              >
-            </div>
-            <div v-if="preview" class="detail-player">
-              <iframe
-                :src="`https://www.youtube-nocookie.com/embed/${item.videoId}`"
-                title="YouTube 视频预览"
-                loading="lazy"
-                referrerpolicy="strict-origin-when-cross-origin"
-                allowfullscreen
-                @load="previewLoaded"
-                @error="
-                  previewError = true;
-                  previewLoaded();
-                "
-              ></iframe>
-              <span v-if="previewWaiting" class="preview-status" role="status"
-                >正在连接视频来源…</span
-              >
-            </div>
-            <button
-              v-else
-              type="button"
-              class="detail-poster"
-              :class="{ 'no-cover': !item.thumbnail }"
-              aria-label="加载视频预览"
-              @click="loadPreview"
-            >
-              <img
-                v-if="item.thumbnail"
-                :src="item.thumbnail"
-                :alt="item.title"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-              /><span class="preview-cta">加载视频预览</span>
-            </button>
-            <p class="detail-helper">
-              {{
-                previewError
-                  ? '预览连接未确认，可在原平台观看；已保存的文字内容不受影响。'
-                  : '视频由原平台提供。加载或播放受限时，可直接打开原平台。'
-              }}
-            </p>
-          </section>
+          <PublicVideoPlayer :item="item" />
           <section
             v-if="item.summary || !canReadArticle(item)"
             class="detail-block"
@@ -267,7 +192,10 @@ onUnmounted(stopPreviewTimer);
               已标记相似内容，原始记录仍保留。
             </p>
           </section>
-          <section v-if="item.source === 'reddit' || item.comments" class="detail-block">
+          <section
+            v-if="item.source === 'reddit' || item.comments"
+            class="detail-block"
+          >
             <div class="detail-section-head">
               <h3>讨论评论</h3>
               <Button
@@ -403,7 +331,11 @@ onUnmounted(stopPreviewTimer);
     </article>
     <template #footer
       ><div v-if="item" class="detail-footer">
-        <a :href="item.url" target="_blank" rel="noopener noreferrer"
+        <a
+          :href="item.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          @click="followPublicVideo($event, item)"
           >{{ item.type === 'video' ? '在原平台观看' : '核对来源原文' }} ↗</a
         >
         <div>
@@ -597,70 +529,6 @@ onUnmounted(stopPreviewTimer);
   margin-bottom: 0;
 }
 
-.detail-player,
-.detail-poster {
-  position: relative;
-  display: block;
-  width: 100%;
-  aspect-ratio: 16/9;
-  overflow: clip;
-  background: var(--hci-subtle);
-  border: 0;
-  border-radius: 6px;
-}
-
-.detail-player iframe {
-  width: 100%;
-  height: 100%;
-  border: 0;
-}
-
-.detail-poster {
-  cursor: pointer;
-}
-
-.detail-poster.no-cover {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 140px;
-  aspect-ratio: auto;
-}
-
-.detail-poster.no-cover .preview-cta {
-  position: static;
-}
-
-.detail-poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.preview-cta,
-.preview-status {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--hci-ink);
-  background: var(--hci-paper);
-  border: 1px solid var(--hci-border);
-  border-radius: 6px;
-}
-
-.detail-poster:hover .preview-cta {
-  color: var(--hci-accent);
-  border-color: var(--hci-accent);
-}
-
-.detail-poster:active .preview-cta {
-  transform: translateY(1px);
-}
-
-.detail-poster:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--hci-accent);
   outline-offset: 4px;
