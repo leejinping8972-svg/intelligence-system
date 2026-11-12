@@ -1,16 +1,17 @@
 import type { Keyword, Task } from './data';
 import type { KeywordResearchInput } from './keyword-research';
 
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref, toRaw } from 'vue';
 
 import { state } from './data';
 import { RequestFlight } from './request-flight';
 import { adminRequest, leaveSession, serverMode, session } from './session';
-import { isWorkspaceSyncKey } from './workspace-sync-keys';
+import { createWorkspaceChangeTracker } from './workspace-change-tracker';
 import {
   createWorkspaceReadClient,
   workspaceReadActions,
 } from './workspace-read-client';
+import { isWorkspaceSyncKey } from './workspace-sync-keys';
 
 const workspaceReads = createWorkspaceReadClient();
 
@@ -63,9 +64,31 @@ function businessEntries() {
   }
   return entries;
 }
+function stringify(value: unknown) {
+  // Snapshots are taken outside reactive effects. Reading raw data avoids
+  // allocating dependency links for every property while serializing it.
+  return JSON.stringify(toRaw(value));
+}
+function trackingEntries() {
+  const entries = businessEntries();
+  if (entries.has('preferences:main'))
+    entries.set('preferences:main', state.settings);
+  return entries as Map<string, object>;
+}
+function businessValue(key: string, value: object) {
+  return key === 'preferences:main'
+    ? Object.fromEntries(
+        Object.entries(value).filter(
+          ([field]) => !['researchAccessKey', 'researchApiUrl'].includes(field),
+        ),
+      )
+    : value;
+}
 const applying = ref(false);
 const readMode = ref<'legacy' | 'monitor' | 'paged' | 'tasks'>('paged');
-export function setWorkspaceReadMode(mode: 'legacy' | 'monitor' | 'paged' | 'tasks') {
+export function setWorkspaceReadMode(
+  mode: 'legacy' | 'monitor' | 'paged' | 'tasks',
+) {
   if (readMode.value === mode) return;
   readMode.value = mode;
 }
@@ -94,13 +117,20 @@ export function applyWorkspaceRecords(
   collection: 'ads' | 'keywords' | 'products' | 'sites',
   records: unknown[],
 ) {
+  const tracker = collection === 'keywords' ? keywordChanges : businessChanges;
+  tracker.capture(
+    records.map((record) => {
+      const { id } = record as Keyword;
+      return collection === 'keywords' ? id : `${collection}:${id}`;
+    }),
+  );
   applying.value = true;
   try {
+    const stored = state[collection] as unknown as Keyword[];
+    const byId = new Map(stored.map((record) => [record.id, record]));
     for (const incoming of records) {
       const record = incoming as Keyword;
-      const previous = (state[collection] as unknown as Keyword[]).find(
-        (row) => row.id === record.id,
-      );
+      const previous = byId.get(record.id);
       const localPatch =
         collection === 'keywords'
           ? pending.get(record.id)
@@ -131,17 +161,21 @@ export function applyWorkspaceRecords(
         merged.listSummary = false;
       }
       if (previous) Object.assign(previous, merged);
-      else (state[collection] as unknown[]).push(merged);
+      else {
+        stored.push(merged);
+        byId.set(record.id, stored.at(-1)!);
+      }
       if (collection === 'keywords')
-        known.set(record.id, JSON.stringify(editable(record)));
+        known.set(record.id, stringify(editable(record)));
       else
         businessKnown.set(
           `${collection}:${record.id}`,
-          JSON.stringify(previous || merged),
+          stringify(previous || merged),
         );
     }
   } finally {
     applying.value = false;
+    tracker.acceptRemote();
   }
 }
 export async function loadWorkspaceDetail(
@@ -217,43 +251,39 @@ let clearing = false;
 let initialized = '';
 const pendingSubmissions = new Map<string, string>();
 let activeSubmissions = 0;
-watch(
-  () =>
-    applying.value
-      ? null
-      : [...businessEntries()].map(([key, value]) => ({
-          key,
-          value: JSON.stringify(value),
-        })),
-  (entries) => {
-    if (!entries || applying.value || !cloudWorkspace.ready) return;
-    const current = new Map(entries.map((entry) => [entry.key, entry.value]));
-    for (const { key, value } of entries)
-      if (businessKnown.get(key) !== value) {
-        const next = JSON.parse(value);
-        const patch =
-          serverMode && readMode.value !== 'legacy'
-            ? {
-                ...(businessPending.get(key) as object),
-                ...(changedFields(businessKnown.get(key), next) as object),
-              }
-            : next;
-        if (patch && Object.keys(patch).length > 0)
-          businessPending.set(key, patch);
-        else businessKnown.set(key, value);
-      }
-    for (const key of businessKnown.keys())
-      if (
-        isWorkspaceSyncKey(key) &&
-        !current.has(key) &&
-        (!serverMode ||
-          session.user?.role === 'admin' ||
-          !/^(branding|preferences):/.test(key))
-      )
-        businessPending.set(key, null);
+const businessChanges = createWorkspaceChangeTracker({
+  entries: trackingEntries,
+  changed(key, _record, value) {
+    if (applying.value || !cloudWorkspace.ready) return;
+    if (businessKnown.get(key) !== value) {
+      const next = JSON.parse(value);
+      const patch =
+        serverMode && readMode.value !== 'legacy'
+          ? {
+              ...(businessPending.get(key) as object),
+              ...(changedFields(businessKnown.get(key), next) as object),
+            }
+          : next;
+      if (patch && Object.keys(patch).length > 0)
+        businessPending.set(key, patch);
+      else businessKnown.set(key, value);
+    }
   },
-  { deep: true, flush: 'sync' },
-);
+  removed(key) {
+    if (
+      !applying.value &&
+      cloudWorkspace.ready &&
+      businessKnown.has(key) &&
+      isWorkspaceSyncKey(key) &&
+      (!serverMode ||
+        session.user?.role === 'admin' ||
+        !/^(branding|preferences):/.test(key))
+    )
+      businessPending.set(key, null);
+  },
+  select: (key, record) => businessValue(key, record),
+  snapshot: (key, record) => stringify(businessValue(key, toRaw(record))),
+});
 const editable = (record: Keyword) => ({
   termZh: record.termZh || '',
   favorite: record.favorite,
@@ -264,7 +294,10 @@ const editable = (record: Keyword) => ({
 export async function cloudRequest<T>(
   action: string,
   input: Record<string, unknown> = {},
-  options: { signal?: AbortSignal; priority?: 'foreground' | 'background' } = {},
+  options: {
+    signal?: AbortSignal;
+    priority?: 'background' | 'foreground';
+  } = {},
 ): Promise<T> {
   // A first workspace sync can contain years of products and evidence. The
   // gateway compresses the response, but a slower connection may still need
@@ -278,15 +311,21 @@ export async function cloudRequest<T>(
       try {
         return await workspaceReads.run(
           key,
-          signal => adminRequest<T>(action, input, timeout, signal),
+          (signal) => adminRequest<T>(action, input, timeout, signal),
           {
             ...options,
-            priority: options.priority || (action === 'server_workspace_list' ? 'foreground' : 'background'),
+            priority:
+              options.priority ||
+              (action === 'server_workspace_list'
+                ? 'foreground'
+                : 'background'),
           },
         );
       } catch (error) {
         if (error instanceof Error && error.name === 'TimeoutError')
-          throw new Error('数据读取超时，请重试；已加载的内容会继续保留', { cause: error });
+          throw new Error('数据读取超时，请重试；已加载的内容会继续保留', {
+            cause: error,
+          });
         throw error;
       }
     }
@@ -296,9 +335,12 @@ export async function cloudRequest<T>(
         : adminRequest<T>(action, input, timeout));
     } catch (error) {
       if (error instanceof Error && error.name === 'TimeoutError')
-        throw new Error(action === 'server_resume_partial'
-          ? '继续采集请求超时，后台可能已接收；请刷新任务状态后确认，避免重复提交'
-          : '请求超时，请稍后刷新状态；已加载的内容会继续保留', { cause: error });
+        throw new Error(
+          action === 'server_resume_partial'
+            ? '继续采集请求超时，后台可能已接收；请刷新任务状态后确认，避免重复提交'
+            : '请求超时，请稍后刷新状态；已加载的内容会继续保留',
+          { cause: error },
+        );
       throw error;
     }
   }
@@ -323,22 +365,18 @@ export async function cloudRequest<T>(
   }
   return result as T;
 }
-watch(
-  () =>
-    applying.value
-      ? null
-      : state.keywords.map((record) => ({
-          id: record.id,
-          patch: editable(record),
-        })),
-  (values) => {
-    if (!values || applying.value) return;
-    for (const { id, patch } of values)
-      if (known.has(id) && known.get(id) !== JSON.stringify(patch))
-        pending.set(id, patch);
+const keywordChanges = createWorkspaceChangeTracker({
+  entries: () => new Map(state.keywords.map((record) => [record.id, record])),
+  changed(id, _record, snapshot) {
+    if (applying.value || !known.has(id)) return;
+    if (known.get(id) !== snapshot) pending.set(id, JSON.parse(snapshot));
   },
-  { deep: true, flush: 'sync' },
-);
+  select: (_id, record) => editable(record as Keyword),
+  snapshot: (_id, record) => stringify(editable(toRaw(record) as Keyword)),
+});
+async function flushWorkspaceChanges() {
+  await Promise.all([businessChanges.flush(), keywordChanges.flush()]);
+}
 export function syncCloudWorkspace() {
   return syncFlight.run(runCloudSync);
 }
@@ -393,22 +431,25 @@ async function runCloudSync() {
       initialized = scope;
       known.clear();
       businessKnown.clear();
+      businessChanges.reset();
+      keywordChanges.reset();
       revisions = restoreCachedRevisions(scope);
       if (Object.keys(revisions).length > 0) {
         for (const record of state.keywords)
-          known.set(record.id, JSON.stringify(editable(record)));
+          known.set(record.id, stringify(editable(record)));
         for (const [key, value] of businessEntries())
-          businessKnown.set(key, JSON.stringify(value));
+          businessKnown.set(key, stringify(value));
         cloudWorkspace.ready = true;
       }
     }
+    await flushWorkspaceChanges();
     if (pending.size > 0) {
       const updates = [...pending]
         .slice(0, 100)
         .map(([id, patch]) => ({ id, patch }));
       await cloudRequest('server_patch_keywords', { updates });
       for (const { id, patch } of updates) {
-        known.set(id, JSON.stringify(patch));
+        known.set(id, stringify(patch));
         if (JSON.stringify(pending.get(id)) === JSON.stringify(patch))
           pending.delete(id);
       }
@@ -422,7 +463,7 @@ async function runCloudSync() {
         if (JSON.stringify(businessPending.get(key)) === JSON.stringify(value))
           businessPending.delete(key);
         if (value === null) businessKnown.delete(key);
-        else businessKnown.set(key, JSON.stringify(value));
+        else businessKnown.set(key, stringify(value));
       }
     }
     const snapshot = serverMode
@@ -447,6 +488,7 @@ async function runCloudSync() {
           business,
           revisions: {} as Record<string, string>,
         }));
+    await flushWorkspaceChanges();
     const business = snapshot.business;
     applying.value = true;
 
@@ -464,7 +506,7 @@ async function runCloudSync() {
             session.user?.role === 'admin' ||
             !/^(branding|preferences):/.test(key)
           )
-            businessKnown.set(key, JSON.stringify(value));
+            businessKnown.set(key, stringify(value));
         for (const [key, value] of businessPending) {
           if (value === null) entries.delete(key);
           else entries.set(key, value);
@@ -503,7 +545,7 @@ async function runCloudSync() {
             ...record,
             ...pending.get(record.id),
           } as Keyword;
-          known.set(record.id, JSON.stringify(editable(record)));
+          known.set(record.id, stringify(editable(record)));
           if (local) {
             Object.assign(local, merged);
             return local;
@@ -532,6 +574,8 @@ async function runCloudSync() {
       storeCachedRevisions(scope);
     } finally {
       applying.value = false;
+      businessChanges.acceptRemote();
+      keywordChanges.acceptRemote();
     }
     cloudWorkspace.active = new Set(
       state.tasks
@@ -564,9 +608,12 @@ async function runPagedSync() {
       pending.clear();
       businessKnown.clear();
       businessPending.clear();
+      businessChanges.reset();
+      keywordChanges.reset();
       monitorRevision = '';
       pagedScope = scope;
     }
+    await flushWorkspaceChanges();
     if (pending.size > 0) {
       const updates = [...pending]
         .slice(0, 100)
@@ -575,7 +622,7 @@ async function runPagedSync() {
       for (const { id, patch } of updates) {
         if (JSON.stringify(pending.get(id)) === JSON.stringify(patch))
           pending.delete(id);
-        known.set(id, JSON.stringify(patch));
+        known.set(id, stringify(patch));
       }
     }
     if (businessPending.size > 0) {
@@ -583,27 +630,37 @@ async function runPagedSync() {
         .slice(0, 1000)
         .map(([key, value]) => ({ key, value }));
       await cloudRequest('server_workspace_sync', { entries, patch: true });
+      const currentEntries = businessEntries();
       for (const { key, value } of entries) {
         if (JSON.stringify(businessPending.get(key)) === JSON.stringify(value))
           businessPending.delete(key);
         if (value === null) businessKnown.delete(key);
         else {
-          const current = businessEntries().get(key);
-          businessKnown.set(key, JSON.stringify(current));
+          const current = currentEntries.get(key);
+          businessKnown.set(key, stringify(current));
         }
       }
     }
-    const monitorSnapshot = readMode.value === 'monitor'
-      ? cloudRequest<{ revision: string; entries?: Array<{ key: string; value: object }>; products?: unknown[] }>('server_monitor_workspace', { revision: monitorRevision })
-      : Promise.resolve(undefined);
-    const [result, monitor] = await Promise.all([cloudRequest<{
-      entries: Array<{ key: string; value: object }>;
-      revisions: Record<string, string>;
-      active: number;
-      generatedAt: string;
-      indexing: boolean;
-    }>('server_workspace_bootstrap'), monitorSnapshot]);
-    if (monitor?.products?.length) applyWorkspaceRecords('products', monitor.products);
+    const monitorSnapshot =
+      readMode.value === 'monitor'
+        ? cloudRequest<{
+            revision: string;
+            entries?: Array<{ key: string; value: object }>;
+            products?: unknown[];
+          }>('server_monitor_workspace', { revision: monitorRevision })
+        : Promise.resolve(undefined);
+    const [result, monitor] = await Promise.all([
+      cloudRequest<{
+        entries: Array<{ key: string; value: object }>;
+        revisions: Record<string, string>;
+        active: number;
+        generatedAt: string;
+        indexing: boolean;
+      }>('server_workspace_bootstrap'),
+      monitorSnapshot,
+    ]);
+    if (monitor?.products?.length)
+      applyWorkspaceRecords('products', monitor.products);
     const taskSnapshot =
       readMode.value === 'tasks'
         ? await cloudRequest<{
@@ -611,13 +668,22 @@ async function runPagedSync() {
             revisions: Record<string, string>;
           }>('server_workspace_delta', { channels: ['tasks'], revisions })
         : undefined;
+    await flushWorkspaceChanges();
     applying.value = true;
     try {
       for (const { key, value } of result.entries) {
         if (!businessPending.has(key)) {
           if (key === 'branding:main') Object.assign(state.branding, value);
           if (key === 'preferences:main') Object.assign(state.settings, value);
-          businessKnown.set(key, JSON.stringify(businessEntries().get(key)));
+          businessKnown.set(
+            key,
+            stringify(
+              businessValue(
+                key,
+                key === 'branding:main' ? state.branding : state.settings,
+              ),
+            ),
+          );
         }
       }
       for (const [key, value] of [
@@ -625,30 +691,43 @@ async function runPagedSync() {
         ['preferences:main', state.settings],
       ] as const)
         if (!businessKnown.has(key) && !businessPending.has(key))
-          businessKnown.set(key, JSON.stringify(value));
+          businessKnown.set(key, stringify(value));
       if (monitor?.entries) {
         for (const collection of ['monitors', 'audit'] as const) {
-          const incoming = monitor.entries.filter(entry => entry.key.startsWith(`${collection}:`));
+          const incoming = monitor.entries.filter((entry) =>
+            entry.key.startsWith(`${collection}:`),
+          );
           for (const key of businessKnown.keys())
             if (key.startsWith(`${collection}:`)) businessKnown.delete(key);
-          const values = new Map(incoming.map(entry => [entry.key, entry.value]));
-          for (const entry of incoming) businessKnown.set(entry.key, JSON.stringify(entry.value));
+          const values = new Map(
+            incoming.map((entry) => [entry.key, entry.value]),
+          );
+          for (const entry of incoming)
+            businessKnown.set(entry.key, stringify(entry.value));
           for (const [key, value] of businessPending)
             if (key.startsWith(`${collection}:`)) {
               if (value === null) values.delete(key);
-              else values.set(key, { ...values.get(key), ...(value as object) });
+              else
+                values.set(key, { ...values.get(key), ...(value as object) });
             }
-          (state[collection] as unknown[]).splice(0, state[collection].length, ...values.values());
+          (state[collection] as unknown[]).splice(
+            0,
+            state[collection].length,
+            ...values.values(),
+          );
         }
-        for (const entry of monitor.entries.filter(entry => entry.key.startsWith('legacyTasks:'))) {
+        for (const entry of monitor.entries.filter((entry) =>
+          entry.key.startsWith('legacyTasks:'),
+        )) {
           const task = entry.value as Task;
-          const existing = state.tasks.find(item => item.id === task.id);
+          const existing = state.tasks.find((item) => item.id === task.id);
           if (existing) Object.assign(existing, task);
           else state.tasks.push(task);
         }
         monitorRevision = monitor.revision;
       }
-      if (readMode.value === 'monitor') cloudWorkspace.taskRevision = result.revisions.tasks || '';
+      if (readMode.value === 'monitor')
+        cloudWorkspace.taskRevision = result.revisions.tasks || '';
       if (taskSnapshot) {
         const tasks = taskSnapshot;
         if (tasks.tasks) {
@@ -662,6 +741,8 @@ async function runPagedSync() {
       }
     } finally {
       applying.value = false;
+      businessChanges.acceptRemote();
+      keywordChanges.acceptRemote();
     }
     cloudWorkspace.publishedRevision = result.revisions.published || '';
     cloudWorkspace.indexing = result.indexing;
@@ -707,7 +788,9 @@ async function doSubmitCloudResearch(
         }
       : {}),
     sorftimeRequestLimit: input.sorftimeRequestLimit,
-    ...(input.semrushRefreshMetrics === true ? { semrushRefreshMetrics: true } : {}),
+    ...(input.semrushRefreshMetrics === true
+      ? { semrushRefreshMetrics: true }
+      : {}),
     ...(input.socialTrends ? { socialTrends: input.socialTrends } : {}),
     ...(existingRecords ? { existingRecords } : {}),
   };
@@ -757,10 +840,16 @@ export async function cancelCloudJob(jobId: string) {
   void syncCloudWorkspace().catch(() => {});
 }
 const resumeFlights = new Map<string, Promise<unknown>>();
-export async function resumePartialCloudJob(jobId: string, retryFailures = false) {
+export async function resumePartialCloudJob(
+  jobId: string,
+  retryFailures = false,
+) {
   const existing = resumeFlights.get(jobId);
   if (existing) return existing;
-  const flight = cloudRequest<{ status?: Task['status'] }>('server_resume_partial', { jobId, retryFailures }).then(result => {
+  const flight = cloudRequest<{ status?: Task['status'] }>(
+    'server_resume_partial',
+    { jobId, retryFailures },
+  ).then((result) => {
     for (const task of state.tasks)
       if (task.cloudJobId === jobId) task.status = result.status || 'queued';
     cloudWorkspace.taskRevision = `action:${Date.now()}`;
