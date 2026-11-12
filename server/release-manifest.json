@@ -1,26 +1,37 @@
 {
-  "title": "公共内容AI翻译不限条数与搜索置灰原因提示",
-  "sourceSha": "cc7de6699181b606cb59d129073922be9fec245b",
+  "title": "采集翻译异常隔离与历史任务停止原因",
+  "sourceSha": "9181a0d50455d94c02a8960a091d636b4db50d0d",
   "featureShas": [
-    "cc7de6699181b606cb59d129073922be9fec245b"
+    "9181a0d50455d94c02a8960a091d636b4db50d0d"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/PublicContentPanel.vue",
-    "apps/web-antd/src/views/intelligence/public-content.ts",
-    "server/PUBLIC-CONTENT-SEARCH.md",
-    "server/public-content-ai-runner.mjs",
-    "server/public-content-ai-runner.test.mjs",
-    "server/public-content-ai.mjs",
-    "server/public-content-engine.mjs",
-    "server/public-content-store.mjs",
-    "server/public-content-store.test.mjs",
-    "server/public-content.test.mjs",
-    "tests/public-content.test.ts"
+    "apps/web-antd/src/views/intelligence/components/TaskProgress.vue",
+    "apps/web-antd/src/views/intelligence/task-list.ts",
+    "server/KEYWORD-TRANSLATION-ISOLATION.md",
+    "server/collection-translation-domain.mjs",
+    "server/collection-translation-optional.test.mjs",
+    "server/collection-translation.integration.test.mjs",
+    "server/collection-translation.mjs",
+    "server/discovery-ai.mjs",
+    "server/discovery-monitor-store.mjs",
+    "server/job-progress.mjs",
+    "server/keyword-store.mjs",
+    "server/market-jobs.mjs",
+    "server/platform-products-jobs.mjs",
+    "server/platform-products-provider.mjs",
+    "server/source-analysis-stage.mjs",
+    "server/source-field-store.mjs",
+    "server/store.mjs",
+    "server/task-overview.mjs",
+    "server/task-stop-evidence.mjs",
+    "server/task-stop-evidence.test.mjs",
+    "server/task-stop-reason.mjs",
+    "tests/task-list.test.ts"
   ],
   "changes": [
-    "AI翻译覆盖本次全部搜索结果，分批保存返回结果与译文，复用已有翻译并保留中断恢复和未知请求防重放",
-    "明确提示缺少来源的检索范围及适用来源，来源下拉按显示名称搜索",
-    "展示累计整理数量、模型调用次数与tokens；失败批次保留原文和其他成果并显示部分完成"
+    "关键词、商品、广告采集和入库保留原文并隔离翻译异常，复用有效翻译，不自动重放未知请求",
+    "历史停止任务从检查点、请求账本和分析子任务显示具体原因，明确区分已完成采集与未完成分析",
+    "Sorftime和模型异常保留脱敏返回预览，历史无证据时明确标记未记录"
   ],
   "database": {
     "schemaChange": false,
@@ -31,9 +42,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "53 server, 1 PGlite and 7 frontend tests passed; full Web typecheck, server-mode build, targeted lint/format and desktop/390px synthetic UI passed; pageerror=0.",
+    "development": "Server regression 117/121 passed; all four failures reproduced at unchanged baseline. Direct-save regressions 28/28 and frontend 16/16 passed; Web typecheck, server-mode development build and server bundles passed; no added lint diagnostics. Read-only MySQL probe verified all five screenshot task reasons.",
     "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "No real supplier/model calls, production authenticated UI acceptance or full repository lint."
+    "limitations": "No paid provider/model acceptance or production authenticated browser acceptance. Historical Sorftime error payload was not saved and cannot be reconstructed."
   },
   "queue": {
     "leaseCount": 23,
@@ -42,13 +53,12 @@
     "existingLanesReused": true
   },
   "configuration": {
-    "existingPlansAutoExpanded": false,
     "historicalJobsReplayed": false,
     "paidCallsForRelease": 0,
-    "searchResultLimitUnchanged": true
+    "strictExplicitTranslationRetained": true
   },
-  "id": "20261112031800-3024900a",
-  "builtAt": "2026-11-12T03:18:00.355Z",
-  "sourceDigest": "3024900a6c9a6f9bb0915d2b48b91293001f9f0dfcbc14636f51133780ccc112",
+  "id": "20261112033428-110a7c70",
+  "builtAt": "2026-11-12T03:34:28.724Z",
+  "sourceDigest": "110a7c7018c2440106bb26e86477f8bc2f287815d0b71a7e800b24704be30c1c",
   "operator": "Codex"
 }
