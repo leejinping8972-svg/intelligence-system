@@ -4,11 +4,15 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 
 import { openAdsKey } from './ads-provider.mjs';
+import { currentAiPrompt } from './ai-prompt-config.mjs';
+import { aiSystemText } from './ai-prompt-defaults.mjs';
 import { pool, putDocument, sql } from './database.mjs';
 import { modelReportText, postModel } from './model-provider.mjs';
 import { articleAction } from './public-article-details.mjs';
-import { currentAiPrompt } from './ai-prompt-config.mjs';
-import { aiSystemText } from './ai-prompt-defaults.mjs';
+import {
+  contentAiRequest,
+  parseContentAiResponse,
+} from './public-content-ai.mjs';
 import {
   CONTENT_SOURCES,
   contentPlan,
@@ -30,6 +34,20 @@ const write = (name, value, connection = pool) =>
   putDocument('workspace_documents', name, value, false, connection);
 const getJob = (id) => get(`content:job:${id}`);
 const getItem = (id) => get(`content:item:${id}`);
+async function getItems(ids) {
+  const records = new Map();
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const names = ids
+      .slice(offset, offset + 100)
+      .map((id) => `content:item:${id}`);
+    const result = await pool.query(
+      `SELECT value FROM workspace_documents WHERE name IN (${names.map((_, i) => `$${i + 1}`).join(',')})`,
+      names,
+    );
+    for (const row of result.rows) records.set(row.value.id, row.value);
+  }
+  return ids.map((id) => records.get(id)).filter(Boolean);
+}
 async function update(name, transform) {
   const c = await pool.connect();
   try {
@@ -55,7 +73,7 @@ export const contentCacheName = (step, input) =>
   `content:cache:${createHash('sha256')
     .update(
       JSON.stringify([
-        'scope-v2',
+        input.searchVersion === 2 ? 'scope-v3-paged' : 'scope-v2',
         step.source,
         step.query,
         step.scope,
@@ -63,6 +81,9 @@ export const contentCacheName = (step, input) =>
         step.language || input.language,
         input.limit,
         contentPlan(input).length,
+        ...(input.searchVersion === 2
+          ? [step.page || 1, step.cursor || '', step.offset || 0]
+          : []),
       ]),
     )
     .digest('hex')}`;
@@ -94,23 +115,23 @@ async function organize(sample) {
   const prompt = await currentAiPrompt('public_content');
   const result = await postModel(config, [
     { role: 'system', content: aiSystemText(prompt) },
-    { role: 'user', content: JSON.stringify({ items: sample }) },
+    {
+      role: 'user',
+      content: JSON.stringify({ items: contentAiRequest(sample) }),
+    },
   ]);
-  let parsed;
-  try {
-    parsed = JSON.parse(
-      modelReportText(result)
-        .replace(/^\s*```(?:json)?\s*/i, '')
-        .replace(/\s*```\s*$/, ''),
-    );
-  } catch {
-    throw new Error('模型返回不完整或不是JSON');
-  }
-  return { parsed, usage: result.usage || null, model: config.model, promptVersion: prompt.version };
+  return {
+    ...parseContentAiResponse(modelReportText(result), sample),
+    usage: result.usage || null,
+    model: config.model,
+    promptVersion: prompt.version,
+    contractVersion: 2,
+  };
 }
 const io = {
   getJob,
   getItem,
+  getItems,
   youtubeKey: readYoutubeKey,
   scrapeKey,
   organize,
@@ -359,10 +380,7 @@ export async function publicContentAction(input, user) {
       );
       items = result.rows.map((r) => r.value);
     } else {
-      const records = selected
-        ? await Promise.all(selected.itemIds.map((id) => getItem(id)))
-        : [];
-      items = records.filter(Boolean);
+      items = selected ? await getItems(selected.itemIds) : [];
     }
     return { jobs: jobs.slice(0, 40), job: selected || null, items };
   }

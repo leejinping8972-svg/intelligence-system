@@ -115,7 +115,24 @@ test('batch processing has no overall AI count cap and reuses existing translati
   assert.equal(f.job.aiUsage.total_tokens, 1250);
 });
 
-test('a failed middle batch retains successful translations and continues later batches', async () => {
+test('1000 items are organized in 100 persisted batches using a bulk item reader', async () => {
+  const f = fixture(1000);
+  let reads = 0;
+  f.io.getItems = async (ids) => {
+    reads++;
+    return ids.map((id) => f.items.get(id));
+  };
+  f.io.getItem = async () => {
+    throw new Error('must use bulk reader');
+  };
+  await f.run();
+  assert.equal(reads, 1);
+  assert.equal(f.calls.length, 100);
+  assert.equal(f.job.aiCount, 1000);
+  assert.equal(f.job.aiStatus, 'completed');
+});
+
+test('a bad row retains the other nine translations and continues later batches', async () => {
   const f = fixture();
   const organize = f.io.organize;
   f.io.organize = async (sample) => {
@@ -125,7 +142,7 @@ test('a failed middle batch retains successful translations and continues later 
   };
   await f.run();
   assert.equal(f.calls.length, 3);
-  assert.equal(f.job.aiCount, 17);
+  assert.equal(f.job.aiCount, 26);
   assert.equal(f.job.aiStatus, 'partial');
   assert.equal(f.job.status, 'partial');
   assert.equal(f.job.aiUsage.total_tokens, 270);
@@ -145,7 +162,7 @@ test('missing model rows are reported as partial without an automatic repeat', a
   assert.equal(f.job.aiCount, 10);
   assert.equal(f.job.aiStatus, 'partial');
   assert.equal(f.job.status, 'partial');
-  assert.match(f.job.aiMessage, /仅返回9\/10/);
+  assert.match(f.job.aiMessage, /保存9\/10/);
   assert.equal(f.calls.length, 2);
 });
 

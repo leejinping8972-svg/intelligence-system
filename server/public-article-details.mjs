@@ -3,6 +3,7 @@ import { load } from 'cheerio';
 import {
   ArticleError,
   articleHttpsUrl,
+  articleRetryAt,
   fetchPublicArticle,
 } from './public-article-http.mjs';
 import { parseArticleDocument } from './public-article-parser.mjs';
@@ -211,6 +212,14 @@ export async function collectArticleStep(job, step, io) {
       step.cached = true;
       return;
     }
+    const host = new URL(item.url).hostname.replace(/^www\./i, '');
+    const cooldown = job.articleCooldowns?.[host];
+    if (cooldown && Date.parse(cooldown) > Date.now()) {
+      step.status = 'rate_limited';
+      step.retryAt = cooldown;
+      step.message = `同域原文返回429，冷却至${cooldown}；保留索引并继续其他来源及AI整理`;
+      return;
+    }
     if (
       previous &&
       !step.force &&
@@ -252,6 +261,14 @@ export async function collectArticleStep(job, step, io) {
       error instanceof ArticleError
         ? error.message
         : '正文保存未完成，原索引和已有正文保留';
+    if (state === 'rate_limited') {
+      const item = await io.getItem(step.itemId);
+      job.articleCooldowns ||= {};
+      step.retryAt = error.retryAt || articleRetryAt();
+      for (const hostname of [error.hostname, new URL(item.url).hostname])
+        if (hostname)
+          job.articleCooldowns[hostname.replace(/^www\./i, '')] = step.retryAt;
+    }
     // Do not overwrite an already committed document after a metadata save failure.
     const previous = await io.getArticle(step.itemId);
     if (!previous?.document)
@@ -262,9 +279,12 @@ export async function collectArticleStep(job, step, io) {
         jobId: job.id,
       });
     await saveMetadata(previous?.document ? 'ready' : state);
-    step.status = ['blocked', 'unavailable', 'unsupported'].includes(state)
-      ? 'skipped'
-      : 'failed';
+    step.status =
+      state === 'rate_limited'
+        ? 'rate_limited'
+        : ['blocked', 'unavailable', 'unsupported'].includes(state)
+          ? 'skipped'
+          : 'failed';
     step.message = reason;
   }
   step.accounted = true;
