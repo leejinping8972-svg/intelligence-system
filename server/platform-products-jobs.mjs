@@ -208,7 +208,7 @@ export async function submitPlatformProducts(input, context = {}) {
   }
 }
 export async function upsertProduct(patch) {
-  [patch] = await translateCollectionRecords('products', [patch]);
+  [patch] = await translateCollectionRecords('products', [patch], undefined, { optional: true });
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -532,7 +532,7 @@ export async function runPlatformProducts(job, overrides = {}) {
     collect,
     saveCheckpoint,
     upsertProduct,
-    translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'product-translation' }),
+    translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'product-translation', optional: true }),
     upsertContent: upsertResourceContent,
     readProduct,
     linkKeyword,

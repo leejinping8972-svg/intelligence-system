@@ -159,6 +159,7 @@ export function jobProgress(
           else status = 'pending';
         } else if (!semrushEnabled)
           status = 'collected';
+        if (terminal && status === 'pending') status = 'not_started';
         return {
           id: record.id,
           term: record.term,
@@ -169,7 +170,7 @@ export function jobProgress(
           assessment: assess(record).status,
           status,
           message: semrushEnabled
-            ? `关键词已获取；月搜索量${unknown ? '请求结果待确认，不自动重试' : metricFailed ? '查询失败：' + (metric?.message || '') : metricDone ? '查询已处理：' + (metric?.message || '') : running ? '正在查询' : skipped ? '未执行：' + (cp.semBlockedError || cp.semBlocked) : '尚未执行'}`
+            ? `关键词已获取；月搜索量${unknown ? '请求结果待确认，不自动重试' : metricFailed ? '查询失败：' + (metric?.message || '') : metricDone ? '查询已处理：' + (metric?.message || '') : running ? '正在查询' : skipped ? '未执行：' + (cp.semBlockedError || cp.semBlocked) : terminal ? '未执行' : '尚未执行'}${record.collectionTranslation?.status === 'partial' ? '；中文翻译未完成，已保留原文' : ''}`
             : '关键词已获取；本任务未选择月搜索量，趋势请按需提交趋势采集',
           annual: Boolean(record.series?.length),
           daily: Boolean(record.trendDailyPoints?.length),

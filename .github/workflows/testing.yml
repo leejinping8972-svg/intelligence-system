@@ -40,6 +40,10 @@ jobs:
           node --test server/trend-queue.test.mjs server/job-progress.test.mjs server/domain.test.mjs workers/site-discovery/test.mjs
       - name: Keyword rerun identity and isolated persistence (synthetic data)
         run: node --test server/keyword-refresh.test.mjs
+      - name: Collection translation isolation and historical stop reasons (synthetic data)
+        run: |
+          node --test server/collection-translation.test.mjs server/collection-translation-optional.test.mjs server/collection-translation.integration.test.mjs server/task-stop-evidence.test.mjs server/source-analysis-stage.test.mjs
+          pnpm exec vitest run tests/task-list.test.ts tests/task-progress-stages.test.ts tests/keyword-task-summary.test.ts tests/task-detail-context.test.ts
       - name: Radar evidence classification and scoring (synthetic data)
         run: node --test server/radar-evidence.test.mjs server/workspace-statistics.test.mjs
       - name: Source usage accounting and bounded loading (synthetic data)

@@ -28,8 +28,15 @@ export async function configuredJson(prompt, sample, overrides = {}) {
   const raw = modelReportText(result)
     .trim()
     .replace(/^```(?:json)?\s*|\s*```$/g, '');
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch {
+    throw Object.assign(new Error('AI返回的JSON格式无效，原始返回已留存；未自动重复模型请求'), {
+      rawPreview: { kind: 'model_json', model: config.model, preview: raw.slice(0, 2500) },
+    });
+  }
   return {
-    result: JSON.parse(raw),
+    result: parsed,
     usage: { modelTokens: result.usage?.total_tokens ?? null, modelCalls: 1 },
     model: config.model,
   };
@@ -40,8 +47,13 @@ export async function fieldAnalysisRequest(request, overrides = {}) {
     request.sample,
     overrides,
   );
+  let fields;
+  try { fields = validateSourceFields(response.result, request.sample); }
+  catch (error) {
+    throw Object.assign(error, { rawPreview: { kind: 'model_fields', model: response.model, preview: JSON.stringify(response.result).slice(0, 2500) } });
+  }
   return {
-    ...validateSourceFields(response.result, request.sample),
+    ...fields,
     ...(request.sample.kind === 'products' ? { fieldCandidates: response.result } : {}),
     usage: response.usage,
     model: response.model,

@@ -72,7 +72,7 @@ export async function queueSourceFields(
   return id;
 }
 export async function runSourceFields(job, overrides = {}) {
-  const io = { pool, collect, saveCheckpoint, putDocument, translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'field-analysis-translation' }), ...overrides };
+  const io = { pool, collect, saveCheckpoint, putDocument, translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'field-analysis-translation', optional: true }), ...overrides };
   const save = io.saveCheckpoint;
   io.saveCheckpoint = async (savedJob, checkpoint, status = 'running') => {
     const connection = await io.pool.connect();
@@ -108,6 +108,8 @@ export async function runSourceFields(job, overrides = {}) {
     // prevent the successful analysis from being written.
     if (!prepared)
       [result.patch] = await io.translate(job.input.targetKind, [result.patch]);
+    if (result.patch?.collectionTranslation?.status === 'partial')
+      cp.logs.push(result.patch.collectionTranslation.message);
     const c = await io.pool.connect();
     try {
       await c.query('BEGIN');

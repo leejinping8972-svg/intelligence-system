@@ -163,116 +163,143 @@ export async function translateCollectionRecords(
   overrides,
   context = {},
 ) {
-  if (kind === 'keywords') {
-    const nested = records.flatMap((record) => [
-      ...(record.trendRelatedTop || []),
-      ...(record.trendRelatedRising || []),
-    ]);
-    if (nested.length) {
-      const translated = await translateCollectionRecords(
-        'queries',
-        nested,
-        overrides,
-        context,
-      );
-      let offset = 0;
-      records = records.map((record) => ({
-        ...record,
-        ...(record.trendRelatedTop
-          ? {
-              trendRelatedTop: record.trendRelatedTop.map(
-                () => translated[offset++],
-              ),
-            }
-          : {}),
-        ...(record.trendRelatedRising
-          ? {
-              trendRelatedRising: record.trendRelatedRising.map(
-                () => translated[offset++],
-              ),
-            }
-          : {}),
-      }));
-    }
-  }
-  const plan = planTranslations(kind, records);
-  if (!plan.items.length) return applyTranslations(records, plan, new Map());
-  const io = overrides || (await defaults(context, kind));
+  const optional = context.optional === true;
   const translated = new Map();
-  let stored = await io.read(plan.items);
-  let recoveryApplied = false;
-  for (const owner of new Set([...stored.values()].map((entry) => entry?.owner).filter(Boolean))) {
-    const result = await recoverTranslationResponse(io, owner, new Set(plan.items.filter((item) => stored.get(item.key)?.owner === owner).map((item) => stored.get(item.key).cacheKey || item.key)));
-    if (result) recoveryApplied = true;
-  }
-  if (recoveryApplied) stored = await io.read(plan.items);
-  for (const item of plan.items)
-    if (stored.get(item.key)?.status === 'complete')
-      translated.set(item.key, stored.get(item.key).text);
-  const invalid = new Map(plan.items.filter((item) => !translated.has(item.key) && stored.get(item.key)?.status === 'invalid').map((item) => [item.key, stored.get(item.key).error]));
-  if (invalid.size) throw invalidTranslationError(invalid);
-  if (plan.items.some((item) => !translated.has(item.key) && stored.get(item.key)?.owner && !inFlight.has(item.key)))
-    throw new Error('此前翻译结果尚未确认，已保留原始响应，不自动重复调用模型');
-  for (const batch of translationBatches(
-    plan.items.filter((item) => !translated.has(item.key)),
-  )) {
-    // Recheck each batch: another collection can start shared text while an
-    // earlier batch is awaiting the model. Never overwrite its in-flight owner.
-    while (true) {
-      const waiting = batch.filter(
-        (item) => !translated.has(item.key) && inFlight.has(item.key),
-      );
-      if (!waiting.length) break;
-      await Promise.all(
-        waiting.map(async (item) =>
-          translated.set(item.key, await inFlight.get(item.key)),
-        ),
-      );
-    }
-    const missing = batch.filter((item) => !translated.has(item.key));
-    if (!missing.length) continue;
-    const owner = randomUUID();
-    const task = (async () => {
-      if (await io.isCancelled?.())
-        throw new Error('任务已取消，原始采集响应已保留');
-      await io.prepareRequest?.();
-      const claimed = await io.claim(missing, owner);
-      const pending = missing.filter(
-        (item) => claimed.get(item.key)?.status !== 'complete',
-      );
-      const values = new Map(
-        missing
-          .filter((item) => claimed.get(item.key)?.status === 'complete')
-          .map((item) => [item.key, claimed.get(item.key).text]),
-      );
-      if (pending.length) {
-        let response;
-        try { response = await io.request(pending, owner); }
-        catch (error) {
-          if ((await io.readBatch?.(owner))?.status === 'received') {
-            const { issues } = await saveInvalidTranslations(io, owner, pending, error instanceof SyntaxError ? '采集翻译已返回，但JSON格式无法识别' : error.message);
-            throw invalidTranslationError(issues);
-          }
-          throw error;
-        }
-        const result = await saveTranslationResponse(io, owner, pending, response);
-        for (const [key, text] of result.values) values.set(key, text);
-        if (result.issues.size) throw invalidTranslationError(result.issues);
+  const issues = new Map();
+  let plan;
+  let io;
+  try {
+    if (kind === 'keywords') {
+      const nested = records.flatMap((record) => [
+        ...(record.trendRelatedTop || []),
+        ...(record.trendRelatedRising || []),
+      ]);
+      if (nested.length) {
+        const translated = await translateCollectionRecords(
+          'queries',
+          nested,
+          overrides,
+          context,
+        );
+        let offset = 0;
+        records = records.map((record) => ({
+          ...record,
+          ...(record.trendRelatedTop
+            ? {
+                trendRelatedTop: record.trendRelatedTop.map(
+                  () => translated[offset++],
+                ),
+              }
+            : {}),
+          ...(record.trendRelatedRising
+            ? {
+                trendRelatedRising: record.trendRelatedRising.map(
+                  () => translated[offset++],
+                ),
+              }
+            : {}),
+        }));
       }
-      return values;
-    })();
-    for (const item of missing) {
-      const itemTask = task.then((values) => values.get(item.key));
-      itemTask.catch(() => {});
-      inFlight.set(item.key, itemTask);
     }
-    try {
-      for (const [key, text] of await task) translated.set(key, text);
-    } finally {
-      for (const item of missing) inFlight.delete(item.key);
+    plan = planTranslations(kind, records);
+    if (!plan.items.length) return applyTranslations(records, plan, new Map());
+    io = overrides || (await defaults(context, kind));
+    let stored = await io.read(plan.items);
+    let recoveryApplied = false;
+    for (const owner of new Set([...stored.values()].map((entry) => entry?.owner).filter(Boolean))) {
+      const result = await recoverTranslationResponse(io, owner, new Set(plan.items.filter((item) => stored.get(item.key)?.owner === owner).map((item) => stored.get(item.key).cacheKey || item.key)));
+      if (result) recoveryApplied = true;
     }
+    if (recoveryApplied) stored = await io.read(plan.items);
+    for (const item of plan.items)
+      if (stored.get(item.key)?.status === 'complete')
+        translated.set(item.key, stored.get(item.key).text);
+    const invalid = new Map(plan.items.filter((item) => !translated.has(item.key) && stored.get(item.key)?.status === 'invalid').map((item) => [item.key, stored.get(item.key).error]));
+    if (invalid.size && !optional) throw invalidTranslationError(invalid);
+    for (const [key, message] of invalid) issues.set(key, message);
+    const unknown = plan.items.filter((item) => !translated.has(item.key) && !invalid.has(item.key) && stored.get(item.key)?.owner && !inFlight.has(item.key));
+    if (unknown.length && !optional)
+      throw new Error('此前翻译结果尚未确认，已保留原始响应，不自动重复调用模型');
+    for (const item of unknown)
+      issues.set(item.key, '此前翻译结果尚未确认，已保留原始响应，不自动重复调用模型');
+    for (const batch of translationBatches(
+      plan.items.filter((item) => !translated.has(item.key) && !issues.has(item.key)),
+    )) {
+      try {
+        // Recheck each batch: another collection can start shared text while an
+        // earlier batch is awaiting the model. Never overwrite its in-flight owner.
+        while (true) {
+          const waiting = batch.filter(
+            (item) => !translated.has(item.key) && inFlight.has(item.key),
+          );
+          if (!waiting.length) break;
+          await Promise.all(
+            waiting.map(async (item) =>
+              translated.set(item.key, await inFlight.get(item.key)),
+            ),
+          );
+        }
+        const missing = batch.filter((item) => !translated.has(item.key));
+        if (!missing.length) continue;
+        const owner = randomUUID();
+        const task = (async () => {
+          if (await io.isCancelled?.())
+            throw Object.assign(new Error('任务已取消，原始采集响应已保留'), { code: 'COLLECTION_TRANSLATION_CANCELLED' });
+          await io.prepareRequest?.();
+          const claimed = await io.claim(missing, owner);
+          const pending = missing.filter(
+            (item) => claimed.get(item.key)?.status !== 'complete',
+          );
+          const values = new Map(
+            missing
+              .filter((item) => claimed.get(item.key)?.status === 'complete')
+              .map((item) => [item.key, claimed.get(item.key).text]),
+          );
+          if (pending.length) {
+            let response;
+            try { response = await io.request(pending, owner); }
+            catch (error) {
+              if ((await io.readBatch?.(owner))?.status === 'received') {
+                const { issues } = await saveInvalidTranslations(io, owner, pending, error instanceof SyntaxError ? '采集翻译已返回，但JSON格式无法识别' : error.message);
+                throw invalidTranslationError(issues);
+              }
+              throw error;
+            }
+            const result = await saveTranslationResponse(io, owner, pending, response);
+            for (const [key, text] of result.values) values.set(key, text);
+            if (result.issues.size) throw invalidTranslationError(result.issues);
+          }
+          return values;
+        })();
+        for (const item of missing) {
+          const itemTask = task.then((values) => values.get(item.key));
+          itemTask.catch(() => {});
+          inFlight.set(item.key, itemTask);
+        }
+        try {
+          for (const [key, text] of await task) translated.set(key, text);
+        } finally {
+          for (const item of missing) inFlight.delete(item.key);
+        }
+      } catch (error) {
+        if (!optional || error.code === 'COLLECTION_TRANSLATION_CANCELLED') throw error;
+        // Successful members of a failed batch are already durable. Read them
+        // without issuing another model request; invalid/unknown claims stay put.
+        const saved = await io.read(batch);
+        for (const item of batch) {
+          if (saved.get(item.key)?.status === 'complete')
+            translated.set(item.key, saved.get(item.key).text);
+          else issues.set(item.key, saved.get(item.key)?.error || error.message);
+        }
+      }
+    }
+  } catch (error) {
+    if (!optional || error.code === 'COLLECTION_TRANSLATION_CANCELLED') throw error;
+    plan ||= planTranslations(kind, records);
+    for (const item of plan.items)
+      if (!translated.has(item.key)) issues.set(item.key, error.message);
   }
-  return applyTranslations(records, plan, translated);
+  return applyTranslations(records, plan, translated, optional ? issues : undefined);
 }
 
 export async function translateCollectedResult(

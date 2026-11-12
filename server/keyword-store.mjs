@@ -1,3 +1,4 @@
+import { applyTranslations, planTranslations } from './collection-translation-domain.mjs';
 import { cleanKeyword, naturalKey } from './domain.mjs';
 import { mergeKeyword } from './keyword-data.mjs';
 
@@ -27,6 +28,14 @@ export function createKeywordSaver({ pool, sql, prepare = async (record) => reco
         )
       ).rows[0].data;
       const merged = mergeKeyword(current, record, importOnly);
+      if (record.collectionTranslation) {
+        merged.collectionTranslation = record.collectionTranslation;
+        // A retained/manual Chinese name can satisfy a field that failed in
+        // this incoming patch. Reconcile the warning with the values we save.
+        const plan = planTranslations('keywords', [merged]);
+        const issues = new Map(plan.items.map((item) => [item.key, record.collectionTranslation.message]));
+        Object.assign(merged, applyTranslations([merged], plan, new Map(), issues)[0]);
+      }
       await c.query(
         'UPDATE research_keywords SET data=$2,updated_at=now() WHERE natural_key=$1',
         [key, merged],

@@ -6,13 +6,13 @@ import { computed, onUnmounted, ref } from 'vue';
 import { Alert, Progress, Table, Tag } from 'ant-design-vue';
 
 import { marketName } from '../data';
-import { taskStatus, taskStatuses } from '../task-list';
 import {
   resourceBudgetRows,
   resourceHasUnknownCharge,
   resourceModeLabels,
   resourceRankingLabels,
 } from '../product-resources';
+import { taskStatusInfo } from '../task-list';
 
 const props = defineProps<{ task: Task; detail?: boolean }>();
 const p = computed(() => props.task.progress);
@@ -123,7 +123,7 @@ const visibleRows = computed(() =>
   <Alert v-if="task.sourceAnalysis" class="mb-3" type="info"
     :message="`AI分析环节：完成 ${task.sourceAnalysis.completed}/${task.sourceAnalysis.total} · 执行中 ${task.sourceAnalysis.running} · 排队 ${task.sourceAnalysis.queued} · 失败 ${task.sourceAnalysis.failed} · 取消 ${task.sourceAnalysis.cancelled}`" />
   <div v-if="task.researchProgress" class="task-progress">
-    <strong>{{ taskStatuses[taskStatus(task)]?.label || task.status }}</strong>
+    <strong>{{ taskStatusInfo(task)?.label || task.status }}</strong>
     <div class="hci-toolbar">
       <span>对象 {{ task.researchProgress.done }} /
         {{ task.researchProgress.total }}</span><span

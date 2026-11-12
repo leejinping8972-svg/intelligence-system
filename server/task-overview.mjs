@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { checkpointFailureCount, checkpointStopReason } from './task-stop-reason.mjs';
+import { checkpointFailureCount, checkpointStopReason, safeTaskError, unrecordedStopReason } from './task-stop-reason.mjs';
 import { healthDiscoveryProgress } from './health-discovery-progress.mjs';
 import { ingredientTrendProgress } from './ingredient-trend-progress.mjs';
 const resourceKey = (w) =>
@@ -109,19 +109,26 @@ export function taskOverview(job, task) {
     cp.stopReason ||
     cp.error ||
     '';
-  if (input.expansionOnly && p) reason = [
+  if (['failed', 'partial'].includes(state) && !reason)
+    reason = checkpointStopReason(cp) || unrecordedStopReason;
+  const translationWarnings = [...new Set((cp.keywords || [])
+    .filter((record) => record.collectionTranslation?.status === 'partial')
+    .map((record) => record.collectionTranslation.message || '中文翻译未完成，原文已保留'))];
+  if (input.expansionOnly && p) reason = [...new Set([
+    reason ? `${['failed', 'partial'].includes(state) ? '停止原因：' : ''}${reason}` : '',
     `已得到 ${p.discovered} 个关键词（含与已有词合并的结果）；发现组合 ${p.discoveryDone}/${p.discoveryTotal}`,
     p.semrushEnabled ? `月搜索量已处理 ${p.metricProcessed}/${p.total}，成功 ${p.succeeded}，失败 ${p.failed}，未执行 ${p.metricPending}，结果待确认 ${p.metricUnknown || 0}` : '本任务未选择月搜索量',
     p.discoveryFailed ? `来源返回失败 ${p.discoveryFailed} 次` : '',
     p.metricBlockReason,
-  ].filter(Boolean).join('；');
+    ...translationWarnings.slice(0, 3),
+  ].filter(Boolean))].join('；');
   if (unknown)
-    reason = '来源扣费或请求结果未确认，停止后续收费调用；已有结果保留';
+    reason = [reason, '来源扣费或请求结果未确认，未自动重放该请求；其他已取得结果保留'].filter(Boolean).join('；');
   else if (state === 'cancelled')
     reason = '用户取消，当前请求结束后停止；已有结果保留';
   else if (['failed', 'partial'].includes(state) && !reason)
     reason =
-      checkpointStopReason(cp) || '本轮已停止，部分采集未完成；历史记录未提供更具体原因';
+      checkpointStopReason(cp) || unrecordedStopReason;
   const reasons = {
     request_limit: '达到本次请求上限，剩余步骤未采集',
     rate_limit: '来源限流，等待冷却',
@@ -161,7 +168,7 @@ export function taskOverview(job, task) {
     remaining: Math.max(0, total - processed),
     percent,
     outcome,
-    reason,
+    reason: safeTaskError(reason),
     startedAt: cp.startedAt || p?.startedAt || '',
     finishedAt: cp.finishedAt || p?.finishedAt || '',
     elapsedSeconds:
@@ -244,19 +251,25 @@ export function taskCollections(job, task, requests = []) {
   }
   const requestLog = cp.requestLog || task.researchProgress?.requestLog || [];
   const pending = [];
+  const requestError = (error) => {
+    const detail = safeTaskError(error);
+    const category = /429|Too Many Requests/i.test(detail)
+      ? '来源限流，未采集完成'
+      : /401|403|登录|权限/.test(detail)
+        ? '来源登录或权限受限'
+        : /未知|未确认|扣费/.test(detail)
+          ? '请求结果或扣费未确认，未重放'
+          : '';
+    return [category, detail].filter(Boolean).join('：') || '请求失败，历史记录未保存具体错误；已有结果保留';
+  };
   const event = (r) => ({
     at: r.timing?.startedAt || r.created_at || '',
     step: r.step,
     status: r.status,
-    message:
-      r.status === 'failed'
-        ? /429|Too Many Requests/i.test(r.error || '')
-          ? '来源限流，未采集完成'
-          : /401|403|登录|权限/.test(r.error || '')
-            ? '来源登录或权限受限'
-            : /未知|未确认|扣费/.test(r.error || '')
-              ? '请求结果或扣费未确认，未重放'
-              : '请求失败，已有结果保留'
+    message: r.status === 'failed'
+      ? requestError(r.error)
+      : r.status === 'started' && terminal(status)
+        ? '请求结果未确认，未自动重放'
         : '',
   });
   for (const request of requests) {

@@ -284,7 +284,7 @@ export async function runDiscoveryMonitor(job, overrides = {}) {
     collect,
     saveCheckpoint,
     upsertProduct,
-    translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'product-translation' }),
+    translate: (kind, records) => translateCollectionRecords(kind, records, undefined, { jobId: job.id, step: 'product-translation', optional: true }),
     read,
     putDocument,
     now: Date.now,

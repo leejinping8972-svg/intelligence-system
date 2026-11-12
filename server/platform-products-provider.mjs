@@ -243,14 +243,22 @@ async function collectProductData(request, overrides = {}) {
       clients.clear();
       // Never attach the raw cause, which can contain the MCP token.
 
-      throw new Error(
-        String(error.message)
+      const scrub = (value) => String(value)
           .replaceAll(token || '\u0000', '[已隐藏]')
           .replaceAll(
             /https:\/\/mcp\.sorftime\.com[^\s"<>]*/gi,
             'Sorftime MCP',
-          ),
-      );
+          );
+      const scrubPreview = (value) => {
+        if (typeof value === 'string') return scrub(value);
+        if (Array.isArray(value)) return value.map(scrubPreview);
+        if (value && typeof value === 'object')
+          return Object.fromEntries(Object.entries(value).map(([key, child]) => [scrub(key), scrubPreview(child)]));
+        return value;
+      };
+      throw Object.assign(new Error(scrub(error.message)), error.mcpPreview ? {
+        mcpPreview: scrubPreview(error.mcpPreview),
+      } : {});
     }
   }
   if (request.provider !== 'semrush') throw new Error('不支持的商品平台');
