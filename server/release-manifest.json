@@ -1,24 +1,18 @@
 {
-  "title": "广告手动采集不限页数与每词1000条",
-  "sourceSha": "6e8e7968705714d5c827391c7135dd7a534d6280",
+  "title": "Sorftime商品搜索空结果识别修复",
+  "sourceSha": "304dc39a766ce4f4cd04b30e9b5e820f9cdf9aec",
   "featureShas": [
-    "6e8e7968705714d5c827391c7135dd7a534d6280"
+    "304dc39a766ce4f4cd04b30e9b5e820f9cdf9aec"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/ads.vue",
-    "apps/web-antd/src/views/intelligence/components/AdsCollectDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/CollectionEstimate.vue",
-    "apps/web-antd/src/views/intelligence/components/RepeatResearchDialog.vue",
-    "server/ads-pagination.test.mjs",
-    "server/combined-discovery.test.mjs",
-    "server/market-jobs.mjs",
-    "server/task-estimate.mjs",
-    "server/task-research.mjs"
+    "server/SORFTIME-EMPTY-SEARCH.md",
+    "server/platform-products-provider.mjs",
+    "server/sorftime-empty-search.test.mjs"
   ],
   "changes": [
-    "广告观察页及入选关键词采集移除广告页数输入，数量默认及上限1000",
-    "手动任务按本词去重数量或来源分页结束停止，无隐含页数限制，保留循环游标停止及断点账本保护",
-    "重新研究保留新分页模式，耗时与请求次数按实际分页说明；旧冻结及定时任务页数预算保持原配置"
+    "商品名称搜索精确识别非错误MCP单文本No data available.作为成功空结果，保留来源信息和一次调用记录",
+    "结构化数据优先，错误、混合文本及详情解析保持原规则，不吞掉真实错误",
+    "不自动重试、补跑旧任务或修复历史账本，其他来源继续执行"
   ],
   "database": {
     "schemaChange": false,
@@ -29,9 +23,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "71/71 server tests including isolated PGlite; full web typecheck; official-like isolated web build and backend bundle; zero added lint diagnostics; four synthetic browser groups at desktop and 390px.",
+    "development": "10/10 targeted synthetic server tests; extended suite 13 pass with 3 failures reproduced unchanged on baseline 18ef24e; zero added provider lint diagnostics; syntax/diff and isolated backend bundle pass. No frontend business change.",
     "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "1000 is an upper target, not guaranteed available data or source total. Existing frozen jobs keep their original page budget. No historical batch recollection or paid provider acceptance."
+    "limitations": "No actual paid source acceptance, historical task replay or ledger repair. Empty data applies to the market/query response and does not prove product absence. Three extended suite failures preexist on baseline."
   },
   "queue": {
     "leaseCount": 23,
@@ -43,10 +37,11 @@
     "historicalJobsAutoReplayed": false,
     "paidCallsForRelease": 0,
     "backendChanges": true,
+    "frontendBusinessChanges": false,
     "dependenciesChanged": false
   },
-  "id": "20261112102037-d5e2e73f",
-  "builtAt": "2026-11-12T10:20:37.698Z",
-  "sourceDigest": "d5e2e73f8bf50fea809a65514874a39600b9be44969fbfd19f96b303eef1297e",
+  "id": "20261112112427-9f8bc46b",
+  "builtAt": "2026-11-12T11:24:27.134Z",
+  "sourceDigest": "9f8bc46bfd80907baac5843217cb8e9bfc9937bb27edf5528ea0b3bfce52da5e",
   "operator": "Codex"
 }
