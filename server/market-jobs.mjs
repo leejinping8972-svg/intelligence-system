@@ -129,26 +129,34 @@ export function validateMarketJob(input) {
     : '';
   if (input.batch !== undefined && (typeof input.batch !== 'string' || batch.length > 100 || hasControlChars(batch)))
     throw new Error('抓取批次最多100字');
+  if (input.adPagination !== undefined &&
+    (input.kind !== 'ads' || input.adPagination !== 'until_target'))
+    throw new Error('广告分页方式不正确');
+  // New manual submissions opt in. Stored jobs and automatic plans keep their
+  // explicit page budgets, including when resumed after this change.
+  const untilTarget = input.adPagination === 'until_target';
   const limits = {
-    maxPages: input.maxPages ?? 3,
-    maxAds: input.maxAds ?? 100,
+    ...(untilTarget ? {} : { maxPages: input.maxPages ?? 3 }),
+    maxAds: input.maxAds ?? (untilTarget ? 1000 : 100),
     maxSites: input.maxSites ?? 10,
     siteSearchPages: input.siteSearchPages ?? 1,
   };
   for (const [name, max] of [
     ['maxPages', 10],
-    ['maxAds', 100],
+    ['maxAds', 1000],
     ['maxSites', 20],
     ['siteSearchPages', 3],
-  ])
+  ]) {
+    if (untilTarget && name === 'maxPages') continue;
     if (
       !Number.isInteger(limits[name]) ||
       limits[name] < 1 ||
       limits[name] > max
     )
       throw new Error(
-        '广告页数1～10、每词广告1～100、每词站点1～20、搜索页数1～3',
+        '每词广告1～1000、每词站点1～20、搜索页数1～3；历史限页任务的广告页数1～10',
       );
+  }
   if (input.adStatus && !['ACTIVE', 'ALL', 'INACTIVE'].includes(input.adStatus))
     throw new Error('广告状态不正确');
   if (
@@ -169,6 +177,7 @@ export function validateMarketJob(input) {
     market: terms.length ? input.market : undefined,
     batch,
     ...limits,
+    ...(untilTarget ? { adPagination: 'until_target' } : {}),
     adStatus: input.adStatus || 'ACTIVE',
     adId: typeof input.adId === 'string' ? input.adId : undefined,
   };
@@ -466,6 +475,8 @@ export async function runMarketJob(job, overrides = {}) {
         }
       } else {
         let seenAds = new Set(cp.recordAdIds || []);
+        const untilTarget = v.adPagination === 'until_target';
+        const requestedCursors = new Set(cp.recordCursors || []);
         let count = cp.recordAds || 0,
           siteIds = new Set(cp.recordSiteIds || []);
         const current = r.direct ? null : await io.readKeyword(r.id);
@@ -485,9 +496,12 @@ export async function runMarketJob(job, overrides = {}) {
           target: v.maxAds,
           startedAt: cp.startedAt,
         });
-        for (; cp.page < v.maxPages && count < v.maxAds; cp.page++) {
+        for (; (untilTarget || cp.page < v.maxPages) && count < v.maxAds && !cp.recordSourceEnded;) {
           if (await io.isCancelled())
             return io.saveCheckpoint(job, cp, 'cancelled');
+          const requestCursor = cp.cursor || '';
+          if (untilTarget && requestedCursors.has(requestCursor))
+            throw new Error(`${r.term}：来源分页游标重复，已停止并保留结果；尚未确认来源结束`);
           const data = await io.collect(job, `ads:${cp.index}:${cp.page}`, {
             sources: ['ads'],
             record: r,
@@ -495,8 +509,13 @@ export async function runMarketJob(job, overrides = {}) {
             adStatus: v.adStatus,
             pageId: v.pageId,
           });
+          const pageIds = new Set(seenAds);
           const ads = data.ads
-            .filter((ad) => !seenAds.has(ad.id))
+            .filter((ad) => {
+              if (pageIds.has(ad.id)) return false;
+              pageIds.add(ad.id);
+              return true;
+            })
             .slice(0, v.maxAds - count);
           for (const ad of ads) {
             if (await io.isCancelled())
@@ -583,6 +602,11 @@ export async function runMarketJob(job, overrides = {}) {
           cp.recordAds = count;
           cp.recordSiteIds = [...siteIds];
           cp.cursor = data.cursor;
+          if (untilTarget) {
+            requestedCursors.add(requestCursor);
+            cp.recordCursors = [...requestedCursors];
+          }
+          cp.recordSourceEnded = !data.cursor;
           cp.logs.push(
             `${r.term}：第${cp.page + 1}页，本词累计${count}条广告，${siteIds.size}家官网；已请求${cp.requests}次`,
           );
@@ -598,9 +622,14 @@ export async function runMarketJob(job, overrides = {}) {
             },
             { siteIds: [...siteIds] },
           );
-          await io.saveCheckpoint(job, { ...cp, page: cp.page + 1 });
+          cp.page++;
+          await io.saveCheckpoint(job, { ...cp });
           if (!data.cursor) break;
         }
+        const stopReason = count >= v.maxAds
+          ? '已达到本词广告数量上限'
+          : cp.recordSourceEnded ? '来源分页已结束' : '已达到原任务页数上限';
+        cp.logs.push(`${r.term}：${stopReason}，本次采集${count}条广告；不代表广告库全部投放数量`);
         cp.sites += siteIds.size;
         if (!r.direct) await io.patchCollection(
           r.id,
@@ -610,7 +639,7 @@ export async function runMarketJob(job, overrides = {}) {
             status: 'completed',
             count,
             target: v.maxAds,
-            message: `查询已结束：${count}条广告、${siteIds.size}家已验证官网；数量为目标上限，非保证返回量`,
+            message: `${stopReason}：${count}条广告、${siteIds.size}家已验证官网；数量为目标上限，非保证返回量`,
             finishedAt: new Date().toISOString(),
           },
           { siteIds: [...siteIds] },
@@ -618,6 +647,8 @@ export async function runMarketJob(job, overrides = {}) {
         cp.recordAdIds = [];
         cp.recordAds = 0;
         cp.recordSiteIds = [];
+        cp.recordCursors = [];
+        cp.recordSourceEnded = false;
         cp.page = 0;
         cp.cursor = '';
       }

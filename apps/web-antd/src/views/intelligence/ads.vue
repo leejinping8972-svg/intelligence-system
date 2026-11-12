@@ -93,8 +93,8 @@ const advertiser = ref<Ad>();
 const form = reactive({
   market: (state.market === 'ALL' ? 'US' : state.market) as 'US' | 'MX' | 'VN',
   batch: '',
-  maxPages: 3,
-  maxAds: 100,
+  adPagination: 'until_target',
+  maxAds: 1000,
   maxSites: 10,
   adStatus: 'ACTIVE',
 });
@@ -152,7 +152,7 @@ watch(() => selected.value?.id, async (id) => {
 });
 const adResearch = ref<InstanceType<typeof AdsResearchPanel>>();
 watch([search, status, newness, platformFilter, sourceFilter, batchFilter, linkedProduct, linkedSite, keywordFilter, () => state.market], () => { page.value = 1; clear(); });
-watch([keywordInput, () => form.market, () => form.batch, () => form.maxPages, () => form.maxAds, () => form.maxSites, () => form.adStatus], () => {
+watch([keywordInput, () => form.market, () => form.batch, () => form.maxAds, () => form.maxSites, () => form.adStatus], () => {
   pendingRequest = '';
 });
 function keywordLabel(id: string) {
@@ -431,16 +431,11 @@ watch(collectedRange, () => { page.value = 1; clear(); });
           <Form.Item label="抓取批次（可选）"><Input v-model:value="form.batch" :maxlength="100" placeholder="例如：11月新品观察" /></Form.Item>
         </div>
         <div class="hci-form-grid">
-          <Form.Item label="每词最多查询页数"
-            ><InputNumber
-              v-model:value="form.maxPages"
-              :min="1"
-              :max="10" /></Form.Item
-          ><Form.Item label="每词广告数量上限"
+          <Form.Item label="每词广告数量上限"
             ><InputNumber
               v-model:value="form.maxAds"
               :min="1"
-              :max="100" /></Form.Item
+              :max="1000" /></Form.Item
           ><Form.Item label="每词验证站点上限"
             ><InputNumber
               v-model:value="form.maxSites"
@@ -460,11 +455,11 @@ watch(collectedRange, () => { page.value = 1; clear(); });
         <Alert
           type="info"
           show-icon
-          :message="`已输入 ${parsedTerms.length} 个词；广告最多请求 ${parsedTerms.length * form.maxPages} 次，按服务商额度计费。`"
+          :message="`已输入 ${parsedTerms.length} 个词；广告不限查询页数，每词最多采集 ${form.maxAds} 条，达到数量上限或来源分页结束时停止，按实际请求计费。`"
         />
         <p class="hci-subtle">
           每页通常计 1
-          credit，以接口回报为准。按所选页数与广告数采集。站点评分另外使用现有
+          credit，以接口回报为准。站点评分另外使用现有
           Semrush 额度并优先复用30天缓存。不会自动购买额度。
           结果为本次已采集数量，不代表广告库全部投放广告。
         </p>

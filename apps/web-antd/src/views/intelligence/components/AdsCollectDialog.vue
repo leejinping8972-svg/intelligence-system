@@ -27,8 +27,8 @@ const error = ref('');
 const open = ref(false);
 const router = useRouter();
 const form = reactive({
-  maxPages: 3,
-  maxAds: 100,
+  adPagination: 'until_target',
+  maxAds: 1000,
   maxSites: 10,
   siteSearchPages: 1,
   adStatus: 'ACTIVE',
@@ -52,7 +52,7 @@ const disabledMessage = computed(
 );
 let requestId = '';
 watch(
-  [() => props.keywordIds.join(','), () => form.maxPages],
+  [() => props.keywordIds.join(','), () => form.maxAds],
   () => {
     requestId = '';
   },
@@ -122,11 +122,8 @@ async function submit() {
     </p>
     <Form layout="vertical" @change="requestId = ''">
       <div class="hci-form-grid">
-        <Form.Item label="每词广告查询页数">
-          <InputNumber v-model:value="form.maxPages" :min="1" :max="10" />
-        </Form.Item>
         <Form.Item label="每词广告数量上限">
-          <InputNumber v-model:value="form.maxAds" :min="1" :max="100" />
+          <InputNumber v-model:value="form.maxAds" :min="1" :max="1000" />
         </Form.Item>
         <Form.Item label="每路每词站点上限">
           <InputNumber v-model:value="form.maxSites" :min="1" :max="20" />
@@ -134,7 +131,6 @@ async function submit() {
         <Form.Item label="Brave 每词搜索页数">
           <InputNumber v-model:value="form.siteSearchPages" :min="1" :max="3" />
         </Form.Item>
-
       </div>
       <Form.Item label="广告状态">
         <Select
@@ -154,7 +150,7 @@ async function submit() {
     <Alert
       type="info"
       show-icon
-      :message="`最多 ${keywordIds.length * form.maxPages} 次广告查询，另有 ${keywordIds.length * form.siteSearchPages} 页 Brave 搜索（含官网核验）；两路每词各最多 ${form.maxSites} 家站点，合并后去重。使用现有服务额度，站点评分优先复用 Semrush 缓存。`"
+      :message="`广告不限查询页数，每词最多采集 ${form.maxAds} 条，达到数量上限或来源分页结束时停止，按实际请求计费。另有 ${keywordIds.length * form.siteSearchPages} 页 Brave 搜索（含官网核验）；两路每词各最多 ${form.maxSites} 家站点，合并后去重。使用现有服务额度，站点评分优先复用 Semrush 缓存。`"
     />
     <p class="hci-subtle">
       提交后由服务器执行，关闭浏览器不影响任务。不会自动购买额度。

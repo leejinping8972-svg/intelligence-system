@@ -64,6 +64,7 @@ const fields = [
   'endDate',
   'fetchTranscript',
   'maxAds',
+  'adPagination',
   'maxSites',
   'siteSearchPages',
   'adStatus',

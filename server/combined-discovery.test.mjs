@@ -122,6 +122,29 @@ function fixture(
   return { job, io, keywords, docs, calls, saved, verified };
 }
 
+test('unlimited manual ad pagination continues past ten pages inside combined discovery', async () => {
+  const h = fixture();
+  h.job.input = { ...h.job.input, adPagination: 'until_target', maxAds: 1000 };
+  delete h.job.input.maxPages;
+  const collect = h.io.collect;
+  h.io.collect = async (job, step, request) => {
+    if (request.sources[0] !== 'ads') return collect(job, step, request);
+    h.calls.push({ step, request });
+    const page = Number(request.cursor || 0);
+    return {
+      ads: Array.from({ length: 30 }, (_, i) => ({ id: `synthetic-${page * 30 + i}`, landingUrls: [] })),
+      cursor: String(page + 1), creditsCharged: 1,
+    };
+  };
+  await runMarketJob(h.job, h.io);
+  const final = h.saved.at(-1);
+  assert.equal(final.status, 'completed');
+  assert.equal(final.checkpoint.ads, 1000);
+  assert.equal(final.checkpoint.advertising.requests, 34);
+  assert.equal(h.calls.filter(({ request }) => request.sources[0] === 'site_discovery').length, 1);
+  assert.equal(h.keywords.get('k').adCollection.count, 1000);
+});
+
 test('one submission runs both channels, merges domain and both evidence links, and reuses site validation/metrics', async () => {
   const h = fixture();
   await runMarketJob(h.job, h.io);

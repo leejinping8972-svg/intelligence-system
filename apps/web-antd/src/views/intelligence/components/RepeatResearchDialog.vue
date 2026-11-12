@@ -241,7 +241,11 @@ async function submit() {
             :key="key"
             :label="label"
           >
-            <InputNumber v-model:value="form[key]" :min="0" />
+            <InputNumber
+              v-model:value="form[key]"
+              :min="draft.kind === 'ads' && key === 'maxAds' ? 1 : 0"
+              :max="draft.kind === 'ads' && key === 'maxAds' ? 1000 : undefined"
+            />
           </Form.Item>
         </div>
         <p v-for="key in identityLists" :key="key" class="hci-subtle">
