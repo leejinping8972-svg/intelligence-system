@@ -1,4 +1,5 @@
 import type { ComputedRef, Ref } from 'vue';
+
 import {
   computed,
   onActivated,
@@ -8,6 +9,7 @@ import {
   shallowRef,
   watch,
 } from 'vue';
+
 import {
   applyWorkspaceRecords,
   cloudRequest,
@@ -23,7 +25,12 @@ export type ReadCollection =
   | 'products'
   | 'sites';
 export interface PageResult<T> {
-  marketSummary?: { total: number; priority: number; pending: number; selected: number };
+  marketSummary?: {
+    total: number;
+    priority: number;
+    pending: number;
+    selected: number;
+  };
   rows: T[];
   total: number;
   page: number;
@@ -72,22 +79,23 @@ export function useWorkspaceList<T extends { id: string }>(
   page: Ref<number>,
   pageSize: Ref<number>,
 ) {
-  const rows = shallowRef<T[]>([]),
-    total = ref(0),
-    loading = ref(false),
-    error = ref('');
+  const error = ref('');
+  const loading = ref(false);
+  const rows = shallowRef<T[]>([]);
+  const total = ref(0);
   const facets = ref<Record<string, any[]>>({});
   const marketSummary = shallowRef<PageResult<T>['marketSummary']>();
   let summaryMarket: unknown;
-  const sort = ref(''),
-    order = ref('descend');
-  let active = true,
-    sequence = 0;
+  const order = ref('descend');
+  const sort = ref('');
+  let active = true;
+  let sequence = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
-  let facetScope = '',
-    displayedKey = '',
-    loadedKey = '';
+  let displayedKey = '';
+  let facetScope = '';
+  let loadedKey = '';
+  let hydratedPage: PageResult<T> | undefined;
   const input = computed(() => ({
     ...query.value,
     collection,
@@ -100,13 +108,25 @@ export function useWorkspaceList<T extends { id: string }>(
     if (collection === 'advertisers') return records;
     applyWorkspaceRecords(collection, records);
     const stored = state[collection] as unknown as T[];
-    return records.map((record) => stored.find((row) => row.id === record.id)!);
+    const byId = new Map(stored.map((record) => [record.id, record]));
+    return records.map((record) => byId.get(record.id)!);
+  }
+  function display(result: PageResult<T>) {
+    if (hydratedPage !== result) {
+      rows.value = hydrate(result.rows);
+      hydratedPage = result;
+    }
+    total.value = result.total;
+    marketSummary.value = result.marketSummary;
   }
   async function reload(force = false) {
     if (!serverMode || !active || query.value.enabled === false) return;
     const ticket = ++sequence;
     const requested = input.value;
-    if (summaryMarket !== query.value.market) { marketSummary.value = undefined; summaryMarket = query.value.market; }
+    if (summaryMarket !== query.value.market) {
+      marketSummary.value = undefined;
+      summaryMarket = query.value.market;
+    }
     const requestedKey = keyOf(requested);
     const cached = cache.get(requestedKey);
     if (displayedKey !== requestedKey || controller?.signal.aborted) {
@@ -118,21 +138,18 @@ export function useWorkspaceList<T extends { id: string }>(
     if (!cached && displayedKey !== requestedKey) {
       rows.value = [];
       total.value = 0;
+      hydratedPage = undefined;
     }
     displayedKey = requestedKey;
     if (cached) {
-      rows.value = hydrate(cached.value.rows as T[]);
-      total.value = cached.value.total;
-      marketSummary.value = cached.value.marketSummary;
+      display(cached.value as PageResult<T>);
       loadedKey = requestedKey;
     }
     loading.value = !cached && loadedKey !== requestedKey;
     try {
       const result = await requestPage<T>(requested, force, signal);
       if (ticket !== sequence || !active) return;
-      rows.value = hydrate(result.rows);
-      total.value = result.total;
-      marketSummary.value = result.marketSummary;
+      display(result);
       loadedKey = requestedKey;
       page.value = result.page;
       error.value = result.error || '';
@@ -193,6 +210,7 @@ export function useWorkspaceList<T extends { id: string }>(
     controller?.abort();
     if (timer) clearTimeout(timer);
     loading.value = false;
+    hydratedPage = undefined;
   };
   onDeactivated(stop);
   onUnmounted(stop);
@@ -244,12 +262,18 @@ export function useWorkspaceList<T extends { id: string }>(
     reload,
     selectAll,
     async exportRows(ids: string[] = []): Promise<T[]> {
-      const keys = ids.length ? [...new Set(ids)] : (await selectAll()).map((row) => row.id);
+      const keys = ids.length
+        ? [...new Set(ids)]
+        : (await selectAll()).map((row) => row.id);
       const records: T[] = [];
       for (let offset = 0; offset < keys.length; offset += 50) {
         const batch = keys.slice(offset, offset + 50);
-        const result = await cloudRequest<{ rows: T[] }>('server_workspace_export', { collection, ids: batch });
-        if (result.rows.length !== batch.length) throw new Error('导出记录已变化，请刷新后重试');
+        const result = await cloudRequest<{ rows: T[] }>(
+          'server_workspace_export',
+          { collection, ids: batch },
+        );
+        if (result.rows.length !== batch.length)
+          throw new Error('导出记录已变化，请刷新后重试');
         records.push(...result.rows);
       }
       return records;
@@ -283,12 +307,12 @@ export interface OverviewSnapshot {
 }
 const overviewCache = new Map<string, OverviewSnapshot>();
 export function useOverviewSnapshot() {
-  const snapshot = shallowRef<OverviewSnapshot>(),
-    error = ref(''),
-    loading = ref(false),
-    indexing = ref(false);
-  let active = true,
-    sequence = 0;
+  const error = ref('');
+  const indexing = ref(false);
+  const loading = ref(false);
+  const snapshot = shallowRef<OverviewSnapshot>();
+  let active = true;
+  let sequence = 0;
   let controller: AbortController | undefined;
   let scope = '';
   async function reload() {
@@ -305,7 +329,7 @@ export function useOverviewSnapshot() {
     loading.value = !snapshot.value;
     try {
       const result = await cloudRequest<{
-        snapshot: OverviewSnapshot | null;
+        snapshot: null | OverviewSnapshot;
         indexing: boolean;
         error?: string;
       }>(
@@ -327,7 +351,9 @@ export function useOverviewSnapshot() {
     }
   }
   let refreshTimer: ReturnType<typeof setInterval> | undefined;
-  const startRefresh = () => { refreshTimer ??= setInterval(() => void reload(), 60_000); };
+  const startRefresh = () => {
+    refreshTimer ??= setInterval(() => void reload(), 60_000);
+  };
   startRefresh();
   watch(
     () => [session.user?.id, state.market, cloudWorkspace.publishedRevision],

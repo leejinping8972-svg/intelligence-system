@@ -1,10 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, createApp, nextTick, ref } from 'vue';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({
   request: vi.fn(),
   cloud: null as any,
   session: null as any,
+  state: null as any,
+  hydrate: vi.fn(),
 }));
 vi.mock('../apps/web-antd/src/views/intelligence/session', async () => {
   const { reactive } = await import('vue');
@@ -17,12 +20,13 @@ vi.mock('../apps/web-antd/src/views/intelligence/cloud-workspace', async () => {
   return {
     cloudRequest: mock.request,
     cloudWorkspace: mock.cloud,
-    applyWorkspaceRecords: vi.fn(),
+    applyWorkspaceRecords: mock.hydrate,
   };
 });
-vi.mock('../apps/web-antd/src/views/intelligence/data', () => ({
-  state: { market: 'ALL' },
-}));
+vi.mock('../apps/web-antd/src/views/intelligence/data', () => {
+  mock.state = { market: 'ALL', products: [] };
+  return { state: mock.state };
+});
 import { useWorkspaceList } from '../apps/web-antd/src/views/intelligence/workspace-queries';
 
 let dispose: (() => void) | undefined;
@@ -39,16 +43,19 @@ const settle = async () => {
   await vi.advanceTimersByTimeAsync(300);
   await nextTick();
 };
-function setup(market = ref('ALL')) {
-  const filter = ref(''),
-    page = ref(1),
-    pageSize = ref(20);
+function setup(
+  market = ref('ALL'),
+  collection: 'advertisers' | 'products' = 'advertisers',
+) {
+  const filter = ref('');
+  const page = ref(1);
+  const pageSize = ref(20);
   let list!: ReturnType<typeof useWorkspaceList<{ id: string }>>;
   const host = document.createElement('div');
   const app = createApp({
     setup() {
       list = useWorkspaceList(
-        'advertisers',
+        collection,
         computed(() => ({ search: filter.value, market: market.value })),
         page,
         pageSize,
@@ -64,6 +71,17 @@ beforeEach(() => {
   vi.useFakeTimers();
   mock.session.user.id = `qa-${++user}`;
   mock.request.mockReset();
+  mock.state.products = [];
+  mock.hydrate.mockReset();
+  mock.hydrate.mockImplementation((collection, records) => {
+    for (const record of records) {
+      const previous = mock.state[collection].find(
+        (row: any) => row.id === record.id,
+      );
+      if (previous) Object.assign(previous, record);
+      else mock.state[collection].push({ ...record });
+    }
+  });
   mock.request.mockImplementation(async (action, input) =>
     action === 'server_workspace_facets'
       ? { facets: {} }
@@ -76,8 +94,42 @@ afterEach(() => {
 });
 
 describe('paged workspace queries', () => {
+  it('hydrates each cached page once and restores it after a different filter fails', async () => {
+    const { list, filter, page } = setup(ref('ALL'), 'products');
+    await settle();
+    expect(mock.hydrate).toHaveBeenCalledTimes(1);
+    await list.reload();
+    expect(mock.hydrate).toHaveBeenCalledTimes(1);
+    page.value = 2;
+    await settle();
+    expect(mock.hydrate).toHaveBeenCalledTimes(2);
+    page.value = 1;
+    await settle();
+    expect(mock.hydrate).toHaveBeenCalledTimes(3);
+    mock.request.mockRejectedValue(new Error('different filter offline'));
+    filter.value = 'unavailable';
+    await settle();
+    expect(list.rows.value).toEqual([]);
+    filter.value = '';
+    await settle();
+    expect(list.rows.value[0]?.id).toBe('page1');
+    expect(mock.hydrate).toHaveBeenCalledTimes(4);
+  });
   it('keeps current market summary separate from filter totals and clears it while switching market', async () => {
-    mock.request.mockImplementation(async (action, input) => action === 'server_workspace_facets' ? { facets: {} } : { ...result('visible',input.page), total:1, marketSummary:{total:841,priority:34,pending:700,selected:17} });
+    mock.request.mockImplementation(async (action, input) =>
+      action === 'server_workspace_facets'
+        ? { facets: {} }
+        : {
+            ...result('visible', input.page),
+            total: 1,
+            marketSummary: {
+              total: 841,
+              priority: 34,
+              pending: 700,
+              selected: 17,
+            },
+          },
+    );
     const market = ref('ALL');
     const { list, filter } = setup(market);
     await settle();
@@ -86,18 +138,28 @@ describe('paged workspace queries', () => {
     filter.value = 'curcumin';
     await settle();
     expect(list.marketSummary.value?.total).toBe(841);
-    mock.request.mockImplementation((action) => action === 'server_workspace_facets' ? Promise.resolve({facets:{}}) : new Promise(()=>{}));
+    mock.request.mockImplementation((action) =>
+      action === 'server_workspace_facets'
+        ? Promise.resolve({ facets: {} })
+        : new Promise(() => {}),
+    );
     market.value = 'US';
     await settle();
     expect(list.marketSummary.value).toBeUndefined();
   });
   it('downloads only the visible page after indexing completes', async () => {
     mock.request.mockImplementation(async (action, input) =>
-      action === 'server_workspace_facets' ? { facets: {} } : { ...result('visible', input.page), indexing: false },
+      action === 'server_workspace_facets'
+        ? { facets: {} }
+        : { ...result('visible', input.page), indexing: false },
     );
     setup();
     await settle();
-    expect(mock.request.mock.calls.filter(([action]) => action === 'server_workspace_list')).toHaveLength(1);
+    expect(
+      mock.request.mock.calls.filter(
+        ([action]) => action === 'server_workspace_list',
+      ),
+    ).toHaveLength(1);
   });
   it('cancels an old filter and stops its download when the page closes', async () => {
     const { filter } = setup();
@@ -106,7 +168,13 @@ describe('paged workspace queries', () => {
     mock.request.mockImplementation((action, _input, options) => {
       if (action === 'server_workspace_list') {
         signals.push(options.signal);
-        return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+        return new Promise((_resolve, reject) =>
+          options.signal.addEventListener(
+            'abort',
+            () => reject(options.signal.reason),
+            { once: true },
+          ),
+        );
       }
       return Promise.resolve({ facets: {} });
     });
@@ -160,7 +228,9 @@ describe('paged workspace queries', () => {
     let finish!: (value: unknown) => void;
     mock.request.mockImplementation((action) =>
       action === 'server_workspace_list'
-        ? new Promise((resolve) => { finish = resolve; })
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
         : Promise.resolve({ facets: {} }),
     );
     mock.cloud.publishedRevision = `refresh-${user}`;
