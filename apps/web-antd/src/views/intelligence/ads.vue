@@ -19,6 +19,7 @@ import {
   Select,
   Tag,
   Segmented,
+  Spin,
   Table,
 } from 'ant-design-vue';
 import PageHeader from './components/PageHeader.vue';
@@ -133,6 +134,7 @@ const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.marke
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   enabled: viewTab.value !== 'advertisers', platform: platformFilter.value, source: sourceFilter.value, batch: batchFilter.value, status: status.value, newness: newness.value, keywordId: keywordFilter.value || route.query.keywordId, linkedSite: linkedSite.value, linkedProduct: linkedProduct.value,
 })), page, pageSize);
+const listLoading = computed(() => serverMode && remote.loading.value);
 listMemory.bind('sort', remote.sort);
 listMemory.bind('order', remote.order);
 const productLookup = useWorkspaceList<Product>('products', computed(() => ({ enabled: viewTab.value === 'ads', market: state.market, search: productSearch.value })), ref(1), ref(50));
@@ -279,14 +281,19 @@ watch(collectedRange, () => { page.value = 1; clear(); });
         <Select v-model:value="linkedSite" :options="siteOptions" :loading="siteLookup.loading.value" show-search :filter-option="serverMode ? false : undefined" option-filter-prop="label" allow-clear placeholder="关联独立站" aria-label="检索关联独立站" @search="value => siteSearch = value" />
         <Select v-model:value="newness" :options="discoveryFilters" aria-label="广告新旧标签" />
         <span class="hci-toolbar-end hci-subtle"
-          >{{ serverMode ? remote.total.value : rows.length }} 条广告</span
+          >{{ listLoading ? '加载中…' : `${serverMode ? remote.total.value : rows.length} 条广告` }}</span
         >
       </div>
       <div class="hci-toolbar"><CompetitorWatchPanel kind="advertiser" /><DailyDiscoveryPlan /><Segmented v-model:value="displayMode" :options="[{ label: '素材视图', value: 'cards' }, { label: '列表', value: 'list' }]" aria-label="广告显示方式" /></div>
       <WorkspaceReadStatus :error="remote.error.value" :loading="remote.loading.value" @retry="remote.reload(true)" />
+      <div v-if="listLoading" class="ad-list-loading" role="status" aria-live="polite" aria-busy="true">
+        <Spin size="large" />
+        <span>正在加载广告，请稍候…</span>
+      </div>
+      <template v-else>
       <SelectionBar :count="bulkIds.length" :total="serverMode ? remote.total.value : selectable.length" @all="selectAll" @clear="clear"><Button size="small" :disabled="!bulkIds.length || bulkIds.length > 100" @click="adResearch?.begin(bulkIds)">分析所选广告</Button><span v-if="bulkIds.length > 100" class="hci-subtle">每份报告最多100条，请缩小筛选</span></SelectionBar>
       <Empty
-        v-if="!rows.length"
+        v-if="!rows.length && !remote.error.value"
         description="暂无广告；输入关键词采集，或导入真实广告资料"
       />
       <Table v-if="displayMode === 'list' && rows.length" size="small" row-key="id" :columns="core.columns(adColumns)" :data-source="pagedRows" :pagination="false" :scroll="{ x: 'max-content' }" :row-selection="{ selectedRowKeys: bulkIds, onChange: (keys) => bulkIds = keys.map(String), getCheckboxProps: (a) => ({disabled:a.dataNature === 'demo'}) }">
@@ -335,6 +342,7 @@ watch(collectedRange, () => { page.value = 1; clear(); });
         </article>
       </div>
       <div v-if="rows.length" class="hci-list-pagination"><Pagination :current="page" :page-size="pageSize" :total="serverMode ? remote.total.value : rows.length" :show-size-changer="true" :page-size-options="['10','20','50','100']" @change="(current: number, size: number) => { page = current; pageSize = size; }" /></div>
+      </template>
     </section>
     <AdvertiserList v-else-if="viewTab === 'advertisers'" :ads="rows" :page-id="typeof route.query.pageId === 'string' ? route.query.pageId : undefined" @ads="(pageId) => { search=pageId; router.push({ path: '/ads', query: { pageId } }); }" />
     <Drawer
@@ -458,6 +466,7 @@ watch(collectedRange, () => { page.value = 1; clear(); });
           每页通常计 1
           credit，以接口回报为准。按所选页数与广告数采集。站点评分另外使用现有
           Semrush 额度并优先复用30天缓存。不会自动购买额度。
+          结果为本次已采集数量，不代表广告库全部投放广告。
         </p>
         <Alert v-if="error" type="error" :message="error" show-icon />
       </Form>
@@ -465,6 +474,15 @@ watch(collectedRange, () => { page.value = 1; clear(); });
   </main>
 </template>
 <style scoped>
+.ad-list-loading {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--ant-color-text-secondary, #64748b);
+}
 .ad-brand-link {
   display: block;
   width: 100%;
