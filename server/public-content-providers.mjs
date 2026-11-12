@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 
 import {
   discoveryRequest,
@@ -11,6 +12,11 @@ import {
   normalizeContent,
   publicUrl,
 } from './public-content-domain.mjs';
+import {
+  contentNextPage,
+  contentPageParams,
+  contentPageSize,
+} from './public-content-pagination.mjs';
 
 export class ContentProviderError extends Error {
   constructor(message, status = 'failed') {
@@ -122,10 +128,14 @@ export async function searchContentSource(step, input, io = {}) {
       step.scope ||
       (['europepmc', 'medlineplus'].includes(source) ? 'global' : 'local'),
   };
-  const perSource = Math.min(
+  const legacySize = Math.min(
     20,
     Math.max(1, Math.ceil(input.limit / Math.max(1, planLength))),
   );
+  const perSource = contentPageSize(source, input, legacySize);
+  const pageParams = contentPageParams(source, step, input);
+  const pageItems = (rows) =>
+    input.searchVersion === 2 ? rows : rows.slice(0, perSource);
   const fetcher = io.fetcher || fetch;
   let creditsCharged = null;
   let data;
@@ -143,6 +153,7 @@ export async function searchContentSource(step, input, io = {}) {
         type: 'video',
         q: query,
         maxResults: perSource,
+        ...pageParams,
         relevanceLanguage: input.language,
         regionCode: input.market,
         safeSearch: 'moderate',
@@ -189,13 +200,19 @@ export async function searchContentSource(step, input, io = {}) {
       );
     const discovery = discoveryRequest(source, query, input);
     data = await request(
-      urlWith(
-        `https://api.scrapecreators.com${discovery.path}`,
-        discovery.params,
-      ),
+      urlWith(`https://api.scrapecreators.com${discovery.path}`, {
+        ...discovery.params,
+        ...pageParams,
+      }),
       { fetcher, headers: { 'x-api-key': key } },
     );
-    raw = parseDiscovery(source, data, input, perSource, list);
+    raw = parseDiscovery(
+      source,
+      data,
+      input,
+      input.searchVersion === 2 ? Infinity : perSource,
+      list,
+    );
     creditsCharged = Number.isFinite(data.credits_charged)
       ? data.credits_charged
       : null;
@@ -212,8 +229,19 @@ export async function searchContentSource(step, input, io = {}) {
       urlWith(
         `https://api.scrapecreators.com${path}`,
         source === 'reddit'
-          ? { query, filter: 'posts', sort: 'relevance', timeframe: 'all' }
-          : { query, region: input.market, sort_by: 'relevance' },
+          ? {
+              query,
+              filter: 'posts',
+              sort: 'relevance',
+              timeframe: 'all',
+              ...pageParams,
+            }
+          : {
+              query,
+              region: input.market,
+              sort_by: 'relevance',
+              ...pageParams,
+            },
       ),
       { fetcher, headers: { 'x-api-key': key } },
     );
@@ -221,76 +249,80 @@ export async function searchContentSource(step, input, io = {}) {
       ? data.credits_charged
       : null;
     if (source === 'reddit')
-      raw = list(data.posts, 'posts')
-        .slice(0, perSource)
-        .flatMap((post) => {
-          if (post.over_18 || post.nsfw) return [];
-          const url = publicUrl(
-            `https://www.reddit.com${post.permalink || ''}`,
-            ['reddit.com'],
-          );
-          const fallback = publicUrl(post.url, ['reddit.com']);
-          const link = post.permalink ? url : fallback;
-          return link
-            ? [
-                {
-                  sourceId: String(post.name || post.id || ''),
-                  url: link,
-                  title: post.title,
-                  summary: post.selftext || '',
-                  author: post.author || '',
-                  subreddit: cleanText(post.subreddit, 100),
-                  marketBasis:
-                    'Reddit 按关键词检索，没有国家过滤；作者地区未核实',
-                  publishedAt:
-                    post.created_at_iso || dateSeconds(post.created_utc),
-                  type: post.is_video ? 'video' : 'post',
-                  thumbnail: publicUrl(post.thumbnail, [
-                    'redd.it',
-                    'redditmedia.com',
-                  ]),
-                  interactions: {
-                    likes: post.score ?? post.ups ?? null,
-                    comments: post.num_comments ?? null,
-                  },
+      raw = pageItems(list(data.posts, 'posts')).flatMap((post) => {
+        if (post.over_18 || post.nsfw) return [];
+        const url = publicUrl(`https://www.reddit.com${post.permalink || ''}`, [
+          'reddit.com',
+        ]);
+        const fallback = publicUrl(post.url, ['reddit.com']);
+        const link = post.permalink ? url : fallback;
+        return link
+          ? [
+              {
+                sourceId: String(post.name || post.id || ''),
+                url: link,
+                title: post.title,
+                summary: post.selftext || '',
+                author: post.author || '',
+                subreddit: cleanText(post.subreddit, 100),
+                marketBasis:
+                  'Reddit 按关键词检索，没有国家过滤；作者地区未核实',
+                publishedAt:
+                  post.created_at_iso || dateSeconds(post.created_utc),
+                type: post.is_video ? 'video' : 'post',
+                thumbnail: publicUrl(post.thumbnail, [
+                  'redd.it',
+                  'redditmedia.com',
+                ]),
+                interactions: {
+                  likes: post.score ?? post.ups ?? null,
+                  comments: post.num_comments ?? null,
                 },
-              ]
-            : [];
-        });
-    if (source === 'tiktok')
-      raw = list(data.search_item_list, 'search_item_list')
-        .slice(0, perSource)
-        .flatMap((item) => {
-          if (!/^\d{10,30}$/.test(String(item.aweme_id))) return [];
-          const user = item.author?.unique_id;
-          const url = user
-            ? `https://www.tiktok.com/@${encodeURIComponent(user)}/video/${item.aweme_id}`
-            : `https://www.tiktok.com/@_/video/${item.aweme_id}`;
-          return [
-            {
-              sourceId: String(item.aweme_id),
-              url,
-              title: item.desc || 'TikTok 视频',
-              summary: item.desc || '',
-              author: item.author?.nickname || user || '',
-              language: item.desc_language || 'unknown',
-              marketBasis: '已传目标地区参数；不代表作者国家或观众地区已核实',
-              publishedAt: dateSeconds(item.create_time),
-              type: 'video',
-              thumbnail: publicUrl(item.video?.cover?.url_list?.[0], [
-                'tiktokcdn.com',
-                'tiktokcdn-us.com',
-                'tiktokcdn-eu.com',
-                'tiktok.com',
-              ]),
-              interactions: {
-                views: item.statistics?.play_count ?? null,
-                likes: item.statistics?.digg_count ?? null,
-                comments: item.statistics?.comment_count ?? null,
               },
+            ]
+          : [];
+      });
+    if (source === 'tiktok')
+      raw = pageItems(
+        list(
+          data.search_item_list ??
+            data.data?.search_item_list ??
+            data.aweme_list,
+          'search_item_list',
+        ),
+      ).flatMap((entry) => {
+        const item = entry?.aweme_info || entry?.aweme || entry;
+        if (!item) return [];
+        if (!/^\d{10,30}$/.test(String(item.aweme_id))) return [];
+        const user = item.author?.unique_id;
+        const url = user
+          ? `https://www.tiktok.com/@${encodeURIComponent(user)}/video/${item.aweme_id}`
+          : `https://www.tiktok.com/@_/video/${item.aweme_id}`;
+        return [
+          {
+            sourceId: String(item.aweme_id),
+            url,
+            title: item.desc || 'TikTok 视频',
+            summary: item.desc || '',
+            author: item.author?.nickname || user || '',
+            language: item.desc_language || 'unknown',
+            marketBasis: '已传目标地区参数；不代表作者国家或观众地区已核实',
+            publishedAt: dateSeconds(item.create_time),
+            type: 'video',
+            thumbnail: publicUrl(item.video?.cover?.url_list?.[0], [
+              'tiktokcdn.com',
+              'tiktokcdn-us.com',
+              'tiktokcdn-eu.com',
+              'tiktok.com',
+            ]),
+            interactions: {
+              views: item.statistics?.play_count ?? null,
+              likes: item.statistics?.digg_count ?? null,
+              comments: item.statistics?.comment_count ?? null,
             },
-          ];
-        });
+          },
+        ];
+      });
   } else if (source === 'medlineplus') {
     if (input.language === 'vi')
       throw new ContentProviderError(
@@ -302,6 +334,7 @@ export async function searchContentSource(step, input, io = {}) {
         db: input.language === 'es' ? 'healthTopicsSpanish' : 'healthTopics',
         term: query,
         retmax: perSource,
+        ...pageParams,
         rettype: 'brief',
         tool: 'IntelligencePublicContent',
       }),
@@ -318,6 +351,7 @@ export async function searchContentSource(step, input, io = {}) {
         format: 'json',
         resultType: 'core',
         pageSize: perSource,
+        ...pageParams,
       }),
       { fetcher },
     );
@@ -357,15 +391,51 @@ export async function searchContentSource(step, input, io = {}) {
     global_health: 'results',
     web_articles: 'results',
   }[source];
-  const returned = payloadKey ? data?.[payloadKey] : data?.resultList?.result;
+  const returned =
+    source === 'tiktok'
+      ? (data.search_item_list ??
+        data.data?.search_item_list ??
+        data.aweme_list)
+      : payloadKey
+        ? data?.[payloadKey]
+        : data?.resultList?.result;
+  const rawCount = Array.isArray(returned) ? returned.length : raw.length;
+  const candidates = pageItems(raw);
   return {
-    items: raw
-      .slice(0, perSource)
+    items: candidates
       .map((item) => normalizeContent(item, source, input, query))
       .filter(Boolean),
-    rawCount: Array.isArray(returned) ? returned.length : raw.length,
+    rawCount,
     pageLimit: perSource,
-    candidateCount: Math.min(raw.length, perSource),
+    candidateCount: candidates.length,
+    ...(input.searchVersion === 2
+      ? {
+          nextPage: contentNextPage(
+            source,
+            data,
+            step,
+            input,
+            rawCount,
+            perSource,
+          ),
+          pageFingerprint: createHash('sha256')
+            .update(
+              JSON.stringify(
+                raw.length
+                  ? [...new Set(raw.map((item) => item.sourceId))].sort()
+                  : returned,
+              ),
+            )
+            .digest('hex'),
+          ...(source === 'tiktok' && rawCount > 0 && candidates.length === 0
+            ? {
+                parseWarning:
+                  'TikTok返回了内容，但视频编号结构未识别；请检查字段兼容，未当作无结果',
+                schemaKeys: Object.keys(returned[0] || {}).slice(0, 30),
+              }
+            : {}),
+        }
+      : {}),
     creditsCharged,
   };
 }

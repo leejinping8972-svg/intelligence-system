@@ -304,7 +304,7 @@ test('diagnostics distinguish actual empty pages, filtered hits, and processing 
     },
   );
   assert.equal(youtube.rawCount, 12);
-  assert.equal(youtube.candidateCount, 5);
+  assert.equal(youtube.candidateCount, 12); // Parse the whole returned page before relevance filtering.
   assert.equal(youtube.items.length, 0);
   assert.equal(youtube.pageLimit, 5);
 });

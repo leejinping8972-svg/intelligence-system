@@ -12,6 +12,7 @@ import {
   validJobId,
 } from './public-content-domain.mjs';
 import { enrichContentStep } from './public-content-enrichment.mjs';
+import { appendContentPage } from './public-content-pagination.mjs';
 import {
   ContentProviderError,
   fetchContentComments,
@@ -80,6 +81,17 @@ export async function executeContentJob(job, io) {
     if (await isCancelled()) return;
     if (io.leaseSignal?.aborted) return;
     if (io.signal?.aborted) return; // Current step is still pending and safe to resume.
+    if (
+      job.mode === 'search' &&
+      !step.kind &&
+      job.input.searchVersion === 2 &&
+      job.itemIds.length >= job.input.limit
+    ) {
+      step.status = 'skipped';
+      step.message = '已达到本次结果总数上限，未再请求此页';
+      await save();
+      continue;
+    }
     step.status = 'running';
     step.usageAt = new Date().toISOString();
     await save();
@@ -190,6 +202,8 @@ export async function executeContentJob(job, io) {
         step.rawCount = result.rawCount;
         step.pageLimit = result.pageLimit;
         step.candidateCount = result.candidateCount;
+        step.pageFingerprint = result.pageFingerprint;
+        step.schemaKeys = result.schemaKeys;
         step.cached = Boolean(cached);
         step.creditsCharged = result.creditsCharged;
         step.quotaUnits = result.quotaUnits;
@@ -199,7 +213,15 @@ export async function executeContentJob(job, io) {
         if (result.rawCount === 0)
           step.message = `本页未返回候选（本组处理上限${result.pageLimit ?? '未知'}条）；不代表平台没有相关内容，未自动重复请求`;
         if (cached) step.message = '复用24小时内的结果，未重新请求来源';
+        if (job.input.searchVersion === 2) {
+          step.message = `第${step.page || 1}页返回${result.rawCount}条，安全候选${result.candidateCount ?? result.items.length}条，相关${result.items.length}条，新增${added}条${cached ? '；复用已保存页面' : ''}`;
+          if (result.parseWarning) {
+            step.status = 'failed';
+            step.message += `；${result.parseWarning}`;
+          }
+        }
         if (!cached) await io.writeCache?.(step, job.input, result);
+        appendContentPage(job, step, result);
       }
     } catch (error) {
       step.status = error.state || 'failed';

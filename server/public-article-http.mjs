@@ -33,6 +33,21 @@ export class ArticleError extends Error {
     this.state = state;
   }
 }
+export function articleRetryAt(value, now = Date.now()) {
+  const seconds =
+    typeof value === 'string' && /^\d+$/.test(value.trim())
+      ? Number(value) * 1000
+      : NaN;
+  const requested = Number.isFinite(seconds)
+    ? now + seconds
+    : Date.parse(value);
+  return new Date(
+    Math.max(
+      now + 60_000,
+      Number.isFinite(requested) && requested < 8.64e15 ? requested : 0,
+    ),
+  ).toISOString();
+}
 export function articleHttpsUrl(value) {
   try {
     const url = new URL(value);
@@ -121,12 +136,15 @@ export function readPublicArticleOnce(url, addresses) {
             404: 'unavailable',
             429: 'rate_limited',
           };
-          reject(
-            new ArticleError(
-              `原文 HTTP ${status}，未绕过访问限制`,
-              states[status] || 'failed',
-            ),
+          const error = new ArticleError(
+            `原文 HTTP ${status}，未绕过访问限制`,
+            states[status] || 'failed',
           );
+          if (status === 429) {
+            error.retryAt = articleRetryAt(response.headers['retry-after']);
+            error.hostname = url.hostname;
+          }
+          reject(error);
           return;
         }
         if (

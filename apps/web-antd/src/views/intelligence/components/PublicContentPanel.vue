@@ -527,7 +527,7 @@ onUnmounted(() => {
             <InputNumber
               v-model:value="form.limit"
               :min="5"
-              :max="100"
+              :max="1000"
               :precision="0"
               aria-label="公共内容结果上限"
             />
@@ -619,7 +619,8 @@ onUnmounted(() => {
         <p class="hci-subtle">
           按需搜索，不创建定时监测。社媒和网页索引可能扣除 ScrapeCreators
           credits，YouTube 消耗 API
-          配额；每个来源每组词只请求一页，按任务总上限分摊、每组最多20条；三组词每渠道通常最多60条候选，最终入库仍受任务总上限约束。网页文章同时勾选两个范围时分别检索。24小时内相同请求优先复用结果。国家与语言用于检索，不代表作者所在地或内容语言已核实。
+          配额。结果总数上限可设为5～1000条，各来源轮流分页检索，达到上限或来源无后续结果时停止；部分来源最多支持11页。自动兼容elahring与Elah
+          Ring，实际数量取决于来源返回及相关性。网页文章同时勾选两个范围时分别检索。24小时内相同页面优先复用结果。国家与语言用于检索，不代表作者所在地或内容语言已核实。
         </p>
         <p
           v-if="sourceStatus && !sourceStatus.modelConfigured"

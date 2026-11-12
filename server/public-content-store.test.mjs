@@ -99,6 +99,24 @@ test(
         cacheInput,
       );
       assert.notEqual(localCache, globalCache);
+      const pagedInput = { ...cacheInput, searchVersion: 2, limit: 1000 };
+      const pageStep = {
+        source: 'web_articles',
+        query: 'creatine',
+        scope: 'local',
+      };
+      assert.notEqual(
+        contentCacheName(pageStep, cacheInput),
+        contentCacheName(pageStep, pagedInput),
+      );
+      assert.notEqual(
+        contentCacheName(pageStep, pagedInput),
+        contentCacheName({ ...pageStep, page: 2 }, pagedInput),
+      );
+      assert.notEqual(
+        contentCacheName({ ...pageStep, cursor: 'a' }, pagedInput),
+        contentCacheName({ ...pageStep, cursor: 'b' }, pagedInput),
+      );
       assert.notEqual(
         localCache,
         contentCacheName(
@@ -411,6 +429,41 @@ test(
         user,
       );
       assert.equal(await withPublicContentIdle(async () => true), true);
+      const largeId = randomUUID();
+      const large = await api(
+        {
+          ...submission,
+          requestId: largeId,
+          input: { ...submission.input, query: 'elahring', limit: 1000 },
+        },
+        user,
+      );
+      assert.equal(large.job.input.limit, 1000);
+      assert.equal(large.job.input.searchVersion, 2);
+      assert.deepEqual(large.job.input.queries, ['elahring', 'Elah Ring']);
+      await db.exec(`INSERT INTO workspace_documents(name,value)
+        SELECT 'content:item:pc-' || lpad(n::text,24,'0'),
+          jsonb_build_object('id','pc-' || lpad(n::text,24,'0'),'title','Synthetic capacity item')
+        FROM generate_series(1,1000) n`);
+      const ids = Array.from(
+        { length: 1000 },
+        (_, n) => `pc-${String(1000 - n).padStart(24, '0')}`,
+      );
+      large.job.itemIds = ids;
+      await db.query('UPDATE workspace_documents SET value=$1 WHERE name=$2', [
+        large.job,
+        `content:job:${largeId}`,
+      ]);
+      const largeSnapshot = await api(
+        { action: 'server_content_snapshot', jobId: largeId },
+        user,
+      );
+      assert.equal(largeSnapshot.items.length, 1000);
+      assert.deepEqual(
+        largeSnapshot.items.map((item) => item.id),
+        ids,
+      );
+      await api({ action: 'server_content_cancel', jobId: largeId }, user);
       console.log(
         'Isolated PostgreSQL API verification: submit, history, cancel, favorites, associations, transcript and article body queues/cache; zero provider calls.',
       );

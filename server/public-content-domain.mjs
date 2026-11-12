@@ -183,6 +183,13 @@ const linkIds = (value) =>
         .filter((v) => /^[\w:-]{1,120}$/.test(v)),
     ),
   ].slice(0, 20);
+const brandQueries = (query) => {
+  if (/\belahring\b/i.test(query))
+    return [query.replace(/\belahring\b/gi, 'Elah Ring')];
+  if (/\belah[\s_-]+ring\b/i.test(query))
+    return [query.replace(/\belah[\s_-]+ring\b/gi, 'elahring')];
+  return [];
+};
 export function validateContentSearch(input) {
   const query = cleanText(input.query, 200);
   if (query.length < 2) throw new Error('请填写2～200个字符的关键词或产品名称');
@@ -230,8 +237,8 @@ export function validateContentSearch(input) {
   if (scopes.includes('global') && referenceQuery.length < 2)
     throw new Error('全球参考检索词至少2个字符');
   const limit = Number(input.limit ?? 30);
-  if (!Number.isInteger(limit) || limit < 5 || limit > 100)
-    throw new Error('结果上限须为5～100条');
+  if (!Number.isInteger(limit) || limit < 5 || limit > 1000)
+    throw new Error('结果上限须为5～1000条');
   const extra = Array.isArray(input.relatedTerms)
     ? input.relatedTerms
         .map((v) => cleanText(v, 100))
@@ -247,10 +254,12 @@ export function validateContentSearch(input) {
   const queries = [
     ...new Set([
       query,
+      ...brandQueries(query),
       ...(input.includeRelated === true ? [...extra, ...translated] : []),
     ]),
   ].slice(0, 3);
   return {
+    searchVersion: 2,
     query,
     market: input.market,
     language: input.language,
@@ -261,6 +270,7 @@ export function validateContentSearch(input) {
     referenceQueries: [
       ...new Set([
         referenceQuery,
+        ...brandQueries(referenceQuery),
         ...(input.includeRelated === true
           ? aliases
               .filter(([pattern]) =>
@@ -319,7 +329,17 @@ export function normalizeContent(
         t.length > 2 &&
         !['and', 'for', 'suplemento', 'supplement', 'the', 'with'].includes(t),
     );
+  // Match joined brand names across word separators, without treating unrelated
+  // fragments (e.g. "elah" and "ring" in different sentences) as one name.
+  const joinedWords = text.replaceAll(/[\s\p{Pd}_]+/gu, '');
+  const joinedQuery = query
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replaceAll(/[\s\p{Pd}_]+/gu, '');
+  const brandMatch =
+    /^[a-z\d]{4,}$/u.test(joinedQuery) && joinedWords.includes(joinedQuery);
   const matched = words.filter((word) => text.includes(word));
+  if (brandMatch && matched.length === 0) matched.push(query);
   if (words.length > 0 && matched.length === 0) return null;
   const date =
     item.publishedAt && Number.isFinite(Date.parse(item.publishedAt))

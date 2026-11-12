@@ -80,7 +80,7 @@ test('validates bounded request and caps local expansion at three queries', () =
     { market: 'ALL' },
     { language: 'xx' },
     { sources: ['https://localhost/'] },
-    { limit: 1000 },
+    { limit: 1001 },
     { query: 'a' },
   ])
     assert.throws(() => input(extra));

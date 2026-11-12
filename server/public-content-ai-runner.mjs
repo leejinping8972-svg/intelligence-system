@@ -1,4 +1,7 @@
-import { contentAiInput, validateContentAi } from './public-content-ai.mjs';
+import {
+  contentAiInput,
+  validateContentAiItems,
+} from './public-content-ai.mjs';
 
 // This bounds one model context, not the number of items organized by a job.
 export const CONTENT_AI_BATCH_SIZE = 10;
@@ -33,7 +36,9 @@ export async function executeContentAi(job, io, { save, isCancelled }) {
       return;
     }
     const records = (
-      await Promise.all(job.itemIds.map((id) => io.getItem(id)))
+      io.getItems
+        ? await io.getItems(job.itemIds)
+        : await Promise.all(job.itemIds.map((id) => io.getItem(id)))
     ).filter(Boolean);
     job.aiTotal = records.length;
     job.aiReusedCount = records.filter((record) => record.ai).length;
@@ -83,7 +88,13 @@ export async function executeContentAi(job, io, { save, isCancelled }) {
     if (batch.status === 'returned') {
       let updates;
       try {
-        updates = validateContentAi(batch.result.parsed, batch.sample);
+        if (batch.result.parseError) throw new Error(batch.result.parseError);
+        const validated = validateContentAiItems(
+          batch.result.parsed,
+          batch.sample,
+        );
+        updates = validated.updates;
+        batch.issues = validated.issues;
       } catch (error) {
         batch.status = 'failed';
         batch.message = error.message;
@@ -94,9 +105,17 @@ export async function executeContentAi(job, io, { save, isCancelled }) {
           await io.updateItem(id, (old) => ({ ...old, ai }));
         batch.count = updates.size;
         batch.status =
-          updates.size === batch.sample.length ? 'completed' : 'partial';
-        if (batch.status === 'partial')
-          batch.message = `模型仅返回${updates.size}/${batch.sample.length}条，未自动重复调用`;
+          updates.size === batch.sample.length
+            ? 'completed'
+            : updates.size
+              ? 'partial'
+              : 'failed';
+        if (batch.status !== 'completed') {
+          const reasons = [
+            ...new Set(batch.issues.map((issue) => issue.message)),
+          ];
+          batch.message = `本批保存${updates.size}/${batch.sample.length}条；${reasons.join('；')}；仅保留校验通过项，未自动重复调用`;
+        }
       }
       summarize(job);
       await save();
