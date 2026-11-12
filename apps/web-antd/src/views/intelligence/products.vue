@@ -53,7 +53,10 @@ import {
 import { useFilteredSelection } from './resource-list';
 import { productCollectedAt } from './resource-metadata';
 import { useCoreList } from './use-core-list';
+import { useListFilterMemory } from './list-filter-memory';
+const listMemory = useListFilterMemory('products');
 const core = useCoreList('products');
+listMemory.bind('period', core.period);
 import { inNewProductPool, NEW_PRODUCT_RULES } from '../../../../../server/product-pool-domain.mjs';
 import type { Product } from './data';
 
@@ -80,18 +83,18 @@ import { serverMode } from './session';
 import { useWorkspaceList } from './workspace-queries';
 const route = useRoute();
 const router = useRouter();
-const search = ref('');
-const collectedRange = ref<string[]>([]);
-const listedRange = ref<[] | [string, string]>([]);
-const listedQuick = ref(0);
+const search = listMemory.field('search', '');
+const collectedRange = listMemory.field<string[]>('collectedRange', []);
+const listedRange = listMemory.field<[] | [string, string]>('listedRange', []);
+const listedQuick = listMemory.field('listedQuick', 0);
 function setListedQuick(days: number) {
   listedQuick.value = days;
   listedRange.value = days ? recentListingRange(days) : [];
 }
-const viewMode = ref<'cards' | 'list'>('list');
-const page = ref(1);
-const pageSize = ref(20);
-const tableSort = ref<{ key: string; order?: 'ascend' | 'descend' }>({
+const viewMode = listMemory.field<'cards' | 'list'>('viewMode', 'list');
+const page = listMemory.field('page', 1);
+const pageSize = listMemory.field('pageSize', 20);
+const tableSort = listMemory.field<{ key: string; order?: 'ascend' | 'descend' }>('tableSort', {
   key: '',
 });
 function tableChange(pagination: unknown, filters: unknown, sorter: any) {
@@ -103,20 +106,22 @@ function tableChange(pagination: unknown, filters: unknown, sorter: any) {
   remote.tableChange(pagination, filters, value.order ? value : {});
 }
 const failedImages = ref(new Set<string>());
-const category = ref('ALL');
-const sourceCategory = ref('ALL');
+const category = listMemory.field('category', 'ALL');
+const sourceCategory = listMemory.field('sourceCategory', 'ALL');
 const sourceCategoryOptions = computed(() => [{ label: '全部来源类目', value: 'ALL' }, ...(serverMode ? remote.facets.value.sourceCategory || [] : [...new Set(filteredProducts.value.flatMap(p => p.sourceCategories || []))]).map(value => ({ label: value, value }))]);
-const favorites = ref(false);
-const benefitFilter = ref('ALL');
-const ingredientFilter = ref('ALL');
-const decisionFilter = ref('ALL');
-const newProductType = ref('ALL');
-const productPool = ref(route.query.pool === 'pool' ? 'pool' : 'existing');
-const discoveredOn = ref(typeof route.query.discoveredOn === 'string' ? route.query.discoveredOn : '');
-watch(() => [route.query.pool, route.query.discoveredOn], () => {
+const favorites = listMemory.field('favorites', false);
+const benefitFilter = listMemory.field('benefitFilter', 'ALL');
+const ingredientFilter = listMemory.field('ingredientFilter', 'ALL');
+const decisionFilter = listMemory.field('decisionFilter', 'ALL');
+const newProductType = listMemory.field('newProductType', 'ALL');
+const productPool = listMemory.field('productPool', route.query.pool === 'pool' ? 'pool' : 'existing');
+const discoveredOn = listMemory.field('discoveredOn', typeof route.query.discoveredOn === 'string' ? route.query.discoveredOn : '');
+watch(() => [route.query.pool, route.query.discoveredOn], (value, previous) => {
+  if (route.path !== '/products' || (!previous && !value.some(Boolean))) return;
+  if (previous && value.every((item, index) => item === previous[index])) return;
   productPool.value = route.query.site ? 'ALL' : route.query.pool === 'pool' ? 'pool' : 'existing';
   discoveredOn.value = typeof route.query.discoveredOn === 'string' ? route.query.discoveredOn : '';
-});
+}, { immediate: true });
 const newProductTypeOptions = [
   { label: '全部新品类型', value: 'ALL' },
   { label: 'FBM新品', value: 'fbm_new' },
@@ -124,9 +129,9 @@ const newProductTypeOptions = [
   { label: '新上架商品', value: 'new_listing' },
 ];
 const decisionRulesOpen = ref(false);
-const sourceFilter = ref('ALL');
-const platformFilter = ref('ALL');
-const siteLinked = ref('ALL');
+const sourceFilter = listMemory.field('sourceFilter', 'ALL');
+const platformFilter = listMemory.field('platformFilter', 'ALL');
+const siteLinked = listMemory.field('siteLinked', 'ALL');
 const platformOptions = computed(() => [
   { label: '全部平台', value: 'ALL' },
   ...(serverMode
@@ -144,8 +149,8 @@ const sourceOptions = computed(() => [
 const selected = ref<string>();
 const compareIds = ref<string[]>([]);
 const compareOpen = ref(false);
-const siteFilter = ref('');
-const keywordFilter = ref('');
+const siteFilter = listMemory.field('siteFilter', '');
+const keywordFilter = listMemory.field('keywordFilter', '');
 const remote = useWorkspaceList<Product>(
   'products',
   computed(() => ({
@@ -172,6 +177,8 @@ const remote = useWorkspaceList<Product>(
   page,
   pageSize,
 );
+remote.sort.value = tableSort.value.key;
+remote.order.value = tableSort.value.order || 'descend';
 const availableSites = computed(() =>
   state.sites.filter(
     (site) => state.market === 'ALL' || site.market === state.market,
@@ -238,7 +245,8 @@ const ingredientOptions = computed(() => [
 ]);
 watch(
   () => route.query.site,
-  (v) => {
+  (v, previous) => {
+    if (route.path !== '/products' || (v === undefined && previous === undefined)) return;
     siteFilter.value = String(v || '');
     if (typeof v === 'string' && v) {
       search.value = '';
@@ -259,7 +267,8 @@ watch(
 );
 watch(
   () => route.query.keywordId,
-  (value) => {
+  (value, previous) => {
+    if (route.path !== '/products' || (value === undefined && previous === undefined)) return;
     keywordFilter.value = typeof value === 'string' ? value : '';
   },
   { immediate: true },
@@ -386,7 +395,7 @@ const originalPriceSortable = computed(() => {
   return currencies.length === 1 && currencies[0] !== '未记录';
 });
 watch(originalPriceSortable, (allowed) => {
-  if (!allowed && tableSort.value.key === 'core:priceOriginal')
+  if (!allowed && (!serverMode || remote.facets.value.currency) && tableSort.value.key === 'core:priceOriginal')
     tableChange({}, {}, {});
 });
 const tableColumns = computed(() =>
