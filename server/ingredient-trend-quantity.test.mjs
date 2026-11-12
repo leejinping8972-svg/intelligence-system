@@ -224,7 +224,7 @@ test('new comments after an exhausted pass are revisited even if counts do not c
   assert.equal((await f.archive.recent('comment', now)).length, 2);
 });
 
-test('post request circuit breaker reserves comment work and preserves every unfinished community', async () => {
+test('quantity limits allow more than 250 post requests and 500 total requests', async () => {
   let page = 0;
   const f = fixture(async (w) =>
     w.op === 'community'
@@ -243,14 +243,16 @@ test('post request circuit breaker reserves comment work and preserves every unf
   );
   const j = await f.finish(
     f.job(
-      plan({ communities: ['nutrition', 'Fitness'], maxCommentsPerPost: 1 }),
+      plan({ communities: ['nutrition', 'Fitness'], maxPostsPerCommunity: 150, maxCommentsPerPost: 1 }),
     ),
   );
-  assert.equal(f.calls.filter((c) => c.work.op === 'community').length, 250);
-  assert.equal(f.calls.filter((c) => c.work.op === 'comments').length, 250);
-  assert.equal(j.checkpoint.sourceRequests, 500);
+  assert.equal(f.calls.filter((c) => c.work.op === 'community').length, 300);
+  assert.equal(f.calls.filter((c) => c.work.op === 'comments').length, 300);
+  assert.equal(j.checkpoint.sourceRequests, 600);
   assert.equal(j.status, 'partial');
-  assert.match(j.checkpoint.failures.join('\n'), /后台帖子请求保护/);
+  assert.match(j.checkpoint.failures.join('\n'), /每社区帖子上限/);
+  assert.doesNotMatch(j.checkpoint.failures.join('\n'), /后台.*请求保护/);
+  assert.ok(j.checkpoint.samples.every(s => s.stateKey));
   assert.equal(j.checkpoint.coverage.length, 2);
   assert.ok(j.checkpoint.coverage.every((c) => c.scan.cursor && c.partial));
 });

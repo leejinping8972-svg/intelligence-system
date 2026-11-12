@@ -13,7 +13,6 @@ import {
   mentionMetrics,
   trendHash,
   trendPost,
-  TREND_POST_REQUEST_GUARD,
 } from './ingredient-trend-domain.mjs';
 import { stableId } from './discovery-monitor-domain.mjs';
 import {
@@ -142,9 +141,7 @@ export async function runIngredientTrend(job, io) {
     if (
       cp.phase === 'posts' &&
       cp.postQueue.length > 0 &&
-      (cp.sourceRequests <
-        (quantity ? TREND_POST_REQUEST_GUARD : plan.maxRequests) ||
-        (quantity && cp.activeSourceStep)) &&
+      (quantity || cp.sourceRequests < plan.maxRequests) &&
       (quantity || cp.seenPosts.length < plan.maxProducts)
     ) {
       const work = cp.postQueue[0],
@@ -374,9 +371,7 @@ export async function runIngredientTrend(job, io) {
       if (cp.postQueue.length > 0)
         failure(
           cp,
-          quantity
-            ? '触发后台帖子请求保护，未完成的社区保留断点，剩余额度用于评论'
-            : '来源请求或帖子上限已到，未完成的社区保留断点',
+          '来源请求或帖子上限已到，未完成的社区保留断点',
         );
       cp.postQueue = [];
       cp.phase = 'comments';
@@ -387,13 +382,16 @@ export async function runIngredientTrend(job, io) {
         ),
       );
       if (quantity) {
-        cp.samples = await prepareQuantityComments(
+        const samples = await prepareQuantityComments(
           posts,
           plan,
           cp.asOf,
           scope,
           archive,
         );
+        const previous = new Map((cp.samples || []).map(s => [s.postId, s]));
+        const summaries = await storeSamples(job, samples, archive);
+        cp.samples = summaries.map(s => previous.get(s.postId) || s);
         cp.sampleIndex = 0;
         return save();
       }

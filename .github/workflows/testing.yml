@@ -44,6 +44,8 @@ jobs:
         run: |
           node --test server/collection-translation.test.mjs server/collection-translation-optional.test.mjs server/collection-translation.integration.test.mjs server/task-stop-evidence.test.mjs server/source-analysis-stage.test.mjs
           pnpm exec vitest run tests/task-list.test.ts tests/task-progress-stages.test.ts tests/keyword-task-summary.test.ts tests/task-detail-context.test.ts
+      - name: Ingredient request limits and historical continuation (synthetic data)
+        run: node --test server/ingredient-trend-quantity.test.mjs server/ingredient-trend-resume.test.mjs server/ingredient-throughput.test.mjs server/task-resume.test.mjs
       - name: Radar evidence classification and scoring (synthetic data)
         run: node --test server/radar-evidence.test.mjs server/workspace-statistics.test.mjs
       - name: Source usage accounting and bounded loading (synthetic data)

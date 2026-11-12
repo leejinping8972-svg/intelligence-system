@@ -1,4 +1,5 @@
 import { isHealthDiscovery, prepareHealthRetry } from './health-discovery-retry.mjs';
+import { isIngredientTrendCollection, prepareIngredientTrendResume } from './ingredient-trend-resume.mjs';
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 
 // A repeated click after a lost response acknowledges the existing execution.
@@ -21,7 +22,9 @@ export async function resumePartialTask(jobId, pool, options = {}) {
     if (requests.some(row => row.status === 'started'))
       throw new Error('任务存在结果未确认的请求，已保留记录；为避免重复扣费，暂不能继续');
     if (options.retryFailures && !isHealthDiscovery(job)) throw Error('该任务暂不支持仅重试异常');
-    const checkpoint = options.retryFailures ? await prepareHealthRetry(job, c) : { ...job.checkpoint };
+    const checkpoint = options.retryFailures ? await prepareHealthRetry(job, c)
+      : isIngredientTrendCollection(job) ? await prepareIngredientTrendResume(job, c)
+        : { ...job.checkpoint };
     if (blocked) {
       const attempted = new Set(requests.map(row => row.step));
       let index = 0;

@@ -455,7 +455,8 @@ test('new v2 collection completes from an empty checkpoint through production ba
     ['community', 'comments'],
   );
   assert.ok(job.checkpoint.timings.lastArchiveMs >= 0);
-  assert.equal(job.checkpoint.samples[0].stateKey, undefined);
+  assert.ok(job.checkpoint.samples[0].stateKey);
+  assert.equal((await loadSample(job.checkpoint.samples[0], f.archive)).post.id, 'post1');
   const state = await f.archive.read(
     commentStateKey('US', 'monitor1', 'post1'),
   );

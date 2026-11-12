@@ -3,7 +3,6 @@ import {
   DAY,
   iso,
   trendHash,
-  TREND_REQUEST_GUARD,
 } from './ingredient-trend-domain.mjs';
 import {
   compactSamples,
@@ -81,8 +80,7 @@ export async function runQuantityComments(job, io, cp, archive, context) {
       ? index === cp.activeSample
       : !sample.blocked &&
         sample.pendingCount > 0 &&
-        sample.observed < plan.maxCommentsPerPost &&
-        (sample.buffered || cp.sourceRequests < TREND_REQUEST_GUARD);
+        sample.observed < plan.maxCommentsPerPost;
   const persist = async (sample, at, index) => {
     const { post, runIds: _runIds, ...state } = sample;
     const value = { ...state, lastVisitedAt: at, lastJobId: job.id };
@@ -216,11 +214,6 @@ export async function runQuantityComments(job, io, cp, archive, context) {
         sample.pendingCount > 0
       )
         reason = '每帖评论数量上限';
-      else if (
-        sample.pendingCount > 0 &&
-        cp.sourceRequests >= TREND_REQUEST_GUARD
-      )
-        reason = '后台来源请求保护';
       failure(
         cp,
         `${sample.postId}评论部分覆盖：${reason}，本次${sample.observed}条，断点已保留`,
@@ -231,7 +224,6 @@ export async function runQuantityComments(job, io, cp, archive, context) {
   cp.logs.push(
     `采集结束：${cp.posts}帖（首次入库${cp.newPosts}），回访${candidates.length}帖，本次去重评论${cp.comments}条；${plan.maxCommentsPerPost === 0 ? '评论采集已关闭；' : ''}未执行AI分析`,
   );
-  cp.samples = candidates.map(({ stateKey: _stateKey, ...summary }) => summary);
   cp.phase = 'done';
   return save(cp.failures.length > 0 ? 'partial' : 'completed');
 }

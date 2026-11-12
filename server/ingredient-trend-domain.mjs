@@ -3,9 +3,6 @@ import { createHash } from 'node:crypto';
 export const TREND_SOURCE = 'ingredient_trends';
 export const TREND_COMMUNITIES = ['Supplements', 'Nootropics', 'Biohackers'];
 export const DAY = 86_400_000;
-// Internal circuit breakers, independent of user quantity settings.
-export const TREND_REQUEST_GUARD = 500;
-export const TREND_POST_REQUEST_GUARD = 250;
 export const trendHash = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const iso = (time) => new Date(time).toISOString();
