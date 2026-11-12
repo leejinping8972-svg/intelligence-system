@@ -1,33 +1,22 @@
 {
-  "title": "公共内容1000条、品牌兼容及TikTok/AI整理修复",
-  "sourceSha": "c45d2371b64a4748c794b770c567570439932cdc",
+  "title": "公共内容视频平台登录复用",
+  "sourceSha": "4a17550355aae2c24229bb4b0a939e82a31c9332",
   "featureShas": [
-    "c45d2371b64a4748c794b770c567570439932cdc"
+    "4a17550355aae2c24229bb4b0a939e82a31c9332"
   ],
   "files": [
+    "apps/web-antd/src/views/intelligence/components/PublicContentDrawer.vue",
     "apps/web-antd/src/views/intelligence/components/PublicContentPanel.vue",
-    "server/PUBLIC-CONTENT-SEARCH.md",
-    "server/ai-prompt-defaults.mjs",
-    "server/public-article-details.mjs",
-    "server/public-article-http.mjs",
-    "server/public-content-ai-runner.mjs",
-    "server/public-content-ai-runner.test.mjs",
-    "server/public-content-ai.mjs",
-    "server/public-content-capacity.test.mjs",
-    "server/public-content-domain.mjs",
-    "server/public-content-engine.mjs",
-    "server/public-content-pagination.mjs",
-    "server/public-content-providers.mjs",
-    "server/public-content-scope.test.mjs",
-    "server/public-content-store.mjs",
-    "server/public-content-store.test.mjs",
-    "server/public-content.test.mjs"
+    "apps/web-antd/src/views/intelligence/components/PublicVideoPlayer.vue",
+    "apps/web-antd/src/views/intelligence/public-video-session.ts",
+    "server/PUBLIC-VIDEO-SESSIONS.md",
+    "tests/public-video-session.test.ts"
   ],
   "changes": [
-    "新公共内容任务最大1000条，完整解析来源页并轮流分页，移除分组平均额度及20条提前截断；旧冻结任务不自动扩量",
-    "自动兼容elahring和Elah Ring写法；TikTok支持aweme包装与嵌套列表，未知非空结构明确保存解析错误",
-    "AI使用批内短ID和可信quoteId，逐条校验并保留有效结果，坏行不再丢弃整批；非JSON保留原因及用量",
-    "正文429遵循Retry-After与至少60秒同域冷却，复用缓存并继续其他来源和AI；1000条快照及AI按100项读取"
+    "YouTube使用常规播放器域名，详情提供平台观看与刷新预览；iframe加载不冒充登录或播放成功",
+    "同一浏览器在平台完成一次登录后复用有效Cookie，按平台记忆观看偏好；列表和详情共用观看入口，不读取或保存平台凭据",
+    "不同视频安全打开平台页面，同平台最近同一视频可聚焦已有窗口；登录过期或清除Cookie后由用户重新登录",
+    "仅记录官方渠道视频下载能力核验，无OSS接入、下载或额外收费调用"
   ],
   "database": {
     "schemaChange": false,
@@ -38,9 +27,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "90 service tests, 1 isolated PGlite API integration, 9 frontend tests passed; full web typecheck, isolated server-mode build, targeted ESLint/format/diff checks; desktop and 390px synthetic UI, zero page errors.",
+    "development": "22/22 frontend tests; full web typecheck; targeted lint and format; isolated server-mode build; 11 synthetic Edge scenarios on desktop and 390px; zero page errors.",
     "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "No live provider/model acceptance. Historical TikTok raw response not retained. 1000 is a total cap, not a guarantee; Google/Instagram APIs retain documented 11-page limit. Old 5/25 job is not reprocessed."
+    "limitations": "Actual platform account login and real-video playback require user acceptance. Third-party cookie restrictions, platform challenges and session expiry still apply. Download capability verified from official documentation only; OSS not integrated."
   },
   "queue": {
     "leaseCount": 23,
@@ -51,11 +40,11 @@
   "configuration": {
     "historicalJobsAutoReplayed": false,
     "paidCallsForRelease": 0,
-    "backendChanges": true,
+    "backendChanges": false,
     "dependenciesChanged": false
   },
-  "id": "20261112091533-3c75ccd1",
-  "builtAt": "2026-11-12T09:15:33.890Z",
-  "sourceDigest": "3c75ccd11bb4b74261044a6cca040c904c1b3ec57c50bfdcd8bf8bcfec28490f",
+  "id": "20261112092916-771cf35b",
+  "builtAt": "2026-11-12T09:29:16.181Z",
+  "sourceDigest": "771cf35b3d2937348aaae7dc75c1c24840112822bd9c588d4bcc1544f10fe555",
   "operator": "Codex"
 }
