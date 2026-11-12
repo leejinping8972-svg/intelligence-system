@@ -94,6 +94,29 @@ afterEach(() => {
 });
 
 describe('paged workspace queries', () => {
+  it('shows loading before the first request and throughout the search debounce', async () => {
+    const { list, filter, page } = setup();
+    expect(list.loading.value).toBe(true);
+    await settle();
+    expect(list.loading.value).toBe(false);
+
+    filter.value = 'new batch';
+    await nextTick();
+    expect(list.loading.value).toBe(true);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(list.loading.value).toBe(true);
+    await settle();
+    expect(list.loading.value).toBe(false);
+
+    page.value = 2;
+    await nextTick();
+    expect(list.loading.value).toBe(true);
+    await settle();
+    page.value = 1;
+    await nextTick();
+    expect(list.loading.value).toBe(false);
+    await settle();
+  });
   it('hydrates each cached page once and restores it after a different filter fails', async () => {
     const { list, filter, page } = setup(ref('ALL'), 'products');
     await settle();

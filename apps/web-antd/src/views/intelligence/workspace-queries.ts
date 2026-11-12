@@ -183,6 +183,10 @@ export function useWorkspaceList<T extends { id: string }>(
     if (timer) clearTimeout(timer);
     // Invalidate before the debounce so a late response cannot replace new filters.
     sequence += 1;
+    if (serverMode && active && query.value.enabled !== false) {
+      const requestedKey = keyOf(input.value);
+      loading.value = !cache.has(requestedKey) && loadedKey !== requestedKey;
+    }
     timer = setTimeout(() => void reload(), query.value.search ? 250 : 0);
   }
   watch(input, schedule, { deep: true, immediate: true });
