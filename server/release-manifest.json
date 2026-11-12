@@ -1,22 +1,24 @@
 {
-  "title": "全站同步与交互性能优化",
-  "sourceSha": "3d3559f139ad4974d50f2df52ab05367e0d123df",
+  "title": "成分风向取消后台请求次数上限并恢复断点采集",
+  "sourceSha": "39c30b8b57e20183f59461fa442fce3d6e4273aa",
   "featureShas": [
-    "3d3559f139ad4974d50f2df52ab05367e0d123df"
+    "39c30b8b57e20183f59461fa442fce3d6e4273aa"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/cloud-workspace.ts",
-    "apps/web-antd/src/views/intelligence/workspace-change-tracker.ts",
-    "apps/web-antd/src/views/intelligence/workspace-queries.ts",
-    "server/WORKSPACE-SYNC-PERFORMANCE.md",
-    "tests/cloud-workspace.test.ts",
-    "tests/workspace-change-tracker.test.ts",
-    "tests/workspace-queries.test.ts"
+    "server/INGREDIENT-TRENDS.md",
+    "server/ingredient-throughput.test.mjs",
+    "server/ingredient-trend-domain.mjs",
+    "server/ingredient-trend-quantity-comments.mjs",
+    "server/ingredient-trend-quantity.test.mjs",
+    "server/ingredient-trend-resume.mjs",
+    "server/ingredient-trend-resume.test.mjs",
+    "server/ingredient-trend-runner.mjs",
+    "server/task-resume.mjs"
   ],
   "changes": [
-    "业务与关键词同步按记录批处理，消除每次变化同步扫描并序列化全部缓存的数据热点",
-    "回读前保留同轮本地编辑，独立请求快照保护保存途中的后续修改",
-    "复用已展示缓存页，批量建立ID索引以减少分页更新成本"
+    "取消成分数量模式累计500次与帖子250次后台请求上限，按设置数量、时间和分页结果结束",
+    "历史partial/done恢复精确归档游标，保留累计账本编号、已采评论及付费缓存",
+    "终态保留样本引用，未知请求、取消、归档歧义和更新游标保护继续生效"
   ],
   "database": {
     "schemaChange": false,
@@ -27,9 +29,9 @@
     "consistency": "skipped-by-user"
   },
   "validation": {
-    "development": "34/34 related tests, targeted lint/format/diff, server-mode development build and local synthetic UI passed. Full Web typecheck has one existing closeMenu slot error reproduced identically at unchanged baseline; no new diagnostics. Synthetic 600-record/20-row refresh mean 419.36ms to 16.16ms; 580 untouched records serialized zero times instead of 2900. Bulk cold initialization 410.19ms to 472.09ms.",
+    "development": "54/54 synthetic and isolated PGlite tests passed; server index/runner build passed; new modules lint/format passed; targeted lint comparison has no added diagnostics (64 vs 66 baseline). Read-only production preparation recovered all 416 resumable samples without writes or provider calls.",
     "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "Synthetic measurements do not establish production latency. No real provider/model or authenticated production browser acceptance; API latency may remain."
+    "limitations": "No provider/model acceptance calls; frozen v1 explicit plans unchanged. Production task continuation is separately authorized after release health/version confirmation."
   },
   "queue": {
     "leaseCount": 23,
@@ -38,12 +40,12 @@
     "existingLanesReused": true
   },
   "configuration": {
-    "historicalJobsReplayed": false,
+    "historicalJobsAutoReplayed": false,
     "paidCallsForRelease": 0,
-    "apiBehaviorChanged": false
+    "authorizedResumeTask": "74197423-7506-48ed-8c14-34516d596a8c"
   },
-  "id": "20261112041107-b98b6516",
-  "builtAt": "2026-11-12T04:11:07.723Z",
-  "sourceDigest": "b98b65166bde9a1594b6f093d1631cb9daee62272297b6677885b6a53d544222",
+  "id": "20261112071624-9599feb8",
+  "builtAt": "2026-11-12T07:16:24.591Z",
+  "sourceDigest": "9599feb836a596c8f12fea1b28cb9485d1beacf3c884c48c8a43d5a7423bc436",
   "operator": "Codex"
 }
