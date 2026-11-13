@@ -84,6 +84,10 @@ export async function mergeBusiness(key, patch, options = {}) {
       }
       await archiveCoreEvidence(kind, value.id, value, (name, snapshot, only) => putDocument('workspace_documents', name, snapshot, only, c), old);
     }
+    if (kind === 'products' && !old.id && value.dataNature === 'collected') {
+      const { queueProductKeywords } = await import('./product-keywords-store.mjs');
+      await queueProductKeywords(value, c);
+    }
     await putDocument(
       'workspace_documents',
       `business:${key}`,

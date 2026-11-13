@@ -158,7 +158,7 @@ export async function client(fetcher = fetch) {
     throw safe;
   }
 }
-async function execute(c, report, params) {
+async function execute(c, report, params, nonTrendOnly = false) {
   const schema = mcpPayload(
     await c.rpc('tools/call', {
       name: 'get_report_schema',
@@ -167,7 +167,7 @@ async function execute(c, report, params) {
   );
   if (schema.report !== report)
     throw new Error('Semrush 报告标识不匹配，已停止查询');
-  params.export_columns = semrushExportColumns(schema);
+  params.export_columns = semrushExportColumns(schema, !nonTrendOnly);
   if (!schema.parameters.database?.enum?.includes(params.database))
     throw new Error('Semrush 当前报告不支持该国家市场');
   const payload = mcpPayload(
@@ -182,19 +182,22 @@ export async function collectSemrush(request) {
   const at = new Date().toISOString();
   const market = request.markets[0];
   const term = request.keywords[0];
-  const name = cacheName(term, market);
+  const baseName = cacheName(term, market);
+  const name = request.nonTrendOnly ? `${baseName}:metrics-only` : baseName;
   if (request.semExpansion !== true && request.semrushRefreshMetrics !== true) {
     const { rows } = await pool.query(
-      'SELECT value FROM provider_configs WHERE name=$1',
-      [name],
+      'SELECT value FROM provider_configs WHERE name=$1', [name],
     );
-    const cached = rows[0]?.value;
+    let cached = rows[0]?.value;
+    if (request.nonTrendOnly && (!cached || Date.now() - Date.parse(cached.cachedAt) >= 30 * 86_400_000))
+      cached = (await pool.query('SELECT value FROM provider_configs WHERE name=$1', [baseName])).rows[0]?.value;
     if (cached && Date.now() - Date.parse(cached.cachedAt) < 30 * 86_400_000)
       return {
         ...cached.result,
+        ...(request.nonTrendOnly && cached.result.metrics ? { metrics: Object.fromEntries(Object.entries(cached.result.metrics).filter(([key]) => key !== 'searchTrend')) } : {}),
         apiUnits: 0,
         cached: true,
-        message: `使用30天内 Semrush 缓存，未重复调用；指标采集日期保留原值。${cached.result.metrics?.searchTrend ? '' : '历史缓存未包含月度趋势，可在补齐指标中勾选更新字段。'}${cached.result.message || ''}`,
+        message: request.nonTrendOnly ? '复用30天内同市场Semrush搜索指标，保留原指标日期；未采集趋势' : `使用30天内 Semrush 缓存，未重复调用；指标采集日期保留原值。${cached.result.metrics?.searchTrend ? '' : '历史缓存未包含月度趋势，可在补齐指标中勾选更新字段。'}${cached.result.message || ''}`,
       };
   }
   const { c, key, semrushKeyId } = await client();
@@ -282,13 +285,14 @@ export async function collectSemrush(request) {
     const payload = await execute(c, 'phrase_this', {
       database: market.toLowerCase(),
       phrase: term,
-    });
+    }, request.nonTrendOnly === true);
     const row = reportRows(payload).find(
       (r) =>
         rowTerm(r).toLowerCase() ===
         term.normalize('NFKC').replaceAll(/\s+/g, ' ').trim().toLowerCase(),
     );
     const metrics = row ? rowMetrics(row, market, at, 'phrase_this', payload.requestedColumns) : null;
+    if (request.nonTrendOnly && metrics) delete metrics.searchTrend;
     const complete =
       metrics?.monthlySearchVolume !== undefined &&
       metrics?.difficulty !== undefined;
@@ -298,7 +302,7 @@ export async function collectSemrush(request) {
       apiUnits: payload.metadata?.usage?.api_units,
       message: row
         ? complete
-          ? `已获取同市场 Semrush 指标；${metrics.searchTrend.status === 'collected' ? '12个月趋势已保存' : metrics.searchTrend.message}；其他缺失字段保留未知`
+          ? request.nonTrendOnly ? '已获取同市场Semrush搜索指标；未采集趋势，其他缺失字段保留未知' : `已获取同市场 Semrush 指标；${metrics.searchTrend.status === 'collected' ? '12个月趋势已保存' : metrics.searchTrend.message}；其他缺失字段保留未知`
           : 'Semrush 仅返回部分指标；搜索量或自然搜索 KD 缺项仍需补充'
         : 'Semrush 未收录该关键词，不能当成搜索量为0',
     };

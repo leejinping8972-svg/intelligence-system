@@ -20,6 +20,7 @@ function description(input) {
           ? ['商品资料补全', '为所选商品补充来源详情与已配置的趋势资料。', 'products']
           : ['商品发现与趋势补全', '按指定关键词或资源路径发现商品，并采集已配置的详情与趋势。', 'products'];
     case 'source_fields': return ['来源字段 AI 分析', '整理目标对象已保存的原文资料，提取字段并保留来源引用。', input.targetKind];
+    case 'product_keywords': return ['商品反推关键词', '从商品原文提取候选词、关联商品并补齐搜索指标，跳过趋势采集。', 'products'];
     case 'product_watch': return ['商品持续监控', '更新本市场符合监控规则的商品，保留销售与价格观察记录。', 'products'];
     case 'discovery_monitor': return [({ fbm_new: 'FBM 新品发现', regular_new: '常规新品发现', ingredients: '成分风向' })[input.plan?.kind] || '新品发现', input.plan?.sourceMode === 'ingredient_trends' ? (input.trendOperation === 'analyze' ? '分析已积累的近期成分讨论，保留原文证据与覆盖范围。' : '每日补充社区帖子与重点评论，按ID去重保留历史。') : '按监控规则与指定来源收集新品或成分线索。', 'products'];
     case 'products': return ['站点商品采集', '从指定独立站采集商品资料。', 'sites'];

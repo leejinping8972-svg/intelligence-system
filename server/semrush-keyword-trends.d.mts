@@ -16,7 +16,7 @@ export interface SemrushExtraMetrics {
   searchTrend?: SemrushSearchTrend;
 }
 export const SEMRUSH_KEYWORD_COLUMNS: string[];
-export function semrushExportColumns(schema: unknown): string[];
+export function semrushExportColumns(schema: unknown, includeTrend?: boolean): string[];
 export function validSemrushTrend(value: unknown): boolean;
 export function parseSemrushTrend(
   raw: unknown,

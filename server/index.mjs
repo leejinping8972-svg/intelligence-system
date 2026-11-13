@@ -167,6 +167,8 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action === 'server_product_keywords_submit')
+    return (await import('./product-keywords-store.mjs')).submitProductKeywords(input, user);
   if (input.action?.startsWith('server_product_watch_')) return (await import('./product-watch-store.mjs')).productWatchAction(input, user);
   if (input.action?.startsWith('server_source_fields_'))
     return sourceFieldsAction(input, user);

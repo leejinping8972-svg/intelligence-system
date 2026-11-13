@@ -6,6 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { runProductWatch, tickProductWatch } from './product-watch-store.mjs';
 import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { discoveryKinds, runDiscoveryMonitor, tickDiscoveryMonitors } from './discovery-monitor-store.mjs';
+import { runProductKeywords } from './product-keywords-store.mjs';
 import { runSourceFields } from './source-field-store.mjs';
 import { withAnalysisTask } from './source-analysis-stage.mjs';
 import { runSourceAnalysisQueue, sourceAnalysisFilter } from './source-analysis-queue.mjs';
@@ -48,6 +49,16 @@ export function jobTasks(job) {
   );
 }
 function projectKnownJob(job) {
+  if (job.input.kind === 'product_keywords') return [{
+    id: `${job.id}:${job.input.market}`, cloudJobId: job.id, market: job.input.market,
+    mode: 'live', stage: 'analysis', title: '云端 · 商品反推关键词与非趋势指标',
+    status: job.cancelled ? 'cancelled' : job.status,
+    created: job.checkpoint.submittedAt || new Date(job.created_at).toISOString(),
+    steps: [...(job.checkpoint.logs || []), ...(job.checkpoint.failures || [])],
+    collectionProgress: { kind: 'product_keywords', done: job.checkpoint.index || 0,
+      total: job.checkpoint.keywords?.length || 0, current: job.input.sample?.sources?.[0]?.text || '',
+      ads: 0, sites: 0, requests: 0, requestLimit: 0, unknownCharges: 0 },
+  }];
   if (['discovery_monitor', 'source_fields', 'product_watch'].includes(job.input.kind)) return [{
     id: `${job.id}:${job.input.market}`, cloudJobId: job.id, market: job.input.market,
     mode: 'live', stage: job.input.kind === 'source_fields' ? 'analysis' : 'products',
@@ -642,6 +653,7 @@ async function runLane(signal, trends = false) {
           );
           await withAnalysisTask(next.id, async () => {
           if (trends) await runTrendJob(next);
+          else if (next.input.kind === 'product_keywords') await runProductKeywords(next);
           else if (next.input.kind === 'product_watch') await runProductWatch(next);
           else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next, { schedulingMs });
           else if (

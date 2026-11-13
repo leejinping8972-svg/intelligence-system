@@ -41,6 +41,8 @@ import ProductMerchant from './components/ProductMerchant.vue';
 import ProductChineseName from './components/ProductChineseName.vue';
 import ProductText from './components/ProductText.vue';
 import ProductDrawer from './components/ProductDrawer.vue';
+import ProductKeywordsButton from './components/ProductKeywordsButton.vue';
+import ProductKeywordStatus from './components/ProductKeywordStatus.vue';
 import ProductResourceEvidence from './components/ProductResourceEvidence.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import SourceFieldsButton from './components/SourceFieldsButton.vue';
@@ -581,6 +583,7 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
       <FormulaInsights />
       <PlatformProductsDialog />
       <SourceFieldsButton kind="products" :ids="bulkIds" />
+      <ProductKeywordsButton :ids="bulkIds" />
       <Button :disabled="!rows.length" @click="exportProducts">
         {{
           bulkIds.length ? `导出所选（${bulkIds.length}）` : '导出商品'
@@ -803,6 +806,7 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
               @click="router.push({ path: '/research', query: { keywordId: id } })"
             >{{ keywordLabel(id) }}</Button>
             <span v-if="!product.keywordIds?.length">未关联</span>
+            <ProductKeywordStatus :product="product" />
           </div>
           <ProductText :text="`${product.size} · ${product.form}`" :translated="product.sizeZh || product.formZh ? `${product.sizeZh || product.size} · ${product.formZh || product.form}` : ''" />
           <p class="hci-subtle">
@@ -950,6 +954,7 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
             {{ keywordLabel(id) }}
           </Button>
           <span v-if="!record.keywordIds?.length" class="hci-subtle">未关联</span>
+          <ProductKeywordStatus :product="record as Product" />
         </template>
         <template v-else-if="column.key === 'decisions'">
           <ProductDecisionTags :product="record as Product" />

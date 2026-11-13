@@ -28,6 +28,7 @@ export const keywordFields = new Set([
   'market',
   'metrics',
   'productIds',
+  'productKeywordEvidence',
   'reviewNote',
   'reviewStatus',
   'seedTerm',
