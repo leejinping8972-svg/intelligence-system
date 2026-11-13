@@ -1,70 +1,45 @@
 {
-  "title": "重点监控批量操作与关键词月搜索量排序",
-  "sourceSha": "a90aacb6b5d80f92ba33f15946e428eb272631fd",
+  "title": "概念监控看板与入选关键词采集批次",
+  "sourceSha": "c0f6eb229ffd9ad5c7c049f63b6512e7299c3613",
   "featureShas": [
-    "a90aacb6b5d80f92ba33f15946e428eb272631fd"
+    "c0f6eb229ffd9ad5c7c049f63b6512e7299c3613"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/use-core-list.ts",
-    "server/competitor-monitor-store.mjs",
-    "server/keyword-volume-sort.mjs",
-    "server/monitor-bulk.mjs",
-    "server/monitor-bulk.test.mjs",
+    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
+    "apps/web-antd/src/views/intelligence/overview.vue",
+    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
+    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+    "server/CONCEPT-MONITOR.md",
+    "server/concept-monitor-domain.mjs",
+    "server/concept-monitor.mjs",
+    "server/concept-monitor.test.mjs",
     "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs",
-    "tests/keyword-volume-column.test.ts",
-    "tests/use-core-list.test.ts"
+    "server/workspace-reads.test.mjs"
   ],
   "changes": [
-    "重点监控支持跨全部筛选分页选择、批量设置、暂停和取消；只更新勾选字段，保留历史结果并逐项显示失败原因",
-    "关键词库和已入选列表支持月搜索量升降序，全量排序后分页，真实0参与排序、未知值末尾"
+    "工作台新增按采集批次汇总关键词、广告、独立站及商品总数和今日新增的概念监控看板，支持全部字段排序，默认采集时间倒序",
+    "汇总持久保存，每日北京时间09:00后台更新，请求仅读汇总表；批次搜索、市场筛选与排序后分页",
+    "入选关键词增加采集批次显示，长批次名称悬停查看"
   ],
-  "verification": "发布阶段重复测试、回归、类型、lint、隔离数据库、界面验收、独立验证构建及CI等待按用户要求跳过；沿用开发38项服务端+11项前端、Web类型、构建和合成UI验证",
+  "verification": "沿用开发20项服务端、4项前端、完整Web类型、前后端构建及桌面/390px合成验收；发布重复验证、独立验证构建与CI等待按用户要求跳过",
   "developmentVerification": {
-    "serverTests": {
-      "passed": 38,
-      "failed": 0,
-      "log": ".artifacts/server-tests-final.log"
-    },
-    "frontendTests": {
-      "passed": 11,
-      "failed": 0,
-      "log": ".artifacts/frontend-tests-final.log"
-    },
-    "webTypecheck": {
-      "exitCode": 0,
-      "log": ".artifacts/typecheck-final.log"
-    },
-    "frontendBuild": {
-      "passed": true,
-      "log": ".artifacts/build-final.log"
-    },
-    "layoutUtilities": {
-      "passed": true,
-      "log": ".artifacts/verify-build.log"
-    },
-    "apiRunnerBundle": {
-      "passed": true,
-      "log": ".artifacts/api-build-final.log"
-    },
-    "newFilesLintAndFormat": {
-      "passed": true
-    },
-    "targetedLint": {
-      "addedDiagnostics": 0,
-      "current": 177,
-      "baseline": 178,
-      "passed": false,
-      "reason": "preexisting diagnostics",
-      "evidence": ".artifacts/lint-comparison.json"
-    },
-    "ui": {
-      "syntheticDataOnly": true,
-      "evidence": ".artifacts/ui-verification.json",
-      "requests": ".artifacts/ui-requests.json"
-    }
+    "status": "awaiting-integration",
+    "sha": "c0f6eb229ffd9ad5c7c049f63b6512e7299c3613",
+    "branch": "codex/concept-monitor-board-20261113",
+    "baseline": "a25f085987395cb21f134789794864e5efcc7c82",
+    "worktree": "D:\\Project_Code\\Intelligence_System\\_worktrees\\concept-monitor-board",
+    "serverTests": 20,
+    "frontendTests": 4,
+    "typecheck": "passed",
+    "webBuild": "passed",
+    "apiBundle": "passed",
+    "ui": "passed",
+    "newModuleLint": "passed",
+    "existingLintAdded": 0,
+    "mysqlLocal": "not-run",
+    "productionDeployed": false,
+    "testingChanged": false,
+    "paidCalls": 0
   },
   "skipped": [
     "release-repeat-tests",
@@ -78,8 +53,12 @@
     "migration": false,
     "consistency": "skipped-by-user"
   },
+  "limitations": [
+    "09:00之后新增在下次汇总展示",
+    "历史缺首次发现时间时按现有采集时间计算新增；被覆盖且无广告留存的批次无法还原"
+  ],
   "operator": "Codex",
-  "id": "20261113061834-fc1893ee",
-  "builtAt": "2026-11-13T06:18:34.835Z",
-  "sourceDigest": "fc1893ee3ea145efd3abc77cb1384804ce1b29127a84fe395ecc5bcd892766ee"
+  "id": "20261113092937-6d83a064",
+  "builtAt": "2026-11-13T09:29:37.025Z",
+  "sourceDigest": "6d83a064ca0334843f59a68546e2260a5f26465441ef41a37bc2dd60f23620fd"
 }
