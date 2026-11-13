@@ -1,163 +1,35 @@
 {
-  "title": "概念看板批次跳转与批次合并",
-  "sourceSha": "3f464fc7f838a6537f9294327a596b97b57c40cf",
+  "title": "修复概念批次名单MySQL排序规则兼容",
+  "sourceSha": "8b931dba7b1eb6ec44af086e769151adb417d189",
   "featureShas": [
-    "3f464fc7f838a6537f9294327a596b97b57c40cf"
+    "8b931dba7b1eb6ec44af086e769151adb417d189"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/ads.vue",
-    "apps/web-antd/src/views/intelligence/components/ConceptBatchFilter.vue",
-    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
-    "apps/web-antd/src/views/intelligence/concept-batch-filter.ts",
-    "apps/web-antd/src/views/intelligence/market-navigation.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
-    "server/CONCEPT-MONITOR.md",
-    "server/collection-batch-domain.mjs",
-    "server/collection-batches.mjs",
-    "server/collection-batches.test.mjs",
-    "server/concept-members.mjs",
-    "server/concept-monitor-domain.mjs",
-    "server/concept-monitor.mjs",
-    "server/index.mjs",
-    "server/workspace-reads.mjs"
-  ],
-  "ciFiles": [
-    ".github/workflows/testing.yml"
+    "server/concept-members.mjs"
   ],
   "changes": [
-    "8类关联/今日新增数量可跳转对应列表，携带精确批次/市场/统计日期，清旧筛选并包括两个商品池",
-    "关联成员与汇总同事务存表，列表读取存表名单，不实时聚合关系",
-    "管理员多选2～50个批次统一合并到已有或新批次，共享关联去重，保留数据/采集历史",
-    "原互斥/单事务/版本校验防重复并发，规范归属覆盖旧检查点晚到，失败回滚；不执行正式批次合并验收"
+    "对JSON_TABLE成员ID采用显式二进制比较，消除连接与现有列排序规则冲突并保持精确ID",
+    "保留已上线的8类批次数量跳转、存表名单和管理员批次合并"
   ],
-  "verification": "沿用开发26/26相关/PGlite专项、完整Web类型、隔离前后端构建、无新增lint诊断、1920/390合成UI；发布重复验证/独立验证构建/CI等待按用户策略跳过",
+  "verification": "修复开发26/26、语法/diff及9项只读MySQL合成fixture通过；沿用原功能Web类型/构建/UI，无前端改动；发布重复验证/独立验证构建/CI等待按用户策略跳过",
   "developmentVerification": {
     "tests": {
       "passed": 26,
       "failed": 0
     },
-    "typecheck": "passed",
-    "webBuild": "passed",
-    "apiBundle": "passed",
-    "lint": [
-      {
-        "file": "apps/web-antd/src/views/intelligence/ads.vue",
-        "before": 74,
-        "after": 74,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/market-navigation.ts",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/products.vue",
-        "before": 12,
-        "after": 12,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/research.vue",
-        "before": 10,
-        "after": 10,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/sites.vue",
-        "before": 50,
-        "after": 50,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/statistics-queries.ts",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/concept-monitor-domain.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/concept-monitor.mjs",
-        "before": 8,
-        "after": 8,
-        "added": []
-      },
-      {
-        "file": "server/index.mjs",
-        "before": 9,
-        "after": 9,
-        "added": []
-      },
-      {
-        "file": "server/workspace-reads.mjs",
-        "before": 27,
-        "after": 27,
-        "added": []
-      },
-      {
-        "file": "server/collection-batch-domain.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/collection-batches.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/concept-members.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/collection-batches.test.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/concept-batch-filter.ts",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/components/ConceptBatchFilter.vue",
-        "before": 0,
-        "after": 0,
-        "added": []
-      }
-    ],
-    "ui": {
+    "mysqlReadOnlySynthetic": {
       "status": "passed",
-      "observations": [
-        "all eight links navigate with exact batch, snapshot day and market; stale saved filters clear, products include both pools, filter can be removed",
-        "multi-select merge confirmation, existing or new target input, stale conflict remains visible, successful retry clears selection and refreshes stored display",
-        "390px dashboard has no page overflow",
-        "researcher can navigate but has no merge controls; backend permission checked in isolated database tests"
-      ],
-      "scriptErrors": [],
-      "unmockedActions": [],
+      "fixtures": 9,
+      "collations": 3,
+      "exactCase": true,
+      "dateGuard": true,
+      "persistentWrites": 0,
+      "productionDataRead": false,
       "paidCalls": 0
-    }
+    },
+    "syntax": "passed",
+    "diffCheck": "passed",
+    "frontend": "unchanged; prior feature type/UI checks retained"
   },
   "skipped": [
     "release-repeat-tests",
@@ -172,12 +44,10 @@
     "consistency": "skipped-by-user"
   },
   "limitations": [
-    "MySQL CI not run locally; PGlite persisted merge/filter/worker checks passed.",
-    "Merge canonicalizes affiliations across all markets; original task history and unknown request journals are retained.",
-    "Final CSS specificity keeps positive today links green; behavior UI checks ran before this styling-only change."
+    "Read-only synthetic MySQL CTEs exercise 3 collations, exact case and saved date; no schema or persistent writes."
   ],
   "operator": "Codex",
-  "id": "20261113124041-e6dc8483",
-  "builtAt": "2026-11-13T12:40:41.051Z",
-  "sourceDigest": "e6dc8483b86581611d6fa332357f2ce0bdd65c14f8572807b974ec1cb0d93e21"
+  "id": "20261113130124-876e2ea9",
+  "builtAt": "2026-11-13T13:01:24.269Z",
+  "sourceDigest": "876e2ea9fc0804d7396ef8ffd603dcb85a2226e8255dcfe25fa079762075b312"
 }
