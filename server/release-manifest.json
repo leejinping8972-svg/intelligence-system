@@ -1,79 +1,73 @@
 {
-  "title": "商品反推关键词入库与非趋势指标补齐",
-  "sourceSha": "85eaf2d93ec8420d680999c1a9f2623315bc1b56",
+  "title": "概念监控汇总独立调度与索引增量补充",
+  "sourceSha": "d8d3dd96462f73363d8a7be2c9480f80c8246eed",
   "featureShas": [
-    "85eaf2d93ec8420d680999c1a9f2623315bc1b56"
+    "d8d3dd96462f73363d8a7be2c9480f80c8246eed"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ProductKeywordEvidence.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductKeywordStatus.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductKeywordsButton.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "server/domain.mjs",
-    "server/index.mjs",
-    "server/keyword-data.mjs",
-    "server/market-jobs.mjs",
-    "server/platform-products-jobs.mjs",
-    "server/product-keywords-domain.mjs",
-    "server/product-keywords-engine.mjs",
-    "server/product-keywords-provider.mjs",
-    "server/product-keywords-semrush.test.mjs",
-    "server/product-keywords-store.mjs",
-    "server/product-keywords.integration.test.mjs",
-    "server/product-keywords.test.mjs",
-    "server/runner.mjs",
-    "server/semrush-keyword-trends.d.mts",
-    "server/semrush-keyword-trends.mjs",
-    "server/semrush-reports.mjs",
-    "server/source-field-store.mjs",
-    "server/source-usage-domain.mjs",
-    "server/store.mjs",
-    "server/task-context.mjs",
-    "server/task-projection.mjs",
-    "server/workspace-reads.mjs"
+    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
+    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+    "server/CONCEPT-MONITOR.md",
+    "server/concept-monitor.mjs",
+    "server/concept-monitor.test.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "changes": [
-    "新采集且首次保存的商品自动提取有原文依据的候选词；历史商品可勾选后手动补做",
-    "按市场去重入库并双向关联商品，保留人工审核、收藏、原关联、已有指标与趋势",
-    "仅补齐Semrush非趋势搜索指标，复用有效缓存；缺失保留未知，不触发趋势或递归扩采",
-    "商品页显示任务状态，关键词详情展示来源商品、原文引用及链接；请求账本保护重复及未知结果"
+    "首次及每日09:00汇总无需等待索引全队列清空，使用已提交投影生成并存表",
+    "索引更新中按已发布版本每5分钟补充，队列追平后生成完整快照并恢复日更新",
+    "页面展示已有结果、生成时间及后台更新状态，空初始索引保留loading",
+    "保留workspace-reads互斥和全市场原子发布，失败回滚与60秒退避，不触发来源或模型请求"
   ],
-  "verification": "沿用开发36/36相关测试、完整Web类型、前后端构建、1440/390合成UI和无新增lint诊断；发布阶段重复测试/独立验证构建/CI等待按用户策略跳过",
+  "verification": "沿用开发21/21相关测试、完整Web类型、前后端隔离构建、组件/新增模块lint及无新增旧文件诊断、1920/390合成UI。发布重复验证/独立验证构建/CI等待按用户策略跳过",
   "developmentVerification": {
-    "status": "ready-for-integration",
-    "sourceSha": "85eaf2d93ec8420d680999c1a9f2623315bc1b56",
-    "branch": "codex/product-derived-keywords-20261113",
-    "baseSha": "1cf13e9958c4e2c432215a59bb4bdd3fd25d252e",
-    "worktree": "D:/Project_Code/Intelligence_System/_worktrees/product-derived-keywords",
-    "buildOutput": "D:/Project_Code/Intelligence_System/_builds/product-derived-keywords-dev",
     "tests": {
-      "passed": 36,
+      "passed": 21,
       "failed": 0,
-      "log": ".artifacts/final-feature-tests.log"
+      "files": [
+        "server/concept-monitor.test.mjs",
+        "server/workspace-reads.test.mjs",
+        "server/workspace-statistics.test.mjs"
+      ]
     },
-    "checks": {
-      "webTypecheck": "passed",
-      "backendBundle": "passed",
-      "frontendBuild": "passed",
-      "syntheticUi": "passed-1440-and-390",
-      "newLintDiagnostics": 0,
-      "baselineLintDiagnostics": 107,
-      "diffCheck": "passed"
-    },
-    "baselineFailures": [
-      "task-projection.test.mjs: expected projection omits canContinue:false",
-      "source-usage.test.mjs:125 scheduled public collection usage sanitization"
+    "typecheck": "passed",
+    "webBuild": "passed",
+    "apiBundle": "passed",
+    "componentLint": "passed",
+    "newModuleLint": "passed",
+    "existingLint": [
+      {
+        "file": "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/workspace-reads.mjs",
+        "before": 27,
+        "after": 27,
+        "added": []
+      },
+      {
+        "file": "server/workspace-reads.test.mjs",
+        "before": 9,
+        "after": 9,
+        "added": []
+      }
     ],
-    "paidProviderCalls": 0,
-    "productionWrites": 0,
-    "dependencyChanges": false,
-    "schemaChanges": false,
-    "migrations": false,
-    "pushed": false,
-    "integrated": false,
-    "deployed": false
+    "ui": {
+      "status": "passed",
+      "observations": [
+        "first snapshot becomes visible while indexing remains active; partial status and date are shown",
+        "completed snapshot clears catchup status without hiding stored rows",
+        "empty initial indexes retain loading; search miss is distinct; 390px has no page overflow",
+        "completed empty snapshot is not marked as generating",
+        "read failures stop loading and provide retry feedback"
+      ],
+      "scriptErrors": [],
+      "unmockedActions": [],
+      "paidCalls": 0
+    }
   },
   "skipped": [
     "release-repeat-tests",
@@ -88,12 +82,11 @@
     "consistency": "skipped-by-user"
   },
   "limitations": [
-    "候选词来自商品原文，不代表真实平台流量词；新词待审核不自动入选",
-    "依赖已配置AI与Semrush渠道，按渠道规则计费；不触发历史全库回填或收费验收",
-    "已知两项旧基线测试问题和107项既有lint诊断已在开发记录中说明"
+    "First snapshot uses committed compact projections and may be partial until background indexing catches up.",
+    "MySQL CI was not run locally; actual worker/PGlite tests passed."
   ],
   "operator": "Codex",
-  "id": "20261113112241-a7befeba",
-  "builtAt": "2026-11-13T11:22:41.137Z",
-  "sourceDigest": "a7befeba68157184bd84355a4ea2bb9b9b76d0d11dc85701e679d22833e9517b"
+  "id": "20261113114753-bc459ad4",
+  "builtAt": "2026-11-13T11:47:53.824Z",
+  "sourceDigest": "bc459ad48d6b9075fb48a034ca599a0ffa5058ab0390496cf163f57f2b91f382"
 }
