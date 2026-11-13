@@ -10,6 +10,7 @@ import { serverMode, session } from './session';
 
 export interface StatisticsSnapshot {
   day?: string;
+  indexing?: boolean;
   generatedAt: string;
   revision: string;
   summary?: ReturnType<typeof radarStatistics>;

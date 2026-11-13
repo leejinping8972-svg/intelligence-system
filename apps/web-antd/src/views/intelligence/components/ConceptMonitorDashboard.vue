@@ -37,7 +37,13 @@ const query = computed(() => ({
 }));
 const remote = useStatistics<ConceptRow>(query);
 const preparing = computed(
-  () => !remote.snapshot.value && !remote.error.value,
+  () => !remote.error.value && (
+    !remote.snapshot.value || (
+      remote.snapshot.value.indexing === true &&
+      remote.total.value === 0 &&
+      !search.value.trim()
+    )
+  ),
 );
 const busy = computed(() => remote.loading.value || preparing.value);
 watch([search, () => state.market], () => {
@@ -116,6 +122,9 @@ function change(
     <p v-if="remote.snapshot.value" class="hci-subtle concept-monitor-note">
       汇总更新于 <CollectionTime :at="remote.snapshot.value.generatedAt" /> ·
       今日新增统计日期：{{ remote.snapshot.value.day }}（北京时间）
+      <span v-if="remote.snapshot.value.indexing">
+        · 后台数据更新中，汇总每 5 分钟自动补充
+      </span>
     </p>
     <Table
       row-key="id"
@@ -139,10 +148,12 @@ function change(
           <Spin v-if="preparing && !remote.loading.value" size="small" />
           <span>{{
             remote.snapshot.value
-              ? '暂无符合条件的采集批次'
+              ? remote.snapshot.value.indexing && !search.trim()
+                ? '后台数据更新中，汇总信息将自动补充。'
+                : '暂无符合条件的采集批次'
               : remote.error.value
                 ? '批次汇总读取失败，请点击刷新重试'
-                : '正在等待后台索引队列完成，完成后会显示汇总信息。'
+                : '正在生成汇总信息，完成后自动显示。'
           }}</span>
         </div>
       </template>

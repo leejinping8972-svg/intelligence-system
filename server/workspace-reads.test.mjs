@@ -115,7 +115,7 @@ async function exerciseReadModel(
       ),
       [name, value],
     );
-  const reads = createWorkspaceReads({
+  const createReads = () => createWorkspaceReads({
     pool,
     sql,
     lock,
@@ -124,6 +124,7 @@ async function exerciseReadModel(
     isWorkspaceSyncKey: () => true,
     loadPublic: async () => ({ collector: null, free: null }),
   });
+  const reads = createReads();
   const drain = async () => {
     for (let i = 0; i < 100; i++) if (!(await reads.refresh())) break;
     assert.equal((await reads.status()).indexing, false);
@@ -233,9 +234,24 @@ async function exerciseReadModel(
   assert.equal(overview.snapshot.counts.products, 240);
   assert.equal(overview.snapshot.productMarkets.US, 120);
   assert.equal((await reads.statistics({ kind: 'radar' })).snapshot, null);
+  // A restarted worker must publish existing indexes even while hourly or
+  // newly queued product updates keep the global queue nonempty.
+  await pool.query("DELETE FROM workspace_documents WHERE name='read:concept-monitor-version'");
+  const pendingKeys = Array.from({ length: 201 }, (_, i) => `business:products:concept-pending-${i}`);
+  await pool.query(
+    `INSERT INTO workspace_read_dirty(kind,source_key) VALUES ${pendingKeys.map((_, i) => `('business',$${i + 1})`).join(',')}`,
+    pendingKeys,
+  );
+  const restartedReads = createReads();
+  await restartedReads.refresh();
+  assert.equal((await restartedReads.status()).indexing, true);
+  const pendingConcepts = await restartedReads.statistics({ kind: 'concept-monitor', pageSize: 100 });
+  assert.equal(pendingConcepts.total, 4, 'existing batches publish before the queue drains');
+  assert.equal(pendingConcepts.snapshot.indexing, true);
+  assert.ok(pendingConcepts.rows.some((row) => row.products > 0));
   advanceStatistics();
   await reads.refresh();
-  await drain(); // Concept summaries publish only after the projection queue drains.
+  await drain();
   const concepts = await reads.statistics({ kind: 'concept-monitor', pageSize: 100 });
   assert.deepEqual(concepts.rows.map((row) => row.batch).toSorted(), ['2026-11-01-US', 'October', 'November', 'legacy-batch'].toSorted(), JSON.stringify(concepts));
   assert.equal(concepts.snapshot.day, '2026-10-27');

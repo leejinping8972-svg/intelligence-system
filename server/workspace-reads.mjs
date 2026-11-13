@@ -293,10 +293,12 @@ export function createWorkspaceReads({
     try {
       const versions = await connection.query("SELECT revision FROM workspace_read_versions WHERE collection='published'");
       const revision = versions.rows[0].revision;
-      await concepts.rebuild(connection, revision);
+      const pending = await connection.query('SELECT kind FROM workspace_read_dirty LIMIT 1');
+      await concepts.rebuild(connection, revision, pending.rows.length > 0);
       await connection.query('COMMIT');
     } catch (error) {
       await connection.query('ROLLBACK');
+      concepts.retryLater();
       console.error('Concept monitor refresh:', error.message);
     }
   }
@@ -475,6 +477,7 @@ export function createWorkspaceReads({
       locked = await lock(connection, 'workspace-reads');
       if (!locked) return false;
       await seed(connection);
+      if (concepts.due()) await refreshConcepts(connection);
       if (statistics.due()) await refreshStatistics(connection);
       const dirty = await readDirtyBatch(connection);
       if (!dirty.length) {

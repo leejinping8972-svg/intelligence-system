@@ -305,3 +305,151 @@ test('persisted batch snapshots are atomic, scheduled, sorted before pagination 
     await db.close();
   }
 });
+
+test('busy indexes publish immediately, catch up across restarts and hourly requeues, then return to daily updates', async () => {
+  let current = Date.parse('2026-11-13T08:00:00Z');
+  const clock = mock.method(Date, 'now', () => current);
+  const db = new PGlite();
+  const statements = [];
+  let failMarker = false;
+  const pool = {
+    async query(statement, params = []) {
+      statements.push(statement);
+      if (
+        failMarker &&
+        statement.includes('INSERT INTO workspace_documents') &&
+        params[0] === 'read:concept-monitor-version'
+      )
+        throw new Error('synthetic catchup publish failure');
+      return db.query(
+        statement,
+        params.map((value) =>
+          value && typeof value === 'object' ? JSON.stringify(value) : value,
+        ),
+      );
+    },
+    async connect() {
+      return { query: (...args) => pool.query(...args), release() {} };
+    },
+  };
+  const putDocument = (_table, name, value, _importOnly, connection) =>
+    connection.query(
+      'INSERT INTO workspace_documents(name,value) VALUES($1,$2) ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value',
+      [name, value],
+    );
+  const create = () =>
+    createConceptMonitor({ pool, sql: (pg) => pg, putDocument });
+  let monitor = create();
+  const publish = async (revision, indexing) => {
+    await pool.query('BEGIN');
+    try {
+      await monitor.rebuild(pool, revision, indexing);
+      await pool.query('COMMIT');
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      throw error;
+    }
+  };
+  const product = (id) =>
+    pool.query('INSERT INTO workspace_read_rows VALUES($1,$2,$3)', [
+      'products',
+      id,
+      { id, market: 'US', keywordIds: ['k'], collectedAt: today },
+    ]);
+  try {
+    await db.exec(`CREATE TABLE workspace_documents(name text PRIMARY KEY,value jsonb NOT NULL);
+      CREATE TABLE workspace_read_rows(collection text,id text,payload jsonb,PRIMARY KEY(collection,id));
+      CREATE TABLE workspace_statistic_rows(kind text,market text,variant text,position integer,subtype text,payload jsonb,PRIMARY KEY(kind,market,variant,position));`);
+    await pool.query('INSERT INTO workspace_read_rows VALUES($1,$2,$3)', [
+      'keywords',
+      'k',
+      { id: 'k', batch: 'Live batch', market: 'US' },
+    ]);
+    await product('p1');
+    // Upgrade the independent marker without changing the global read model.
+    await putDocument(
+      '',
+      'read:concept-monitor-version',
+      { version: 1, at: current },
+      false,
+      pool,
+    );
+    await publish(1, true);
+    let saved = await monitor.read({});
+    assert.equal(saved.rows[0].products, 1);
+    assert.equal(saved.snapshot.indexing, true);
+    assert.equal(saved.indexing, true);
+    await product('p2');
+    current += 120_000;
+    let start = statements.length;
+    await publish(2, true);
+    assert.equal((await monitor.read({})).rows[0].products, 1);
+    assert.ok(
+      !statements
+        .slice(start)
+        .some((statement) => statement.includes('FROM workspace_read_rows')),
+    );
+    current += 180_000;
+    monitor = create(); // Persisted catchup state survives process restart.
+    await publish(2, true);
+    saved = await monitor.read({});
+    assert.equal(saved.rows[0].products, 2);
+    assert.equal(saved.snapshot.revision, '2');
+    assert.equal(saved.snapshot.indexing, true);
+    current += 60_000;
+    start = statements.length;
+    await publish(2, true);
+    assert.ok(
+      !statements
+        .slice(start)
+        .some((statement) => statement.includes('FROM workspace_read_rows')),
+      'unchanged index revision is not rescanned',
+    );
+    await product('p3');
+    current += 3_600_000; // Queue is still busy after another hourly invalidation.
+    await publish(3, true);
+    assert.equal((await monitor.read({})).rows[0].products, 3);
+    current += 60_000;
+    await publish(3, false); // Final status catches up even with unchanged revision.
+    saved = await monitor.read({});
+    assert.equal(saved.snapshot.indexing, false);
+    assert.equal(saved.indexing, false);
+    await product('p4');
+    current += 300_000;
+    monitor = create();
+    await publish(4, true);
+    assert.equal(
+      (await monitor.read({})).rows[0].products,
+      3,
+      'completed snapshot retains the daily schedule',
+    );
+    current = Date.parse('2026-11-14T01:00:00Z');
+    failMarker = true;
+    await assert.rejects(publish(4, true), /synthetic catchup publish failure/);
+    saved = await monitor.read({});
+    assert.equal(saved.rows[0].products, 3);
+    assert.equal(saved.snapshot.day, '2026-11-13');
+    assert.equal(
+      saved.snapshot.indexing,
+      false,
+      'failed publication keeps prior metadata and rows atomically',
+    );
+    failMarker = false;
+    await publish(4, true);
+    saved = await monitor.read({});
+    assert.equal(saved.rows[0].products, 4);
+    assert.equal(saved.snapshot.day, '2026-11-14');
+    assert.equal(
+      saved.snapshot.indexing,
+      true,
+      '09:00 publication does not wait for the queue',
+    );
+    monitor.retryLater();
+    assert.equal(monitor.due(), false);
+    current += 60_000;
+    assert.equal(monitor.due(), true);
+  } finally {
+    clock.mock.restore();
+    await db.close();
+  }
+});
