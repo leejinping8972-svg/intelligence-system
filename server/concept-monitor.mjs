@@ -3,7 +3,8 @@ import { shanghaiDay } from './collection-time.mjs';
 import { statisticsRefreshSchedule } from './workspace-statistics.mjs';
 
 const KIND = 'concept-monitor';
-const VERSION = 1;
+const VERSION = 2;
+const CATCHUP_INTERVAL_MS = 5 * 60_000;
 const MARKER = 'read:concept-monitor-version';
 const snapshotKey = (market) => `read:statistics:${KIND}:${market}:all`;
 const numericSorts = new Set([
@@ -19,9 +20,9 @@ const numericSorts = new Set([
 
 export function createConceptMonitor({ pool, sql, putDocument }) {
   let nextCheck = 0;
-  // Called only by the background read worker after its projection queue drains.
+  // Called by the background worker independently of whether its queue drains.
   // The surrounding transaction and workspace-reads lock publish every market atomically.
-  async function rebuild(connection, revision) {
+  async function rebuild(connection, revision, indexing = false) {
     const now = Date.now();
     if (now < nextCheck) return;
     const marker = await connection.query(
@@ -30,7 +31,12 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
     );
     const previous = marker.rows[0]?.value;
     const schedule = statisticsRefreshSchedule(previous, now);
-    if (previous?.version === VERSION && !schedule.due) {
+    const catchup =
+      previous?.indexing &&
+      (!indexing ||
+        (String(previous.revision) !== String(revision) &&
+          now - Number(previous.at) >= CATCHUP_INTERVAL_MS));
+    if (previous?.version === VERSION && !schedule.due && !catchup) {
       nextCheck = Math.min(now + 60_000, schedule.nextAt);
       return;
     }
@@ -53,6 +59,7 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
       day: shanghaiDay(now),
       revision: String(revision),
       version: VERSION,
+      indexing,
     };
     for (const market of ['ALL', 'US', 'MX', 'VN']) {
       const scoped = Object.fromEntries(
@@ -84,7 +91,7 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
     await putDocument(
       'workspace_documents',
       MARKER,
-      { version: VERSION, at: now },
+      { version: VERSION, at: now, revision: String(revision), indexing },
       false,
       connection,
     );
@@ -161,7 +168,14 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
         : null;
       const rows = result?.rows.map((row) => row.payload) || [];
       await connection.query('COMMIT');
-      return { rows, total, page, pageSize, snapshot, indexing: !snapshot };
+      return {
+        rows,
+        total,
+        page,
+        pageSize,
+        snapshot,
+        indexing: !snapshot || Boolean(snapshot.indexing),
+      };
     } catch (error) {
       await connection.query('ROLLBACK');
       throw error;
@@ -169,5 +183,12 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
       connection.release();
     }
   }
-  return { rebuild, read };
+  return {
+    rebuild,
+    read,
+    due: () => Date.now() >= nextCheck,
+    retryLater: () => {
+      nextCheck = Date.now() + 60_000;
+    },
+  };
 }
