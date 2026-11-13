@@ -30,6 +30,8 @@ export function conceptMemberCondition(input, collection, bind, sql) {
     : '';
   return sql(
     `r.id IN (SELECT jsonb_array_elements_text(d.value->'${field}') FROM workspace_documents d WHERE d.name=${key}${dayCondition})`,
-    `r.id IN (SELECT batch_member.id FROM workspace_documents d JOIN JSON_TABLE(d.value,'$.${field}[*]' COLUMNS(id VARCHAR(160) PATH '$')) AS batch_member ON TRUE WHERE d.name=${key}${dayCondition})`,
+    // JSON_TABLE inherits the connection collation, which can differ from r.id.
+    // Explicit binary comparison also preserves the exact saved member identity.
+    `r.id IN (SELECT batch_member.id COLLATE utf8mb4_bin FROM workspace_documents d JOIN JSON_TABLE(d.value,'$.${field}[*]' COLUMNS(id VARCHAR(160) PATH '$')) AS batch_member ON TRUE WHERE d.name=${key}${dayCondition})`,
   );
 }
