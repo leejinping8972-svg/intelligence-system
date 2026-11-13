@@ -149,6 +149,10 @@ export async function runSourceFields(job, overrides = {}) {
         }
         if (job.input.targetKind === 'products')
           updated = withFormulaIntelligence(updated);
+        if (job.input.targetKind === 'products' && value.keywordDerivation?.status === 'queued') {
+          const { queueProductKeywords } = await import('./product-keywords-store.mjs');
+          await queueProductKeywords(updated, c, { pool: io.pool, putDocument: io.putDocument });
+        }
         await io.putDocument('workspace_documents', name, updated, false, c);
         cp.logs.push(
           `AI已分析${Object.keys(result.patch).length}个字段，均保留原文引用`,

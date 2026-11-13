@@ -1,5 +1,6 @@
 import { editableKeywordPatch } from './domain.mjs';
 import { trendComparisons } from './model.js';
+import { mergeProductKeywordEvidence } from './product-keywords-domain.mjs';
 import { validSemrushTrend } from './semrush-keyword-trends.mjs';
 
 const timestamp = (value) => Date.parse(value || '') || 0;
@@ -73,6 +74,8 @@ export function mergeKeywordMetrics(current, incoming, importOnly = false) {
 // Checkpoints can outlive newer writes from other jobs. Merge each source by its own timestamp.
 export function mergeKeyword(current, incoming, importOnly = false) {
   const merged = { ...current };
+  if (incoming.productKeywordEvidence?.length)
+    merged.productKeywordEvidence = mergeProductKeywordEvidence(current.productKeywordEvidence, incoming.productKeywordEvidence);
   merged.source = [
     ...new Set(
       [current.source, incoming.source]

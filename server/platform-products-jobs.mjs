@@ -247,6 +247,10 @@ export async function upsertProduct(patch) {
     await archiveResourceEvidence(value, old, (key, snapshot, only) =>
       putDocument('workspace_documents', key, snapshot, only, c),
     );
+    if (!old && value.dataNature === 'collected') {
+      const { queueProductKeywords } = await import('./product-keywords-store.mjs');
+      await queueProductKeywords(value, c);
+    }
     await putDocument('workspace_documents', name, value, false, c);
     await c.query('COMMIT');
     return value;

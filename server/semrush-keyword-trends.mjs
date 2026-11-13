@@ -12,9 +12,9 @@ export const SEMRUSH_KEYWORD_COLUMNS = [
   'triggered_serp_features',
 ];
 
-export function semrushExportColumns(schema) {
+export function semrushExportColumns(schema, includeTrend = true) {
   const allowed = schema.parameters?.export_columns?.items?.enum || [];
-  return SEMRUSH_KEYWORD_COLUMNS.filter((column) => allowed.includes(column));
+  return SEMRUSH_KEYWORD_COLUMNS.filter((column) => allowed.includes(column) && (includeTrend || column !== 'trend'));
 }
 
 const first = (row, keys) => {

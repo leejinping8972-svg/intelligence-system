@@ -42,6 +42,7 @@ import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
 import PageHeader from './components/PageHeader.vue';
+import ProductKeywordEvidence from './components/ProductKeywordEvidence.vue';
 import PublicContentLauncher from './components/PublicContentLauncher.vue';
 import SavedKeywordViews from './components/SavedKeywordViews.vue';
 import ScoreRangeFilter from './components/ScoreRangeFilter.vue';
@@ -1453,6 +1454,7 @@ watch(timeRange, () => { if (timeRange.value !== 'ALL') collectedRange.value = [
           {{ chineseText(detail.term, detail.termZh) }}
         </h2>
         <p class="hci-subtle">{{ detail.term }}</p>
+        <ProductKeywordEvidence :evidence="detail.productKeywordEvidence" />
         <p v-if="detail.seedTerm && detail.seedTerm !== detail.term">
           种子 {{ chineseText(detail.seedTerm, detail.seedTermZh) }}
           <span class="hci-subtle">{{ detail.seedTerm }}</span>

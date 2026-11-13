@@ -57,6 +57,7 @@ export const categories = [
   '运动营养',
 ];
 export interface Keyword {
+  productKeywordEvidence?: Array<{ basis: 'product_text_candidate'; kind: string; productId: string; productTitle?: string; fingerprint: string; sourceId: string; quote: string; url: string; model?: string; collectedAt: string }>;
   coreEvidence?: CoreEvidence;
   coreSummary?: import('./core-list-metrics').CoreMetricSummary;
   listSummary?: boolean;
@@ -171,6 +172,7 @@ export interface IngredientInsight {
   evidence: string;
 }
 export interface Product {
+  keywordDerivation?: { jobId: string; fingerprint: string; status: string; count?: number; message?: string; updatedAt?: string };
   sourceMarket?: string;
   newProductClassifications?: Array<{ type: string; label: string; listingDate?: string; dateBasis?: 'exposure' | 'listing'; rank?: number; fulfillment: string; observedAt: string; evidenceUrl: string; days?: number }>;
   fieldAnalysis?: { status: 'pending' | 'analyzed'; fingerprint: string; analyzedAt?: string; fields?: Record<string, { sourceId: string; quote: string; relation: string; url: string }> };

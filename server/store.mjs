@@ -214,6 +214,8 @@ async function collectRaw(job, step, request) {
       ? Response.json(await (await import('./product-intake-sorftime.mjs')).productIntakeSource(request))
       : request.sources?.includes('discovery_sorftime')
       ? Response.json(await (await import('./discovery-sorftime.mjs')).discoverySorftime(request))
+      : request.sources?.includes('product_keywords')
+        ? Response.json(await (await import('./product-keywords-provider.mjs')).productKeywordsRequest(request))
       : request.sources?.includes('field_analysis')
         ? Response.json(await (await import('./discovery-ai.mjs')).fieldAnalysisRequest(request))
         : request.sources?.includes('ingredient_analysis')

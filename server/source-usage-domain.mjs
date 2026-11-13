@@ -197,7 +197,7 @@ export function requestSources(step = '', record = {}, allowance = 0) {
     return ['official_sites'];
   if (
     sources.some((s) =>
-      ['semantic_analysis', 'field_analysis', 'ingredient_analysis'].includes(
+      ['semantic_analysis', 'field_analysis', 'ingredient_analysis', 'product_keywords'].includes(
         s,
       ),
     ) ||
