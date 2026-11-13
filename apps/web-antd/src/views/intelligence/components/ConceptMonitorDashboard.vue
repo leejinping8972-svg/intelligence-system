@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import { Alert, Button, Input, Table, Tooltip } from 'ant-design-vue';
+import { Alert, Button, Input, Spin, Table, Tooltip } from 'ant-design-vue';
 
 import { state } from '../data';
 import { useStatistics } from '../statistics-queries';
@@ -36,6 +36,10 @@ const query = computed(() => ({
   order: order.value,
 }));
 const remote = useStatistics<ConceptRow>(query);
+const preparing = computed(
+  () => !remote.snapshot.value && !remote.error.value,
+);
+const busy = computed(() => remote.loading.value || preparing.value);
 watch([search, () => state.market], () => {
   page.value = 1;
 });
@@ -84,7 +88,7 @@ function change(
   <section
     class="hci-panel concept-monitor"
     aria-labelledby="concept-monitor-title"
-    :aria-busy="remote.loading.value"
+    :aria-busy="busy"
   >
     <div class="hci-panel-head concept-monitor-head">
       <div>
@@ -113,13 +117,6 @@ function change(
       汇总更新于 <CollectionTime :at="remote.snapshot.value.generatedAt" /> ·
       今日新增统计日期：{{ remote.snapshot.value.day }}（北京时间）
     </p>
-    <p v-else class="hci-subtle concept-monitor-note">
-      {{
-        remote.loading.value
-          ? '正在读取批次汇总…'
-          : '批次汇总准备中，完成后自动显示'
-      }}
-    </p>
     <Table
       row-key="id"
       size="small"
@@ -127,11 +124,6 @@ function change(
       :data-source="remote.rows.value"
       :loading="remote.loading.value"
       :scroll="{ x: 1530 }"
-      :locale="{
-        emptyText: remote.snapshot.value
-          ? '暂无符合条件的采集批次'
-          : '批次汇总准备中',
-      }"
       :pagination="{
         total: remote.total.value,
         current: remote.pagination.value.page,
@@ -142,6 +134,18 @@ function change(
       }"
       @change="change"
     >
+      <template #emptyText>
+        <div class="concept-monitor-empty" role="status" aria-live="polite">
+          <Spin v-if="preparing && !remote.loading.value" size="small" />
+          <span>{{
+            remote.snapshot.value
+              ? '暂无符合条件的采集批次'
+              : remote.error.value
+                ? '批次汇总读取失败，请点击刷新重试'
+                : '正在等待后台索引队列完成，完成后会显示汇总信息。'
+          }}</span>
+        </div>
+      </template>
       <template #bodyCell="{ column, record }">
         <Tooltip v-if="column.key === 'batch'" :title="record.batch">
 <span class="concept-batch">{{ record.batch }}</span>
@@ -186,6 +190,13 @@ function change(
   align-items: center;
   gap: 4px;
   margin-bottom: 12px;
+}
+.concept-monitor-empty {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .concept-batch {
   display: block;
