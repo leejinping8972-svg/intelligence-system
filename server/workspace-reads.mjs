@@ -1,6 +1,7 @@
 import { collectionRange, productDiscoveryDay, resourceCollectionTime, shanghaiDay } from './collection-time.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 
+import { createConceptMonitor } from './concept-monitor.mjs';
 import {
   assessKeyword,
   groupAdvertisers,
@@ -286,6 +287,19 @@ export function createWorkspaceReads({
     errorsLoaded = true;
   }
   const statistics = createWorkspaceStatistics({ pool, sql, putDocument, loadPublic });
+  const concepts = createConceptMonitor({ pool, sql, putDocument });
+  async function refreshConcepts(connection) {
+    await connection.query('BEGIN');
+    try {
+      const versions = await connection.query("SELECT revision FROM workspace_read_versions WHERE collection='published'");
+      const revision = versions.rows[0].revision;
+      await concepts.rebuild(connection, revision);
+      await connection.query('COMMIT');
+    } catch (error) {
+      await connection.query('ROLLBACK');
+      console.error('Concept monitor refresh:', error.message);
+    }
+  }
   async function refreshStatistics(connection) {
     await connection.query('BEGIN');
     try {
@@ -469,6 +483,7 @@ export function createWorkspaceReads({
           'SELECT market FROM workspace_overview_snapshots LIMIT 1',
         );
         if (!snapshot.rows.length) await buildOverview(connection);
+        await refreshConcepts(connection);
         return false;
       }
       await connection.query('BEGIN');
@@ -576,6 +591,7 @@ export function createWorkspaceReads({
           await putDocument('workspace_documents', 'read:reports-ready', { ready: true }, false, connection);
         }
         await connection.query('COMMIT');
+        if (!remaining.rows.length) await refreshConcepts(connection);
         await loadProjectionErrors(connection);
         lastError = '';
       } catch (error) {
@@ -1139,7 +1155,7 @@ export function createWorkspaceReads({
     refresh,
     status,
     overview,
-    statistics: statistics.read,
+    statistics: (input) => input.kind === 'concept-monitor' ? concepts.read(input) : statistics.read(input),
     list,
     facets,
     selection,

@@ -9,6 +9,7 @@ import { useOverviewSnapshot } from './workspace-queries';
 import { productDiscoveryDay, shanghaiDay } from '../../../../../server/collection-time.mjs';
 import { inNewProductPool } from '../../../../../server/product-pool-domain.mjs';
 import { trendOption } from './charts';
+import ConceptMonitorDashboard from './components/ConceptMonitorDashboard.vue';
 import NewResearchDialog from './components/NewResearchDialog.vue';
 import PageHeader from './components/PageHeader.vue';
 import {
@@ -183,6 +184,7 @@ function selectMarket(name: string) {
         <div class="hci-stat-foot">{{ s.note }}</div>
       </button>
     </div>
+    <ConceptMonitorDashboard />
     <div class="hci-two-col">
       <section class="hci-panel">
         <div class="hci-panel-head">

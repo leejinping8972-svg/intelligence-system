@@ -9,6 +9,7 @@ import { cloudRequest, cloudWorkspace } from './cloud-workspace';
 import { serverMode, session } from './session';
 
 export interface StatisticsSnapshot {
+  day?: string;
   generatedAt: string;
   revision: string;
   summary?: ReturnType<typeof radarStatistics>;
