@@ -100,8 +100,8 @@ jobs:
           pnpm exec vitest run tests/four-period-trends.test.ts tests/trend-comparison.test.ts tests/social-trend-format.test.ts
       - name: Focused monitors and advertiser batch selection (synthetic data)
         run: |
-          node --test server/advertiser-monitor-batch.test.mjs
-          pnpm exec vitest run tests/advertiser-monitor.test.ts tests/competitor-workspace.test.ts
+          node --test server/advertiser-monitor-batch.test.mjs server/monitor-bulk.test.mjs
+          pnpm exec vitest run tests/advertiser-monitor.test.ts tests/competitor-workspace.test.ts tests/use-core-list.test.ts tests/keyword-volume-column.test.ts
       - name: Site collection fallbacks (synthetic, no paid calls)
         run: node --test server/site-page-fallbacks.test.mjs server/product-queue.test.mjs server/manual-site.test.mjs server/westmonth-catalog.test.mjs server/westmonth-product-metrics.test.mjs server/westmonth-metrics-backfill.test.mjs
       - name: Competitor monitoring and Semrush ranking tests (mocked providers)

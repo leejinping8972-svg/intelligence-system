@@ -116,7 +116,20 @@ export function useCoreList(kind: CoreKind) {
           : kind === 'keywords' ? 105 : 116,
       })),
       ...actions,
-    ];
+    ].map((column) => kind === 'keywords' && column.key === 'core:searchVolume' ? {
+      ...column,
+      sortDirections: ['descend', 'ascend'] as ('ascend' | 'descend')[],
+      sorter: serverMode ? true : (a: Keyword, b: Keyword, order?: null | string) => {
+        const left = metric(a, 'searchVolume').value;
+        const right = metric(b, 'searchVolume').value;
+        if (typeof left !== 'number') {
+          if (typeof right !== 'number') return 0;
+          return order === 'descend' ? -1 : 1;
+        }
+        if (typeof right !== 'number') return order === 'descend' ? 1 : -1;
+        return left - right;
+      },
+    } : column);
   }
   const metricCache = new WeakMap<object, ComputedRef<EvidenceMetric[]>>();
   function metric(record: Product | Site | Ad | Keyword, columnKey: unknown) {

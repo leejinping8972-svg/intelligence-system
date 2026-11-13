@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 import { createWorkspaceReads, projectRecord } from './workspace-reads.mjs';
+import { coreMetrics } from './model.js';
 import { readReportSummaries } from './report-read-summaries.mjs';
 
 const pgSql = (postgres) => postgres;
@@ -656,6 +657,36 @@ async function exerciseReadModel(
   assert.equal(todayUS.monitoring.problems,1);assert.equal(todayAll.monitoring.problems,2);
   const todayList=await reads.list({collection:'products',market:'US',productPool:'pool',discoveredOn:today});
   assert.equal(todayList.total,todayUS.todayNewProducts.count);assert.equal(todayList.rows[0].id,'today-new');
+  // Exercise the exact visible monthly estimate, then page the complete sorted
+  // result for both the library and its selected-only subset.
+  const volumeCases = [0, 10, 1000, 1000, undefined, null, -1, '9999'];
+  for (let i = 0; i < 35; i++) {
+    const value = volumeCases[i % volumeCases.length];
+    const record = { ...keyword(200 + i), id: `volume-${String(i).padStart(2, '0')}`, term: `volume-sort-probe-${i}`, market: 'US', reviewStatus: i % 2 ? 'pending' : 'selected', metrics: { market: i === 1 ? 'MX' : 'US', source: 'Semrush', collectedAt: new Date().toISOString(), monthlySearchVolume: value } };
+    await pool.query('INSERT INTO research_keywords(natural_key,data) VALUES($1,$2)', [`volume-${i}`, record]);
+  }
+  await drain();
+  for (const review of [undefined, 'selected']) {
+    for (const order of ['ascend', 'descend']) {
+      const input = { collection: 'keywords', market: 'US', search: 'volume-sort-probe', sort: 'core:searchVolume', order, review, pageSize: 7 };
+      const first = await reads.list(input);
+      const rows = [];
+      for (let page = 1; page <= Math.ceil(first.total / 7); page++) {
+        const result = await reads.list({ ...input, page });
+        rows.push(...result.rows);
+      }
+      const metricValue = (row) => coreMetrics('keywords', row).find((metric) => metric.key === 'searchVolume').value;
+      const expected = rows.toSorted((a, b) => {
+        const left = metricValue(a), right = metricValue(b);
+        if (left === null || right === null) return (left === null ? 1 : 0) - (right === null ? 1 : 0) || a.id.localeCompare(b.id);
+        return (order === 'ascend' ? left - right : right - left) || a.id.localeCompare(b.id);
+      });
+      assert.equal(rows.length, review ? 18 : 35);
+      assert.deepEqual(rows.map((row) => row.id), expected.map((row) => row.id));
+      assert.ok(rows.some((row) => metricValue(row) === 0), 'real zero remains sortable');
+      assert.equal(metricValue(rows.at(-1)), null, 'unknown values always sort last');
+    }
+  }
   return {
     pageBytes: Buffer.byteLength(JSON.stringify(first)),
     overviewBytes: Buffer.byteLength(JSON.stringify(overview)),

@@ -16,6 +16,7 @@ import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
 import { keywordMetricEvidence } from './keyword-metric-evidence.mjs';
+import { keywordVolumeSql } from './keyword-volume-sort.mjs';
 import { productChineseName } from './product-names.mjs';
 import { productAsin } from './product-asin.mjs';
 import { productSellerDetails, productSellerId, productSellerName } from './product-seller.mjs';
@@ -911,12 +912,9 @@ export function createWorkspaceReads({
     ]);
     const total = Number(counted.rows[0].total);
     page = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
-    const sortColumn =
-      input.sort === 'collectedAt'
-        ? 'r.collected_at'
-        : ['keywords', 'sites'].includes(query.collection)
-          ? 'r.score'
-          : 'r.collected_at';
+    let sortColumn = ['keywords', 'sites'].includes(query.collection) ? 'r.score' : 'r.collected_at';
+    if (input.sort === 'collectedAt') sortColumn = 'r.collected_at';
+    if (query.collection === 'keywords' && input.sort === 'core:searchVolume') sortColumn = keywordVolumeSql(sql);
     const direction = input.order === 'ascend' ? 'ASC' : 'DESC';
     let result;
     if (query.collection === 'keywords' && keywordAssociationSorts.has(input.sort)) {
