@@ -32,7 +32,7 @@ test('canonical identities flatten chained merges, deduplicate ads and safely ha
   assert.equal(Object.getPrototypeOf(special.aliases), Object.prototype);
 });
 
-async function fixture() {
+async function fixture(overrides = {}) {
   const db = new PGlite();
   const sql = (pg) => pg;
   let fail = false;
@@ -74,6 +74,7 @@ async function fixture() {
     requireAdmin: (user) => {
       if (user?.role !== 'admin') throw Error('admin required');
     },
+    ...overrides,
   };
   const reads = createWorkspaceReads({
     ...options,
@@ -473,6 +474,53 @@ test('failed merge rolls back data, identity map and summary marker together', a
         ),
       /不存在/,
     );
+  } finally {
+    await f.db.close();
+  }
+});
+
+test('merge waits for the current index batch before writing and then completes once', async () => {
+  const ready = Promise.withResolvers();
+  const grant = Promise.withResolvers();
+  let attempts = 0;
+  let unlocks = 0;
+  const f = await fixture({
+    lock: async (_c, name, options) => {
+      assert.equal(name, 'workspace-reads');
+      assert.deepEqual(options, { waitMs: 90_000 });
+      attempts++;
+      ready.resolve();
+      return grant.promise;
+    },
+    unlock: async () => { unlocks++; },
+  });
+  try {
+    await f.publish();
+    const pending = f.merge({ batches: ['A', 'B'], target: '目标', expectedRevision: 0 }, f.admin);
+    await ready.promise;
+    assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1', ['kA'])).rows[0].data.batch, 'A');
+    assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1', [BATCH_SETTINGS])).rows.length, 0);
+    grant.resolve(true);
+    assert.equal((await pending).revision, 1);
+    assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1', ['kA'])).rows[0].data.batch, '目标');
+    assert.equal(attempts, 1);
+    assert.equal(unlocks, 1);
+  } finally {
+    grant.resolve(false);
+    await f.db.close();
+  }
+});
+
+test('expired index wait leaves affiliations, audit and snapshot untouched', async () => {
+  let unlocks = 0;
+  const f = await fixture({lock: async () => false, unlock: async () => { unlocks++; }});
+  try {
+    const before = await f.publish();
+    await assert.rejects(() => f.merge({ batches: ['A', 'B'], target: '目标', expectedRevision: 0 }, f.admin), /后台更新耗时较长/);
+    assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1', ['kA'])).rows[0].data.batch, 'A');
+    assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1', [BATCH_SETTINGS])).rows.length, 0);
+    assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1', ['read:concept-monitor-version'])).rows[0].value.version, before.snapshot.version);
+    assert.equal(unlocks, 0);
   } finally {
     await f.db.close();
   }
