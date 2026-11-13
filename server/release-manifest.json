@@ -1,35 +1,77 @@
 {
-  "title": "修复概念批次名单MySQL排序规则兼容",
-  "sourceSha": "8b931dba7b1eb6ec44af086e769151adb417d189",
+  "title": "修复批次合并等待后台索引锁",
+  "sourceSha": "b98522a5208b038d7a906081586b51db8c196d6a",
   "featureShas": [
-    "8b931dba7b1eb6ec44af086e769151adb417d189"
+    "b98522a5208b038d7a906081586b51db8c196d6a"
   ],
   "files": [
-    "server/concept-members.mjs"
+    "server/CONCEPT-MONITOR.md",
+    "server/advisory-lock-wait.mjs",
+    "server/advisory-lock-wait.test.mjs",
+    "server/collection-batches.mjs",
+    "server/collection-batches.test.mjs",
+    "server/database.mjs"
+  ],
+  "ciFiles": [
+    ".github/workflows/testing.yml"
   ],
   "changes": [
-    "对JSON_TABLE成员ID采用显式二进制比较，消除连接与现有列排序规则冲突并保持精确ID",
-    "保留已上线的8类批次数量跳转、存表名单和管理员批次合并"
+    "批次合并从10秒轮询抢锁改为最长90秒等待当前索引批次，MySQL使用服务端GET_LOCK等待",
+    "取得互斥锁后才开启事务、重验归属版本；超时不写入、不重跑采集",
+    "既有后台锁调用仍立即尝试，保留批次跳转/数据/关联/历史/检查点"
   ],
-  "verification": "修复开发26/26、语法/diff及9项只读MySQL合成fixture通过；沿用原功能Web类型/构建/UI，无前端改动；发布重复验证/独立验证构建/CI等待按用户策略跳过",
+  "verification": "开发33/33相关测试、后端bundle和无新增lint诊断通过；MySQL独立qa名称锁等待11145ms后正常接手/互斥/释放，无业务读写；前端未改。发布重复验证/独立验证构建/CI等待按用户策略跳过",
   "developmentVerification": {
     "tests": {
-      "passed": 26,
+      "passed": 33,
       "failed": 0
     },
-    "mysqlReadOnlySynthetic": {
+    "lint": [
+      {
+        "file": "server/database.mjs",
+        "before": 1,
+        "after": 1,
+        "added": []
+      },
+      {
+        "file": "server/collection-batches.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/collection-batches.test.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/advisory-lock-wait.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/advisory-lock-wait.test.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      }
+    ],
+    "apiBundle": "passed",
+    "mysqlNamedLock": {
       "status": "passed",
-      "fixtures": 9,
-      "collations": 3,
-      "exactCase": true,
-      "dateGuard": true,
-      "persistentWrites": 0,
-      "productionDataRead": false,
+      "waitedMs": 11145,
+      "deadlineMs": 90000,
+      "exclusive": true,
+      "released": true,
+      "businessLocksTouched": 0,
+      "businessReads": 0,
+      "businessWrites": 0,
+      "productionMerges": 0,
       "paidCalls": 0
     },
-    "syntax": "passed",
-    "diffCheck": "passed",
-    "frontend": "unchanged; prior feature type/UI checks retained"
+    "frontend": "unchanged; no repeated frontend type/UI verification"
   },
   "skipped": [
     "release-repeat-tests",
@@ -44,10 +86,11 @@
     "consistency": "skipped-by-user"
   },
   "limitations": [
-    "Read-only synthetic MySQL CTEs exercise 3 collations, exact case and saved date; no schema or persistent writes."
+    "Merge waits up to 90 seconds for the current index transaction; deadline failure preserves all data and allows retry.",
+    "MySQL development check used only a unique qa named lock; no production batch merge or business data write."
   ],
   "operator": "Codex",
-  "id": "20261113130124-876e2ea9",
-  "builtAt": "2026-11-13T13:01:24.269Z",
-  "sourceDigest": "876e2ea9fc0804d7396ef8ffd603dcb85a2226e8255dcfe25fa079762075b312"
+  "id": "20261113134748-bd8ec3f2",
+  "builtAt": "2026-11-13T13:47:48.045Z",
+  "sourceDigest": "bd8ec3f202aed3c73b1da77207a6bcdd158e983ca94e02e408fcd3698cf63dec"
 }
