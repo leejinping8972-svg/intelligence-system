@@ -195,6 +195,7 @@ function relatedCollection(key: unknown): 'ads' | 'products' | 'sites' {
 }
 const columns = [
   { title: '关键词 / 种子词', key: 'term', width: 195, fixed: 'left' as const },
+  { title: '采集批次', key: 'batch', width: 120 },
   { title: '市场 / 品类', key: 'market', width: 100 },
   {
     title: '研究评分',
@@ -391,6 +392,12 @@ async function exportSelectedKeywords() {
             </p>
             <p class="hci-subtle">种子：{{ record.seedTerm || '—' }}</p>
           </template>
+          <template v-else-if="column.key === 'batch'">
+            <Tooltip v-if="record.batch" :title="record.batch">
+              <span class="selected-keyword-batch">{{ record.batch }}</span>
+            </Tooltip>
+            <span v-else class="hci-subtle">—</span>
+          </template>
           <template v-else-if="column.key === 'market'">
             {{ marketName(record.market) }}
             <p class="hci-subtle">{{ record.category }}</p>
@@ -521,7 +528,15 @@ async function exportSelectedKeywords() {
     <Drawer :open="!!evidenceKeyword" title="关键词数据与来源" width="min(940px, 100vw)" @close="evidenceKeyword = undefined"><CoreMetricsPanel v-if="evidenceKeyword" kind="keywords" :record="evidenceKeyword" /></Drawer>
   </main>
 </template>
+
 <style scoped>
+.selected-keyword-batch {
+  display: block;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .selected-summary,
 .selected-toolbar {
   display: flex;

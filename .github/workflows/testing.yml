@@ -48,6 +48,8 @@ jobs:
         run: node --test server/ingredient-trend-quantity.test.mjs server/ingredient-trend-resume.test.mjs server/ingredient-throughput.test.mjs server/task-resume.test.mjs
       - name: Radar evidence classification and scoring (synthetic data)
         run: node --test server/radar-evidence.test.mjs server/workspace-statistics.test.mjs
+      - name: Concept monitor persisted batch summaries (synthetic data)
+        run: node --test server/concept-monitor.test.mjs
       - name: Source usage accounting and bounded loading (synthetic data)
         run: node --test server/source-usage.test.mjs server/source-usage-reader.test.mjs
       - name: Product and existing collection tests (mocked providers)

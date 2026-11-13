@@ -235,6 +235,13 @@ async function exerciseReadModel(
   assert.equal((await reads.statistics({ kind: 'radar' })).snapshot, null);
   advanceStatistics();
   await reads.refresh();
+  await drain(); // Concept summaries publish only after the projection queue drains.
+  const concepts = await reads.statistics({ kind: 'concept-monitor', pageSize: 100 });
+  assert.deepEqual(concepts.rows.map((row) => row.batch).toSorted(), ['2026-11-01-US', 'October', 'November', 'legacy-batch'].toSorted(), JSON.stringify(concepts));
+  assert.equal(concepts.snapshot.day, '2026-10-27');
+  const latestConcept = await reads.statistics({ kind: 'concept-monitor', market: 'US', sort: 'keywords', order: 'descend', pageSize: 1 });
+  assert.equal(latestConcept.rows[0].batch, '2026-11-01-US');
+  assert.equal(latestConcept.rows[0].keywords, 9);
   const radar = await reads.statistics({ kind: 'radar', type: 'product', pageSize: 20 });
   assert.equal(radar.total, 240);
   assert.equal(radar.rows.length, 20);
