@@ -9,7 +9,7 @@ const contextKeys: Record<string, string[]> = {
 };
 
 export function marketQuery<T>(path: string, query: Record<string, T>) {
-  const keys = contextKeys[path] || [];
+  const keys = [...(contextKeys[path] || []), ...(query.conceptBatch ? ['conceptBatch','conceptDay','market'] : [])];
   return Object.fromEntries(
     Object.entries(query).filter(([key]) => !keys.includes(key)),
   );

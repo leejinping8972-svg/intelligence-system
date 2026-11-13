@@ -1,6 +1,8 @@
 import { collectionRange, productDiscoveryDay, resourceCollectionTime, shanghaiDay } from './collection-time.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 
+import {BATCH_SETTINGS, batchRecord} from './collection-batch-domain.mjs';
+import {conceptMemberCondition} from './concept-members.mjs';
 import { createConceptMonitor } from './concept-monitor.mjs';
 import {
   assessKeyword,
@@ -315,6 +317,10 @@ export function createWorkspaceReads({
   }
   async function withRelations(collection, records) {
     if (!records.length) return records;
+    if (['ads','keywords'].includes(collection)) {
+      const settings=(await pool.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows[0]?.value;
+      records=records.map(record=>batchRecord(collection,record,settings?.aliases));
+    }
     if (collection === 'products') {
       const ids = [...new Set(records.map((record) => record.siteId).filter(Boolean))];
       const fields = ['id', 'brand', 'domain', 'market'];
@@ -514,6 +520,7 @@ export function createWorkspaceReads({
         const projected = [],
           replacements = [],
           clearFailures = [];
+        const batchSettings=(await connection.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows[0]?.value;
         for (const item of dirty) {
           const source = sources.get(`${item.kind}:${item.source_key}`);
           const collection = projectionCollection(item);
@@ -526,7 +533,7 @@ export function createWorkspaceReads({
                 projected.push({
                   collection,
                   sourceKey: item.source_key,
-                  projection: projectRecord(collection, source),
+                  projection: projectRecord(collection, batchRecord(collection, source, batchSettings?.aliases)),
                 });
               } catch {
                 await putDocument(
@@ -768,6 +775,8 @@ export function createWorkspaceReads({
         clauses.push(`r.${column}=${bind(input[key])}`);
     };
     equals('market', 'market');
+    const conceptCondition = conceptMemberCondition(input, collection, bind, sql);
+    if (conceptCondition) clauses.push(conceptCondition);
     equals('category', 'category');
     if (collection === 'keywords' && input.batch?.trim()) {
       const batchField = sql(
@@ -983,7 +992,7 @@ export function createWorkspaceReads({
       const [trends, relations] = await Promise.all([
         withKeywordTrends(records), withRelations(query.collection, records),
       ]);
-      related = trends.map((record, index) => ({ ...record, relatedCounts: relations[index].relatedCounts, semrushCollection: relations[index].semrushCollection, coreSummary: relations[index].coreSummary }));
+      related = trends.map((record, index) => ({ ...record, batch: relations[index].batch, relatedCounts: relations[index].relatedCounts, semrushCollection: relations[index].semrushCollection, coreSummary: relations[index].coreSummary }));
     } else related = await withRelations(query.collection, records);
     return {
       rows: related,

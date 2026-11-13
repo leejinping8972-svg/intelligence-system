@@ -1,9 +1,11 @@
+import {BATCH_SETTINGS, batchRecord} from './collection-batch-domain.mjs';
+import {conceptMemberKey} from './concept-members.mjs';
 import { conceptMonitorRows } from './concept-monitor-domain.mjs';
 import { shanghaiDay } from './collection-time.mjs';
 import { statisticsRefreshSchedule } from './workspace-statistics.mjs';
 
 const KIND = 'concept-monitor';
-const VERSION = 2;
+const VERSION = 3;
 const CATCHUP_INTERVAL_MS = 5 * 60_000;
 const MARKER = 'read:concept-monitor-version';
 const snapshotKey = (market) => `read:statistics:${KIND}:${market}:all`;
@@ -40,6 +42,7 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
       nextCheck = Math.min(now + 60_000, schedule.nextAt);
       return;
     }
+    const settings = (await connection.query('SELECT value FROM workspace_documents WHERE name=$1', [BATCH_SETTINGS])).rows[0]?.value;
     const state = { keywords: [], ads: [], sites: [], products: [] };
     for (const kind of Object.keys(state)) {
       let cursor = '';
@@ -49,7 +52,7 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
           [kind, cursor],
         );
         const rows = result.rows;
-        state[kind].push(...rows.map((row) => row.payload));
+        state[kind].push(...rows.map((row) => batchRecord(kind, row.payload, settings?.aliases)));
         if (rows.length < 200) break;
         cursor = rows.at(-1).id;
       }
@@ -60,7 +63,9 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
       revision: String(revision),
       version: VERSION,
       indexing,
+      batchRevision: settings?.revision || 0,
     };
+    await connection.query("DELETE FROM workspace_documents WHERE name LIKE 'read:concept-members:%'");
     for (const market of ['ALL', 'US', 'MX', 'VN']) {
       const scoped = Object.fromEntries(
         Object.entries(state).map(([kind, rows]) => [
@@ -68,7 +73,11 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
           market === 'ALL' ? rows : rows.filter((row) => row.market === market),
         ]),
       );
-      const rows = conceptMonitorRows(scoped, now);
+      const members = [];
+      const rows = conceptMonitorRows(scoped, now, (batch, groups) => {
+        for (const [kind, value] of Object.entries(groups)) members.push([conceptMemberKey(market, batch, kind), value]);
+      });
+      for (const [key, value] of members) await putDocument('workspace_documents', key, value, false, connection);
       await connection.query(
         'DELETE FROM workspace_statistic_rows WHERE kind=$1 AND market=$2 AND variant=$3',
         [KIND, market, 'all'],

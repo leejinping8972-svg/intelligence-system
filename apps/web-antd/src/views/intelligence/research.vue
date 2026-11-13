@@ -131,10 +131,13 @@ watch(
 );
 const pageSize = listMemory.field('pageSize', 10);
 const currentPage = listMemory.field('currentPage', 1);
+import ConceptBatchFilter from './components/ConceptBatchFilter.vue';
+import {useConceptBatchFilter} from './concept-batch-filter';
+const concept=useConceptBatchFilter('/research');
 const remote = useWorkspaceList<Keyword>(
   'keywords',
   computed(() => ({
-    market: state.market,
+    ...concept.query.value, market: state.market,
     search: search.value,
     keywordId: route.query.keywordId,
     batch: batchFilter.value,
@@ -798,10 +801,12 @@ function saveMetrics() {
 }
 watch(collectedRange, () => { if (collectedRange.value.length) timeRange.value = 'ALL'; currentPage.value = 1; clearSelection(); });
 watch(timeRange, () => { if (timeRange.value !== 'ALL') collectedRange.value = []; });
+concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[]; category.value=rating.value=ratingStatus.value=timeRange.value=reviewFilter.value='ALL'; scoreFilter.value=emptyScoreFilter(); tagFilter.value=[]; favoritesOnly.value=false; currentPage.value=1; clearSelection();});
 </script>
 
 <template>
   <main class="hci-page">
+    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" @clear="concept.clear" />
     <PageHeader
       title="关键词研究"
       description="第一步：发现需求、核验趋势、评级打标，人工决定哪些词值得深入研究。"

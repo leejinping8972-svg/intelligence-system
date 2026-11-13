@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import {RouterLink} from 'vue-router';
 
-import { Alert, Button, Input, Spin, Table, Tooltip } from 'ant-design-vue';
+import { Alert, AutoComplete, Button, Input, message, Modal, Spin, Table, Tooltip } from 'ant-design-vue';
 
 import { state } from '../data';
+import {adminRequest, serverMode, session} from '../session';
 import { useStatistics } from '../statistics-queries';
 import CollectionTime from './CollectionTime.vue';
 
@@ -36,6 +38,36 @@ const query = computed(() => ({
   order: order.value,
 }));
 const remote = useStatistics<ConceptRow>(query);
+const canMerge=computed(()=>serverMode && session.user?.role==='admin');
+const selectedBatches=ref<string[]>([]);
+const mergeError=ref(''); const mergeOpen=ref(false); const mergeTarget=ref(''); const merging=ref(false);
+const mergeOptions=computed(()=>remote.rows.value.filter(row=>row.batch.toLocaleLowerCase().includes(mergeTarget.value.toLocaleLowerCase())).map(row=>({value:row.batch})));
+const selectedRevision=ref(0);
+function selectBatches(keys: (number | string)[]) {
+  if(keys.length>50) { message.warning('每次最多合并50个批次'); return; }
+  selectedBatches.value=keys.map(String);
+}
+function openMerge() {
+  mergeTarget.value=selectedBatches.value[0]||'';
+  mergeError.value=''; selectedRevision.value=remote.snapshot.value?.batchRevision||0;
+  mergeOpen.value=true;
+}
+async function mergeBatches() {
+  if(merging.value) return;
+  merging.value=true; mergeError.value='';
+  try {
+    const result=await adminRequest<{target:string}>('server_collection_batches_merge',{batches:selectedBatches.value,target:mergeTarget.value,expectedRevision:selectedRevision.value},120_000);
+    selectedBatches.value=[]; mergeOpen.value=false;
+    message.success(`已合并到“${result.target}”，后台正在更新汇总`);
+    await remote.reload(true);
+  } catch(error) { mergeError.value=error instanceof Error?error.message:'合并失败，请重试'; }
+  finally {merging.value=false;}
+}
+const destinations:Record<string,string>={keywords:'/research',ads:'/ads',sites:'/sites',products:'/products'};
+function destination(batch:string,key:string) {
+  const kind=key.replace(/Today$/,'');
+  return {path:destinations[kind]!,query:{conceptBatch:batch,market:state.market,...(key.endsWith('Today')?{conceptDay:remote.snapshot.value?.day}:{})}};
+}
 const preparing = computed(
   () => !remote.error.value && (
     !remote.snapshot.value || (
@@ -48,6 +80,7 @@ const preparing = computed(
 const busy = computed(() => remote.loading.value || preparing.value);
 watch([search, () => state.market], () => {
   page.value = 1;
+  selectedBatches.value=[];
 });
 const fields = [
   { title: '采集批次', key: 'batch', width: 200, fixed: 'left' as const },
@@ -102,6 +135,7 @@ function change(
         <p>按采集批次汇总关联数据 · 每日北京时间 09:00 更新</p>
       </div>
       <div class="concept-monitor-tools">
+        <Button v-if="canMerge" :disabled="selectedBatches.length < 2 || merging" @click="openMerge">合并批次<span v-if="selectedBatches.length">（{{ selectedBatches.length }}）</span></Button>
         <Input
           v-model:value="search"
           aria-label="搜索采集批次"
@@ -127,10 +161,11 @@ function change(
       </span>
     </p>
     <Table
-      row-key="id"
+      row-key="batch"
       size="small"
       :columns="columns"
       :data-source="remote.rows.value"
+      :row-selection="canMerge ? {selectedRowKeys:selectedBatches,preserveSelectedRowKeys:true,onChange:selectBatches,getCheckboxProps:()=>({disabled:merging})} : undefined"
       :loading="remote.loading.value"
       :scroll="{ x: 1530 }"
       :pagination="{
@@ -168,19 +203,20 @@ function change(
           v-else-if="column.key === 'collectedAt'"
           :at="record.collectedAt"
         />
-        <span
-          v-else
-          :class="{
-            'concept-new':
-              String(column.key).endsWith('Today') &&
-              record[String(column.key)] > 0,
-          }"
-          >{{ record[String(column.key)] }}</span>
+        <RouterLink v-else :to="destination(record.batch,String(column.key))" class="concept-count" :class="{'concept-new':String(column.key).endsWith('Today') && record[String(column.key)] > 0}" :aria-label="`${record.batch} · ${column.title} ${record[String(column.key)]}，查看列表`">{{ record[String(column.key)] }}</RouterLink>
       </template>
     </Table>
     <p class="hci-subtle">
       同一批次内按记录去重；关联数据以已保存的关系为准。采集时间取关联记录最近采集时间，今日新增按首次发现时间统计，缺少该时间时使用已有采集时间。
     </p>
+    <Modal v-model:open="mergeOpen" title="合并采集批次" ok-text="确认合并" :ok-button-props="{disabled:!mergeTarget.trim() || selectedBatches.length < 2}" :confirm-loading="merging" :cancel-button-props="{disabled:merging}" :closable="!merging" :keyboard="!merging" :mask-closable="false" @ok="mergeBatches">
+      <p>将以下 {{ selectedBatches.length }} 个批次统一合并到目标批次：</p>
+      <p class="concept-merge-names">{{ selectedBatches.join('、') }}</p>
+      <label for="concept-merge-target">目标批次（选择已有名称或输入新名称）</label>
+      <AutoComplete id="concept-merge-target" v-model:value="mergeTarget" :options="mergeOptions" :maxlength="100" :disabled="merging" style="width:100%;margin:8px 0 16px" aria-label="目标采集批次" />
+      <Alert type="warning" show-icon message="所有市场的同名批次会一起合并。关联数据保留并去重，关键词和广告统一使用目标批次；原始采集历史保留。此操作不会重新采集数据。" />
+      <Alert v-if="mergeError" type="error" show-icon :message="mergeError" style="margin-top:12px" />
+    </Modal>
   </section>
 </template>
 
@@ -192,7 +228,7 @@ function change(
 .concept-monitor-tools {
   display: flex;
   gap: 8px;
-  width: 320px;
+  width: 480px;
   max-width: 100%;
 }
 .concept-monitor-note {
@@ -216,10 +252,14 @@ function change(
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.concept-new {
+.concept-count.concept-new {
   color: var(--hci-green, #176b54);
   font-weight: 600;
 }
+.concept-count { color:var(--hci-blue,#1677ff); text-decoration:underline; text-underline-offset:3px; }
+.concept-count:hover { text-decoration-thickness:2px; }
+.concept-count:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+.concept-merge-names { overflow-wrap:anywhere; margin:12px 0; }
 @media (max-width: 640px) {
   .concept-monitor-head {
     align-items: stretch;

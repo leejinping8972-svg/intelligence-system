@@ -22,7 +22,7 @@ const firstTime = (kind, row) =>
 
 // Follow saved identities only. Do not infer links from similar terms/domains,
 // or propagate backwards through a shared site into unrelated keywords.
-export function conceptMonitorRows(state, now = Date.now()) {
+export function conceptMonitorRows(state, now = Date.now(), onMembers) {
   const records = Object.fromEntries(
     kinds.map((kind) => [
       kind,
@@ -107,21 +107,25 @@ export function conceptMonitorRows(state, now = Date.now()) {
           add(group, kind, related, row.market);
       destinations();
       const counts = {};
+      const members = {};
       const times = [];
       const markets = new Set();
       for (const kind of kinds) {
         const rows = [...group.members[kind].values()];
         counts[kind] = rows.length;
-        counts[`${kind}Today`] = rows.filter((row) => {
+        const todayRows = rows.filter((row) => {
           const at = firstTime(kind, row);
           return at && shanghaiDay(Date.parse(at)) === day;
-        }).length;
+        });
+        counts[`${kind}Today`] = todayRows.length;
+        members[kind] = {ids: rows.map(row => row.id), todayIds: todayRows.map(row => row.id), day};
         for (const row of rows) {
           if (row.market) markets.add(row.market);
           const at = resourceCollectionTime(kind, row);
           if (at) times.push(at);
         }
       }
+      onMembers?.(group.batch, members);
       return {
         id: group.batch,
         batch: group.batch,
