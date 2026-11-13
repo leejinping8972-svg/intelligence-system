@@ -1,26 +1,79 @@
 {
-  "title": "概念监控看板loading与后台索引等待提示",
-  "sourceSha": "6098bcd490814d813781587ce28c822d764ba949",
+  "title": "商品反推关键词入库与非趋势指标补齐",
+  "sourceSha": "85eaf2d93ec8420d680999c1a9f2623315bc1b56",
   "featureShas": [
-    "6098bcd490814d813781587ce28c822d764ba949"
+    "85eaf2d93ec8420d680999c1a9f2623315bc1b56"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue"
+    "apps/web-antd/src/views/intelligence/components/ProductKeywordEvidence.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductKeywordStatus.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductKeywordsButton.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "server/domain.mjs",
+    "server/index.mjs",
+    "server/keyword-data.mjs",
+    "server/market-jobs.mjs",
+    "server/platform-products-jobs.mjs",
+    "server/product-keywords-domain.mjs",
+    "server/product-keywords-engine.mjs",
+    "server/product-keywords-provider.mjs",
+    "server/product-keywords-semrush.test.mjs",
+    "server/product-keywords-store.mjs",
+    "server/product-keywords.integration.test.mjs",
+    "server/product-keywords.test.mjs",
+    "server/runner.mjs",
+    "server/semrush-keyword-trends.d.mts",
+    "server/semrush-keyword-trends.mjs",
+    "server/semrush-reports.mjs",
+    "server/source-field-store.mjs",
+    "server/source-usage-domain.mjs",
+    "server/store.mjs",
+    "server/task-context.mjs",
+    "server/task-projection.mjs",
+    "server/workspace-reads.mjs"
   ],
   "changes": [
-    "首次汇总等待期间持续显示loading，汇总生成后自动显示",
-    "无首份汇总时显示：正在等待后台索引队列完成，完成后会显示汇总信息。",
-    "真实空结果与读取失败分别提示并停止等待动画"
+    "新采集且首次保存的商品自动提取有原文依据的候选词；历史商品可勾选后手动补做",
+    "按市场去重入库并双向关联商品，保留人工审核、收藏、原关联、已有指标与趋势",
+    "仅补齐Semrush非趋势搜索指标，复用有效缓存；缺失保留未知，不触发趋势或递归扩采",
+    "商品页显示任务状态，关键词详情展示来源商品、原文引用及链接；请求账本保护重复及未知结果"
   ],
-  "verification": "沿用开发组件lint、完整Web类型、隔离前端构建及1920/390合成UI；最终文案组件lint/diff复核通过。发布阶段重复验证、独立验证构建与CI等待按用户要求跳过",
+  "verification": "沿用开发36/36相关测试、完整Web类型、前后端构建、1440/390合成UI和无新增lint诊断；发布阶段重复测试/独立验证构建/CI等待按用户策略跳过",
   "developmentVerification": {
-    "typecheck": "passed",
-    "componentLint": "passed",
-    "webBuild": "passed",
-    "ui": "passed",
-    "scriptErrors": 0,
-    "unmockedActions": 0,
-    "copyChange": "lint-and-diff-passed"
+    "status": "ready-for-integration",
+    "sourceSha": "85eaf2d93ec8420d680999c1a9f2623315bc1b56",
+    "branch": "codex/product-derived-keywords-20261113",
+    "baseSha": "1cf13e9958c4e2c432215a59bb4bdd3fd25d252e",
+    "worktree": "D:/Project_Code/Intelligence_System/_worktrees/product-derived-keywords",
+    "buildOutput": "D:/Project_Code/Intelligence_System/_builds/product-derived-keywords-dev",
+    "tests": {
+      "passed": 36,
+      "failed": 0,
+      "log": ".artifacts/final-feature-tests.log"
+    },
+    "checks": {
+      "webTypecheck": "passed",
+      "backendBundle": "passed",
+      "frontendBuild": "passed",
+      "syntheticUi": "passed-1440-and-390",
+      "newLintDiagnostics": 0,
+      "baselineLintDiagnostics": 107,
+      "diffCheck": "passed"
+    },
+    "baselineFailures": [
+      "task-projection.test.mjs: expected projection omits canContinue:false",
+      "source-usage.test.mjs:125 scheduled public collection usage sanitization"
+    ],
+    "paidProviderCalls": 0,
+    "productionWrites": 0,
+    "dependencyChanges": false,
+    "schemaChanges": false,
+    "migrations": false,
+    "pushed": false,
+    "integrated": false,
+    "deployed": false
   },
   "skipped": [
     "release-repeat-tests",
@@ -35,10 +88,12 @@
     "consistency": "skipped-by-user"
   },
   "limitations": [
-    "首次汇总等待现有后台索引队列完成，尚未生成快照时不代表批次为0"
+    "候选词来自商品原文，不代表真实平台流量词；新词待审核不自动入选",
+    "依赖已配置AI与Semrush渠道，按渠道规则计费；不触发历史全库回填或收费验收",
+    "已知两项旧基线测试问题和107项既有lint诊断已在开发记录中说明"
   ],
   "operator": "Codex",
-  "id": "20261113100742-c13f342f",
-  "builtAt": "2026-11-13T10:07:42.809Z",
-  "sourceDigest": "c13f342f61eb257cfb4ab11e2dbf7c635b30f5623ea6f4e1e36ce884834ff95a"
+  "id": "20261113112241-a7befeba",
+  "builtAt": "2026-11-13T11:22:41.137Z",
+  "sourceDigest": "a7befeba68157184bd84355a4ea2bb9b9b76d0d11dc85701e679d22833e9517b"
 }
