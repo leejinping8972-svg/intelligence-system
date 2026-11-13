@@ -30,6 +30,7 @@ import { lock, pool, putDocument, unlock } from './database.mjs';
 import { cleanKeyword, naturalKey } from './domain.mjs';
 import { tickKeywordTrends } from './keyword-trends-store.mjs';
 import { publicRecoveryPlan } from './monitor-public-recovery.mjs';
+import { applyMonitorBatch, removeMonitorTarget } from './monitor-bulk.mjs';
 import { withQueueConfig } from './queue-config-lock.mjs';
 import { parallelItems } from './source-scheduler.mjs';
 import { requestFailed, requestStarted, requestSucceeded } from './request-log.mjs';
@@ -139,6 +140,8 @@ export async function competitorAction(input, user) {
   if (maintenance) throw new Error('系统维护中，请稍后保存或提交');
   return withQueueConfig('monitor-config', async (c) => {
     const db = createMonitorStore(c);
+    if (['server_competitor_batch_update', 'server_competitor_batch_remove'].includes(input.action))
+      return applyMonitorBatch(input, db, c);
     if (input.action === 'server_competitor_batch_save')
       return saveSiteBatch(input, db, c);
     if (input.action === 'server_competitor_advertiser_batch_save')
@@ -240,22 +243,7 @@ export async function competitorAction(input, user) {
     if (input.action === 'server_competitor_remove' && !hot) {
       if ((await db.read(`${PREFIX}run:${id}`))?.status === 'running')
         throw new Error('此对象仍在采集，请先暂停并等当前请求结束后移除');
-      const removedSite = config.siteId
-        ? await db.read(`business:sites:${config.siteId}`)
-        : null;
-      const removedProductChannel = westmonthChannelKey(
-        'products',
-        removedSite,
-      );
-      for (const key of [
-        name,
-        `${PREFIX}baseline:${id}:${removedProductChannel}`,
-        `${PREFIX}baseline:${id}:products`,
-        `${PREFIX}baseline:${id}:ads`,
-        `${PREFIX}crawl:${id}:products`,
-        `${PREFIX}crawl:${id}:ads`,
-      ])
-        await c.query('DELETE FROM workspace_documents WHERE name=$1', [key]);
+      await removeMonitorTarget(config, db, c);
       return { removed: true };
     }
     if (input.action === 'server_competitor_pause') {

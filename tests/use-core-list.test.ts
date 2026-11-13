@@ -30,4 +30,13 @@ describe('keyword list association columns', () => {
     expect(keys).not.toContain('core:linkedProducts');
     expect(keys).not.toContain('core:linkedSites');
   });
+
+  it('makes both explicit keyword-library and generated selected-keyword monthly columns sortable', () => {
+    const core = useCoreList('keywords');
+    for (const base of [[{ key: 'term' }, { key: 'core:searchVolume' }], [{ key: 'term' }]]) {
+      const monthly = core.columns(base).filter((column) => column.key === 'core:searchVolume');
+      expect(monthly).toHaveLength(1);
+      expect(monthly[0]).toMatchObject({ sorter: true, sortDirections: ['descend', 'ascend'] });
+    }
+  });
 });

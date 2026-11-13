@@ -461,7 +461,7 @@ const displayColumns = computed(() => {
   ];
   return ordered.map((column) => ({
     ...column,
-    ...(['collectedAt', 'score', 'relatedAds', 'relatedProducts', 'relatedSites'].includes(column.key || '')
+    ...(['collectedAt', 'score', 'relatedAds', 'relatedProducts', 'relatedSites', 'core:searchVolume'].includes(column.key || '')
       ? {
           sortOrder:
             remote.sort.value === column.key

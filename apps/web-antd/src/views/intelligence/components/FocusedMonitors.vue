@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router';
 import {
   Alert,
   Button,
+  Checkbox,
   Form,
   Input,
   InputNumber,
@@ -28,9 +29,11 @@ import {
 } from '../competitor-workspace';
 import { audit, marketName, state } from '../data';
 import { focusedMonitorRows } from '../focused-monitors';
+import { useFilteredSelection } from '../resource-list';
 import { collectionTimeLabel } from '../resource-metadata';
 import { serverMode, session } from '../session';
 import ProductDrawer from './ProductDrawer.vue';
+import SelectionBar from './SelectionBar.vue';
 
 const router = useRouter();
 const props = defineProps<{ active?: boolean }>();
@@ -41,6 +44,11 @@ const page = ref(1);
 const search = ref('');
 const status = ref('ALL');
 const editor = ref<FocusedMonitorRow>();
+const batchEditor = ref(false);
+const batchIds = ref<string[]>([]);
+const batchFailures = ref<Array<{ id: string; title: string; error: string }>>([]);
+const batchForm = reactive({ changeHour: false, changePages: false, changeEnabled: false, hour: 8, maxPages: 10, enabled: false });
+const hasBatchChanges = computed(() => batchForm.changeHour || batchForm.changePages || batchForm.changeEnabled);
 const productId = ref<string>();
 const form = reactive({ hour: 8, maxPages: 10, enabled: false });
 const canEdit = computed(() => !serverMode || session.user?.role === 'admin');
@@ -60,12 +68,58 @@ const rows = computed(() =>
         .includes(search.value.toLowerCase()),
   ),
 );
+const batchRows = computed(() => rows.value.filter((row) => row.target));
+const selection = useFilteredSelection(batchRows);
+const selectedCount = computed(() => selection.selected.value.length);
+const rowSelection = computed(() => ({
+  ...selection.rowSelection.value,
+  getCheckboxProps: (row: FocusedMonitorRow) => ({ disabled: !canEdit.value || !!busy.value || !row.target }),
+}));
 watch([search, kind, status, () => state.market], () => {
   page.value = 1;
   editor.value = undefined;
   productId.value = undefined;
+  batchEditor.value = false;
+  selection.clear();
+  batchFailures.value = [];
 });
 const labels = { product: '商品', site: '独立站', advertiser: '广告主' };
+function editBatch() {
+  batchIds.value = selection.selected.value.flatMap((row) => row.target ? [row.target.id] : []);
+  Object.assign(batchForm, { changeHour: false, changePages: false, changeEnabled: false, hour: 8, maxPages: 10, enabled: false });
+  batchEditor.value = true;
+}
+async function runBatch(operation: 'remove' | 'update', patch?: Record<string, boolean | number>, ids?: string[]) {
+  if (busy.value || !canEdit.value) return;
+  const chosen = ids || selection.selected.value.flatMap((row) => row.target ? [row.target.id] : []);
+  if (chosen.length === 0) return;
+  busy.value = 'batch';
+  batchFailures.value = [];
+  try {
+    const titles = new Map(rows.value.flatMap((row) => row.target ? [[row.target.id, row.title] as const] : []));
+    const result = await cloudRequest<{ succeededIds: string[]; failed: Array<{ id: string; error: string }> }>(`server_competitor_batch_${operation}`, { ids: chosen, ...(patch ? { patch } : {}) });
+    batchEditor.value = false;
+    const succeeded = new Set(result.succeededIds.map((id) => `competitor:${id}`));
+    selection.ids.value = selection.ids.value.filter((id) => !succeeded.has(id));
+    batchFailures.value = result.failed.map((failure) => ({ ...failure, title: titles.get(failure.id) || failure.id }));
+    await refreshCompetitorWorkspace(true);
+    const text = operation === 'remove' ? '取消监控' : '更新设置';
+    if (result.failed.length > 0) message.warning(`${text}：成功${result.succeededIds.length}项，未完成${result.failed.length}项`);
+    else message.success(`已${text}${result.succeededIds.length}项`);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '批量操作失败');
+  } finally {
+    busy.value = '';
+  }
+}
+async function saveBatch() {
+  if (!hasBatchChanges.value) return;
+  const patch: Record<string, boolean | number> = {};
+  if (batchForm.changeHour) patch.hour = batchForm.hour;
+  if (batchForm.changePages) patch.maxPages = batchForm.maxPages;
+  if (batchForm.changeEnabled) patch.enabled = batchForm.enabled;
+  await runBatch('update', patch, batchIds.value);
+}
 async function change(row: FocusedMonitorRow, enabled: boolean) {
   if (row.legacy) {
     row.legacy.enabled = enabled;
@@ -210,9 +264,33 @@ function view(row: FocusedMonitorRow) {
     </Button>
     <span class="hci-subtle">{{ rows.length }}个对象 · 时间为北京时间</span>
   </div>
+  <SelectionBar
+    v-if="canEdit"
+    :count="selectedCount"
+    :total="batchRows.length"
+    :busy="!!busy"
+    @all="selection.selectAll"
+    @clear="selection.clear"
+  >
+    <Button :disabled="!selectedCount || !!busy" @click="editBatch">批量设置</Button>
+    <Button :disabled="!selectedCount || !!busy" @click="runBatch('update', { enabled: false })">批量暂停</Button>
+    <Popconfirm
+      :title="`取消选中的${selectedCount}项监控？已采集结果和历史保留；执行中的监控需先暂停。`"
+      :disabled="!selectedCount || !!busy"
+      @confirm="runBatch('remove')"
+    >
+      <Button danger :disabled="!selectedCount || !!busy" :loading="busy === 'batch'">批量取消监控</Button>
+    </Popconfirm>
+  </SelectionBar>
+  <Alert v-if="batchFailures.length" type="warning" show-icon message="部分监控未完成操作，可按原因处理后重试">
+    <template #description>
+      <p v-for="failure in batchFailures" :key="failure.id">{{ failure.title }}：{{ failure.error }}</p>
+    </template>
+  </Alert>
   <Table
     :data-source="rows"
     row-key="id"
+    :row-selection="canEdit ? rowSelection : undefined"
     :loading="competitorWorkspace.loading && !competitorWorkspace.loaded"
     :pagination="{
       current: page,
@@ -343,6 +421,36 @@ function view(row: FocusedMonitorRow) {
       </template>
     </template>
   </Table>
+  <Modal
+    v-model:open="batchEditor"
+    :title="`批量设置 ${batchIds.length} 项监控`"
+    width="min(520px, 100vw)"
+    ok-text="保存设置"
+    :ok-button-props="{ disabled: !hasBatchChanges || !!busy }"
+    :cancel-button-props="{ disabled: !!busy }"
+    :closable="!busy"
+    :mask-closable="!busy"
+    :keyboard="!busy"
+    :confirm-loading="busy === 'batch'"
+    @ok="saveBatch"
+  >
+    <p class="hci-subtle">仅修改勾选的设置，其他配置按每个监控原样保留。</p>
+    <Form layout="vertical">
+      <Form.Item>
+        <Checkbox v-model:checked="batchForm.changeHour" :disabled="!!busy">修改每日更新时间（北京时间）</Checkbox>
+        <InputNumber v-model:value="batchForm.hour" aria-label="批量监控更新时间" :disabled="!batchForm.changeHour || !!busy" :min="0" :max="23" :precision="0" />
+      </Form.Item>
+      <Form.Item>
+        <Checkbox v-model:checked="batchForm.changePages" :disabled="!!busy">修改每渠道页面上限</Checkbox>
+        <InputNumber v-model:value="batchForm.maxPages" aria-label="批量监控页面上限" :disabled="!batchForm.changePages || !!busy" :min="1" :max="100" :precision="0" />
+      </Form.Item>
+      <Form.Item>
+        <Checkbox v-model:checked="batchForm.changeEnabled" :disabled="!!busy">修改启停状态</Checkbox>
+        <Switch v-model:checked="batchForm.enabled" aria-label="批量启用自动检查" :disabled="!batchForm.changeEnabled || !!busy" checked-children="开启" un-checked-children="暂停" />
+      </Form.Item>
+    </Form>
+    <p class="hci-subtle">暂停后当前请求结束即停止后续采集；取消监控前请等待执行结束。启用按原计划运行，本日已尝试的请求不会重放。</p>
+  </Modal>
   <Modal
     :open="!!editor"
     title="监控设置"
