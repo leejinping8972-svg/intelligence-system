@@ -1,47 +1,85 @@
 {
-  "title": "Sorftime商品搜索空结果识别修复",
-  "sourceSha": "304dc39a766ce4f4cd04b30e9b5e820f9cdf9aec",
+  "title": "重点监控批量操作与关键词月搜索量排序",
+  "sourceSha": "a90aacb6b5d80f92ba33f15946e428eb272631fd",
   "featureShas": [
-    "304dc39a766ce4f4cd04b30e9b5e820f9cdf9aec"
+    "a90aacb6b5d80f92ba33f15946e428eb272631fd"
   ],
   "files": [
-    "server/SORFTIME-EMPTY-SEARCH.md",
-    "server/platform-products-provider.mjs",
-    "server/sorftime-empty-search.test.mjs"
+    "apps/web-antd/src/views/intelligence/components/FocusedMonitors.vue",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/use-core-list.ts",
+    "server/competitor-monitor-store.mjs",
+    "server/keyword-volume-sort.mjs",
+    "server/monitor-bulk.mjs",
+    "server/monitor-bulk.test.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs",
+    "tests/keyword-volume-column.test.ts",
+    "tests/use-core-list.test.ts"
   ],
   "changes": [
-    "商品名称搜索精确识别非错误MCP单文本No data available.作为成功空结果，保留来源信息和一次调用记录",
-    "结构化数据优先，错误、混合文本及详情解析保持原规则，不吞掉真实错误",
-    "不自动重试、补跑旧任务或修复历史账本，其他来源继续执行"
+    "重点监控支持跨全部筛选分页选择、批量设置、暂停和取消；只更新勾选字段，保留历史结果并逐项显示失败原因",
+    "关键词库和已入选列表支持月搜索量升降序，全量排序后分页，真实0参与排序、未知值末尾"
+  ],
+  "verification": "发布阶段重复测试、回归、类型、lint、隔离数据库、界面验收、独立验证构建及CI等待按用户要求跳过；沿用开发38项服务端+11项前端、Web类型、构建和合成UI验证",
+  "developmentVerification": {
+    "serverTests": {
+      "passed": 38,
+      "failed": 0,
+      "log": ".artifacts/server-tests-final.log"
+    },
+    "frontendTests": {
+      "passed": 11,
+      "failed": 0,
+      "log": ".artifacts/frontend-tests-final.log"
+    },
+    "webTypecheck": {
+      "exitCode": 0,
+      "log": ".artifacts/typecheck-final.log"
+    },
+    "frontendBuild": {
+      "passed": true,
+      "log": ".artifacts/build-final.log"
+    },
+    "layoutUtilities": {
+      "passed": true,
+      "log": ".artifacts/verify-build.log"
+    },
+    "apiRunnerBundle": {
+      "passed": true,
+      "log": ".artifacts/api-build-final.log"
+    },
+    "newFilesLintAndFormat": {
+      "passed": true
+    },
+    "targetedLint": {
+      "addedDiagnostics": 0,
+      "current": 177,
+      "baseline": 178,
+      "passed": false,
+      "reason": "preexisting diagnostics",
+      "evidence": ".artifacts/lint-comparison.json"
+    },
+    "ui": {
+      "syntheticDataOnly": true,
+      "evidence": ".artifacts/ui-verification.json",
+      "requests": ".artifacts/ui-requests.json"
+    }
+  },
+  "skipped": [
+    "release-repeat-tests",
+    "validation-build",
+    "ci-wait",
+    "full-database-backup-no-schema-change",
+    "database-consistency-reconciliation-by-user"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
-    "startupDataRepair": false,
-    "readModelVersionChange": false,
-    "backup": "skipped-by-user-policy-no-schema-change",
     "consistency": "skipped-by-user"
   },
-  "validation": {
-    "development": "10/10 targeted synthetic server tests; extended suite 13 pass with 3 failures reproduced unchanged on baseline 18ef24e; zero added provider lint diagnostics; syntax/diff and isolated backend bundle pass. No frontend business change.",
-    "release": "Repeat tests/regression/typecheck/lint/isolated DB/UI, validation builds and CI wait skipped by user policy. Official frontend and API image each generated once.",
-    "limitations": "No actual paid source acceptance, historical task replay or ledger repair. Empty data applies to the market/query response and does not prove product absence. Three extended suite failures preexist on baseline."
-  },
-  "queue": {
-    "leaseCount": 23,
-    "preserveFrozenJobs": true,
-    "unknownRequests": "never-auto-replay",
-    "existingLanesReused": true
-  },
-  "configuration": {
-    "historicalJobsAutoReplayed": false,
-    "paidCallsForRelease": 0,
-    "backendChanges": true,
-    "frontendBusinessChanges": false,
-    "dependenciesChanged": false
-  },
-  "id": "20261112112427-9f8bc46b",
-  "builtAt": "2026-11-12T11:24:27.134Z",
-  "sourceDigest": "9f8bc46bfd80907baac5843217cb8e9bfc9937bb27edf5528ea0b3bfce52da5e",
-  "operator": "Codex"
+  "operator": "Codex",
+  "id": "20261113061834-fc1893ee",
+  "builtAt": "2026-11-13T06:18:34.835Z",
+  "sourceDigest": "fc1893ee3ea145efd3abc77cb1384804ce1b29127a84fe395ecc5bcd892766ee"
 }
