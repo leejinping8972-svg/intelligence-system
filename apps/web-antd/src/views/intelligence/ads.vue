@@ -130,7 +130,10 @@ const rows = computed(() => serverMode ? remote.rows.value :
 );
 const page = listMemory.field('page', 1);
 const pageSize = listMemory.field('pageSize', 20);
-const remote = useWorkspaceList<Ad>('ads', computed(() => ({ market: state.market, search: search.value,
+import ConceptBatchFilter from './components/ConceptBatchFilter.vue';
+import {useConceptBatchFilter} from './concept-batch-filter';
+const concept=useConceptBatchFilter('/ads');
+const remote = useWorkspaceList<Ad>('ads', computed(() => ({ ...concept.query.value, market: state.market, search: search.value,
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   enabled: viewTab.value !== 'advertisers', platform: platformFilter.value, source: sourceFilter.value, batch: batchFilter.value, status: status.value, newness: newness.value, keywordId: keywordFilter.value || route.query.keywordId, linkedSite: linkedSite.value, linkedProduct: linkedProduct.value,
 })), page, pageSize);
@@ -246,9 +249,11 @@ async function exportAds() {
   } catch (cause) { message.error((cause as Error).message); }
 }
 watch(collectedRange, () => { page.value = 1; clear(); });
+concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[]; status.value=newness.value=platformFilter.value=sourceFilter.value='ALL'; linkedProduct.value=linkedSite.value=keywordFilter.value=undefined; page.value=1; clear();});
 </script>
 <template>
   <main class="hci-page">
+    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" @clear="concept.clear" />
     <PageHeader title="广告观察" description=""
       ><Button @click="router.push('/imports')">导入资料</Button
       ><Button :disabled="!rows.length" @click="exportAds">完整导出</Button><Button type="primary" @click="begin"

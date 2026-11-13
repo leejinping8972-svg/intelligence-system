@@ -100,7 +100,10 @@ const keywordFilter = useSiteKeywordFilter(listMemory.field('keywordFilter', '')
 const selected = ref<Site>();
 const page = listMemory.field('page', 1);
 const pageSize = listMemory.field('pageSize', 8);
-const remote = useWorkspaceList<Site>('sites', computed(() => ({ market: state.market,
+import ConceptBatchFilter from './components/ConceptBatchFilter.vue';
+import {useConceptBatchFilter} from './concept-batch-filter';
+const concept=useConceptBatchFilter('/sites');
+const remote = useWorkspaceList<Site>('sites', computed(() => ({ ...concept.query.value, market: state.market,
   search: search.value, platform: platform.value, category: category.value, ownership: ownership.value,
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
   keywordId: keywordFilter.value || undefined, source: source.value, score: scoreFilter.value,
@@ -307,9 +310,11 @@ const displayColumns = computed(() => core.columns(columns).map((column) => ({
   } : {}),
 })));
 watch(collectedRange, () => { page.value = 1; ids.value = []; });
+concept.onEntry(()=>{search.value=sourceSiteFilter.value=''; collectedRange.value=[]; source.value=platform.value=category.value=ownership.value='ALL'; scoreFilter.value=emptyScoreFilter(); keywordFilter.value=''; page.value=1; ids.value=[];});
 </script>
 <template>
   <main class="hci-page">
+    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" @clear="concept.clear" />
     <PageHeader
       title="竞品独立站"
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"

@@ -153,10 +153,13 @@ const compareIds = ref<string[]>([]);
 const compareOpen = ref(false);
 const siteFilter = listMemory.field('siteFilter', '');
 const keywordFilter = listMemory.field('keywordFilter', '');
+import ConceptBatchFilter from './components/ConceptBatchFilter.vue';
+import {useConceptBatchFilter} from './concept-batch-filter';
+const concept=useConceptBatchFilter('/products');
 const remote = useWorkspaceList<Product>(
   'products',
   computed(() => ({
-    market: state.market,
+    ...concept.query.value, market: state.market,
     search: search.value,
     category: category.value,
     sourceCategory: sourceCategory.value,
@@ -567,9 +570,11 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
   category.value = sourceCategory.value = benefitFilter.value = ingredientFilter.value = decisionFilter.value = newProductType.value = sourceFilter.value = platformFilter.value = siteLinked.value = 'ALL';
   siteFilter.value = keywordFilter.value = ''; favorites.value = false; page.value = 1; clear();
 }, { immediate: true });
+concept.onEntry(()=>{search.value=siteFilter.value=keywordFilter.value=discoveredOn.value=''; collectedRange.value=[]; listedRange.value=[]; listedQuick.value=0; category.value=sourceCategory.value=benefitFilter.value=ingredientFilter.value=decisionFilter.value=newProductType.value=sourceFilter.value=platformFilter.value=siteLinked.value='ALL'; productPool.value='ALL'; favorites.value=false; page.value=1; clear();});
 </script>
 <template>
   <main class="hci-page">
+    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" @clear="concept.clear" />
     <Tabs v-model:active-key="productPool" @change="newProductType = 'ALL'; sourceCategory = 'ALL'; page = 1">
       <Tabs.TabPane v-if="siteFilter || productPool === 'ALL'" key="ALL" tab="全部商品" />
       <Tabs.TabPane key="existing" tab="商品库" />

@@ -20,6 +20,7 @@ import {
   requireAdmin,
   sessionUser,
 } from './auth.mjs';
+import { createCollectionBatchAction } from './collection-batches.mjs';
 import {
   competitorAction,
   runCompetitorQueue,
@@ -167,6 +168,8 @@ void runQueue(controller.signal);
 void runContentQueue(controller.signal);
 void runCompetitorQueue(controller.signal);
 async function api(input, user) {
+  if (input.action === 'server_collection_batches_merge')
+    return createCollectionBatchAction({pool, sql, putDocument, lock, unlock, requireAdmin})(input, user);
   if (input.action === 'server_product_keywords_submit')
     return (await import('./product-keywords-store.mjs')).submitProductKeywords(input, user);
   if (input.action?.startsWith('server_product_watch_')) return (await import('./product-watch-store.mjs')).productWatchAction(input, user);
