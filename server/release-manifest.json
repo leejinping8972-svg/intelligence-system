@@ -1,45 +1,26 @@
 {
-  "title": "概念监控看板与入选关键词采集批次",
-  "sourceSha": "c0f6eb229ffd9ad5c7c049f63b6512e7299c3613",
+  "title": "概念监控看板loading与后台索引等待提示",
+  "sourceSha": "6098bcd490814d813781587ce28c822d764ba949",
   "featureShas": [
-    "c0f6eb229ffd9ad5c7c049f63b6512e7299c3613"
+    "6098bcd490814d813781587ce28c822d764ba949"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
-    "apps/web-antd/src/views/intelligence/overview.vue",
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
-    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
-    "server/CONCEPT-MONITOR.md",
-    "server/concept-monitor-domain.mjs",
-    "server/concept-monitor.mjs",
-    "server/concept-monitor.test.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue"
   ],
   "changes": [
-    "工作台新增按采集批次汇总关键词、广告、独立站及商品总数和今日新增的概念监控看板，支持全部字段排序，默认采集时间倒序",
-    "汇总持久保存，每日北京时间09:00后台更新，请求仅读汇总表；批次搜索、市场筛选与排序后分页",
-    "入选关键词增加采集批次显示，长批次名称悬停查看"
+    "首次汇总等待期间持续显示loading，汇总生成后自动显示",
+    "无首份汇总时显示：正在等待后台索引队列完成，完成后会显示汇总信息。",
+    "真实空结果与读取失败分别提示并停止等待动画"
   ],
-  "verification": "沿用开发20项服务端、4项前端、完整Web类型、前后端构建及桌面/390px合成验收；发布重复验证、独立验证构建与CI等待按用户要求跳过",
+  "verification": "沿用开发组件lint、完整Web类型、隔离前端构建及1920/390合成UI；最终文案组件lint/diff复核通过。发布阶段重复验证、独立验证构建与CI等待按用户要求跳过",
   "developmentVerification": {
-    "status": "awaiting-integration",
-    "sha": "c0f6eb229ffd9ad5c7c049f63b6512e7299c3613",
-    "branch": "codex/concept-monitor-board-20261113",
-    "baseline": "a25f085987395cb21f134789794864e5efcc7c82",
-    "worktree": "D:\\Project_Code\\Intelligence_System\\_worktrees\\concept-monitor-board",
-    "serverTests": 20,
-    "frontendTests": 4,
     "typecheck": "passed",
+    "componentLint": "passed",
     "webBuild": "passed",
-    "apiBundle": "passed",
     "ui": "passed",
-    "newModuleLint": "passed",
-    "existingLintAdded": 0,
-    "mysqlLocal": "not-run",
-    "productionDeployed": false,
-    "testingChanged": false,
-    "paidCalls": 0
+    "scriptErrors": 0,
+    "unmockedActions": 0,
+    "copyChange": "lint-and-diff-passed"
   },
   "skipped": [
     "release-repeat-tests",
@@ -54,11 +35,10 @@
     "consistency": "skipped-by-user"
   },
   "limitations": [
-    "09:00之后新增在下次汇总展示",
-    "历史缺首次发现时间时按现有采集时间计算新增；被覆盖且无广告留存的批次无法还原"
+    "首次汇总等待现有后台索引队列完成，尚未生成快照时不代表批次为0"
   ],
   "operator": "Codex",
-  "id": "20261113092937-6d83a064",
-  "builtAt": "2026-11-13T09:29:37.025Z",
-  "sourceDigest": "6d83a064ca0334843f59a68546e2260a5f26465441ef41a37bc2dd60f23620fd"
+  "id": "20261113100742-c13f342f",
+  "builtAt": "2026-11-13T10:07:42.809Z",
+  "sourceDigest": "c13f342f61eb257cfb4ab11e2dbf7c635b30f5623ea6f4e1e36ce884834ff95a"
 }
