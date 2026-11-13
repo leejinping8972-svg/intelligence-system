@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { setTimeout as sleep } from 'node:timers/promises';
 
 import {
   BATCH_SETTINGS,
@@ -38,13 +37,13 @@ export function createCollectionBatchAction({
       throw new Error('请选择2～50个批次，并填写不超过100字的目标批次名称');
     const c = await pool.connect();
     let held = false;
+    let transactionStarted = false;
     try {
-      for (let attempt = 0; attempt < 40 && !held; attempt++) {
-        held = await lock(c, 'workspace-reads');
-        if (!held) await sleep(250);
-      }
-      if (!held) throw new Error('后台索引正在更新，请稍后重试合并');
+      held = await lock(c, 'workspace-reads', { waitMs: 90_000 });
+      if (!held)
+        throw new Error('当前后台更新耗时较长，请稍后重试合并');
       await c.query('BEGIN');
+      transactionStarted = true;
       const previous = (
         await c.query(
           'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
@@ -166,7 +165,7 @@ export function createCollectionBatchAction({
         refreshPending: true,
       };
     } catch (error) {
-      await c.query('ROLLBACK').catch(() => {});
+      if (transactionStarted) await c.query('ROLLBACK').catch(() => {});
       throw error;
     } finally {
       if (held) await unlock(c, 'workspace-reads');

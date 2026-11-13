@@ -4,6 +4,7 @@ import process from 'node:process';
 import mysql from 'mysql2/promise';
 import pg from 'pg';
 
+import { waitForAdvisoryLock } from './advisory-lock-wait.mjs';
 import { mysqlConnectionOptions } from './database-connection.mjs';
 import { decryptConfig } from './secrets.mjs';
 import { markUsageChanged, usageDocument } from './usage-changes.mjs';
@@ -85,7 +86,9 @@ function lockKey(name) {
   if (engine === 'mysql') return `intelligence:${name}`;
   return advisoryLocks.get(name) ?? 89_761_017;
 }
-export async function lock(connection, name = 'runner') {
+export async function lock(connection, name = 'runner', { waitMs = 0 } = {}) {
+  if (waitMs)
+    return waitForAdvisoryLock(connection, engine, lockKey(name), waitMs);
   const { rows } = await connection.query(
     sql(
       'SELECT pg_try_advisory_lock($1) AS locked',
