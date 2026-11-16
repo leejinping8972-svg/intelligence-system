@@ -9,6 +9,10 @@ export function researchSignature(input) {
       .normalize('NFKC')
       .replaceAll(/\s+/g, ' ')
       .trim(),
+    directionDescription: String(input.directionDescription || '')
+      .normalize('NFKC')
+      .replaceAll(/\s+/g, ' ')
+      .trim(),
     seeds: sorted(
       (input.seeds || []).map((s) =>
         s.normalize('NFKC').replaceAll(/\s+/g, ' ').trim().toLowerCase(),

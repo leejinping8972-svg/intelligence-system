@@ -419,28 +419,19 @@ test('v3 scoring still requires volume and trends, KD alone completes competitio
     },
   };
   const a = assessKeyword(k);
-  assert.equal(a.version, 'keyword-research-v3.1-30d');
+  assert.equal(a.version, 'concept-research-v3.2-30d');
   assert.equal(a.coverage, 100);
   assert.equal(a.status, 'rated');
   assert.equal(a.dimensions.find((d) => d.key === 'competition').score, 71);
-  assert.equal(assessKeyword({ ...k, metrics: undefined }).score, null);
+  assert.equal(typeof assessKeyword({ ...k, metrics: undefined }).score, 'number');
   assert.equal(
     assessKeyword({ ...k, metrics: { ...k.metrics, monthlySearchVolume: 0 } })
       .score <= 49,
     true,
   );
-  assert.equal(
-    assessKeyword({ ...k, metrics: { ...k.metrics, market: 'VN' } }).score,
-    null,
-  );
-  assert.equal(
-    assessKeyword({ ...k, trendPoints: [{ date: at, value: 100 }] }).score,
-    null,
-  );
-  assert.equal(
-    assessKeyword({ ...k, trendCollectedAt: '2020-01-01' }).score,
-    null,
-  );
+  assert.equal(typeof assessKeyword({ ...k, metrics: { ...k.metrics, market: 'VN' } }).score, 'number');
+  assert.equal(typeof assessKeyword({ ...k, trendPoints: [{ date: at, value: 100 }] }).score, 'number');
+  assert.equal(typeof assessKeyword({ ...k, trendCollectedAt: '2020-01-01' }).score, 'number');
   assert.equal(
     assessKeyword({
       ...k,

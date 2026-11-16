@@ -64,6 +64,7 @@ import { submitMarketJob } from './market-jobs.mjs';
 import { submitMarketReport } from './market-report-jobs.mjs';
 import { marketResearchAction } from './market-research.mjs';
 import { analysisConfig } from './model-provider.mjs';
+import { conceptSeedAction } from './concept-seed-provider.mjs';
 import { assessKeyword } from './model.js';
 import { personaResearchAction } from './persona-research-store.mjs';
 import { platformLinkConfig } from './platform-link-config.mjs';
@@ -262,6 +263,11 @@ async function api(input, user) {
     case 'server_analysis_config':
     case 'server_analysis_status': {
       return analysisConfig(input, user);
+    }
+    case 'server_concept_seed_config':
+    case 'server_concept_seed_status':
+    case 'server_concept_seed_suggest': {
+      return conceptSeedAction(input, user);
     }
     case 'server_insight_snapshot': {
       return insightSnapshot(input);

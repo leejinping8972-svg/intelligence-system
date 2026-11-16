@@ -7,6 +7,7 @@ export interface KeywordResearchInput {
   accessKey: string;
   apiUrl: string;
   batch?: string;
+  directionDescription?: string;
   seeds: string[];
   markets: Market[];
   sources: Array<
@@ -102,6 +103,9 @@ export async function runKeywordResearch(
       market,
       ...(input.batch?.trim()
         ? { batch: input.batch.normalize('NFKC').replaceAll(/\s+/g, ' ').trim().slice(0, 100) }
+        : {}),
+      ...(input.directionDescription?.trim()
+        ? { directionDescription: input.directionDescription.normalize('NFKC').replaceAll(/\s+/g, ' ').trim().slice(0, 1000) }
         : {}),
       seedTerm: seed,
       collectedAt,

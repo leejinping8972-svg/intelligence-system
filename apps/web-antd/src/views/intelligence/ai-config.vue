@@ -12,6 +12,7 @@ import {
 } from 'ant-design-vue';
 
 import AnalysisSettings from './components/AnalysisSettings.vue';
+import ConceptSeedSettings from './components/ConceptSeedSettings.vue';
 import PageHeader from './components/PageHeader.vue';
 import { adminRequest, serverMode } from './session';
 interface Prompt {
@@ -75,6 +76,7 @@ onMounted(() => {
       description="统一配置模型接口及各类内容的生成提示词。保存配置不会发起模型调用。"
     />
     <AnalysisSettings v-if="serverMode" />
+    <ConceptSeedSettings v-if="serverMode" />
     <section class="hci-panel">
       <h2>内容提示词</h2>
       <p class="hci-subtle">

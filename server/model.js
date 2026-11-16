@@ -123,7 +123,7 @@ function assessSupplementRelevance(keyword) {
 }
 
 // apps/web-antd/src/views/intelligence/keyword-scoring.ts
-var KEYWORD_MODEL_VERSION = "keyword-research-v3.1-30d";
+var KEYWORD_MODEL_VERSION = "concept-research-v3.2-30d";
 var clamp = (value) => Math.round(Math.max(0, Math.min(100, value)));
 function gradeForScore(score) {
   if (score >= 80) return "A";
@@ -253,11 +253,11 @@ function assessKeyword(keyword) {
     },
     {
       key: "product",
-      label: "\u5546\u54C1\u7814\u7A76\u4EF7\u503C",
+      label: "\u6982\u5FF5\u7814\u7A76\u4EF7\u503C",
       weight: 20,
       coveredWeight: 20,
       score: product,
-      evidence: `\u4FDD\u5065\u54C1\u6210\u5206\u3001\u5242\u578B\u3001\u5242\u91CF\u3001\u4EBA\u7FA4\u4E0E\u5546\u54C1\u8868\u8FBE\u7684\u89C4\u5219\u8BC4\u5206${purchaseBonus ? "\uFF1BSemrush \u5546\u4E1A\u6216\u4EA4\u6613\u610F\u56FE\u52A010\u5206\uFF08\u672C\u7EF4\u5EA6\u5C01\u9876100\uFF09" : ""}\uFF1B\u4E0D\u4EE3\u8868\u9500\u91CF\u6216\u5229\u6DA6`
+      evidence: `\u4FDD\u5065\u54C1\u6210\u5206\u3001\u5242\u578B\u3001\u5242\u91CF\u3001\u4EBA\u7FA4\u4E0E\u6982\u5FF5\u8868\u8FBE\u7684\u89C4\u5219\u8BC4\u5206${purchaseBonus ? "\uFF1BSemrush \u5546\u4E1A\u6216\u4EA4\u6613\u610F\u56FE\u52A010\u5206\uFF08\u672C\u7EF4\u5EA6\u5C01\u9876100\uFF09" : ""}\uFF1B\u4E0D\u4EE3\u8868\u9500\u91CF\u6216\u5229\u6DA6`
     },
     {
       key: "competition",
@@ -272,28 +272,26 @@ function assessKeyword(keyword) {
     (sum, item) => sum + item.coveredWeight,
     0
   );
-  const canGrade = trendScore !== null && demandScore !== null && coverage >= 80;
-  let score = canGrade ? clamp(
+  let score = coverage > 0 ? clamp(
     dimensions.reduce(
       (sum, item) => sum + (item.score || 0) * item.coveredWeight,
       0
     ) / coverage
-  ) : null;
+  ) : 0;
   if (score !== null) {
     score = Math.min(score, business.scoreCap);
     if (brand || navigationIntent) score = Math.min(score, 64);
     if (volume === 0) score = Math.min(score, 49);
   }
-  const grade = score === null ? null : gradeForScore(score);
-  let status = "pending";
-  if (grade) status = coverage === 100 ? "rated" : "provisional";
+  const grade = gradeForScore(score);
+  const status = coverage === 100 ? "rated" : "provisional";
   const recommendations = {
     A: "\u4F18\u5148\u4EBA\u5DE5\u590D\u6838\uFF0C\u53EF\u5165\u9009\u4E0B\u4E00\u6B65\u72EC\u7ACB\u7AD9\u7814\u7A76",
     B: "\u6709\u7814\u7A76\u4EF7\u503C\uFF0C\u7ED3\u5408\u5206\u9879\u4F9D\u636E\u51B3\u5B9A\u662F\u5426\u5165\u9009",
     C: "\u7EE7\u7EED\u89C2\u5BDF\uFF0C\u4F18\u5148\u8865\u5145\u7F3A\u5931\u8BC1\u636E",
     D: "\u6682\u7F13\u6DF1\u5165\u7814\u7A76\uFF0C\u68C0\u67E5\u76F8\u5173\u6027\u548C\u9700\u6C42\u4FE1\u53F7"
   };
-  let recommendation = grade ? recommendations[grade] : "\u5148\u8865\u9F50\u6709\u6548\u8D8B\u52BF\u4E0E\u5173\u952E\u6307\u6807\uFF0C\u518D\u8FDB\u884C\u8BC4\u7EA7";
+  let recommendation = grade ? recommendations[grade] : "\u8BC4\u5206\u5DF2\u751F\u6210\uFF0C\u53EF\u7EE7\u7EED\u8865\u5145\u8D8B\u52BF\u3001\u641C\u7D22\u91CF\u548CKD\u63D0\u9AD8\u8986\u76D6\u7387";
   if (tags.has("\u6CDB\u8BCD\u964D\u6743"))
     recommendation = "\u6CDB\u8BCD\u4F18\u5148\u7EC6\u5316\u6210\u5206\u3001\u5242\u578B\u3001\u5242\u91CF\u6216\u4EBA\u7FA4\uFF0C\u518D\u8BC4\u4F30\u5546\u54C1\u673A\u4F1A";
   if (tags.has("\u540C\u540D\u6B67\u4E49\u5F85\u6838\u9A8C"))
@@ -534,6 +532,7 @@ function discoveryDecision(item, kind, now = Date.now()) {
   const observed = validDiscoveryDate(first);
   const recentDiscovery = observed !== void 0 && Date.parse(first) <= now && now - observed < 8 * DAY2;
   const listing = productListingEvidence(item);
+  const exposureFallback = kind === "product" && listing?.dateBasis === "exposure";
   const isProduct = kind === "product";
   const date2 = isProduct ? listing?.date : item.startDate;
   const source = isProduct ? listing?.provider : item.source;
@@ -556,13 +555,14 @@ function discoveryDecision(item, kind, now = Date.now()) {
   let label = isProduct ? "\u65B0\u54C1\u5F85\u6838\u9A8C" : "\u65B0\u5E7F\u544A\u5F85\u6838\u9A8C";
   if (isNew === true) label = isProduct ? "\u65B0\u54C1\uFF0890\u5929\u5185\uFF09" : "\u65B0\u5E7F\u544A\uFF087\u5929\u5185\uFF09";
   if (isNew === false) label = isProduct ? "\u975E\u8FD1\u671F\u65B0\u54C1" : "\u975E\u8FD1\u671F\u65B0\u5E7F\u544A";
+  if (exposureFallback && known) label = isNew ? "\u8FD1\u671F\u66DD\u5149\u5546\u54C1\uFF08\u66FF\u4EE3\u4E0A\u67B6\uFF09" : "\u975E\u8FD1\u671F\u66DD\u5149\u5546\u54C1";
   return {
     version: "discovery-v1",
     isNew,
     label,
     recentDiscovery,
     windowDays,
-    reason: known ? `${isProduct ? "\u6765\u6E90\u4E0A\u67B6" : "\u5E73\u53F0\u6295\u653E\u5F00\u59CB"}\u65E5\u671F ${date2.slice(0, 10)}\uFF0C${isNew ? "\u5728" : "\u8D85\u8FC7"}${windowDays}\u5929\u7A97\u53E3\uFF1B${isProduct ? "\u4E0D\u7B49\u540C\u4E8E\u54C1\u724C\u9996\u53D1" : "\u6309\u5E7F\u544AID\u5224\u65AD\uFF0C\u4E0D\u5C06\u540C\u7D20\u6750\u590D\u7528\u5408\u5E76"}\u3002` : "\u7F3A\u5C11\u53EF\u6838\u9A8C\u7684\u6765\u6E90\u65E5\u671F\u6216\u6765\u6E90\u4F9D\u636E\uFF1B\u7CFB\u7EDF\u9996\u6B21\u53D1\u73B0\u4E0D\u80FD\u8BC1\u660E\u521A\u4E0A\u5E02\u6216\u521A\u5F00\u59CB\u6295\u653E\u3002",
+    reason: known && exposureFallback ? `\u672A\u53D6\u5F97TikTok\u53EF\u9760\u4E0A\u67B6\u65E5\u671F\uFF0C\u4F7F\u7528Sorftime\u66DD\u5149\u65E5\u671F ${date2.slice(0, 10)} \u4F5C\u4E3A\u65B0\u54C1\u7B5B\u9009\u548C\u6392\u5E8F\u4F9D\u636E\u3002\u66DD\u5149\u65E5\u671F\u4E0D\u7B49\u4E8E\u5B9E\u9645\u4E0A\u67B6\u65E5\u671F\uFF0C\u4E5F\u4E0D\u662F\u672C\u7CFB\u7EDF\u9996\u6B21\u6293\u53D6\u65E5\u671F\u3002` : known ? `${isProduct ? "\u6765\u6E90\u4E0A\u67B6" : "\u5E73\u53F0\u6295\u653E\u5F00\u59CB"}\u65E5\u671F ${date2.slice(0, 10)}\uFF0C${isNew ? "\u5728" : "\u8D85\u8FC7"}${windowDays}\u5929\u7A97\u53E3\uFF1B${isProduct ? "\u4E0D\u7B49\u540C\u4E8E\u54C1\u724C\u9996\u53D1" : "\u6309\u5E7F\u544AID\u5224\u65AD\uFF0C\u4E0D\u5C06\u540C\u7D20\u6750\u590D\u7528\u5408\u5E76"}\u3002` : "\u7F3A\u5C11\u53EF\u6838\u9A8C\u7684\u6765\u6E90\u65E5\u671F\u6216\u6765\u6E90\u4F9D\u636E\uFF1B\u7CFB\u7EDF\u9996\u6B21\u53D1\u73B0\u4E0D\u80FD\u8BC1\u660E\u521A\u4E0A\u5E02\u6216\u521A\u5F00\u59CB\u6295\u653E\u3002",
     source: source || "",
     evidenceDate: known ? date2.slice(0, 10) : "",
     evidenceUrl: evidenceUrl || "",
@@ -599,6 +599,7 @@ function rollingWindow(at, market, days) {
   };
 }
 function missingStatus(status, message = "") {
+  if (status === "not_started") return "not_started";
   const s = `${status || ""} ${message}`;
   if (/budget|limit|截断|预算|上限/i.test(s)) return "budget_limited";
   if (/unsupported|不支持|未开放/i.test(s)) return "unsupported";
@@ -781,14 +782,14 @@ function productMetrics(p, days, context = {}) {
   };
   const result = [
     ...productSales(p, days),
-    metric(p, "listingDate", "\u5546\u54C1\u4E0A\u67B6\u65F6\u95F4", listing.evidenceDate || null, "", {
+    metric(p, "listingDate", p.decisionData?.listing?.dateBasis === "exposure" ? "\u66DD\u5149\u65E5\u671F\uFF08\u66FF\u4EE3\u4E0A\u67B6\uFF09" : "\u5546\u54C1\u4E0A\u67B6\u65F6\u95F4", listing.evidenceDate || null, "", {
       ...meta,
       source: listing.source || "\u6765\u6E90\u672A\u8BB0\u5F55",
       platform: p.decisionData?.listing?.platform || "",
       nature: "platform_display",
       collectedAt: p.decisionData?.listing?.collectedAt || "",
       evidenceUrl: listing.evidenceUrl,
-      period: "\u6765\u6E90\u4E0A\u67B6\u65E5\u671F",
+      period: p.decisionData?.listing?.dateBasis === "exposure" ? "Sorftime\u66DD\u5149\u65E5\u671F\uFF08\u66FF\u4EE3\u4E0A\u67B6\uFF09" : "\u6765\u6E90\u4E0A\u67B6\u65E5\u671F",
       reason: listing.reason + (p.decisionData?.listing?.sourceField ? " \u6765\u6E90\u5B57\u6BB5\uFF1A" + p.decisionData.listing.sourceField : ""),
       ...!listing.evidenceDate ? missingPublicMetric("listing") : {}
     }),
@@ -1234,7 +1235,7 @@ function keywordMetrics(k, days, context = {}) {
       {
         source: m?.source || "Semrush MCP",
         platform: "Google\u641C\u7D22",
-        collectedAt: m?.collectedAt || "",
+        collectedAt: m?.collectedAt || k.semrushCollection?.finishedAt || "",
         period: "\u6765\u6E90\u6708\u5EA6\u4F30\u7B97\uFF1B\u8D77\u6B62\u65E5\u672A\u63D0\u4F9B",
         nature: "third_party_estimate",
         status: validNumber(m?.monthlySearchVolume) ? "available" : missingStatus(
@@ -1338,12 +1339,12 @@ function keywordMetrics(k, days, context = {}) {
       }
     )
   );
-  for (const [key, label, ids] of [
-    ["linkedProducts", "\u5173\u8054\u5546\u54C1", k.productIds],
-    ["linkedSites", "\u5173\u8054\u7AD9\u70B9", k.siteIds]
+  for (const [key, label, count] of [
+    ["linkedProducts", "\u5173\u8054\u5546\u54C1", k.relatedCounts?.products ?? k.productIds?.length],
+    ["linkedSites", "\u5173\u8054\u7AD9\u70B9", k.relatedCounts?.sites ?? k.siteIds?.length]
   ])
     result.push(
-      metric(k, key, label, ids?.length ?? null, "\u6761\u5DF2\u4FDD\u5B58", {
+      metric(k, key, label, count ?? null, "\u6761\u5DF2\u4FDD\u5B58", {
         source: "\u7CFB\u7EDF\u4FDD\u5B58\u7684\u5173\u8054",
         collectedAt: k.updatedAt || "",
         nature: "system_observation",
@@ -1997,7 +1998,7 @@ function buildSourceCoverage(state, collector = null, freeData = null) {
 function buildRadarReport(findings, windowDays, marketLabel, appName = "\u60C5\u62A5\u5DE5\u4F5C\u533A") {
   const products = findings.filter((item) => item.type === "product");
   const concepts = findings.filter((item) => item.type === "concept");
-  const ingredients2 = findings.filter((item) => item.type === "ingredient");
+  const ingredients3 = findings.filter((item) => item.type === "ingredient");
   const ads = findings.filter((item) => item.type === "ad");
   const strongest = [...findings].filter((item) => item.businessScore !== null).sort((a, b) => (b.businessScore || 0) - (a.businessScore || 0))[0];
   return [
@@ -2005,7 +2006,7 @@ function buildRadarReport(findings, windowDays, marketLabel, appName = "\u60C5\u
     `\u5E02\u573A\uFF1A${marketLabel}`,
     `\u751F\u6210\u65F6\u95F4\uFF1A${(/* @__PURE__ */ new Date()).toLocaleString("zh-CN")}`,
     "",
-    `\u53D1\u73B0\u6982\u51B5\uFF1A${products.length}\u4E2A\u5546\u54C1\u53D1\u73B0\uFF08${products.filter((item) => item.status === "confirmed").length}\u4E2A\u6765\u6E90\u786E\u8BA490\u5929\u5185\u4E0A\u67B6\uFF09\uFF0C${ads.length}\u6761\u65B0\u5E7F\u544A\u7EBF\u7D22\uFF0C${concepts.length}\u4E2A\u5356\u70B9/\u8BDD\u9898\u7EBF\u7D22\uFF0C${ingredients2.length}\u4E2A\u6210\u5206\u7EBF\u7D22\u3002`,
+    `\u53D1\u73B0\u6982\u51B5\uFF1A${products.length}\u4E2A\u5546\u54C1\u53D1\u73B0\uFF08${products.filter((item) => item.status === "confirmed").length}\u4E2A\u6765\u6E90\u786E\u8BA490\u5929\u5185\u4E0A\u67B6\uFF09\uFF0C${ads.length}\u6761\u65B0\u5E7F\u544A\u7EBF\u7D22\uFF0C${concepts.length}\u4E2A\u5356\u70B9/\u8BDD\u9898\u7EBF\u7D22\uFF0C${ingredients3.length}\u4E2A\u6210\u5206\u7EBF\u7D22\u3002`,
     strongest ? `\u5F53\u524D\u7EBF\u7D22\u8BC4\u5206\u8F83\u9AD8\u9879\uFF1A${strongest.title}\uFF08\u8BC1\u636E\u5B8C\u6574\u5EA6${strongest.confidenceScore}\uFF0C\u7EBF\u7D22\u8BC4\u5206${strongest.businessScore}\uFF09\u3002` : findings.length ? "\u5F53\u524D\u5019\u9009\u7F3A\u5C11\u76F4\u63A5\u5173\u8054\u7684\u6709\u6548\u8D8B\u52BF\u6216\u8FD1\u671F\u5E7F\u544A\uFF0C\u7EBF\u7D22\u8BC4\u5206\u4E3A\u6570\u636E\u4E0D\u8DB3\u3002" : "\u5F53\u524D\u6CA1\u6709\u8FBE\u5230\u89C2\u5BDF\u7A97\u53E3\u548C\u5E02\u573A\u6761\u4EF6\u7684\u5019\u9009\u3002",
     "",
     "\u5224\u65AD\u53E3\u5F84\uFF1A\u9996\u6B21\u53D1\u73B0\u4E0D\u7B49\u4E8E\u9996\u6B21\u4E0A\u5E02\uFF1B\u5356\u70B9\u548C\u6210\u5206\u51FA\u73B0\u4E0D\u8BC1\u660E\u65B0\u9896\u6027\uFF1B\u5E7F\u544A\u4E0D\u5355\u72EC\u8BC1\u660E\u65B0\u54C1\u3002\u7EBF\u7D22\u8BC4\u5206\u4EC5\u53C2\u8003\u76F4\u63A5\u5173\u8054\u7684\u8D8B\u52BF\u3001\u8FD1\u671F\u5E7F\u544A\u4E0E\u54C1\u724C\u91C7\u7528\uFF0C\u4E0D\u5305\u542B\u6210\u672C\u3001\u5229\u6DA6\u3001\u4F9B\u5E94\u94FE\u6216\u5408\u89C4\u7ED3\u8BBA\u3002",
@@ -2112,7 +2113,7 @@ function productChineseName(record) {
       return ingredients2[word.toLowerCase()];
     });
   });
-  if (!matched) return new RegExp("\\p{Script=Han}", "u").test(title) ? title : "";
+  if (!matched) return /\p{Script=Han}/u.test(title) ? title : "";
   return translated.map((part, index) => brand && index % 2 ? part : part.replace(descriptorPattern, (word) => descriptors[word.toLowerCase()])).join("").replaceAll(/([\p{Script=Han}])\s+(?=[\p{Script=Han}])/gu, "$1");
 }
 
@@ -2263,7 +2264,7 @@ function opportunityChineseName(title, saved, tab) {
     const name2 = keywordChineseName({ term });
     return name2 ? `${name2}${parts ? ` \xB7 ${marketNames[parts[2]]}` : ""}` : "";
   }
-  if (new RegExp("\\p{Script=Han}", "u").test(title)) return "";
+  if (/\p{Script=Han}/u.test(title)) return "";
   const name = tab === "new" ? productChineseName({ title }) : keywordChineseName({ term: title });
   return name === title ? "" : name;
 }
@@ -2299,8 +2300,8 @@ function opportunityRows(state, tab) {
 }
 function formulaOf(product) {
   if (product.formula?.fingerprint) return product.formula;
-  const ingredients2 = (product.ingredientInsights || []).map((item) => item.name.trim()).filter(Boolean).map((name) => ({ name, amount: "", raw: name }));
-  return { status: ingredients2.length ? product.reviewed ? "verified" : "observed" : "unknown", fingerprint: [...new Set(ingredients2.map((item) => item.name.toLowerCase()))].sort().join("|"), ingredients: ingredients2 };
+  const ingredients3 = (product.ingredientInsights || []).map((item) => item.name.trim()).filter(Boolean).map((name) => ({ name, amount: "", raw: name }));
+  return { status: ingredients3.length ? product.reviewed ? "verified" : "observed" : "unknown", fingerprint: [...new Set(ingredients3.map((item) => item.name.toLowerCase()))].sort().join("|"), ingredients: ingredients3 };
 }
 function formulaStatistics(products) {
   const groups = /* @__PURE__ */ new Map();

@@ -303,7 +303,7 @@ async function refreshTrend() {
         />
         <Empty
           v-if="!keyword.series.length"
-          description="尚无趋势数据，请点击“更新一年趋势”或在关键词研究中一键补齐信息"
+          description="尚无趋势数据，请点击“更新一年趋势”或在概念研究中一键补齐信息"
         /><Chart
           v-else
           :options="trendOption(keyword, days)"

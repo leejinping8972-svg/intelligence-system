@@ -90,7 +90,7 @@ watch([search, () => state.market], () => {
   selectedBatches.value=[];
 });
 const fields = [
-  { title: '采集批次', key: 'batch', width: 200, fixed: 'left' as const },
+  { title: '任务名称', key: 'batch', width: 200, fixed: 'left' as const },
   { title: '市场', key: 'markets', width: 110 },
   { title: '关联关键词', key: 'keywords', width: 110 },
   { title: '今日新增关键词', key: 'keywordsToday', width: 135 },
@@ -143,14 +143,14 @@ function change(
     <div class="hci-panel-head concept-monitor-head">
       <div>
         <h2 id="concept-monitor-title">概念监控看板</h2>
-        <p>按采集批次汇总关联数据 · 每日北京时间 09:00 更新</p>
+        <p>按任务名称汇总关联数据 · 每日北京时间 09:00 更新</p>
       </div>
       <div class="concept-monitor-tools">
-        <Button v-if="canMerge" :disabled="selectedBatches.length < 2 || merging" @click="openMerge">合并批次<span v-if="selectedBatches.length">（{{ selectedBatches.length }}）</span></Button>
+        <Button v-if="canMerge" :disabled="selectedBatches.length < 2 || merging" @click="openMerge">合并任务<span v-if="selectedBatches.length">（{{ selectedBatches.length }}）</span></Button>
         <Input
           v-model:value="search"
-          aria-label="搜索采集批次"
-          placeholder="搜索采集批次"
+          aria-label="搜索任务名称"
+          placeholder="搜索任务名称"
           allow-clear
         />
         <Button :loading="remote.loading.value" @click="remote.reload(true)">
@@ -186,7 +186,7 @@ function change(
         pageSize,
         showSizeChanger: true,
         pageSizeOptions: ['10', '20', '50', '100'],
-        showTotal: (total: number) => `共 ${total} 个采集批次`,
+        showTotal: (total: number) => `共 ${total} 个任务`,
       }"
       @change="change"
     >
@@ -197,7 +197,7 @@ function change(
             remote.snapshot.value
               ? remote.snapshot.value.indexing && !search.trim()
                 ? '后台数据更新中，汇总信息将自动补充。'
-                : '暂无符合条件的采集批次'
+                : '暂无符合条件的任务'
               : remote.error.value
                 ? '批次汇总读取失败，请点击刷新重试'
                 : '正在生成汇总信息，完成后自动显示。'
@@ -220,15 +220,15 @@ function change(
       </template>
     </Table>
     <p class="hci-subtle">
-      同一批次内按记录去重；关联数据以已保存的关系为准。采集时间取关联记录最近采集时间，今日及本周新增按首次发现时间统计，缺少该时间时使用已有采集时间；本周为北京时间周一至周日。
+      同一任务内按记录去重；关联数据以已保存的关系为准。采集时间取关联记录最近采集时间，今日及本周新增按首次发现时间统计，缺少该时间时使用已有采集时间；本周为北京时间周一至周日。
     </p>
-    <Modal v-model:open="mergeOpen" title="合并采集批次" ok-text="提交后台合并" :ok-button-props="{disabled:!mergeTarget.trim() || selectedBatches.length < 2}" :confirm-loading="merging" :cancel-button-props="{disabled:merging}" :closable="!merging" :keyboard="!merging" :mask-closable="false" @ok="mergeBatches">
-      <p>将以下 {{ selectedBatches.length }} 个批次统一合并到目标批次：</p>
+    <Modal v-model:open="mergeOpen" title="合并任务" ok-text="提交后台合并" :ok-button-props="{disabled:!mergeTarget.trim() || selectedBatches.length < 2}" :confirm-loading="merging" :cancel-button-props="{disabled:merging}" :closable="!merging" :keyboard="!merging" :mask-closable="false" @ok="mergeBatches">
+      <p>将以下 {{ selectedBatches.length }} 个任务统一合并到目标任务：</p>
       <p class="hci-subtle">提交后在后台执行，可关闭此页面，在“监控与任务”查看进度。</p>
       <p class="concept-merge-names">{{ selectedBatches.join('、') }}</p>
-      <label for="concept-merge-target">目标批次（选择已有名称或输入新名称）</label>
-      <AutoComplete id="concept-merge-target" v-model:value="mergeTarget" :options="mergeOptions" :maxlength="100" :disabled="merging" style="width:100%;margin:8px 0 16px" aria-label="目标采集批次" />
-      <Alert type="warning" show-icon message="所有市场的同名批次会一起合并。关联数据保留并去重，关键词和广告统一使用目标批次；原始采集历史保留。此操作不会重新采集数据。" />
+      <label for="concept-merge-target">目标任务名称（选择已有名称或输入新名称）</label>
+      <AutoComplete id="concept-merge-target" v-model:value="mergeTarget" :options="mergeOptions" :maxlength="100" :disabled="merging" style="width:100%;margin:8px 0 16px" aria-label="目标任务名称" />
+      <Alert type="warning" show-icon message="所有市场的同名任务会一起合并。关联数据保留并去重，关键词和广告统一使用目标任务；原始采集历史保留。此操作不会重新采集数据。" />
       <Alert v-if="mergeError" type="error" show-icon :message="mergeError" style="margin-top:12px" />
     </Modal>
   </section>

@@ -81,6 +81,7 @@ export interface Keyword {
   category: string;
   source: string;
   batch?: string;
+  directionDescription?: string;
   growth: null | number;
   series: number[];
   seedTerm?: string;

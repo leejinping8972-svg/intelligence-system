@@ -195,7 +195,7 @@ function relatedCollection(key: unknown): 'ads' | 'products' | 'sites' {
 }
 const columns = [
   { title: '关键词 / 种子词', key: 'term', width: 195, fixed: 'left' as const },
-  { title: '采集批次', key: 'batch', width: 120 },
+  { title: '任务名称', key: 'batch', width: 120 },
   { title: '市场 / 品类', key: 'market', width: 100 },
   {
     title: '研究评分',
@@ -277,9 +277,9 @@ async function exportSelectedKeywords() {
   <main class="hci-page">
     <PageHeader
       title="已入选关键词"
-      description="第二步：从人工入选的关键词出发，采集并核验独立站，查看进度与结果。"
+      description="下一步：从已入选的关键词出发，采集并核验独立站，查看进度与结果。"
     >
-      <Button @click="router.push('/research')">返回关键词研究</Button>
+      <Button @click="router.push('/research')">返回概念研究</Button>
       <Button @click="router.push('/monitor')">查看后台任务</Button>
       <DailyDiscoveryPlan />
       <KeywordTrendsControl :ids="ids" :visible-ids="serverMode ? rows.map((r) => r.id) : undefined" />

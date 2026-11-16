@@ -35,12 +35,12 @@ export interface KeywordAssessment {
     evidence: string;
   }>;
 }
-export const KEYWORD_MODEL_VERSION = 'keyword-research-v3.1-30d';
+export const KEYWORD_MODEL_VERSION = 'concept-research-v3.2-30d';
 export const KEYWORD_MODEL_WEIGHTS = [
   { key: 'relevance', label: '业务相关性', weight: 25 },
   { key: 'demand', label: '需求规模', weight: 20 },
   { key: 'trend', label: '趋势表现', weight: 20 },
-  { key: 'product', label: '商品研究价值', weight: 20 },
+  { key: 'product', label: '概念研究价值', weight: 20 },
   { key: 'competition', label: '竞争切入空间', weight: 15 },
 ];
 const clamp = (value: number) => Math.round(Math.max(0, Math.min(100, value)));
@@ -236,11 +236,11 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     },
     {
       key: 'product',
-      label: '商品研究价值',
+      label: '概念研究价值',
       weight: 20,
       coveredWeight: 20,
       score: product,
-      evidence: `保健品成分、剂型、剂量、人群与商品表达的规则评分${purchaseBonus ? '；Semrush 商业或交易意图加10分（本维度封顶100）' : ''}；不代表销量或利润`,
+      evidence: `保健品成分、剂型、剂量、人群与概念表达的规则评分${purchaseBonus ? '；Semrush 商业或交易意图加10分（本维度封顶100）' : ''}；不代表销量或利润`,
     },
     {
       key: 'competition',
@@ -258,24 +258,24 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     (sum, item) => sum + item.coveredWeight,
     0,
   );
-  const canGrade =
-    trendScore !== null && demandScore !== null && coverage >= 80;
-  let score = canGrade
+  // A new concept must be actionable immediately.  Score from every available
+  // dimension and normalize by covered weight; missing trend/volume/KD data
+  // stays visible as an evidence gap instead of turning the whole score off.
+  let score = coverage > 0
     ? clamp(
         dimensions.reduce(
           (sum, item) => sum + (item.score || 0) * item.coveredWeight,
           0,
         ) / coverage,
       )
-    : null;
+    : 0;
   if (score !== null) {
     score = Math.min(score, business.scoreCap);
     if (brand || navigationIntent) score = Math.min(score, 64);
     if (volume === 0) score = Math.min(score, 49);
   }
-  const grade = score === null ? null : gradeForScore(score);
-  let status: KeywordAssessment['status'] = 'pending';
-  if (grade) status = coverage === 100 ? 'rated' : 'provisional';
+  const grade = gradeForScore(score);
+  const status: KeywordAssessment['status'] = coverage === 100 ? 'rated' : 'provisional';
   const recommendations = {
     A: '优先人工复核，可入选下一步独立站研究',
     B: '有研究价值，结合分项依据决定是否入选',
@@ -284,7 +284,7 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
   };
   let recommendation = grade
     ? recommendations[grade]
-    : '先补齐有效趋势与关键指标，再进行评级';
+    : '评分已生成，可继续补充趋势、搜索量和KD提高覆盖率';
   if (tags.has('泛词降权'))
     recommendation = '泛词优先细化成分、剂型、剂量或人群，再评估商品机会';
   if (tags.has('同名歧义待核验'))

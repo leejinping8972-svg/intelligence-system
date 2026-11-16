@@ -85,6 +85,8 @@ export function mergeKeyword(current, incoming, importOnly = false) {
   ].join(' / ');
   if (incoming.batch && (!merged.batch || timestamp(incoming.updatedAt) >= timestamp(current.updatedAt)))
     merged.batch = incoming.batch;
+  if (incoming.directionDescription && (!merged.directionDescription || timestamp(incoming.updatedAt) >= timestamp(current.updatedAt)))
+    merged.directionDescription = incoming.directionDescription;
   for (const key of ['seedTerm', 'category', 'termZh'])
     if (!merged[key] && incoming[key]) merged[key] = incoming[key];
   if (!merged.seedTermZh && incoming.seedTermZh && merged.seedTerm === incoming.seedTerm)

@@ -1919,10 +1919,7 @@ textarea {
 .research-type-grid strong { font-size: 14px; color: #17191d; }
 .research-type-grid span { font-size: 12px; color: #667085; line-height: 1.6; }
 .research-type-grid small { color: #8a6112; }
-.product-research-layout { display: grid; grid-template-columns: minmax(380px,.9fr) minmax(0,1.1fr); gap: 8px; align-items: start; }
-.product-research-detail { min-height: 340px; }
 .research-report-row { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid #e4e7ec; }
-@media(max-width: 1100px) { .product-research-layout { grid-template-columns: minmax(0,1fr); } }
 @media(max-width: 767px) {
   .hci-page { padding: 8px; width: 100%; overflow-x: clip; }
   .workspace-tabs { gap: 12px; }
