@@ -2,6 +2,7 @@ import { createApp, h, ref } from 'vue';
 
 import LoginScreen from './login-screen.vue';
 import { brandingEvent, type PublicBranding } from './public-branding';
+import SessionEntryStatus from './session-entry-status.vue';
 import {
   refreshSession,
   session,
@@ -23,6 +24,7 @@ export function startLoginEntry() {
     },
   );
   const statusError = ref('');
+  const showLogin = ref(false);
   const updateBrand = (event: Event) => {
     branding.value = (event as CustomEvent<PublicBranding>).detail;
   };
@@ -36,9 +38,7 @@ export function startLoginEntry() {
     launch = (async () => {
       const { initApplication } = await import('./application');
       await initApplication();
-      app.unmount();
-      root.remove();
-      window.removeEventListener(brandingEvent, updateBrand);
+      dispose();
     })().catch((cause: unknown) => {
       launch = undefined;
       throw cause;
@@ -47,6 +47,7 @@ export function startLoginEntry() {
   };
   const checkSession = async () => {
     statusError.value = '';
+    showLogin.value = false;
     try {
       await refreshSession();
       if (session.user) {
@@ -63,6 +64,8 @@ export function startLoginEntry() {
             ? `/${url.pathname.slice(base.length)}${url.search}${url.hash}`
             : `${route.pathname}${route.search}${route.hash}`;
         startSso(path);
+      } else {
+        showLogin.value = true;
       }
     } catch (cause) {
       statusError.value =
@@ -70,8 +73,8 @@ export function startLoginEntry() {
     }
   };
   const app = createApp({
-    render: () =>
-      h(LoginScreen, {
+    render: () => showLogin.value
+      ? h(LoginScreen, {
         branding: branding.value,
         enterWorkspace: async () => {
           const destination = `${base}${import.meta.env.VITE_ROUTER_HISTORY === 'hash' ? '#/' : ''}overview`;
@@ -82,13 +85,24 @@ export function startLoginEntry() {
           route.searchParams.get('sso') === 'failed'
             ? '单点登录未完成，请使用账号密码登录，或联系管理员检查账号绑定。'
             : '',
-        statusError: statusError.value,
+      })
+      : h(SessionEntryStatus, {
+        error: statusError.value,
         onRetry: () => {
           void checkSession();
         },
       }),
   });
-  // Mount the form before requesting status or importing the workspace.
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    app.unmount();
+    root.remove();
+    window.removeEventListener(brandingEvent, updateBrand);
+  };
+  // Wait for the cookie check before showing credentials or entering the app.
   app.mount(root);
   void checkSession();
+  return dispose;
 }
