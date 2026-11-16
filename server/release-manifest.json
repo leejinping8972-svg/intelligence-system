@@ -1,60 +1,57 @@
 {
-  "title": "采集批次本周统计与每周汇总跳转",
-  "sourceSha": "c8a5d7ba43b577a30b59591b39b7770ee44ad378",
+  "title": "资源消耗看板大历史快照读取修复",
+  "sourceSha": "40d73e66bedd8af57f24f61ae54dc1016062d1bb",
   "featureShas": [
-    "c8a5d7ba43b577a30b59591b39b7770ee44ad378"
+    "40d73e66bedd8af57f24f61ae54dc1016062d1bb"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/ads.vue",
-    "apps/web-antd/src/views/intelligence/components/ConceptBatchFilter.vue",
-    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
-    "apps/web-antd/src/views/intelligence/components/WeeklySummaryDashboard.vue",
-    "apps/web-antd/src/views/intelligence/components/WeeklySummaryFilter.vue",
-    "apps/web-antd/src/views/intelligence/concept-batch-filter.ts",
-    "apps/web-antd/src/views/intelligence/market-navigation.ts",
-    "apps/web-antd/src/views/intelligence/products.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/sites.vue",
-    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
-    "apps/web-antd/src/views/intelligence/weekly-summary-filter.ts",
-    "server/concept-members.mjs",
-    "server/concept-monitor-domain.mjs",
-    "server/concept-monitor.mjs",
-    "server/weekly-drilldown.test.mjs",
-    "server/weekly-members.mjs",
-    "server/weekly-summary-domain.mjs",
-    "server/weekly-summary.mjs",
-    "server/workspace-reads.mjs"
-  ],
-  "documentationFiles": [
-    "docs/overview-weekly-drilldown.md"
+    "server/SOURCE-USAGE.md",
+    "server/source-usage-reader.mjs",
+    "server/source-usage-reader.test.mjs",
+    "server/source-usage-snapshot.mjs",
+    "server/source-usage-snapshot.test.mjs",
+    "server/usage-snapshot-codec.mjs",
+    "server/usage-summary.test.mjs"
   ],
   "ciFiles": [
     ".github/workflows/testing.yml"
   ],
   "changes": [
-    "概念监控采集批次在今日统计后追加本周新增关键词、广告、独立站和商品，按北京时间周一至周日首次发现统计并支持精确名单跳转",
-    "每周数据汇总默认收起，收起不请求或轮询；四类数字含零值可跳转对应市场、周及新品资格名单，清除旧条件并可撤销筛选",
-    "保留后台批次合并及商品首次/最近采集筛选；新品与新广告沿用首次抓取时7天口径，独立概念v4及周汇总v2后台自然生成"
+    "兼容已超过旧32MiB解压上限的完整消耗汇总，恢复资源消耗与请求日志读取，不截断历史记录",
+    "新汇总和监控增量缓存按UTF-8字节分片压缩，逐片验证顺序、字节与记录数，损坏整份拒绝",
+    "保留页面只读已保存汇总、真实零与未知扣费、SQL增量、来源及模型调用和任务队列行为"
   ],
-  "verification": "开发相关Node/PGlite38/38、异地时区10/10、前端统计6/6、Web类型、隔离前后端构建、桌面/手机合成UI和无新增lint诊断通过；既有resource-market mock缺Modal造成2失败/8通过，在未改基线复现。发布重复验证、独立验证构建及CI等待按用户策略跳过",
+  "verification": "沿用开发服务端45/46（唯一既有公共采集脱敏失败在未改基线复现）、快照与持久汇总11/11、监控reader8/8、前端加载器5/5、完整Web类型、定向lint和API构建。发布重复验证、独立验证构建及CI等待按用户策略跳过",
   "developmentVerification": {
-    "backendTests": "38/38 passed",
-    "timezoneTests": "10/10 passed under America/Los_Angeles",
-    "statisticsQueries": "6/6 passed",
+    "serverRelated": {
+      "tests": 46,
+      "passed": 45,
+      "failed": 1,
+      "evidence": "server-tests.log"
+    },
+    "baselineFailure": {
+      "test": "scheduled public collection records each real attempt without retaining secret query parameters",
+      "reproducedOnUnmodifiedBase": true,
+      "evidence": "baseline-public-hook.log"
+    },
+    "snapshotAndPersistedSummary": {
+      "tests": 11,
+      "passed": 11,
+      "evidence": "snapshot-tests.log"
+    },
+    "frontendLoader": {
+      "tests": 5,
+      "passed": 5,
+      "evidence": "frontend-tests.log"
+    },
     "webTypecheck": "passed",
-    "frontendBuild": "passed, uiqa mode, isolated output",
-    "backendBundle": "passed, isolated output",
-    "lint": "new files clean; no new diagnostics in shared files",
-    "ui": "passed, real app with synthetic APIs, 1920px and 390px, all eight link types, historical weeks, zero counts, market change and filter clear",
+    "newCodecAndSnapshotLint": "passed",
+    "apiBundle": "passed",
+    "apiBuildDirectory": "D:/Project_Code/Intelligence_System/_builds/source-usage-read-error-api",
+    "nodeSyntax": "passed",
     "diffCheck": "passed",
-    "mysqlCI": "not run locally",
-    "wholeRepositoryLint": "not run",
-    "commitHooks": "disabled; checks executed explicitly"
+    "independentCodeReview": "no blocking findings"
   },
-  "limitations": [
-    "resource-market.test.ts has 2 failed / 8 passed, due to missing Modal in its ant-design-vue mock; reproduced unchanged in clean baseline overview-weekly-summary worktree; retained baseline-resource-market.log and frontend-tests.log"
-  ],
   "skipped": [
     "release-repeat-tests",
     "validation-build",
@@ -68,7 +65,7 @@
     "consistency": "skipped-by-user"
   },
   "operator": "Codex",
-  "id": "20261116033529-6a44736d",
-  "builtAt": "2026-11-16T03:35:29.835Z",
-  "sourceDigest": "6a44736d2315e7e019df7ff73a8bdff023f0ec13d2f9c28dd30b6e0cc9b2b570"
+  "id": "20261116075404-ffdfb183",
+  "builtAt": "2026-11-16T07:54:04.405Z",
+  "sourceDigest": "ffdfb1839a034970cc96ad158034c8d8fb6dbfe49fec5b538e07e2c7e9f873b6"
 }
