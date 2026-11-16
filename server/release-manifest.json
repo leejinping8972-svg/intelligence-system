@@ -1,57 +1,63 @@
 {
-  "title": "资源消耗看板大历史快照读取修复",
-  "sourceSha": "40d73e66bedd8af57f24f61ae54dc1016062d1bb",
+  "title": "有效Cookie直入工作区与Semrush剩余额度自动计算",
+  "sourceSha": "1050b986efdcea9b7d31da30f2895cea7837fa3f",
   "featureShas": [
-    "40d73e66bedd8af57f24f61ae54dc1016062d1bb"
+    "c95756069cd5159e7640882a8928d4d0a6985814",
+    "1050b986efdcea9b7d31da30f2895cea7837fa3f"
   ],
   "files": [
+    "apps/web-antd/src/login-entry.ts",
+    "apps/web-antd/src/session-entry-status.vue",
+    "apps/web-antd/src/views/intelligence/components/SemrushSettings.vue",
+    "apps/web-antd/src/views/intelligence/components/SourceConfiguration.vue",
+    "apps/web-antd/src/views/intelligence/components/SourceUsageDashboard.vue",
+    "apps/web-antd/src/views/intelligence/source-usage.ts",
+    "apps/web-antd/src/views/intelligence/usage.vue",
     "server/SOURCE-USAGE.md",
-    "server/source-usage-reader.mjs",
-    "server/source-usage-reader.test.mjs",
-    "server/source-usage-snapshot.mjs",
-    "server/source-usage-snapshot.test.mjs",
-    "server/usage-snapshot-codec.mjs",
-    "server/usage-summary.test.mjs"
+    "server/semrush-quota.mjs",
+    "server/semrush-quota.test.mjs",
+    "server/source-usage-domain.mjs",
+    "server/source-usage.mjs",
+    "server/source-usage.test.mjs",
+    "server/usage-summary.test.mjs",
+    "tests/login-entry.test.ts",
+    "tests/semrush-quota.test.ts"
   ],
   "ciFiles": [
     ".github/workflows/testing.yml"
   ],
   "changes": [
-    "兼容已超过旧32MiB解压上限的完整消耗汇总，恢复资源消耗与请求日志读取，不截断历史记录",
-    "新汇总和监控增量缓存按UTF-8字节分片压缩，逐片验证顺序、字节与记录数，损坏整份拒绝",
-    "保留页面只读已保存汇总、真实零与未知扣费、SQL增量、来源及模型调用和任务队列行为"
+    "有效Cookie先恢复会话，加载工作区期间不挂载登录表单；无会话才登录，连接错误可重试并保留目标路由",
+    "Semrush剩余按总额度减当前Key已记录确认API units自动计算，移除手动剩余输入与旧值，刷新消耗同步更新",
+    "保留历史Key/未归属/未知费用隔离、真实零与缺失口径；无收费查询、schema/迁移或队列行为变化"
   ],
-  "verification": "沿用开发服务端45/46（唯一既有公共采集脱敏失败在未改基线复现）、快照与持久汇总11/11、监控reader8/8、前端加载器5/5、完整Web类型、定向lint和API构建。发布重复验证、独立验证构建及CI等待按用户策略跳过",
-  "developmentVerification": {
-    "serverRelated": {
-      "tests": 46,
-      "passed": 45,
-      "failed": 1,
-      "evidence": "server-tests.log"
+  "verification": "沿用开发登录36/36、额度Node8/8、前端9/9、相关服务端37/38（唯一旧公共采集脱敏失败在基线复现）、Web类型与独立前后端构建及无新增lint；发布重复验证/验证构建/CI等待按用户策略跳过",
+  "developmentVerification": [
+    {
+      "sha": "c95756069cd5159e7640882a8928d4d0a6985814",
+      "validation": {
+        "tests": "36/36",
+        "webTypecheck": "passed",
+        "targetedLint": "passed",
+        "build": "D:/Project_Code/Intelligence_System/_builds/session-entry-restore-dev"
+      }
     },
-    "baselineFailure": {
-      "test": "scheduled public collection records each real attempt without retaining secret query parameters",
-      "reproducedOnUnmodifiedBase": true,
-      "evidence": "baseline-public-hook.log"
-    },
-    "snapshotAndPersistedSummary": {
-      "tests": 11,
-      "passed": 11,
-      "evidence": "snapshot-tests.log"
-    },
-    "frontendLoader": {
-      "tests": 5,
-      "passed": 5,
-      "evidence": "frontend-tests.log"
-    },
-    "webTypecheck": "passed",
-    "newCodecAndSnapshotLint": "passed",
-    "apiBundle": "passed",
-    "apiBuildDirectory": "D:/Project_Code/Intelligence_System/_builds/source-usage-read-error-api",
-    "nodeSyntax": "passed",
-    "diffCheck": "passed",
-    "independentCodeReview": "no blocking findings"
-  },
+    {
+      "sha": "1050b986efdcea9b7d31da30f2895cea7837fa3f",
+      "validation": {
+        "quotaServerTests": "8/8",
+        "frontendTests": "9/9",
+        "relatedServerTests": "37/38",
+        "existingFailure": "scheduled public collection records each real attempt without retaining secret query parameters",
+        "reproducedOnUnmodifiedBase": true,
+        "webTypecheck": "passed",
+        "frontendBuild": "passed",
+        "apiBundle": "passed",
+        "newLintDiagnostics": 0,
+        "diffCheck": "passed"
+      }
+    }
+  ],
   "skipped": [
     "release-repeat-tests",
     "validation-build",
@@ -65,7 +71,7 @@
     "consistency": "skipped-by-user"
   },
   "operator": "Codex",
-  "id": "20261116075404-ffdfb183",
-  "builtAt": "2026-11-16T07:54:04.405Z",
-  "sourceDigest": "ffdfb1839a034970cc96ad158034c8d8fb6dbfe49fec5b538e07e2c7e9f873b6"
+  "id": "20261116094050-4ed2bbe3",
+  "builtAt": "2026-11-16T09:40:50.143Z",
+  "sourceDigest": "4ed2bbe33a99693c47099f5ce63de054b950615749bb5a77d1e586f38f06c02b"
 }
