@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { batchName } from './collection-batch-domain.mjs';
+import { validateSummaryWeek } from './weekly-members.mjs';
 
 export const conceptMemberKey = (market, batch, kind) =>
   `read:concept-members:${market}:${createHash('sha256').update(batchName(batch)).digest('hex')}:${kind}`;
@@ -16,16 +17,19 @@ export function conceptMemberCondition(input, collection, bind, sql) {
     throw new Error('采集批次筛选无效');
   if (input.conceptDay && !/^\d{4}-\d{2}-\d{2}$/.test(input.conceptDay))
     throw new Error('新增统计日期无效');
+  if (input.conceptWeek) validateSummaryWeek(input.conceptWeek);
+  if (input.conceptDay && input.conceptWeek) throw new Error('不能同时筛选日统计与周统计');
   const market = ['MX', 'US', 'VN'].includes(input.market)
     ? input.market
     : 'ALL';
   const key = bind(conceptMemberKey(market, input.conceptBatch, collection));
-  const field = input.conceptDay ? 'todayIds' : 'ids';
-  const day = input.conceptDay ? bind(input.conceptDay) : '';
+  const field = input.conceptWeek ? 'weekIds' : input.conceptDay ? 'todayIds' : 'ids';
+  const day = input.conceptWeek || input.conceptDay ? bind(input.conceptWeek || input.conceptDay) : '';
+  const dateField = input.conceptWeek ? 'weekStart' : 'day';
   const dayCondition = day
     ? sql(
-        ` AND d.value->>'day'=${day}`,
-        ` AND JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.day'))=${day}`,
+        ` AND d.value->>'${dateField}'=${day}`,
+        ` AND JSON_UNQUOTE(JSON_EXTRACT(d.value,'$.${dateField}'))=${day}`,
       )
     : '';
   return sql(

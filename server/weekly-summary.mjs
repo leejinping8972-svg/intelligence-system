@@ -1,8 +1,9 @@
+import { weeklyMemberKey } from './weekly-members.mjs';
 import { createWeeklyAccumulator } from './weekly-summary-domain.mjs';
 
 const KIND = 'weekly-summary';
 const MARKER = 'read:weekly-summary-version';
-const VERSION = 1;
+const VERSION = 2;
 const INTERVAL = 5 * 60_000;
 const keyOf = (market) => `read:statistics:${KIND}:${market}:all`;
 const dayOf = (now) => new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -20,7 +21,14 @@ export function createWeeklySummary({ pool, sql, putDocument }) {
       nextCheck = now + 60_000;
       return;
     }
-    const summary = createWeeklyAccumulator(now);
+    const members = new Map();
+    const summary = createWeeklyAccumulator(now, (market, week, kind, id, isNew) => {
+      const key = weeklyMemberKey(market, week, kind);
+      if (!members.has(key)) members.set(key, { ids: [], newIds: [] });
+      const group = members.get(key);
+      group.ids.push(id);
+      if (isNew) group.newIds.push(id);
+    });
     for (const kind of ['products', 'ads']) {
       let cursor = '';
       for (;;) {
@@ -31,6 +39,9 @@ export function createWeeklySummary({ pool, sql, putDocument }) {
       }
     }
     const metadata = { generatedAt: new Date(now).toISOString(), day, revision: String(revision), indexing, version: VERSION };
+    await connection.query("DELETE FROM workspace_documents WHERE name LIKE 'read:weekly-members:%'");
+    for (const [key, value] of members)
+      await putDocument('workspace_documents', key, value, false, connection);
     for (const [market, { rows, missingDiscovery, missingLaunch }] of Object.entries(summary.results())) {
       await connection.query('DELETE FROM workspace_statistic_rows WHERE kind=$1 AND market=$2 AND variant=$3', [KIND, market, 'all']);
       for (let start = 0; start < rows.length; start += 100) {

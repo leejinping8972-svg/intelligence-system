@@ -1,4 +1,5 @@
 import { resourceCollectionTime, shanghaiDay } from './collection-time.mjs';
+import { weekStart } from './weekly-summary-domain.mjs';
 
 const kinds = ['keywords', 'ads', 'sites', 'products'];
 const batchName = (value) =>
@@ -75,6 +76,7 @@ export function conceptMonitorRows(state, now = Date.now(), onMembers) {
         add(group, 'keywords', records.keywords.get(id), row.market);
     }
   const day = shanghaiDay(now);
+  const week = weekStart(day);
   return [...batches.values()]
     .map((group) => {
       for (const row of group.members.keywords.values()) {
@@ -118,7 +120,12 @@ export function conceptMonitorRows(state, now = Date.now(), onMembers) {
           return at && shanghaiDay(Date.parse(at)) === day;
         });
         counts[`${kind}Today`] = todayRows.length;
-        members[kind] = {ids: rows.map(row => row.id), todayIds: todayRows.map(row => row.id), day};
+        const weekRows = rows.filter((row) => {
+          const at = firstTime(kind, row);
+          return at && Date.parse(at) <= now && shanghaiDay(Date.parse(at)) >= week;
+        });
+        counts[`${kind}Week`] = weekRows.length;
+        members[kind] = {ids: rows.map(row => row.id), todayIds: todayRows.map(row => row.id), weekIds: weekRows.map(row => row.id), day, weekStart: week};
         for (const row of rows) {
           if (row.market) markets.add(row.market);
           const at = resourceCollectionTime(kind, row);

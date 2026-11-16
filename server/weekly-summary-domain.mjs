@@ -25,7 +25,7 @@ export function weekStart(day) {
   return new Date(time - weekday * DAY).toISOString().slice(0, 10);
 }
 
-export function createWeeklyAccumulator(now = Date.now()) {
+export function createWeeklyAccumulator(now = Date.now(), onMember) {
   const currentWeek = weekStart(dayOf(now));
   const markets = ['ALL', 'US', 'MX', 'VN'];
   const groups = new Map(markets.map((market) => [market, {
@@ -70,6 +70,7 @@ export function createWeeklyAccumulator(now = Date.now()) {
         const week = bucket(group, weekStart(discovered));
         week[product ? 'discoveredProducts' : 'discoveredAds']++;
         if (isNew) week[product ? 'newProducts' : 'newAds']++;
+        onMember?.(market, week.weekStart, kind, row.id, isNew);
       }
       else group.missingDiscovery++;
       if (!launched) group.missingLaunch++;

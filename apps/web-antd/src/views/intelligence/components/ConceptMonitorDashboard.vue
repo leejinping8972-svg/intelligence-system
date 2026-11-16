@@ -23,6 +23,10 @@ interface ConceptRow {
   sitesToday: number;
   products: number;
   productsToday: number;
+  keywordsWeek: number;
+  adsWeek: number;
+  sitesWeek: number;
+  productsWeek: number;
 }
 const search = ref('');
 const page = ref(1);
@@ -68,8 +72,8 @@ async function mergeBatches() {
 }
 const destinations:Record<string,string>={keywords:'/research',ads:'/ads',sites:'/sites',products:'/products'};
 function destination(batch:string,key:string) {
-  const kind=key.replace(/Today$/,'');
-  return {path:destinations[kind]!,query:{conceptBatch:batch,market:state.market,...(key.endsWith('Today')?{conceptDay:remote.snapshot.value?.day}:{})}};
+  const kind=key.replace(/Today$|Week$/,'');
+  return {path:destinations[kind]!,query:{conceptBatch:batch,market:state.market,...(key.endsWith('Today')?{conceptDay:remote.snapshot.value?.day}:{}),...(key.endsWith('Week')?{conceptWeek:remote.snapshot.value?.weekStart}:{})}};
 }
 const preparing = computed(
   () => !remote.error.value && (
@@ -96,6 +100,10 @@ const fields = [
   { title: '今日新增独立站', key: 'sitesToday', width: 135 },
   { title: '关联商品', key: 'products', width: 100 },
   { title: '今日新增商品', key: 'productsToday', width: 125 },
+  { title: '本周新增关键词', key: 'keywordsWeek', width: 135 },
+  { title: '本周新增广告', key: 'adsWeek', width: 125 },
+  { title: '本周新增独立站', key: 'sitesWeek', width: 135 },
+  { title: '本周新增商品', key: 'productsWeek', width: 125 },
   { title: '采集时间（北京时间）', key: 'collectedAt', width: 180 },
 ];
 const columns = computed(() =>
@@ -159,6 +167,7 @@ function change(
     <p v-if="remote.snapshot.value" class="hci-subtle concept-monitor-note">
       汇总更新于 <CollectionTime :at="remote.snapshot.value.generatedAt" /> ·
       今日新增统计日期：{{ remote.snapshot.value.day }}（北京时间）
+      <span v-if="remote.snapshot.value.weekStart">· 本周：{{ remote.snapshot.value.weekStart }} ～ {{ remote.snapshot.value.weekEnd }}</span>
       <span v-if="remote.snapshot.value.indexing">
         · 后台数据更新中，汇总每 5 分钟自动补充
       </span>
@@ -170,7 +179,7 @@ function change(
       :data-source="remote.rows.value"
       :row-selection="canMerge ? {selectedRowKeys:selectedBatches,preserveSelectedRowKeys:true,onChange:selectBatches,getCheckboxProps:()=>({disabled:merging})} : undefined"
       :loading="remote.loading.value"
-      :scroll="{ x: 1530 }"
+      :scroll="{ x: 2050 }"
       :pagination="{
         total: remote.total.value,
         current: remote.pagination.value.page,
@@ -206,11 +215,12 @@ function change(
           v-else-if="column.key === 'collectedAt'"
           :at="record.collectedAt"
         />
-        <RouterLink v-else :to="destination(record.batch,String(column.key))" class="concept-count" :class="{'concept-new':String(column.key).endsWith('Today') && record[String(column.key)] > 0}" :aria-label="`${record.batch} · ${column.title} ${record[String(column.key)]}，查看列表`">{{ record[String(column.key)] }}</RouterLink>
+        <RouterLink v-else-if="record[String(column.key)] !== undefined" :to="destination(record.batch,String(column.key))" class="concept-count" :class="{'concept-new':/Today$|Week$/.test(String(column.key)) && record[String(column.key)] > 0}" :aria-label="`${record.batch} · ${column.title} ${record[String(column.key)]}，查看列表`">{{ record[String(column.key)] }}</RouterLink>
+        <span v-else>—</span>
       </template>
     </Table>
     <p class="hci-subtle">
-      同一批次内按记录去重；关联数据以已保存的关系为准。采集时间取关联记录最近采集时间，今日新增按首次发现时间统计，缺少该时间时使用已有采集时间。
+      同一批次内按记录去重；关联数据以已保存的关系为准。采集时间取关联记录最近采集时间，今日及本周新增按首次发现时间统计，缺少该时间时使用已有采集时间；本周为北京时间周一至周日。
     </p>
     <Modal v-model:open="mergeOpen" title="合并采集批次" ok-text="提交后台合并" :ok-button-props="{disabled:!mergeTarget.trim() || selectedBatches.length < 2}" :confirm-loading="merging" :cancel-button-props="{disabled:merging}" :closable="!merging" :keyboard="!merging" :mask-closable="false" @ok="mergeBatches">
       <p>将以下 {{ selectedBatches.length }} 个批次统一合并到目标批次：</p>
