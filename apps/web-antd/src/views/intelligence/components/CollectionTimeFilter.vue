@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { DatePicker, Segmented } from 'ant-design-vue';
+import { DatePicker, Segmented, Select } from 'ant-design-vue';
 import { recentListingRange } from '../../../../../../server/product-listing.mjs';
 const model = defineModel<string[]>({ required: true });
+const basis = defineModel<'first' | 'latest'>('basis');
 function quick(value: string | number) {
   model.value = Number(value) ? recentListingRange(Number(value)) : [];
 }
@@ -17,6 +18,13 @@ function selected() {
 <template>
   <div class="hci-toolbar collection-time-filter">
     <span>采集时间（北京时间）</span>
+    <Select
+      v-if="basis"
+      v-model:value="basis"
+      aria-label="采集时间口径"
+      :options="[{ value: 'first', label: '首次采集' }, { value: 'latest', label: '最近采集' }]"
+      style="min-width: 120px"
+    />
     <DatePicker.RangePicker
       :value="model.length === 2 ? [model[0]!, model[1]!] : undefined"
       value-format="YYYY-MM-DD"

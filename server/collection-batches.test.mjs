@@ -9,8 +9,12 @@ import {
   canonicalBatch,
   mergeBatchAliases,
 } from './collection-batch-domain.mjs';
+import { batchMergeTask, createCollectionBatchJobs } from './collection-batch-jobs.mjs';
 import { createCollectionBatchAction } from './collection-batches.mjs';
 import { createConceptMonitor } from './concept-monitor.mjs';
+import { decorateTaskContexts } from './task-context.mjs';
+import { taskOverview } from './task-overview.mjs';
+import { projectJobTasks } from './task-projection.mjs';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 import { createWorkspaceReads, projectRecord } from './workspace-reads.mjs';
 
@@ -58,7 +62,7 @@ async function fixture(overrides = {}) {
   };
   await db.exec(`CREATE TABLE workspace_documents(name text PRIMARY KEY,value jsonb NOT NULL,revision integer NOT NULL DEFAULT 1);
     CREATE TABLE research_keywords(natural_key text PRIMARY KEY,data jsonb NOT NULL,updated_at timestamptz DEFAULT now());
-    CREATE TABLE research_jobs(id text PRIMARY KEY,input jsonb,checkpoint jsonb,status text,cancelled boolean,updated_at timestamptz);`);
+    CREATE TABLE research_jobs(id text PRIMARY KEY,request_id text UNIQUE,input jsonb,checkpoint jsonb NOT NULL DEFAULT '{}',status text DEFAULT 'queued',cancelled boolean DEFAULT false,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());`);
   await migrateWorkspaceReads(pool, 'postgres');
   const putDocument = (_table, name, value, _importOnly, c = pool) =>
     c.query(
@@ -83,6 +87,7 @@ async function fixture(overrides = {}) {
   });
   const admin = { id: 'admin-qa', role: 'admin' };
   const merge = createCollectionBatchAction(options);
+  const jobs = createCollectionBatchJobs({...options, saveCheckpoint: (job, cp, status) => pool.query("UPDATE research_jobs SET checkpoint=$2,status=CASE WHEN cancelled THEN 'cancelled' ELSE $3 END,updated_at=now() WHERE id=$1", [job.id,cp,status])});
   async function add(kind, record) {
     const sourceKey =
       kind === 'keywords' ? record.id : `business:${kind}:${record.id}`;
@@ -192,6 +197,8 @@ async function fixture(overrides = {}) {
     pool,
     reads,
     merge,
+    jobs,
+    loadJob: async id => (await pool.query('SELECT * FROM research_jobs WHERE id=$1',[id])).rows[0],
     admin,
     publish,
     fail: () => {
@@ -516,7 +523,7 @@ test('expired index wait leaves affiliations, audit and snapshot untouched', asy
   const f = await fixture({lock: async () => false, unlock: async () => { unlocks++; }});
   try {
     const before = await f.publish();
-    await assert.rejects(() => f.merge({ batches: ['A', 'B'], target: '目标', expectedRevision: 0 }, f.admin), /后台更新耗时较长/);
+    await assert.rejects(() => f.merge({ batches: ['A', 'B'], target: '目标', expectedRevision: 0 }, f.admin), /等待后台索引/);
     assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1', ['kA'])).rows[0].data.batch, 'A');
     assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1', [BATCH_SETTINGS])).rows.length, 0);
     assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1', ['read:concept-monitor-version'])).rows[0].value.version, before.snapshot.version);
@@ -524,4 +531,128 @@ test('expired index wait leaves affiliations, audit and snapshot untouched', asy
   } finally {
     await f.db.close();
   }
+});
+
+test('background submission returns without taking index lock, deduplicates and commits result atomically', async () => {
+ let attempts=0;
+ const f=await fixture({lock:async()=>{attempts++;return true;}});
+ try{
+  await f.publish();
+  const input={batches:['A','B'],target:'后台目标',expectedRevision:0,market:'US'};
+  const accepted=await f.jobs.submit(input,f.admin);
+  assert.equal(accepted.status,'queued');assert.equal(attempts,0);
+  const duplicate=await f.jobs.submit({...input,batches:['B','A']},f.admin);
+  assert.equal(duplicate.jobId,accepted.jobId);
+  assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1',['kA'])).rows[0].data.batch,'A');
+  const job=await f.loadJob(accepted.jobId);
+  await f.jobs.run(job);
+  const completed=await f.loadJob(job.id);
+  assert.equal(completed.status,'completed');assert.equal(completed.checkpoint.mergeResult.target,'后台目标');
+  assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1',['kA'])).rows[0].data.batch,'后台目标');
+  const settings=(await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows[0].value;
+  assert.equal(settings.history[0].jobId,job.id);assert.equal(settings.history[0].actor,f.admin.id);
+  await f.jobs.run(job);
+  assert.equal(attempts,1);
+  const replay=await f.merge(input,f.admin,{jobId:job.id});
+  assert.equal(replay.revision,1);
+  assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows[0].value.history.length,1);
+ }finally{await f.db.close();}
+});
+test('background merge retries an occupied index without changing data, survives restart and respects cancellation',async()=>{
+ let available=false;
+ const f=await fixture({lock:async()=>available});
+ try{
+  await f.publish();
+  const accepted=await f.jobs.submit({batches:['A','B'],target:'后台目标',expectedRevision:0},f.admin);
+  await f.jobs.run(await f.loadJob(accepted.jobId));
+  let job=await f.loadJob(accepted.jobId);
+  assert.equal(job.status,'queued');assert.equal(job.checkpoint.phase,'waiting_index');assert.ok(job.checkpoint.nextRunAt>Date.now());
+  assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1',['kA'])).rows[0].data.batch,'A');
+  await f.pool.query("UPDATE research_jobs SET cancelled=true,status='cancelled' WHERE id=$1",[job.id]);
+  available=true;await f.jobs.run(job);
+  assert.equal((await f.loadJob(job.id)).status,'cancelled');
+  assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows.length,0);
+ }finally{await f.db.close();}
+});
+test('background failure rolls back affiliations and stores visible error without external calls',async()=>{
+ const f=await fixture();
+ try{
+  await f.publish();f.fail();
+  const accepted=await f.jobs.submit({batches:['A','B'],target:'后台目标',expectedRevision:0},f.admin);
+  await f.jobs.run(await f.loadJob(accepted.jobId));
+  const job=await f.loadJob(accepted.jobId);assert.equal(job.status,'failed');assert.match(job.checkpoint.error,/synthetic rollback/);
+  assert.equal((await f.pool.query('SELECT data FROM research_keywords WHERE natural_key=$1',['kA'])).rows[0].data.batch,'A');
+  assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows.length,0);
+ }finally{await f.db.close();}
+});
+test('cancel during index wait stops before beginning affiliation changes',async()=>{
+ const ready=Promise.withResolvers();const grant=Promise.withResolvers();
+ const f=await fixture({lock:async()=>{ready.resolve();return grant.promise;}});
+ try{
+  await f.publish();
+  const accepted=await f.jobs.submit({batches:['A','B'],target:'后台目标',expectedRevision:0},f.admin);
+  const pending=f.jobs.run(await f.loadJob(accepted.jobId));await ready.promise;
+  await f.pool.query("UPDATE research_jobs SET cancelled=true,status='cancelled' WHERE id=$1",[accepted.jobId]);
+  grant.resolve(true);await pending;
+  assert.equal((await f.loadJob(accepted.jobId)).status,'cancelled');
+  assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows.length,0);
+ }finally{grant.resolve(false);await f.db.close();}
+});
+test('background submission checks permissions and validation without acquiring locks',async()=>{
+ const f=await fixture({lock:async()=>assert.fail('submission acquired lock')});
+ try{
+  await assert.rejects(()=>f.jobs.submit({batches:['A','B'],target:'目标',expectedRevision:0},{role:'researcher'}),/admin/);
+  await assert.rejects(()=>f.jobs.submit({batches:['A','A'],target:'目标',expectedRevision:0},f.admin),/两个不同/);
+  assert.equal((await f.pool.query('SELECT id FROM research_jobs')).rows.length,0);
+ }finally{await f.db.close();}
+});
+
+test('completed commit survives a lost response without a second merge or false failure', async () => {
+ const f=await fixture();
+ try {
+  await f.publish();
+  const input={batches:['A','B'],target:'目标',expectedRevision:0,requestId:'7e5c3404-890d-4d2f-921b-7a45bdd9271a'};
+  const accepted=await f.jobs.submit(input,f.admin);
+  const original=f.pool.query;let lost=false;
+  f.pool.query=async(...args)=>{const result=await original(...args);if(args[0]==='COMMIT'&&!lost){lost=true;throw Object.assign(Error('lost commit reply'),{code:'ECONNRESET'});}return result;};
+  await f.jobs.run(await f.loadJob(accepted.jobId));
+  const job=await f.loadJob(accepted.jobId);
+  assert.equal(lost,true);assert.equal(job.status,'completed');assert.equal(job.checkpoint.mergeResult.revision,1);
+  assert.equal((await f.jobs.submit(input,f.admin)).status,'completed');
+  await f.jobs.run(job);
+  assert.equal((await f.pool.query('SELECT value FROM workspace_documents WHERE name=$1',[BATCH_SETTINGS])).rows[0].value.history.length,1);
+ } finally {await f.db.close();}
+});
+
+test('stale queued merge reports conflict, repeat submission is truthful and new confirmation has its own task', async () => {
+ const f=await fixture();
+ try {
+  await f.publish();
+  const input={batches:['A','B'],target:'目标',expectedRevision:0,requestId:'2aa7fb39-eec7-47e7-a038-772f621988dd'};
+  const accepted=await f.jobs.submit(input,f.admin);
+  await f.merge({...input,target:'已合并'},f.admin);
+  await f.jobs.run(await f.loadJob(accepted.jobId));
+  const job=await f.loadJob(accepted.jobId);assert.equal(job.status,'failed');assert.match(job.checkpoint.error,/批次已发生变化/);
+  await assert.rejects(()=>f.jobs.submit(input,f.admin),/已失败/);
+  const next=await f.jobs.submit({...input,requestId:'62787081-dad2-43c4-9849-64b841a3e385'},f.admin);
+  assert.notEqual(next.jobId,accepted.jobId);assert.equal(next.status,'queued');
+ } finally {await f.db.close();}
+});
+
+test('batch task projection displays waiting, result, failure and cancellation without resource lookups', async () => {
+ const input={kind:'collection_batch_merge',market:'ALL',batches:['A','B'],target:'目标'};
+ const base={id:'qa-batch-task',input,status:'queued',created_at:new Date(),checkpoint:{submittedAt:'2026-11-16T00:00:00Z',logs:[]}};
+ for(const [status,checkpoint,expected] of [
+  ['queued',{},/已排队/],['running',{phase:'waiting_index'},/等待索引/],
+  ['completed',{mergeResult:{target:'目标'}},/合并完成/],['failed',{error:'批次已发生变化'},/合并失败/],['cancelled',{},/已取消/],
+ ]) {
+  const job={...base,status,checkpoint:{...base.checkpoint,...checkpoint}};
+  const tasks=projectJobTasks(job,j=>[batchMergeTask(j)]);
+  assert.equal(tasks.length,1);assert.equal(tasks[0].readOnly,undefined);
+  const [task]=await decorateTaskContexts(tasks,[job],{query:()=>assert.fail('unexpected resource lookup')},{detail:true});
+  assert.equal(task.context.objectCount,2);assert.equal(task.context.objects[0].label,'A');assert.equal(task.context.destination,undefined);
+  const overview=taskOverview(job,task);assert.match(overview.outcome,expected);assert.equal(overview.total,2);
+  if(status==='completed')assert.equal(overview.percent,100);
+  if(status==='failed')assert.match(overview.reason,/批次已发生变化/);
+ }
 });

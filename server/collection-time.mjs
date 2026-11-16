@@ -37,16 +37,24 @@ export function collectionRange(from = '', to = '') {
       : '',
   };
 }
-export function matchesCollectionRange(collection, value, from = '', to = '') {
+export function matchesCollectionRange(collection, value, from = '', to = '', basis = 'latest') {
   const range = collectionRange(from, to);
   if (!from && !to) return true;
+  if (collection === 'products' && basis === 'first') {
+    const day = productDiscoveryDay(value);
+    return !!day && (!from || day >= from) && (!to || day <= to);
+  }
   const at = resourceCollectionTime(collection, value);
   return (
     !!at && (!range.from || at >= range.from) && (!range.to || at < range.to)
   );
 }
-export function productDiscoveryDay(value) {
+export function productFirstCollectionTime(value) {
   const at = value.discovery?.firstSeenAt || value.firstSeenAt;
+  return at && Number.isFinite(Date.parse(at)) ? new Date(at).toISOString() : '';
+}
+export function productDiscoveryDay(value) {
+  const at = productFirstCollectionTime(value);
   return at && Number.isFinite(Date.parse(at))
     ? shanghaiDay(Date.parse(at))
     : '';

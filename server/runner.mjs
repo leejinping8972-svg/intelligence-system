@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { requireAdmin } from './auth.mjs';
+import { batchMergeTask, createCollectionBatchJobs } from './collection-batch-jobs.mjs';
 import { runProductWatch, tickProductWatch } from './product-watch-store.mjs';
 import { tickDailyDiscovery } from './daily-discovery.mjs';
 import { discoveryKinds, runDiscoveryMonitor, tickDiscoveryMonitors } from './discovery-monitor-store.mjs';
@@ -10,7 +12,7 @@ import { runProductKeywords } from './product-keywords-store.mjs';
 import { runSourceFields } from './source-field-store.mjs';
 import { withAnalysisTask } from './source-analysis-stage.mjs';
 import { runSourceAnalysisQueue, sourceAnalysisFilter } from './source-analysis-queue.mjs';
-import { lock, sql, unlock } from './database.mjs';
+import { lock, putDocument, sql, unlock } from './database.mjs';
 import {
   KEYWORD_EXPANSION_FETCH_CAP,
   naturalKey,
@@ -49,6 +51,7 @@ export function jobTasks(job) {
   );
 }
 function projectKnownJob(job) {
+  if (job.input.kind === 'collection_batch_merge') return [batchMergeTask(job)];
   if (job.input.kind === 'product_keywords') return [{
     id: `${job.id}:${job.input.market}`, cloudJobId: job.id, market: job.input.market,
     mode: 'live', stage: 'analysis', title: '云端 · 商品反推关键词与非趋势指标',
@@ -653,6 +656,8 @@ async function runLane(signal, trends = false) {
           );
           await withAnalysisTask(next.id, async () => {
           if (trends) await runTrendJob(next);
+          else if (next.input.kind === 'collection_batch_merge')
+            await createCollectionBatchJobs({pool,sql,putDocument,lock,unlock,requireAdmin,saveCheckpoint}).run(next);
           else if (next.input.kind === 'product_keywords') await runProductKeywords(next);
           else if (next.input.kind === 'product_watch') await runProductWatch(next);
           else if (next.input.kind === 'discovery_monitor') await runDiscoveryMonitor(next, { schedulingMs });

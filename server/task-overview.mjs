@@ -155,6 +155,12 @@ export function taskOverview(job, task) {
   } else if (['awaiting_review', 'completed'].includes(state))
     outcome = ingredientTrend?.operation === 'analyze' ? '本次分析完成' : '本次采集目标完成';
   const elapsedStart = Date.parse(cp.startedAt || p?.startedAt || '');
+  if (input.kind === 'collection_batch_merge') {
+    outcome = state === 'completed' ? '批次合并完成 · 汇总后台更新'
+      : state === 'failed' ? '合并失败 · 原数据保留'
+        : state === 'cancelled' ? '已取消合并'
+          : cp.phase === 'waiting_index' ? '后台等待索引 · 自动继续' : '合并任务已排队';
+  }
   const elapsedEnd = Date.parse(cp.finishedAt || p?.finishedAt || '');
   return {
     ...(healthDiscovery ? { healthDiscovery } : {}),

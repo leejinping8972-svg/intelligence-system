@@ -9,5 +9,7 @@ export function matchesCollectionRange(
   value: any,
   from?: string,
   to?: string,
+  basis?: 'first' | 'latest',
 ): boolean;
+export function productFirstCollectionTime(value: any): string;
 export function productDiscoveryDay(value: any): string;

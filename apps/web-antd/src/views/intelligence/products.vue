@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import CollectionTimeFilter from './components/CollectionTimeFilter.vue';
-import { matchesCollectionRange, productDiscoveryDay } from '../../../../../server/collection-time.mjs';
+import { matchesCollectionRange, productDiscoveryDay, productFirstCollectionTime } from '../../../../../server/collection-time.mjs';
 /* oxlint-disable import/first, eslint/no-nested-ternary, unicorn/no-array-sort -- Existing product list structure. */
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -87,6 +87,8 @@ const route = useRoute();
 const router = useRouter();
 const search = listMemory.field('search', '');
 const collectedRange = listMemory.field<string[]>('collectedRange', []);
+const collectionBasis = listMemory.field<'first' | 'latest'>('collectionBasis', 'first');
+if (!['first', 'latest'].includes(collectionBasis.value)) collectionBasis.value = 'first';
 const listedRange = listMemory.field<[] | [string, string]>('listedRange', []);
 const listedQuick = listMemory.field('listedQuick', 0);
 function setListedQuick(days: number) {
@@ -176,6 +178,7 @@ const remote = useWorkspaceList<Product>(
     siteId: siteFilter.value,
     keywordId: keywordFilter.value || route.query.keywordId,
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
+    collectionBasis: collectionBasis.value,
     listedFrom: listedRange.value[0],
     listedTo: listedRange.value[1],
   })),
@@ -325,7 +328,7 @@ const rows = computed(() =>
             .join(' ')}`
             .toLowerCase()
             .includes(search.value.toLowerCase()) &&
-      matchesCollectionRange('products', p, collectedRange.value[0], collectedRange.value[1]) &&
+      matchesCollectionRange('products', p, collectedRange.value[0], collectedRange.value[1], collectionBasis.value) &&
           (!discoveredOn.value || productDiscoveryDay(p) === discoveredOn.value) &&
           matchesListingRange(p, listedRange.value[0], listedRange.value[1]) &&
           (category.value === 'ALL' || p.category === category.value) &&
@@ -425,7 +428,8 @@ const tableColumns = computed(() =>
       { title: '品牌宣称', key: 'core:claim', width: 150 },
       { title: '卖点', key: 'core:sellingPoints', width: 160 },
       { title: '市场 / 品类', key: 'category', width: 90 },
-      { title: '采集时间（北京时间）', key: 'collectedAt', width: 150 },
+      { title: '首次采集时间（北京时间）', key: 'firstCollectedAt', width: 150 },
+      { title: '最近采集时间（北京时间）', key: 'collectedAt', width: 150 },
       { title: '数据来源', key: 'provider', width: 110 },
       { title: '操作', key: 'actions', width: 180, fixed: 'right' as const },
     ])
@@ -543,6 +547,7 @@ async function exportProducts() {
         平台: productPlatform(p),
         数据来源: productProvider(p),
         采集时间: productCollectedAt(p) || '',
+        首次采集时间: productFirstCollectionTime(p),
         决策标签: productDecisions(p)
           .map((item) => item.label)
           .join('、'),
@@ -563,7 +568,7 @@ async function exportProducts() {
     message.error((error as Error).message);
   }
 }
-watch(collectedRange, () => { page.value = 1; clear(); });
+watch([collectedRange, collectionBasis], () => { page.value = 1; clear(); });
 watch(() => [route.query.pool, route.query.discoveredOn], () => {
   if (route.query.pool !== 'pool' || !route.query.discoveredOn) return;
   search.value = ''; collectedRange.value = []; listedRange.value = []; listedQuick.value = 0;
@@ -699,7 +704,8 @@ concept.onEntry(()=>{search.value=siteFilter.value=keywordFilter.value=discovere
       </div>
     </section>
     <div v-if="discoveredOn" class="hci-demo-note">首次发现日期：{{ discoveredOn }}（北京时间）<Button type="link" @click="discoveredOn = ''; router.replace({ query: { ...route.query, discoveredOn: undefined } })">清除发现日期</Button></div>
-    <CollectionTimeFilter v-model="collectedRange" />
+    <CollectionTimeFilter v-model="collectedRange" v-model:basis="collectionBasis" />
+    <p v-if="collectedRange.length" class="hci-subtle">当前按{{ collectionBasis === 'first' ? '首次采集入库' : '最近成功采集' }}时间筛选；{{ collectionBasis === 'first' ? '后续监控更新不会改变首次采集日期。' : '每日监控更新可能改变最近采集日期。' }}</p>
     <div class="product-controls-row">
       <div class="hci-toolbar product-listing-filter">
         <span>上架时间</span>
@@ -728,7 +734,7 @@ concept.onEntry(()=>{search.value=siteFilter.value=keywordFilter.value=discovere
           @change="(value) => setListedQuick(Number(value))"
         />
       </div>
-      <Empty v-if="!rows.length" description="没有符合条件的商品，请调整筛选" />
+      <Empty v-if="!rows.length && (!serverMode || (!remote.loading.value && !remote.error.value))" description="没有符合条件的商品，请调整筛选" />
       <div class="hci-toolbar product-view-toolbar">
         <Segmented
           v-model:value="viewMode"
@@ -815,7 +821,8 @@ concept.onEntry(()=>{search.value=siteFilter.value=keywordFilter.value=discovere
           </div>
           <ProductText :text="`${product.size} · ${product.form}`" :translated="product.sizeZh || product.formZh ? `${product.sizeZh || product.size} · ${product.formZh || product.form}` : ''" />
           <p class="hci-subtle">
-            采集：<CollectionTime :at="productCollectedAt(product)" />
+            首次采集：<CollectionTime :at="productFirstCollectionTime(product)" />
+            <br />最近采集：<CollectionTime :at="productCollectedAt(product)" />
           </p>
           <ProductDecisionTags :product="product" />
           <div class="hci-product-meta">
@@ -944,6 +951,9 @@ concept.onEntry(()=>{search.value=siteFilter.value=keywordFilter.value=discovere
               <ProductMerchant :product="record as Product" />
             </div>
           </div>
+        </template>
+        <template v-else-if="column.key === 'firstCollectedAt'">
+          <CollectionTime :at="productFirstCollectionTime(record)" />
         </template>
         <template v-else-if="column.key === 'collectedAt'">
           <CollectionTime :at="productCollectedAt(record)" />
