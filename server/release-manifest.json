@@ -1,77 +1,41 @@
 {
-  "title": "修复批次合并等待后台索引锁",
-  "sourceSha": "b98522a5208b038d7a906081586b51db8c196d6a",
+  "title": "情报总览每周数据汇总",
+  "sourceSha": "0ab463187f27d2ee734f22773e4cf5e00c1baf5b",
   "featureShas": [
-    "b98522a5208b038d7a906081586b51db8c196d6a"
+    "0ab463187f27d2ee734f22773e4cf5e00c1baf5b"
   ],
   "files": [
-    "server/CONCEPT-MONITOR.md",
-    "server/advisory-lock-wait.mjs",
-    "server/advisory-lock-wait.test.mjs",
-    "server/collection-batches.mjs",
-    "server/collection-batches.test.mjs",
-    "server/database.mjs"
+    "apps/web-antd/src/views/intelligence/components/WeeklySummaryDashboard.vue",
+    "apps/web-antd/src/views/intelligence/overview.vue",
+    "server/WEEKLY-SUMMARY.md",
+    "server/weekly-summary-domain.mjs",
+    "server/weekly-summary.mjs",
+    "server/weekly-summary.test.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs"
   ],
   "ciFiles": [
     ".github/workflows/testing.yml"
   ],
   "changes": [
-    "批次合并从10秒轮询抢锁改为最长90秒等待当前索引批次，MySQL使用服务端GET_LOCK等待",
-    "取得互斥锁后才开启事务、重验归属版本；超时不写入、不重跑采集",
-    "既有后台锁调用仍立即尝试，保留批次跳转/数据/关联/历史/检查点"
+    "概念监控看板后增加每周新发现产品、新品、新发现广告和新广告数量，按北京时间周一至周日统计",
+    "新品与新广告按首次抓取时7天内的来源日期判断，产品沿用新品池口径，重复采集不重复累计",
+    "市场筛选、倒序分页、本周标记及持久后台汇总，已有结果在更新或失败期间保留"
   ],
-  "verification": "开发33/33相关测试、后端bundle和无新增lint诊断通过；MySQL独立qa名称锁等待11145ms后正常接手/互斥/释放，无业务读写；前端未改。发布重复验证/独立验证构建/CI等待按用户策略跳过",
+  "verification": "开发15/15相关Node/PGlite、完整Web类型、构建与桌面/手机合成界面通过；周统计另在异地宿主时区6/6通过；新增模块lint通过、共享文件无新增诊断。发布重复测试/独立验证构建/CI等待按用户策略跳过",
   "developmentVerification": {
-    "tests": {
-      "passed": 33,
-      "failed": 0
-    },
-    "lint": [
-      {
-        "file": "server/database.mjs",
-        "before": 1,
-        "after": 1,
-        "added": []
-      },
-      {
-        "file": "server/collection-batches.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/collection-batches.test.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/advisory-lock-wait.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/advisory-lock-wait.test.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      }
-    ],
+    "relatedTests": "15/15 passed",
+    "weeklyTestsDifferentHostTimezone": "6/6 passed under America/Los_Angeles",
+    "webTypecheck": "passed",
+    "newFileLint": "passed",
+    "sharedFileLint": "no new diagnostics",
+    "webBuild": "passed (uiqa mode, isolated output)",
     "apiBundle": "passed",
-    "mysqlNamedLock": {
-      "status": "passed",
-      "waitedMs": 11145,
-      "deadlineMs": 90000,
-      "exclusive": true,
-      "released": true,
-      "businessLocksTouched": 0,
-      "businessReads": 0,
-      "businessWrites": 0,
-      "productionMerges": 0,
-      "paidCalls": 0
-    },
-    "frontend": "unchanged; no repeated frontend type/UI verification"
+    "ui": "passed, synthetic desktop 1920 and mobile 390; pagination, market reset, indexing, read failure and initial preparation",
+    "diffCheck": "passed",
+    "mysqlCI": "not run locally",
+    "fullRepositoryLint": "not run",
+    "commitHooks": "disabled for this commit"
   },
   "skipped": [
     "release-repeat-tests",
@@ -86,11 +50,11 @@
     "consistency": "skipped-by-user"
   },
   "limitations": [
-    "Merge waits up to 90 seconds for the current index transaction; deadline failure preserves all data and allows retry.",
-    "MySQL development check used only a unique qa named lock; no production batch merge or business data write."
+    "No live GitHub verification: git ls-remote failed with connection reset; baseline confirmed against local origin/testing, integration tree and latest release record.",
+    "Source dates and pool evidence can be corrected later; missing first-discovery dates are excluded rather than substituted with repeat collection times."
   ],
   "operator": "Codex",
-  "id": "20261113134748-bd8ec3f2",
-  "builtAt": "2026-11-13T13:47:48.045Z",
-  "sourceDigest": "bd8ec3f202aed3c73b1da77207a6bcdd158e983ca94e02e408fcd3698cf63dec"
+  "id": "20261116024041-27f73f5d",
+  "builtAt": "2026-11-16T02:40:41.976Z",
+  "sourceDigest": "27f73f5d5d20e4b0f820f2594df7ff356f80fce333538659290933b540d56863"
 }
