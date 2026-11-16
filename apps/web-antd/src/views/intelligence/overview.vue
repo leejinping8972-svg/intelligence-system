@@ -12,6 +12,7 @@ import { trendOption } from './charts';
 import ConceptMonitorDashboard from './components/ConceptMonitorDashboard.vue';
 import NewResearchDialog from './components/NewResearchDialog.vue';
 import PageHeader from './components/PageHeader.vue';
+import WeeklySummaryDashboard from './components/WeeklySummaryDashboard.vue';
 import {
   filteredKeywords,
   filteredProducts,
@@ -185,6 +186,7 @@ function selectMarket(name: string) {
       </button>
     </div>
     <ConceptMonitorDashboard />
+    <WeeklySummaryDashboard />
     <div class="hci-two-col">
       <section class="hci-panel">
         <div class="hci-panel-head">
