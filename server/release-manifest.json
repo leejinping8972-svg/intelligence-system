@@ -1,41 +1,142 @@
 {
-  "title": "情报总览每周数据汇总",
-  "sourceSha": "0ab463187f27d2ee734f22773e4cf5e00c1baf5b",
+  "title": "后台批次合并与商品采集日期筛选修复",
+  "sourceSha": "f32b5a40c887dbf525f11e5a620cd9d447c79ffa",
   "featureShas": [
-    "0ab463187f27d2ee734f22773e4cf5e00c1baf5b"
+    "f32b5a40c887dbf525f11e5a620cd9d447c79ffa"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/WeeklySummaryDashboard.vue",
-    "apps/web-antd/src/views/intelligence/overview.vue",
-    "server/WEEKLY-SUMMARY.md",
-    "server/weekly-summary-domain.mjs",
-    "server/weekly-summary.mjs",
-    "server/weekly-summary.test.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "apps/web-antd/src/views/intelligence/components/CollectionTimeFilter.vue",
+    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
+    "apps/web-antd/src/views/intelligence/products.vue",
+    "server/CONCEPT-MONITOR.md",
+    "server/collection-batch-jobs.mjs",
+    "server/collection-batches.mjs",
+    "server/collection-batches.test.mjs",
+    "server/collection-time.d.mts",
+    "server/collection-time.mjs",
+    "server/index.mjs",
+    "server/product-collection-filter.test.mjs",
+    "server/runner.mjs",
+    "server/task-context.mjs",
+    "server/task-overview.mjs",
+    "server/task-projection.mjs",
+    "server/workspace-reads.mjs"
   ],
   "ciFiles": [
     ".github/workflows/testing.yml"
   ],
   "changes": [
-    "概念监控看板后增加每周新发现产品、新品、新发现广告和新广告数量，按北京时间周一至周日统计",
-    "新品与新广告按首次抓取时7天内的来源日期判断，产品沿用新品池口径，重复采集不重复累计",
-    "市场筛选、倒序分页、本周标记及持久后台汇总，已有结果在更新或失败期间保留"
+    "批次合并持久提交后台任务，提交成功立即关窗，任务列表查看进度；事务回执防重复执行",
+    "商品采集时间默认首次采集，可切换最近采集，列表分别展示，复用已有日期索引",
+    "排查成分任务继承历史HTTP402/500阻断，本次不恢复或重放来源请求"
   ],
-  "verification": "开发15/15相关Node/PGlite、完整Web类型、构建与桌面/手机合成界面通过；周统计另在异地宿主时区6/6通过；新增模块lint通过、共享文件无新增诊断。发布重复测试/独立验证构建/CI等待按用户策略跳过",
+  "verification": "开发42/42相关Node/PGlite测试、Web类型、前后端隔离构建、无新增lint诊断及1920/390合成界面通过。发布重复验证/独立验证构建/CI等待按用户策略跳过",
   "developmentVerification": {
-    "relatedTests": "15/15 passed",
-    "weeklyTestsDifferentHostTimezone": "6/6 passed under America/Los_Angeles",
+    "tests": {
+      "passed": 42,
+      "failed": 0
+    },
     "webTypecheck": "passed",
-    "newFileLint": "passed",
-    "sharedFileLint": "no new diagnostics",
-    "webBuild": "passed (uiqa mode, isolated output)",
-    "apiBundle": "passed",
-    "ui": "passed, synthetic desktop 1920 and mobile 390; pagination, market reset, indexing, read failure and initial preparation",
-    "diffCheck": "passed",
-    "mysqlCI": "not run locally",
-    "fullRepositoryLint": "not run",
-    "commitHooks": "disabled for this commit"
+    "backendBundle": "passed",
+    "frontendBuild": "passed",
+    "lint": [
+      {
+        "file": "apps/web-antd/src/views/intelligence/components/CollectionTimeFilter.vue",
+        "before": 2,
+        "after": 2,
+        "added": []
+      },
+      {
+        "file": "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "apps/web-antd/src/views/intelligence/products.vue",
+        "before": 12,
+        "after": 12,
+        "added": []
+      },
+      {
+        "file": "server/collection-batches.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/collection-batches.test.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/collection-time.mjs",
+        "before": 1,
+        "after": 1,
+        "added": []
+      },
+      {
+        "file": "server/index.mjs",
+        "before": 9,
+        "after": 9,
+        "added": []
+      },
+      {
+        "file": "server/runner.mjs",
+        "before": 8,
+        "after": 8,
+        "added": []
+      },
+      {
+        "file": "server/task-context.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/task-overview.mjs",
+        "before": 4,
+        "after": 4,
+        "added": []
+      },
+      {
+        "file": "server/task-projection.mjs",
+        "before": 1,
+        "after": 1,
+        "added": []
+      },
+      {
+        "file": "server/workspace-reads.mjs",
+        "before": 27,
+        "after": 27,
+        "added": []
+      },
+      {
+        "file": "server/collection-batch-jobs.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      },
+      {
+        "file": "server/product-collection-filter.test.mjs",
+        "before": 0,
+        "after": 0,
+        "added": []
+      }
+    ],
+    "ui": {
+      "status": "passed",
+      "observations": [
+        "failed submission stays visible; retry reuses confirmation ID; queued receipt immediately closes dialog and clears selection without waiting for merge",
+        "user can leave dashboard and see queued merge in task list and read source batch/target details",
+        "new product pool defaults to first capture; exact custom date range sends first basis and page 1; latest basis yields distinct result; user preference survives full reload",
+        "390px date controls and product page do not overflow"
+      ],
+      "scriptErrors": [],
+      "unmockedActions": [],
+      "paidCalls": 0
+    }
   },
   "skipped": [
     "release-repeat-tests",
@@ -50,11 +151,11 @@
     "consistency": "skipped-by-user"
   },
   "limitations": [
-    "No live GitHub verification: git ls-remote failed with connection reset; baseline confirmed against local origin/testing, integration tree and latest release record.",
-    "Source dates and pool evidence can be corrected later; missing first-discovery dates are excluded rather than substituted with repeat collection times."
+    "First capture uses persisted discovery.firstSeenAt / firstSeenAt; missing values remain unknown.",
+    "Historical ingredient 402/500 blocks remain untouched. No paid calls or production merges performed."
   ],
   "operator": "Codex",
-  "id": "20261116024041-27f73f5d",
-  "builtAt": "2026-11-16T02:40:41.976Z",
-  "sourceDigest": "27f73f5d5d20e4b0f820f2594df7ff356f80fce333538659290933b540d56863"
+  "id": "20261116025612-0b381ebf",
+  "builtAt": "2026-11-16T02:56:12.225Z",
+  "sourceDigest": "0b381ebff9275ec051c003f03a7868c25d60569670886f5dcf58bc9bf1330dd3"
 }
