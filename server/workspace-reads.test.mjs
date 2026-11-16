@@ -234,6 +234,9 @@ async function exerciseReadModel(
   assert.equal(overview.snapshot.counts.products, 240);
   assert.equal(overview.snapshot.productMarkets.US, 120);
   assert.equal((await reads.statistics({ kind: 'radar' })).snapshot, null);
+  const weekly = await reads.statistics({ kind: 'weekly-summary', market: 'ALL' });
+  assert.ok(weekly.snapshot, 'weekly summaries publish independently of the radar schedule');
+  assert.equal(weekly.rows[0].weekStart, '2026-10-26');
   // A restarted worker must publish existing indexes even while hourly or
   // newly queued product updates keep the global queue nonempty.
   await pool.query("DELETE FROM workspace_documents WHERE name='read:concept-monitor-version'");

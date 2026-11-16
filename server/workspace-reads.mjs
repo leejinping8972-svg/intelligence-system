@@ -15,6 +15,7 @@ import {
 import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { sourceSiteDomain } from './site-keyword-provenance.mjs';
+import { createWeeklySummary } from './weekly-summary.mjs';
 import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
@@ -290,6 +291,20 @@ export function createWorkspaceReads({
   }
   const statistics = createWorkspaceStatistics({ pool, sql, putDocument, loadPublic });
   const concepts = createConceptMonitor({ pool, sql, putDocument });
+  const weekly = createWeeklySummary({ pool, sql, putDocument });
+  async function refreshWeekly(connection) {
+    await connection.query('BEGIN');
+    try {
+      const revision = (await connection.query("SELECT revision FROM workspace_read_versions WHERE collection='published'")).rows[0].revision;
+      const pending = await connection.query('SELECT kind FROM workspace_read_dirty LIMIT 1');
+      await weekly.rebuild(connection, revision, pending.rows.length > 0);
+      await connection.query('COMMIT');
+    } catch (error) {
+      await connection.query('ROLLBACK');
+      weekly.retryLater();
+      console.error('Weekly summary refresh:', error.message);
+    }
+  }
   async function refreshConcepts(connection) {
     await connection.query('BEGIN');
     try {
@@ -483,6 +498,7 @@ export function createWorkspaceReads({
       locked = await lock(connection, 'workspace-reads');
       if (!locked) return false;
       await seed(connection);
+      if (weekly.due()) await refreshWeekly(connection);
       if (concepts.due()) await refreshConcepts(connection);
       if (statistics.due()) await refreshStatistics(connection);
       const dirty = await readDirtyBatch(connection);
@@ -1167,7 +1183,7 @@ export function createWorkspaceReads({
     refresh,
     status,
     overview,
-    statistics: (input) => input.kind === 'concept-monitor' ? concepts.read(input) : statistics.read(input),
+    statistics: (input) => input.kind === 'concept-monitor' ? concepts.read(input) : input.kind === 'weekly-summary' ? weekly.read(input) : statistics.read(input),
     list,
     facets,
     selection,
