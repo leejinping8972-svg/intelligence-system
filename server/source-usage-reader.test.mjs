@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import test from 'node:test';
-import { inflateRawSync } from 'node:zlib';
+import { deflateRawSync } from 'node:zlib';
 
 import { PGlite } from '@electric-sql/pglite';
 
@@ -11,6 +11,7 @@ import {
   usageReadWithin,
 } from './source-usage-reader.mjs';
 import { sourceUsageAction } from './source-usage.mjs';
+import { decodeUsageArray } from './usage-snapshot-codec.mjs';
 
 test('concurrent readers share work and invalidation preserves the pending read', async () => {
   let resolve;
@@ -215,9 +216,7 @@ test('persisted compact accounting survives reader restart, updates revisions an
         "SELECT value FROM workspace_documents WHERE name='read:source-usage:monitor:v1'",
       )
     ).rows[0].value;
-    const uncompressed = inflateRawSync(
-      Buffer.from(cache.body, 'base64'),
-    ).toString();
+    const uncompressed = JSON.stringify(await decodeUsageArray(cache));
     assert.equal(uncompressed.includes('never-cache-secret'), false);
     assert.equal(uncompressed.includes('payload'), false);
     assert.deepEqual(
@@ -263,6 +262,83 @@ test('persisted compact accounting survives reader restart, updates revisions an
   } finally {
     await db.close();
   }
+});
+
+test('large legacy monitor caches stay incremental after restart and save readable chunks', async () => {
+  const step = `semrush:${'x'.repeat(2048)}`;
+  const entries = Array.from({ length: 17_000 }, (_, index) => {
+    const name = `competitor:request:large:${index}`;
+    return {
+      name,
+      revision: '1',
+      event: {
+        id: `${name}:semrush`,
+        sourceId: 'semrush',
+        task: '定时监控',
+        step,
+        amount: 1,
+        billing: 'confirmed',
+      },
+    };
+  });
+  const legacyJson = JSON.stringify(entries);
+  assert.ok(Buffer.byteLength(legacyJson) > 32 * 1024 * 1024);
+  let saved = {
+    version: 1,
+    codec: 'deflate-json-v1',
+    body: deflateRawSync(Buffer.from(legacyJson)).toString('base64'),
+  };
+  const versions = entries.map(({ name, revision }) => ({ name, revision }));
+  let projected = [];
+  let writes = 0;
+  const connection = {
+    query: async (statement, params) => {
+      if (statement === 'SELECT value FROM workspace_documents WHERE name=$1') {
+        assert.deepEqual(params, ['read:source-usage:monitor:v1']);
+        return { rows: [{ value: saved }] };
+      }
+      if (statement.startsWith('SELECT name,revision FROM workspace_documents'))
+        return { rows: versions };
+      if (statement.includes('jsonb_build_object')) {
+        projected.push(...params);
+        return {
+          rows: params.map((name) => ({
+            name,
+            revision: '2',
+            step: 'semrush:updated',
+            status: 'completed',
+            record: { apiUnits: 7 },
+          })),
+        };
+      }
+      assert.fail(`Unexpected query: ${statement}`);
+    },
+  };
+  const options = {
+    write: async (name, value, target) => {
+      assert.equal(name, 'read:source-usage:monitor:v1');
+      assert.equal(target, connection);
+      saved = value;
+      writes++;
+    },
+  };
+  const first = await createMonitorUsageReader(options)(connection);
+  assert.equal(first.length, entries.length);
+  assert.deepEqual(projected, []);
+  assert.equal(writes, 0);
+  versions[0].revision = '2';
+  const updated = await createMonitorUsageReader(options)(connection);
+  assert.equal(updated.length, entries.length);
+  assert.equal(updated[0].amount, 7);
+  assert.deepEqual(projected, [entries[0].name]);
+  assert.equal(writes, 1);
+  assert.equal(saved.codec, 'deflate-json-chunks-v1');
+  assert.ok(saved.chunks.length > 1);
+  projected = [];
+  const restarted = await createMonitorUsageReader(options)(connection);
+  assert.deepEqual(restarted, updated);
+  assert.deepEqual(projected, []);
+  assert.equal(writes, 1);
 });
 
 test('an interrupted backfill resumes saved batches and never returns partial totals', async () => {
