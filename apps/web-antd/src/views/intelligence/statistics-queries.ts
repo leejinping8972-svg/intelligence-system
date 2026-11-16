@@ -9,8 +9,11 @@ import { cloudRequest, cloudWorkspace } from './cloud-workspace';
 import { serverMode, session } from './session';
 
 export interface StatisticsSnapshot {
+  version?: number;
   batchRevision?: number;
   day?: string;
+  weekStart?: string;
+  weekEnd?: string;
   indexing?: boolean;
   generatedAt: string;
   revision: string;

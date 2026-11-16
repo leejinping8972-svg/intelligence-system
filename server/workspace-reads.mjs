@@ -15,6 +15,7 @@ import {
 import { discoveryDecision } from './discovery-newness.mjs';
 import { scoreSite } from './site-scoring.mjs';
 import { sourceSiteDomain } from './site-keyword-provenance.mjs';
+import { weeklyMemberCondition } from './weekly-members.mjs';
 import { createWeeklySummary } from './weekly-summary.mjs';
 import { createWorkspaceStatistics } from './workspace-statistics.mjs';
 import { projectReportSummary } from './report-read-summaries.mjs';
@@ -793,6 +794,8 @@ export function createWorkspaceReads({
     equals('market', 'market');
     const conceptCondition = conceptMemberCondition(input, collection, bind, sql);
     if (conceptCondition) clauses.push(conceptCondition);
+    const weeklyCondition = weeklyMemberCondition(input, collection, bind, sql);
+    if (weeklyCondition) clauses.push(weeklyCondition);
     equals('category', 'category');
     if (collection === 'keywords' && input.batch?.trim()) {
       const batchField = sql(

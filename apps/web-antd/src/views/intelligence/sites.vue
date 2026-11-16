@@ -314,7 +314,7 @@ concept.onEntry(()=>{search.value=sourceSiteFilter.value=''; collectedRange.valu
 </script>
 <template>
   <main class="hci-page">
-    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" @clear="concept.clear" />
+    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" :week="concept.week.value" @clear="concept.clear" />
     <PageHeader
       title="竞品独立站"
       description="把搜索线索整理成品牌档案，保留每一次发现的来源。"

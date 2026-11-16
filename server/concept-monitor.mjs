@@ -2,22 +2,27 @@ import {BATCH_SETTINGS, batchRecord} from './collection-batch-domain.mjs';
 import {conceptMemberKey} from './concept-members.mjs';
 import { conceptMonitorRows } from './concept-monitor-domain.mjs';
 import { shanghaiDay } from './collection-time.mjs';
+import { weekStart } from './weekly-summary-domain.mjs';
 import { statisticsRefreshSchedule } from './workspace-statistics.mjs';
 
 const KIND = 'concept-monitor';
-const VERSION = 3;
+const VERSION = 4;
 const CATCHUP_INTERVAL_MS = 5 * 60_000;
 const MARKER = 'read:concept-monitor-version';
 const snapshotKey = (market) => `read:statistics:${KIND}:${market}:all`;
 const numericSorts = new Set([
-  'keywords',
   'ads',
-  'sites',
-  'products',
-  'keywordsToday',
   'adsToday',
-  'sitesToday',
+  'adsWeek',
+  'keywords',
+  'keywordsToday',
+  'keywordsWeek',
+  'products',
   'productsToday',
+  'productsWeek',
+  'sites',
+  'sitesToday',
+  'sitesWeek',
 ]);
 
 export function createConceptMonitor({ pool, sql, putDocument }) {
@@ -38,7 +43,8 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
       (!indexing ||
         (String(previous.revision) !== String(revision) &&
           now - Number(previous.at) >= CATCHUP_INTERVAL_MS));
-    if (previous?.version === VERSION && !schedule.due && !catchup) {
+    const week = weekStart(shanghaiDay(now));
+    if (previous?.version === VERSION && previous.weekStart === week && !schedule.due && !catchup) {
       nextCheck = Math.min(now + 60_000, schedule.nextAt);
       return;
     }
@@ -60,6 +66,8 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
     const metadata = {
       generatedAt: new Date(now).toISOString(),
       day: shanghaiDay(now),
+      weekStart: week,
+      weekEnd: new Date(Date.parse(week) + 6 * 86_400_000).toISOString().slice(0, 10),
       revision: String(revision),
       version: VERSION,
       indexing,
@@ -100,7 +108,7 @@ export function createConceptMonitor({ pool, sql, putDocument }) {
     await putDocument(
       'workspace_documents',
       MARKER,
-      { version: VERSION, at: now, revision: String(revision), indexing },
+      { version: VERSION, at: now, revision: String(revision), indexing, weekStart: week },
       false,
       connection,
     );

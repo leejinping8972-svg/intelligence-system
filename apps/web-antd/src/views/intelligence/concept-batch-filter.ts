@@ -7,9 +7,10 @@ export function useConceptBatchFilter(path: string) {
   const route=useRoute(); const router=useRouter();
   const batch=computed(()=>route.path===path && typeof route.query.conceptBatch==='string' ? route.query.conceptBatch : '');
   const day=computed(()=>batch.value && typeof route.query.conceptDay==='string' ? route.query.conceptDay : '');
-  const query=computed(()=>batch.value ? {conceptBatch:batch.value,conceptDay:day.value||undefined} : {});
+  const week=computed(()=>batch.value && typeof route.query.conceptWeek==='string' ? route.query.conceptWeek : '');
+  const query=computed(()=>batch.value ? {conceptBatch:batch.value,conceptDay:day.value||undefined,conceptWeek:week.value||undefined} : {});
   function onEntry(reset:()=>void) {
-    watch(()=>[route.path,batch.value,day.value,route.query.market],()=>{
+    watch(()=>[route.path,batch.value,day.value,week.value,route.query.market],()=>{
       if(!batch.value) return;
       const market=route.query.market;
       if(['ALL','MX','US','VN'].includes(String(market))) state.market=market as typeof state.market;
@@ -17,8 +18,8 @@ export function useConceptBatchFilter(path: string) {
     },{immediate:true});
   }
   function clear() {
-    const {conceptBatch:_batch,conceptDay:_day,...rest}=route.query;
+    const {conceptBatch:_batch,conceptDay:_day,conceptWeek:_week,...rest}=route.query;
     void router.replace({path:route.path,query:rest});
   }
-  return {batch,day,query,onEntry,clear};
+  return {batch,day,week,query,onEntry,clear};
 }

@@ -154,12 +154,15 @@ const compareOpen = ref(false);
 const siteFilter = listMemory.field('siteFilter', '');
 const keywordFilter = listMemory.field('keywordFilter', '');
 import ConceptBatchFilter from './components/ConceptBatchFilter.vue';
+import WeeklySummaryFilter from './components/WeeklySummaryFilter.vue';
 import {useConceptBatchFilter} from './concept-batch-filter';
+import { useWeeklySummaryFilter } from './weekly-summary-filter';
 const concept=useConceptBatchFilter('/products');
+const weekly = useWeeklySummaryFilter('/products');
 const remote = useWorkspaceList<Product>(
   'products',
   computed(() => ({
-    ...concept.query.value, market: state.market,
+    ...concept.query.value, ...weekly.query.value, market: state.market,
     search: search.value,
     category: category.value,
     sourceCategory: sourceCategory.value,
@@ -570,11 +573,14 @@ watch(() => [route.query.pool, route.query.discoveredOn], () => {
   category.value = sourceCategory.value = benefitFilter.value = ingredientFilter.value = decisionFilter.value = newProductType.value = sourceFilter.value = platformFilter.value = siteLinked.value = 'ALL';
   siteFilter.value = keywordFilter.value = ''; favorites.value = false; page.value = 1; clear();
 }, { immediate: true });
-concept.onEntry(()=>{search.value=siteFilter.value=keywordFilter.value=discoveredOn.value=''; collectedRange.value=[]; listedRange.value=[]; listedQuick.value=0; category.value=sourceCategory.value=benefitFilter.value=ingredientFilter.value=decisionFilter.value=newProductType.value=sourceFilter.value=platformFilter.value=siteLinked.value='ALL'; productPool.value='ALL'; favorites.value=false; page.value=1; clear();});
+function resetSummaryFilters() {search.value=siteFilter.value=keywordFilter.value=discoveredOn.value=''; collectedRange.value=[]; listedRange.value=[]; listedQuick.value=0; category.value=sourceCategory.value=benefitFilter.value=ingredientFilter.value=decisionFilter.value=newProductType.value=sourceFilter.value=platformFilter.value=siteLinked.value='ALL'; productPool.value='ALL'; favorites.value=false; page.value=1; clear();}
+concept.onEntry(resetSummaryFilters);
+weekly.onEntry(resetSummaryFilters);
 </script>
 <template>
   <main class="hci-page">
-    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" @clear="concept.clear" />
+    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" :week="concept.week.value" @clear="concept.clear" />
+    <WeeklySummaryFilter :week="weekly.week.value" :only-new="weekly.onlyNew.value" kind="products" @clear="weekly.clear" />
     <Tabs v-model:active-key="productPool" @change="newProductType = 'ALL'; sourceCategory = 'ALL'; page = 1">
       <Tabs.TabPane v-if="siteFilter || productPool === 'ALL'" key="ALL" tab="全部商品" />
       <Tabs.TabPane key="existing" tab="商品库" />

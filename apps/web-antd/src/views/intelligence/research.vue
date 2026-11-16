@@ -806,7 +806,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
 
 <template>
   <main class="hci-page">
-    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" @clear="concept.clear" />
+    <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" :week="concept.week.value" @clear="concept.clear" />
     <PageHeader
       title="关键词研究"
       description="第一步：发现需求、核验趋势、评级打标，人工决定哪些词值得深入研究。"

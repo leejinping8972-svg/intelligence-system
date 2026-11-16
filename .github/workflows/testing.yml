@@ -51,7 +51,7 @@ jobs:
       - name: Concept monitor persisted batch summaries (synthetic data)
         run: node --test server/concept-monitor.test.mjs server/collection-batches.test.mjs server/advisory-lock-wait.test.mjs
       - name: Weekly overview persisted summaries (synthetic data)
-        run: node --test server/weekly-summary.test.mjs
+        run: node --test server/weekly-summary.test.mjs server/weekly-drilldown.test.mjs
       - name: Source usage accounting and bounded loading (synthetic data)
         run: node --test server/source-usage.test.mjs server/source-usage-reader.test.mjs
       - name: Product and existing collection tests (mocked providers)
