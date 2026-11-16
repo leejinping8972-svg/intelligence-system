@@ -199,20 +199,20 @@ test('providers use separate units, original task and operation attribution', ()
 });
 test('manual quota validates zeros, negatives and contradictory totals', () => {
   assert.equal(
-    validateQuota({ sourceId: 'semrush', remaining: 0, total: 10 }).remaining,
+    validateQuota({ sourceId: 'firecrawl', remaining: 0, total: 10 }).remaining,
     0,
   );
   assert.throws(() =>
-    validateQuota({ sourceId: 'semrush', remaining: -1, total: 10 }),
+    validateQuota({ sourceId: 'firecrawl', remaining: -1, total: 10 }),
   );
   assert.throws(() =>
-    validateQuota({ sourceId: 'semrush', remaining: 20, total: 10 }),
+    validateQuota({ sourceId: 'firecrawl', remaining: 20, total: 10 }),
   );
   assert.throws(() =>
     validateQuota({ sourceId: 'unknown', remaining: 0, total: null }),
   );
 });
-test('Semrush always uses manual quota, including zero, over old automatic snapshots', () => {
+test('Semrush never uses old remaining values without current-key usage', () => {
   const quota = {
     manual: { remaining: 50, origin: 'manual' },
     automatic: { remaining: 0, origin: 'automatic' },
@@ -220,7 +220,7 @@ test('Semrush always uses manual quota, including zero, over old automatic snaps
   assert.equal(
     summarizeUsage([], {}, { semrush: quota }, {}, now).sources[0].quota
       .remaining,
-    50,
+    null,
   );
   assert.equal(
     summarizeUsage(
@@ -230,7 +230,7 @@ test('Semrush always uses manual quota, including zero, over old automatic snaps
       {},
       now,
     ).sources[0].quota.remaining,
-    50,
+    null,
   );
 });
 test('details apply source, date, task and billing filters before stable pagination', () => {
@@ -453,7 +453,7 @@ test('Semrush rejects account refresh and saves manual quota without provider ca
     admin,
     io,
   );
-  assert.equal(saved.manual.remaining, 0);
+  assert.equal(saved.manual.remaining, null);
 });
 test('SQL reader projects billing metadata, excludes secrets and deduplicates original events', async () => {
   const db = new PGlite();

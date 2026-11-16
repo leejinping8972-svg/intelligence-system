@@ -37,7 +37,7 @@ import {
 } from 'ant-design-vue';
 
 import { adminRequest, session } from '../session';
-import { billingLabels, usageNumber, usageStep, usageTime } from '../source-usage';
+import { billingLabels, quotaOriginLabel, usageNumber, usageStep, usageTime } from '../source-usage';
 import { createUsageLoader } from '../source-usage-load';
 
 const RefreshIcon = createIconifyIcon('lucide:refresh-cw');
@@ -91,7 +91,11 @@ const totals = computed(() => [
   { label: '历史未定日期', value: data.value ? `${data.value.undated} 条` : '未获取' },
 ]);
 const loader = createUsageLoader<SourceUsageSnapshot>({
-  apply: async (result) => { data.value = result; await draw(); },
+  apply: async (result) => {
+    data.value = result;
+    if (selected.value) selected.value = result.sources.find((s) => s.id === selected.value?.id);
+    await draw();
+  },
   busy: (value) => { busy.value = value; },
   error: (value) => { error.value = value; },
 });
@@ -163,7 +167,7 @@ async function saveQuota() {
   try {
     await adminRequest('server_source_quota_save', {
       sourceId: selected.value.id,
-      remaining: manualRemaining.value ?? null,
+      ...(selected.value.id === 'semrush' ? {} : { remaining: manualRemaining.value ?? null }),
       total: manualTotal.value ?? null,
       expiresAt: expiresAt.value,
       preferManual: preferManual.value,
@@ -275,7 +279,7 @@ onMounted(() => { void load(); });
 </Button>
 </Tooltip>
       </div>
-      <p class="hci-subtle">任务执行后自动更新消耗统计；页面显示已保存结果，余额按最近一次登记或账户快照显示。</p>
+      <p class="hci-subtle">任务执行后自动更新消耗统计；Semrush 剩余额度按总额度减去当前 Key 已记录消耗积分计算，其他来源显示额度登记或账户快照。</p>
       <Alert
         v-if="error"
         :message="error"
@@ -363,7 +367,7 @@ onMounted(() => { void load(); });
             <div class="source-quota-note">
               {{
                 source.quota
-                  ? `${source.quota.origin === 'manual' ? '手动登记' : '账户快照'} · ${usageTime(source.quota.updatedAt)}`
+                  ? `${quotaOriginLabel(source.quota)} · ${usageTime(source.quota.updatedAt)}`
                   : source.free
                     ? '公开接口 · 未设置额度'
                     : source.quotaMessage
@@ -547,7 +551,7 @@ onMounted(() => { void load(); });
         <template v-if="selected">
           <p class="source-modal-intro">{{ selected.description }}</p>
           <div class="source-configuration">
-            <slot name="configuration" :source-id="selected.id"></slot>
+            <slot name="configuration" :source-id="selected.id" :refresh-usage="load"></slot>
           </div>
           <div class="source-quota-editor">
             <div class="source-heading">
@@ -566,13 +570,13 @@ onMounted(() => { void load(); });
             <div class="source-current-quota">
               剩余额度
               <strong>{{ usageNumber(selected.quota?.remaining) }}</strong><span v-if="selected.quota">{{
-                  selected.quota.origin === 'manual' ? '手动登记' : '账户快照'
+                  quotaOriginLabel(selected.quota)
                 }}
                 · {{ usageTime(selected.quota.updatedAt) }}</span>
             </div>
             <Form layout="vertical" @submit.prevent>
               <div class="source-quota-fields">
-                <Form.Item label="手动剩余额度">
+                <Form.Item v-if="selected.id !== 'semrush'" label="手动剩余额度">
 <InputNumber
                     v-model:value="manualRemaining"
                     aria-label="手动剩余额度"
@@ -580,13 +584,13 @@ onMounted(() => { void load(); });
                     :max="Number.MAX_SAFE_INTEGER"
                     placeholder="未获取时填写"
 />
-</Form.Item><Form.Item label="总额度（可选）">
+</Form.Item><Form.Item :label="selected.id === 'semrush' ? '总额度' : '总额度（可选）'">
 <InputNumber
                     v-model:value="manualTotal"
-                    aria-label="总额度（可选）"
+                    :aria-label="selected.id === 'semrush' ? '总额度' : '总额度（可选）'"
                     :min="0"
                     :max="Number.MAX_SAFE_INTEGER"
-                    placeholder="用于显示消耗比例"
+                    :placeholder="selected.id === 'semrush' ? '填写总额度，自动计算剩余' : '用于显示消耗比例'"
 />
 </Form.Item><Form.Item label="到期日期（可选）">
 <DatePicker

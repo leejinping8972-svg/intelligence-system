@@ -1,3 +1,5 @@
+import { calculatedSemrushQuota } from './semrush-quota.mjs';
+
 export const SOURCE_CATALOG = [
   {
     id: 'semrush',
@@ -392,16 +394,17 @@ export function contentEvents(rows) {
 }
 export function validateQuota(input) {
   if (!sourceById(input.sourceId)) throw new Error('数据源无效');
-  for (const key of ['remaining', 'total'])
+  const remaining = input.sourceId === 'semrush' ? null : input.remaining;
+  for (const value of [remaining, input.total])
     if (
-      input[key] !== null &&
-      (number(input[key]) === null || input[key] > Number.MAX_SAFE_INTEGER)
+      value !== null &&
+      (number(value) === null || value > Number.MAX_SAFE_INTEGER)
     )
       throw new Error('额度必须是非负数字或留空');
   if (
     input.total !== null &&
-    input.remaining !== null &&
-    input.remaining > input.total
+    remaining !== null &&
+    remaining > input.total
   )
     throw new Error('剩余额度不能超过总额度');
   if (
@@ -412,7 +415,7 @@ export function validateQuota(input) {
   )
     throw new Error('到期日期无效');
   return {
-    remaining: input.remaining,
+    remaining,
     total: input.total,
     expiresAt: input.expiresAt || null,
     updatedAt: new Date().toISOString(),
@@ -524,7 +527,9 @@ export function summarizeUsage(
       quota.automatic?.remaining !== undefined
         ? quota.automatic
         : null;
-    const chosen = source.manualOnly || quota.preferManual
+    const chosen = source.id === 'semrush'
+      ? quota.calculated || calculatedSemrushQuota(quota.manual)
+      : source.manualOnly || quota.preferManual
       ? quota.manual
       : auto
         ? {
@@ -559,7 +564,9 @@ export function summarizeUsage(
       manualQuota: quota.manual || null,
       preferManual: source.manualOnly || quota.preferManual === true,
       quotaMessage:
-        (source.manualOnly ? '额度由你手动登记，不自动获取账户余额' : quota.message) ||
+        (source.id === 'semrush'
+          ? quota.message || '剩余额度 = 总额度 − 当前 Key 已记录消耗积分；请先填写总额度'
+          : quota.message) ||
         (source.automatic
           ? '支持账户余额查询'
           : '未提供可用的免费余额接口，可手动登记'),
