@@ -843,8 +843,12 @@ export function createWorkspaceReads({
     }
     if (input.favorite) clauses.push('r.favorite=1');
     const range = collectionRange(input.collectedFrom, input.collectedTo);
-    if (range.from) clauses.push(`r.collected_at>=${bind(range.from)}`);
-    if (range.to) clauses.push(`r.collected_at<${bind(range.to)}`);
+    if (collection === 'products' && input.collectionBasis === 'first') {
+      if (range.from || range.to) clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='discoveredDay'${range.from ? ` AND d.target>=${bind(input.collectedFrom)}` : ''}${range.to ? ` AND d.target<=${bind(input.collectedTo)}` : ''})`);
+    } else {
+      if (range.from) clauses.push(`r.collected_at>=${bind(range.from)}`);
+      if (range.to) clauses.push(`r.collected_at<${bind(range.to)}`);
+    }
     if (collection === 'products' && input.discoveredOn) {
       collectionRange(input.discoveredOn, input.discoveredOn);
       clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='discoveredDay' AND d.target=${bind(input.discoveredOn)})`);

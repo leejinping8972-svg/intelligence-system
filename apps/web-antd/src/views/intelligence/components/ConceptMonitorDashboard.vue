@@ -4,6 +4,7 @@ import {RouterLink} from 'vue-router';
 
 import { Alert, AutoComplete, Button, Input, message, Modal, Spin, Table, Tooltip } from 'ant-design-vue';
 
+import { cloudWorkspace } from '../cloud-workspace';
 import { state } from '../data';
 import {adminRequest, serverMode, session} from '../session';
 import { useStatistics } from '../statistics-queries';
@@ -43,11 +44,13 @@ const selectedBatches=ref<string[]>([]);
 const mergeError=ref(''); const mergeOpen=ref(false); const mergeTarget=ref(''); const merging=ref(false);
 const mergeOptions=computed(()=>remote.rows.value.filter(row=>row.batch.toLocaleLowerCase().includes(mergeTarget.value.toLocaleLowerCase())).map(row=>({value:row.batch})));
 const selectedRevision=ref(0);
+const mergeRequestId=ref('');
 function selectBatches(keys: (number | string)[]) {
   if(keys.length>50) { message.warning('每次最多合并50个批次'); return; }
   selectedBatches.value=keys.map(String);
 }
 function openMerge() {
+  mergeRequestId.value=crypto.randomUUID();
   mergeTarget.value=selectedBatches.value[0]||'';
   mergeError.value=''; selectedRevision.value=remote.snapshot.value?.batchRevision||0;
   mergeOpen.value=true;
@@ -56,10 +59,10 @@ async function mergeBatches() {
   if(merging.value) return;
   merging.value=true; mergeError.value='';
   try {
-    const result=await adminRequest<{target:string}>('server_collection_batches_merge',{batches:selectedBatches.value,target:mergeTarget.value,expectedRevision:selectedRevision.value},120_000);
+    const result=await adminRequest<{target:string;jobId:string;status:string}>('server_collection_batches_merge',{batches:selectedBatches.value,target:mergeTarget.value,expectedRevision:selectedRevision.value,market:state.market,requestId:mergeRequestId.value});
     selectedBatches.value=[]; mergeOpen.value=false;
-    message.success(`已合并到“${result.target}”，后台正在更新汇总`);
-    await remote.reload(true);
+    cloudWorkspace.taskRevision=`batch-merge:${result.jobId}`;
+    message.success(result.status==='completed' ? `“${result.target}”合并任务已完成，请刷新看板查看汇总` : '合并任务已提交，可在“监控与任务”查看进度；关闭页面不影响执行');
   } catch(error) { mergeError.value=error instanceof Error?error.message:'合并失败，请重试'; }
   finally {merging.value=false;}
 }
@@ -209,8 +212,9 @@ function change(
     <p class="hci-subtle">
       同一批次内按记录去重；关联数据以已保存的关系为准。采集时间取关联记录最近采集时间，今日新增按首次发现时间统计，缺少该时间时使用已有采集时间。
     </p>
-    <Modal v-model:open="mergeOpen" title="合并采集批次" ok-text="确认合并" :ok-button-props="{disabled:!mergeTarget.trim() || selectedBatches.length < 2}" :confirm-loading="merging" :cancel-button-props="{disabled:merging}" :closable="!merging" :keyboard="!merging" :mask-closable="false" @ok="mergeBatches">
+    <Modal v-model:open="mergeOpen" title="合并采集批次" ok-text="提交后台合并" :ok-button-props="{disabled:!mergeTarget.trim() || selectedBatches.length < 2}" :confirm-loading="merging" :cancel-button-props="{disabled:merging}" :closable="!merging" :keyboard="!merging" :mask-closable="false" @ok="mergeBatches">
       <p>将以下 {{ selectedBatches.length }} 个批次统一合并到目标批次：</p>
+      <p class="hci-subtle">提交后在后台执行，可关闭此页面，在“监控与任务”查看进度。</p>
       <p class="concept-merge-names">{{ selectedBatches.join('、') }}</p>
       <label for="concept-merge-target">目标批次（选择已有名称或输入新名称）</label>
       <AutoComplete id="concept-merge-target" v-model:value="mergeTarget" :options="mergeOptions" :maxlength="100" :disabled="merging" style="width:100%;margin:8px 0 16px" aria-label="目标采集批次" />

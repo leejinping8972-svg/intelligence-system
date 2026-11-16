@@ -8,6 +8,14 @@ import {
   mergeBatchAliases,
 } from './collection-batch-domain.mjs';
 
+export function validateBatchMerge(input) {
+  if (!Array.isArray(input.batches) || input.batches.length < 2 || input.batches.length > 50 ||
+    input.batches.some(name => typeof name !== 'string' || !batchName(name) || batchName(name).length > 100) ||
+    typeof input.target !== 'string' || !batchName(input.target) || batchName(input.target).length > 100 ||
+    !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0)
+    throw new Error('请选择2～50个批次，并填写不超过100字的目标批次名称');
+}
+
 export function createCollectionBatchAction({
   pool,
   sql,
@@ -16,34 +24,33 @@ export function createCollectionBatchAction({
   unlock,
   requireAdmin,
 }) {
-  return async function merge(input, user) {
+  return async function merge(input, user, { jobId } = {}) {
     requireAdmin(user);
-    if (
-      !Array.isArray(input.batches) ||
-      input.batches.length < 2 ||
-      input.batches.length > 50 ||
-      input.batches.some(
-        (name) =>
-          typeof name !== 'string' ||
-          !batchName(name) ||
-          batchName(name).length > 100,
-      ) ||
-      typeof input.target !== 'string' ||
-      !batchName(input.target) ||
-      batchName(input.target).length > 100 ||
-      !Number.isSafeInteger(input.expectedRevision) ||
-      input.expectedRevision < 0
-    )
-      throw new Error('请选择2～50个批次，并填写不超过100字的目标批次名称');
+    validateBatchMerge(input);
     const c = await pool.connect();
     let held = false;
     let transactionStarted = false;
     try {
       held = await lock(c, 'workspace-reads', { waitMs: 90_000 });
-      if (!held)
-        throw new Error('当前后台更新耗时较长，请稍后重试合并');
+      if (!held) {
+        const error = new Error('等待后台索引完成后继续合并');
+        error.retryable = true;
+        throw error;
+      }
       await c.query('BEGIN');
       transactionStarted = true;
+      let job;
+      if (jobId) {
+        job = (await c.query('SELECT * FROM research_jobs WHERE id=$1 FOR UPDATE', [jobId])).rows[0];
+        if (!job || job.cancelled) {
+          await c.query('COMMIT');
+          return { cancelled: true };
+        }
+        if (job.checkpoint?.mergeResult) {
+          await c.query('COMMIT');
+          return job.checkpoint.mergeResult;
+        }
+      }
       const previous = (
         await c.query(
           'SELECT value FROM workspace_documents WHERE name=$1 FOR UPDATE',
@@ -136,6 +143,7 @@ export function createCollectionBatchAction({
       const revision = previous.revision + 1;
       const event = {
         id: randomUUID(),
+        ...(jobId ? { jobId } : {}),
         at: new Date().toISOString(),
         actor: user.id,
         batches: sources,
@@ -156,14 +164,22 @@ export function createCollectionBatchAction({
         false,
         c,
       );
-      await c.query('COMMIT');
-      return {
+      const result = {
         target,
         revision,
         changed,
         batches: sources,
         refreshPending: true,
       };
+      if (job) {
+        const finishedAt = new Date().toISOString();
+        await c.query("UPDATE research_jobs SET status='completed',checkpoint=$2,updated_at=now() WHERE id=$1", [jobId, {
+          ...job.checkpoint, phase: 'completed', mergeResult: result, finishedAt, nextRunAt: 0,
+          logs: [...(job.checkpoint.logs || []), `已合并到“${target}”；汇总将在后台更新`],
+        }]);
+      }
+      await c.query('COMMIT');
+      return result;
     } catch (error) {
       if (transactionStarted) await c.query('ROLLBACK').catch(() => {});
       throw error;

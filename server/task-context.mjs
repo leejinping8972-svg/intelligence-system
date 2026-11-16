@@ -43,6 +43,13 @@ function description(input) {
 
 export function taskContext(job, limit = 8) {
   const input = job.input || {};
+  if (input.kind === 'collection_batch_merge') return {
+    kind: input.kind, title: '合并采集批次', purpose: '统一所选批次归属并保留关联数据及采集历史，完成后更新概念汇总。',
+    objectLabel: '采集批次', objectCount: list(input.batches).length,
+    objects: list(input.batches).slice(0,limit).map(name=>({kind:'keywords',id:'',label:text(name)})),
+    hasMore: list(input.batches).length>limit, scope: `所有市场同名批次 → ${text(input.target)}`,
+    verificationOnly: false,
+  };
   const [title, purpose, defaultKind] = description(input);
   const refs = [];
   const add = (kind, id, label = '', extra = {}) => {
