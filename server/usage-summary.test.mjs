@@ -49,7 +49,8 @@ test('cold and repeated page/refresh reads load saved totals once, never have a 
 test('missing or damaged saved data returns an honest error without a rebuild or false zero', async () => {
   const read = createSavedUsageReader({ revision: async () => 1, load: async () => undefined });
   await assert.rejects(read({}), /尚未保存/);
-  const value = { ...await savedValue(), body: 'damaged' };
+  const value = await savedValue();
+  value.chunks[0].body = 'damaged';
   const damaged = createSavedUsageReader({ revision: async () => 1, load: async () => value });
   // Semrush only needs its precomputed header, never decodes event details.
   assert.equal((await damaged({})).semrush.cachedRecords, 0);

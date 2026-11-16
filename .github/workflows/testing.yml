@@ -53,7 +53,7 @@ jobs:
       - name: Weekly overview persisted summaries (synthetic data)
         run: node --test server/weekly-summary.test.mjs server/weekly-drilldown.test.mjs
       - name: Source usage accounting and bounded loading (synthetic data)
-        run: node --test server/source-usage.test.mjs server/source-usage-reader.test.mjs
+        run: node --test server/source-usage.test.mjs server/source-usage-reader.test.mjs server/source-usage-snapshot.test.mjs server/usage-summary.test.mjs server/request-log.test.mjs
       - name: Product and existing collection tests (mocked providers)
         run: |
           node --test server/public-content-ai-runner.test.mjs server/public-content-capacity.test.mjs

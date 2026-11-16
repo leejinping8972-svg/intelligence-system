@@ -1,7 +1,5 @@
-import { Buffer } from 'node:buffer';
-import { deflateRawSync, inflateRawSync } from 'node:zlib';
-
 import { requestSources, usageEvent } from './source-usage-domain.mjs';
+import { decodeUsageArray, encodeUsageArray } from './usage-snapshot-codec.mjs';
 
 const accountingFields = [
   'apiUnits',
@@ -60,12 +58,8 @@ export function createMonitorUsageReader({
     ).rows[0]?.value;
     let entries = [];
     try {
-      if (saved?.version === 1 && saved.codec === 'deflate-json-v1') {
-        const decoded = JSON.parse(
-          inflateRawSync(Buffer.from(saved.body, 'base64'), {
-            maxOutputLength: 32 * 1024 * 1024,
-          }).toString('utf8'),
-        );
+      if (saved) {
+        const decoded = await decodeUsageArray(saved);
         if (
           Array.isArray(decoded) &&
           decoded.every(
@@ -96,13 +90,7 @@ export function createMonitorUsageReader({
       try {
         await write(
           monitorCacheName,
-          {
-            version: 1,
-            codec: 'deflate-json-v1',
-            body: deflateRawSync(
-              Buffer.from(JSON.stringify(currentEntries())),
-            ).toString('base64'),
-          },
+          await encodeUsageArray(currentEntries()),
           connection,
         );
       } catch (error) {
