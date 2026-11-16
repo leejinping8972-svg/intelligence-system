@@ -1,143 +1,60 @@
 {
-  "title": "后台批次合并与商品采集日期筛选修复",
-  "sourceSha": "f32b5a40c887dbf525f11e5a620cd9d447c79ffa",
+  "title": "采集批次本周统计与每周汇总跳转",
+  "sourceSha": "c8a5d7ba43b577a30b59591b39b7770ee44ad378",
   "featureShas": [
-    "f32b5a40c887dbf525f11e5a620cd9d447c79ffa"
+    "c8a5d7ba43b577a30b59591b39b7770ee44ad378"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/CollectionTimeFilter.vue",
+    "apps/web-antd/src/views/intelligence/ads.vue",
+    "apps/web-antd/src/views/intelligence/components/ConceptBatchFilter.vue",
     "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
+    "apps/web-antd/src/views/intelligence/components/WeeklySummaryDashboard.vue",
+    "apps/web-antd/src/views/intelligence/components/WeeklySummaryFilter.vue",
+    "apps/web-antd/src/views/intelligence/concept-batch-filter.ts",
+    "apps/web-antd/src/views/intelligence/market-navigation.ts",
     "apps/web-antd/src/views/intelligence/products.vue",
-    "server/CONCEPT-MONITOR.md",
-    "server/collection-batch-jobs.mjs",
-    "server/collection-batches.mjs",
-    "server/collection-batches.test.mjs",
-    "server/collection-time.d.mts",
-    "server/collection-time.mjs",
-    "server/index.mjs",
-    "server/product-collection-filter.test.mjs",
-    "server/runner.mjs",
-    "server/task-context.mjs",
-    "server/task-overview.mjs",
-    "server/task-projection.mjs",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/sites.vue",
+    "apps/web-antd/src/views/intelligence/statistics-queries.ts",
+    "apps/web-antd/src/views/intelligence/weekly-summary-filter.ts",
+    "server/concept-members.mjs",
+    "server/concept-monitor-domain.mjs",
+    "server/concept-monitor.mjs",
+    "server/weekly-drilldown.test.mjs",
+    "server/weekly-members.mjs",
+    "server/weekly-summary-domain.mjs",
+    "server/weekly-summary.mjs",
     "server/workspace-reads.mjs"
+  ],
+  "documentationFiles": [
+    "docs/overview-weekly-drilldown.md"
   ],
   "ciFiles": [
     ".github/workflows/testing.yml"
   ],
   "changes": [
-    "批次合并持久提交后台任务，提交成功立即关窗，任务列表查看进度；事务回执防重复执行",
-    "商品采集时间默认首次采集，可切换最近采集，列表分别展示，复用已有日期索引",
-    "排查成分任务继承历史HTTP402/500阻断，本次不恢复或重放来源请求"
+    "概念监控采集批次在今日统计后追加本周新增关键词、广告、独立站和商品，按北京时间周一至周日首次发现统计并支持精确名单跳转",
+    "每周数据汇总默认收起，收起不请求或轮询；四类数字含零值可跳转对应市场、周及新品资格名单，清除旧条件并可撤销筛选",
+    "保留后台批次合并及商品首次/最近采集筛选；新品与新广告沿用首次抓取时7天口径，独立概念v4及周汇总v2后台自然生成"
   ],
-  "verification": "开发42/42相关Node/PGlite测试、Web类型、前后端隔离构建、无新增lint诊断及1920/390合成界面通过。发布重复验证/独立验证构建/CI等待按用户策略跳过",
+  "verification": "开发相关Node/PGlite38/38、异地时区10/10、前端统计6/6、Web类型、隔离前后端构建、桌面/手机合成UI和无新增lint诊断通过；既有resource-market mock缺Modal造成2失败/8通过，在未改基线复现。发布重复验证、独立验证构建及CI等待按用户策略跳过",
   "developmentVerification": {
-    "tests": {
-      "passed": 42,
-      "failed": 0
-    },
+    "backendTests": "38/38 passed",
+    "timezoneTests": "10/10 passed under America/Los_Angeles",
+    "statisticsQueries": "6/6 passed",
     "webTypecheck": "passed",
-    "backendBundle": "passed",
-    "frontendBuild": "passed",
-    "lint": [
-      {
-        "file": "apps/web-antd/src/views/intelligence/components/CollectionTimeFilter.vue",
-        "before": 2,
-        "after": 2,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "apps/web-antd/src/views/intelligence/products.vue",
-        "before": 12,
-        "after": 12,
-        "added": []
-      },
-      {
-        "file": "server/collection-batches.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/collection-batches.test.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/collection-time.mjs",
-        "before": 1,
-        "after": 1,
-        "added": []
-      },
-      {
-        "file": "server/index.mjs",
-        "before": 9,
-        "after": 9,
-        "added": []
-      },
-      {
-        "file": "server/runner.mjs",
-        "before": 8,
-        "after": 8,
-        "added": []
-      },
-      {
-        "file": "server/task-context.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/task-overview.mjs",
-        "before": 4,
-        "after": 4,
-        "added": []
-      },
-      {
-        "file": "server/task-projection.mjs",
-        "before": 1,
-        "after": 1,
-        "added": []
-      },
-      {
-        "file": "server/workspace-reads.mjs",
-        "before": 27,
-        "after": 27,
-        "added": []
-      },
-      {
-        "file": "server/collection-batch-jobs.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      },
-      {
-        "file": "server/product-collection-filter.test.mjs",
-        "before": 0,
-        "after": 0,
-        "added": []
-      }
-    ],
-    "ui": {
-      "status": "passed",
-      "observations": [
-        "failed submission stays visible; retry reuses confirmation ID; queued receipt immediately closes dialog and clears selection without waiting for merge",
-        "user can leave dashboard and see queued merge in task list and read source batch/target details",
-        "new product pool defaults to first capture; exact custom date range sends first basis and page 1; latest basis yields distinct result; user preference survives full reload",
-        "390px date controls and product page do not overflow"
-      ],
-      "scriptErrors": [],
-      "unmockedActions": [],
-      "paidCalls": 0
-    }
+    "frontendBuild": "passed, uiqa mode, isolated output",
+    "backendBundle": "passed, isolated output",
+    "lint": "new files clean; no new diagnostics in shared files",
+    "ui": "passed, real app with synthetic APIs, 1920px and 390px, all eight link types, historical weeks, zero counts, market change and filter clear",
+    "diffCheck": "passed",
+    "mysqlCI": "not run locally",
+    "wholeRepositoryLint": "not run",
+    "commitHooks": "disabled; checks executed explicitly"
   },
+  "limitations": [
+    "resource-market.test.ts has 2 failed / 8 passed, due to missing Modal in its ant-design-vue mock; reproduced unchanged in clean baseline overview-weekly-summary worktree; retained baseline-resource-market.log and frontend-tests.log"
+  ],
   "skipped": [
     "release-repeat-tests",
     "validation-build",
@@ -150,12 +67,8 @@
     "migration": false,
     "consistency": "skipped-by-user"
   },
-  "limitations": [
-    "First capture uses persisted discovery.firstSeenAt / firstSeenAt; missing values remain unknown.",
-    "Historical ingredient 402/500 blocks remain untouched. No paid calls or production merges performed."
-  ],
   "operator": "Codex",
-  "id": "20261116025612-0b381ebf",
-  "builtAt": "2026-11-16T02:56:12.225Z",
-  "sourceDigest": "0b381ebff9275ec051c003f03a7868c25d60569670886f5dcf58bc9bf1330dd3"
+  "id": "20261116033529-6a44736d",
+  "builtAt": "2026-11-16T03:35:29.835Z",
+  "sourceDigest": "6a44736d2315e7e019df7ff73a8bdff023f0ec13d2f9c28dd30b6e0cc9b2b570"
 }
