@@ -2,8 +2,8 @@ export interface SourceQuota {
   remaining: null | number;
   total: null | number;
   expiresAt?: null | string;
-  updatedAt: string;
-  origin: 'automatic' | 'manual';
+  updatedAt: null | string;
+  origin: 'automatic' | 'calculated' | 'manual';
 }
 export interface UsageSource {
   id: string;
@@ -136,6 +136,10 @@ export function usageNumber(value: null | number | undefined) {
   return typeof value === 'number'
     ? value.toLocaleString('zh-CN', { maximumFractionDigits: 4 })
     : '未获取';
+}
+export function quotaOriginLabel(quota: SourceQuota) {
+  return quota.origin === 'calculated' ? '按已记录消耗计算'
+    : quota.origin === 'manual' ? '手动登记' : '账户快照';
 }
 export function usageTime(value: null | string | undefined) {
   return value

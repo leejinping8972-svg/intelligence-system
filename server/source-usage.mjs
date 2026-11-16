@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { requireAdmin } from './auth.mjs';
 import { engine, pool, putDocument, sql } from './database.mjs';
 import { semrushAction } from './semrush-config.mjs';
+import { calculatedSemrushQuota } from './semrush-quota.mjs';
 import { openFetchKey } from './site-fetch-config.mjs';
 import {
   contentEvents,
@@ -332,6 +333,21 @@ export async function sourceUsageAction(input, user, overrides = {}) {
         automatic: null,
         message: '密钥已更换，请重新获取额度或手动登记',
       };
+  }
+  if (typeof quotas.semrush?.manual?.total === 'number') {
+    let usage;
+    try {
+      usage = await io.semrush({ action: 'server_semrush_usage' }, user);
+    } catch {
+      // A summary outage must not show the entire allowance as still available.
+    }
+    quotas.semrush = {
+      ...quotas.semrush,
+      calculated: calculatedSemrushQuota(quotas.semrush.manual, usage),
+      message: !usage?.currentKeyAvailable || !usage?.keyConfigured
+        ? '当前 Key 的消耗统计暂不可用，请稍后刷新'
+        : `剩余额度 = 总额度 − 当前 Key 已记录消耗积分${usage.currentKey?.unknownRecords ? '；存在扣费待确认记录，实际剩余额度可能更低' : ''}`,
+    };
   }
   const result = summarizeUsage(events, configs, quotas, input);
   result.checkedAt = snapshot.checkedAt;

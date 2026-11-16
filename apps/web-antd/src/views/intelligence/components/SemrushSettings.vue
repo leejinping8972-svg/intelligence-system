@@ -5,6 +5,8 @@ import { Alert, Button, Form, Input, message, Tag } from 'ant-design-vue';
 
 import { adminRequest, session } from '../session';
 
+const emit = defineEmits<{ usageUpdated: [] }>();
+
 interface Connection {
   configured: boolean;
   ready: boolean;
@@ -53,7 +55,10 @@ async function refreshUsage() {
   usageError.value = '';
   try {
     const result = await adminRequest<Usage>('server_semrush_usage');
-    if (generation === usageGeneration) usage.value = result;
+    if (generation === usageGeneration) {
+      usage.value = result;
+      emit('usageUpdated');
+    }
   } catch (error) {
     if (generation === usageGeneration) usageError.value =
       error instanceof Error ? error.message : '消耗记录读取失败';
@@ -173,7 +178,7 @@ onUnmounted(() => {
           >官方接入说明</a>
       </div>
     </Form>
-    <p class="hci-subtle">Semrush 额度在“资源消耗 → Semrush → 额度管理”中手动填写，系统不自动获取账户余额。</p>
+    <p class="hci-subtle">在“额度管理”填写总额度，剩余额度将减去当前 Key 已记录消耗积分自动计算。</p>
     <div class="hci-provider-balance" role="status">
       <div>
         <span>系统已记录消耗积分</span>

@@ -9,9 +9,10 @@ import WestmonthSettings from './WestmonthSettings.vue';
 import YouTubeSettings from './YouTubeSettings.vue';
 import { state } from '../data';
 defineProps<{ sourceId: string }>();
+defineEmits<{ usageUpdated: [] }>();
 </script>
 <template>
-  <SemrushSettings v-if="sourceId === 'semrush'" />
+  <SemrushSettings v-if="sourceId === 'semrush'" @usage-updated="$emit('usageUpdated')" />
   <SorftimeSettings v-else-if="sourceId === 'sorftime'" :api-url="state.settings.researchApiUrl" :access-key="state.settings.researchAccessKey" />
   <BraveSettings v-else-if="sourceId === 'brave'" />
   <YouTubeSettings v-else-if="sourceId === 'youtube'" />

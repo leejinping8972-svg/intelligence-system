@@ -67,13 +67,18 @@ test('saved per-day totals retain real zero, partial charges, undated history an
   ]);
   const read = createSavedUsageReader({ revision: async () => 1, load: async () => value });
   const snapshot = await read({}, { events: true });
-  const config = { semrush: { manual: { remaining: 0, total: 20 } } };
+  const config = {
+    semrush: { manual: { remaining: 0, total: 20 } },
+    firecrawl: { manual: { remaining: 0, total: 20 } },
+  };
   const before = summarizeUsage(snapshot.events, {}, config, {}, new Date('2026-11-05T15:59:59Z'));
   const after = summarizeUsage(snapshot.events, {}, config, {}, new Date('2026-11-05T16:00:00Z'));
   assert.equal(before.sources[0].today, 7);
   assert.equal(before.sources[0].cumulative, 11);
   assert.equal(before.sources[0].unknown, 2);
-  assert.equal(before.sources[0].quota.remaining, 0);
+  assert.equal(before.sources[0].quota.remaining, null);
+  assert.equal(before.sources[0].quota.total, 20);
+  assert.equal(before.sources.find((source) => source.id === 'firecrawl').quota.remaining, 0);
   assert.equal(after.sources[0].today, 0);
   assert.equal(after.sources[0].cumulative, 11);
   assert.equal(after.undated, 1);
