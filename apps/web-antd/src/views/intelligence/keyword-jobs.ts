@@ -30,7 +30,7 @@ watch(
     keywordJob.running = tasks.length > 0 || cloudWorkspace.submitting;
     keywordJob.discovered = tasks.reduce((n, task) => n + (task.progress?.discovered || 0), 0);
     keywordJob.trended = tasks.reduce((n, task) => n + (task.progress?.expansionOnly ? 0 : task.progress?.processed || 0), 0);
-    keywordJob.phase = keywordJob.running ? '腾讯云后台执行' : '等待人工筛选';
+    keywordJob.phase = keywordJob.running ? '腾讯云后台执行' : '等待后续处理';
   },
 );
 startCloudSync();
@@ -39,7 +39,7 @@ export async function startKeywordJob(
   existingRecords?: Keyword[],
 ) {
   const result = await submitCloudResearch(input, existingRecords);
-  audit('提交云端关键词研究', `任务${result.jobId}；关闭浏览器后继续运行`);
+  audit('提交概念拓词任务', `任务${result.jobId}；关闭浏览器后继续运行`);
   return result;
 }
 export async function stopKeywordJob() {

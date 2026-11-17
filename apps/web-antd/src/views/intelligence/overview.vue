@@ -159,7 +159,7 @@ function selectMarket(name: string) {
     <Alert v-if="overview.error.value" type="error" :message="overview.error.value" show-icon />
     <div v-if="serverMode && overview.snapshot.value" class="hci-subtle" style="margin-bottom:12px">数据更新于 {{ new Date(overview.snapshot.value.generatedAt).toLocaleString('zh-CN') }}<span v-if="overview.indexing.value"> · 更新中</span></div>
     <div v-if="!serverMode || overview.snapshot.value?.counts.keywords === 0" class="hci-demo-note">
-      <b>空白工作区</b>系统不再预置样本。请从关键词研究、公开数据采集或数据导入开始建立真实结果。
+      <b>空白工作区</b>系统不再预置样本。请从概念研究、公开数据采集或数据导入开始建立真实结果。
     </div>
     <div class="hci-stats overview-asset-stats">
       <button
@@ -310,5 +310,6 @@ function selectMarket(name: string) {
 
 <style scoped>
 .overview-asset-stats { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
 @media (min-width: 1440px) { .overview-asset-stats { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 </style>

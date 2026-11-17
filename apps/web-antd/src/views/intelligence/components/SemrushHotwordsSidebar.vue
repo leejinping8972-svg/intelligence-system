@@ -226,7 +226,7 @@ async function action(name: string) {
       <p class="hot-explanation">
         种子：{{
           ranking.seeds.join('、')
-        }}。搜索量沿用Semrush当前数据库口径，采集时间与数据统计期不同。结果已同步关键词研究，保留原收藏和入选状态。
+        }}。搜索量沿用Semrush当前数据库口径，采集时间与数据统计期不同。结果已同步概念研究，保留原收藏和入选状态。
       </p>
       <div class="hot-heading">
         <span>名次 / 关键词</span><span>月搜索量 · 较上次</span>

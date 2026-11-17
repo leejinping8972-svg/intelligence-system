@@ -259,7 +259,7 @@ function projectKnownJob(job) {
     market,
     mode: 'live',
     stage: 'keywords',
-    title: `${job.input.existingRecords ? (job.input.sources.includes('semrush') ? '云端 · 数据补齐与重评' : '云端 · 趋势补齐与重评') : '云端 · 关键词研究'} · ${label[market]}`,
+    title: `${job.input.existingRecords ? (job.input.sources.includes('semrush') ? '云端 · 数据补齐与重评' : '云端 · 趋势补齐与重评') : '云端 · 概念拓词'} · ${label[market]}`,
     status: job.cancelled ? 'cancelled' : job.status,
     created:
       job.checkpoint.submittedAt ||
@@ -326,6 +326,7 @@ export async function runJob(job, overrides = {}) {
         term,
         market,
         ...(input.batch ? { batch: input.batch } : {}),
+        ...(input.directionDescription ? { directionDescription: input.directionDescription } : {}),
         seedTerm: seed,
         source,
         collectedAt,

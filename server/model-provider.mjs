@@ -68,7 +68,7 @@ export function modelReportText(result) {
     throw new Error('模型未返回文本内容');
   return choice.message.content;
 }
-export async function postModel(config, messages) {
+export async function postModel(config, messages, timeoutMs = 90000) {
   const u = modelEndpoint(config.baseUrl);
   const addresses = await lookup(u.hostname, { all: true });
   if (!addresses.length || addresses.some((a) => !publicAddress(a.address)))
@@ -117,7 +117,7 @@ export async function postModel(config, messages) {
     );
     const timer = setTimeout(
       () => req.destroy(new Error('模型接口超时，未自动重试以避免重复计费')),
-      90000,
+      timeoutMs,
     );
     req.on('close', () => clearTimeout(timer));
     req.on('error', reject);

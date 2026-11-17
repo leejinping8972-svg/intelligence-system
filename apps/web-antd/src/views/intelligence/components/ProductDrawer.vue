@@ -85,7 +85,6 @@ function addMonitor() {
           ><Tag>{{ product.category }}</Tag>
         </div>
       </div></div>
-      <Button type="primary" @click="emit('close'); router.push({ path: '/product-research', query: { product: product.id } })">进入商品研究</Button>
       <a v-for="item in product.newProductClassifications" :key="item.type + item.observedAt" :href="item.evidenceUrl" target="_blank" rel="noopener noreferrer"><Tag color="green">{{item.label}}{{item.rank ? ` · #${item.rank}` : item.listingDate ? ` · ${item.dateBasis === 'exposure' ? '曝光 ' : ''}${item.listingDate}` : ''}}</Tag></a>
       <Tabs>
         <Tabs.TabPane v-if="product.newProductClassifications?.length" key="product-watch" tab="持续观察趋势"><ProductWatchHistory :product-id="product.id" /></Tabs.TabPane>

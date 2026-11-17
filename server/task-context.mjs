@@ -7,7 +7,7 @@ const destinations = {
   products: { path: '/products', label: '打开商品库' },
   sites: { path: '/sites', label: '打开独立站库' },
   ads: { path: '/ads', label: '打开广告库' },
-  keywords: { path: '/research', label: '打开关键词研究' },
+    keywords: { path: '/research', label: '打开概念研究' },
 };
 
 function description(input) {

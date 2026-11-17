@@ -22,6 +22,17 @@ import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
 import { keywordMetricEvidence } from './keyword-metric-evidence.mjs';
 import { keywordVolumeSql } from './keyword-volume-sort.mjs';
+
+function keywordDifficultySql(sql) {
+  return sql(
+    `CASE WHEN jsonb_typeof(r.payload->'metrics'->'difficulty')='number'
+      THEN CASE WHEN r.payload->'metrics'->>'market'=r.market AND (r.payload->'metrics'->>'difficulty')::numeric BETWEEN 0 AND 100
+      THEN (r.payload->'metrics'->>'difficulty')::numeric ELSE NULL END ELSE NULL END`,
+    `CASE WHEN JSON_TYPE(JSON_EXTRACT(r.payload,'$.metrics.difficulty')) IN ('INTEGER','DOUBLE','DECIMAL')
+      THEN CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.metrics.market'))=r.market AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.metrics.difficulty')) AS DECIMAL(10,3)) BETWEEN 0 AND 100
+      THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.metrics.difficulty')) AS DECIMAL(10,3)) ELSE NULL END ELSE NULL END`,
+  );
+}
 import { productChineseName } from './product-names.mjs';
 import { productAsin } from './product-asin.mjs';
 import { productSellerDetails, productSellerId, productSellerName } from './product-seller.mjs';
@@ -67,7 +78,7 @@ const listKeys = {
   advertisers:
     'id pageId market name nameZh adId adIds adCount active stopped siteIds domains collectedAt dataNature',
   keywords:
-    'id term termZh batch market category source growth seedTerm seedTermZh collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
+    'id term termZh batch directionDescription market category source growth seedTerm seedTermZh collectedAt metrics reviewStatus reviewNote favorite productIds siteIds updatedAt dataNature siteCollection adCollection semrushCollection trendStatus trendMessage trendCollectedAt discoveryStatus discoveryMessage',
   products:
     'id title titleZh publicDataEvidence brand brandZh market category categoryZh form formZh size sizeZh price currency ingredient ingredientZh dose claim claimZh benefits benefitsZh benefitEvidence ingredientInsights formula siteId keywordIds keywordDerivation color imageUrl reviewed favorite firstSeenAt publishedAt evidenceUrl dataNature sourceProvider sourcePlatform sourceProductId sourceUrl sourceMetrics lastCollectedAt collectionFields dataCompletion discovery sourceMarket newProductClassifications sourceCategories',
   sites:
@@ -966,6 +977,7 @@ export function createWorkspaceReads({
     let sortColumn = ['keywords', 'sites'].includes(query.collection) ? 'r.score' : 'r.collected_at';
     if (input.sort === 'collectedAt') sortColumn = 'r.collected_at';
     if (query.collection === 'keywords' && input.sort === 'core:searchVolume') sortColumn = keywordVolumeSql(sql);
+    if (query.collection === 'keywords' && input.sort === 'naturalSearchKd') sortColumn = keywordDifficultySql(sql);
     const direction = input.order === 'ascend' ? 'ASC' : 'DESC';
     let result;
     if (query.collection === 'keywords' && keywordAssociationSorts.has(input.sort)) {

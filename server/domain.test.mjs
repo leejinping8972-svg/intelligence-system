@@ -48,8 +48,9 @@ test('supplementation requires the selected count, received list and target to a
   }), /数量、名单/);
 });
 
-test('accepts unlimited expansion jobs and ignores legacy Sorftime call caps at either depth', () => {
+test('requires a task name and accepts unlimited expansion jobs at either depth', () => {
   const input = {
+    batch: 'concept task',
     seeds: ['magnesium'],
     markets: ['US'],
     sources: ['sorftime'],
@@ -57,6 +58,7 @@ test('accepts unlimited expansion jobs and ignores legacy Sorftime call caps at 
     limit: 100,
     sorftimeRequestLimit: 3,
   };
+  assert.throws(() => validateJob({ ...input, batch: '' }), /任务名称必填/);
   assert.equal(validateJob(input).limit, 100);
   assert.equal(validateJob(input).expansionOnly, true);
   assert.equal(validateJob({ ...input, limit: 0 }).limit, 0);
@@ -104,7 +106,7 @@ test('accepts unlimited expansion jobs and ignores legacy Sorftime call caps at 
     }),
   );
 });
-test('normalizes an optional research batch into the job input and keyword record', () => {
+test('normalizes the required task name into the job input and keyword record', () => {
   const input = validateJob({
     batch: '  2026-11-02   US probiotics  ',
     seeds: ['magnesium'],
@@ -173,7 +175,7 @@ test('keyword edits cannot replace source evidence, identities, scores or task f
 });
 
 test('new jobs opt into comparison history and keyword storage accepts the original historical series', () => {
-  const input=validateJob({seeds:['magnesium'],markets:['US'],sources:['google_autocomplete'],limit:10,trendComparisonVersion:0});
+  const input=validateJob({batch:'concept task',seeds:['magnesium'],markets:['US'],sources:['google_autocomplete'],limit:10,trendComparisonVersion:0});
   assert.equal(input.trendComparisonVersion,2);
   const history=[{date:'2024-10-20',value:40},{date:'2026-10-19',value:60}];
   const record=cleanKeyword({term:'magnesium',market:'US',source:'synthetic',trendHistoryPoints:history,trendHistoryResolution:'week',trendHistoryCollectedAt:'2026-10-20T00:00:00Z',trendHistorySourceUrl:'https://trends.google.com/trends/explore'});

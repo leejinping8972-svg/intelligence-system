@@ -6,10 +6,10 @@ const weekEnd=()=>props.week && Number.isFinite(Date.parse(props.week)) ? new Da
 </script>
 <template>
   <div v-if="batch" class="concept-filter" role="status">
-    <Tag color="blue">采集批次：{{ batch }}</Tag>
+    <Tag color="blue">任务名称：{{ batch }}</Tag>
     <span v-if="day">首次发现日期：{{ day }}（北京时间）</span>
     <span v-if="week">首次发现周：{{ week }} ～ {{ weekEnd() }}（北京时间）</span>
-    <Button type="link" @click="$emit('clear')">清除批次筛选</Button>
+    <Button type="link" @click="$emit('clear')">清除任务筛选</Button>
   </div>
 </template>
 <style scoped>

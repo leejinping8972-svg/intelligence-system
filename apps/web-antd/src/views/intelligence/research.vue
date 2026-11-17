@@ -74,7 +74,7 @@ import {
   resolveSelection,
 } from './keyword-selection';
 import { emptyScoreFilter, matchesScore } from './resource-list';
-import { serverMode } from './session';
+import { adminRequest, serverMode } from './session';
 import { keywordSourceStatus } from './site-discovery';
 import { useCoreList } from './use-core-list';
 import { useListFilterMemory } from './list-filter-memory';
@@ -87,6 +87,7 @@ listMemory.bind('period', corePeriod);
 const route = useRoute();
 const router = useRouter();
 const open = ref(false);
+const researchStep = ref<1 | 2>(1);
 const modelOpen = ref(false);
 const supplementSubmitting = ref(false);
 const supplementOpen = ref(false);
@@ -104,7 +105,6 @@ const ratingStatus = listMemory.field('ratingStatus', 'ALL');
 const scoreFilter = listMemory.field('scoreFilter', emptyScoreFilter());
 const tagFilter = listMemory.field<string[]>('tagFilter', []);
 const timeRange = listMemory.field('timeRange', 'ALL');
-const reviewFilter = listMemory.field('reviewFilter', 'ALL');
 const favoritesOnly = listMemory.field('favoritesOnly', false);
 const selectedIds = ref<string[]>([]);
 const selectionSnapshots = ref<ReturnType<typeof rememberSelection>>(new Map());
@@ -148,7 +148,6 @@ const remote = useWorkspaceList<Keyword>(
     tags: tagFilter.value,
     collectedFrom: collectedRange.value[0], collectedTo: collectedRange.value[1],
     timeRange: timeRange.value,
-    review: reviewFilter.value,
     favorite: favoritesOnly.value,
   })),
   currentPage,
@@ -168,7 +167,6 @@ const viewFilters = computed<KeywordViewFilters>(() => ({
   score: scoreFilter.value,
   tags: tagFilter.value,
   timeRange: timeRange.value,
-  review: reviewFilter.value,
   favorite: favoritesOnly.value,
   sort: remote.sort.value,
   order: remote.order.value,
@@ -187,7 +185,6 @@ async function applyView(filters: KeywordViewFilters) {
   tagFilter.value = [...filters.tags];
   timeRange.value = filters.timeRange;
   collectedRange.value = filters.collectedFrom && filters.collectedTo ? [filters.collectedFrom, filters.collectedTo] : [];
-  reviewFilter.value = filters.review;
   favoritesOnly.value = filters.favorite;
   remote.sort.value = filters.sort;
   remote.order.value = filters.order;
@@ -205,6 +202,7 @@ const gradeColors: Record<string, string> = {
 const form = reactive({
   seeds: '',
   batch: '',
+  directionDescription: '',
   markets: (state.market === 'ALL' ? ['US'] : [state.market]) as Market[],
   sources: ['google_autocomplete', 'amazon_autocomplete', 'semrush'],
   depth: 1,
@@ -233,6 +231,10 @@ watch(
 );
 watch(open, (value) => {
   if (value) {
+    researchStep.value = 1;
+    form.seeds = '';
+    form.batch = '';
+    form.directionDescription = '';
     form.markets = state.market === 'ALL' ? ['US'] : [state.market];
     researchError.value = '';
   }
@@ -287,8 +289,6 @@ const localRows = computed(() =>
         tagFilter.value.some((tag) => record.assessment.tags.includes(tag))) &&
       (timeRange.value === 'ALL' ||
         (age >= 0 && age <= Number(timeRange.value))) &&
-      (reviewFilter.value === 'ALL' ||
-        (record.reviewStatus || 'pending') === reviewFilter.value) &&
       (!favoritesOnly.value || record.favorite) &&
       (!route.query.keywordId || record.id === String(route.query.keywordId)) &&
       (!batchFilter.value ||
@@ -367,7 +367,6 @@ watch(
     scoreFilter,
     tagFilter,
     timeRange,
-    reviewFilter,
     favoritesOnly,
     () => state.market,
   ],
@@ -415,7 +414,7 @@ const pagination = computed(() => ({
 }));
 const columns = [
   { title: '关键词 / 种子词', key: 'term', width: 220, fixed: 'left' as const },
-  { title: '采集批次', key: 'batch', width: 105 },
+  { title: '任务名称', key: 'batch', width: 105 },
   { title: '市场 / 品类', key: 'market', width: 88 },
   { title: '研究评级', key: 'grade', width: 76 },
   {
@@ -427,6 +426,17 @@ const columns = [
       ? true
       : (a: Keyword, b: Keyword) =>
           (assessKeyword(a).score ?? -1) - (assessKeyword(b).score ?? -1),
+  },
+  {
+    title: '自然搜索 KD',
+    key: 'naturalSearchKd',
+    width: 108,
+    sortDirections: ['ascend', 'descend'] as ('descend' | 'ascend')[],
+    sorter: serverMode
+      ? true
+      : (a: Keyword, b: Keyword) =>
+          (a.metrics?.market === a.market ? a.metrics?.difficulty ?? Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY) -
+          (b.metrics?.market === b.market ? b.metrics?.difficulty ?? Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY),
   },
   { title: '分析标签', key: 'tags', width: 130 },
   { title: '月搜索量', key: 'core:searchVolume', width: 100 },
@@ -445,7 +455,6 @@ const columns = [
           (Date.parse(a.collectedAt || '') || 0) -
           (Date.parse(b.collectedAt || '') || 0),
   },
-  { title: '人工筛选', key: 'review', width: 78 },
   { title: '谷歌趋势', key: 'trend', width: 145 },
   { title: 'Semrush月趋势', key: 'semrushTrend', width: 180 },
   { title: 'TK趋势', key: 'tiktok', width: 108 },
@@ -465,7 +474,7 @@ const displayColumns = computed(() => {
   ];
   return ordered.map((column) => ({
     ...column,
-    ...(['collectedAt', 'score', 'relatedAds', 'relatedProducts', 'relatedSites', 'core:searchVolume'].includes(column.key || '')
+    ...(['collectedAt', 'score', 'naturalSearchKd', 'relatedAds', 'relatedProducts', 'relatedSites', 'core:searchVolume'].includes(column.key || '')
       ? {
           sortOrder:
             remote.sort.value === column.key
@@ -537,13 +546,39 @@ async function markRecords(
     reviewSaving.value = false;
   }
 }
+async function nextResearchStep() {
+  if (researchSubmitting.value || checkingSource.value) return;
+  const taskName = form.batch.normalize('NFKC').replaceAll(/\s+/g, ' ').trim();
+  if (!taskName) {
+    researchError.value = '请输入任务名称。';
+    return;
+  }
+  form.batch = taskName.slice(0, 100);
+  researchError.value = '';
+  researchSubmitting.value = true;
+  try {
+    if (serverMode && form.directionDescription.trim()) {
+      const result = await adminRequest<{ keywords?: string[] }>(
+        'server_concept_seed_suggest',
+        { description: form.directionDescription.trim() },
+        6000,
+      );
+      form.seeds = [...new Set((result.keywords || []).map((item) => String(item).trim()).filter(Boolean))].join('\n');
+    }
+  } catch (error) {
+    researchError.value = error instanceof Error ? error.message : 'AI生成种子关键词失败，请手动填写';
+  } finally {
+    researchSubmitting.value = false;
+    researchStep.value = 2;
+  }
+}
 function toggleFavorite(record: Record<string, unknown>) {
   const current = state.keywords.find((item) => item.id === record.id);
   if (current) current.favorite = !current.favorite;
 }
 async function createResearch() {
   if (checkingSource.value || researchSubmitting.value) return;
-  const seeds = [
+  const seeds: string[] = [
     ...new Set(
       form.seeds
         .split(/[\n,，]/)
@@ -592,6 +627,9 @@ async function createResearch() {
     apiUrl: state.settings.researchApiUrl,
     accessKey: state.settings.researchAccessKey,
     ...(form.batch.trim() ? { batch: form.batch.trim() } : {}),
+    ...(form.directionDescription.trim()
+      ? { directionDescription: form.directionDescription.trim() }
+      : {}),
     seeds,
     markets: [...form.markets],
     sources: form.sources.filter(
@@ -692,7 +730,7 @@ async function exportKeywords() {
       return;
     }
   exportCsv(
-    '关键词研究与评级.csv',
+    '概念研究与评级.csv',
     records.map((record) => ({
       ...core.exportRecord(record),
       ...semrushKeywordExport(record),
@@ -706,6 +744,7 @@ async function exportKeywords() {
         record.assessment.status
       ],
       评分: record.assessment.score ?? '',
+      '自然搜索 KD': record.metrics?.market === record.market ? record.metrics?.difficulty ?? '' : '',
       数据覆盖率: `${record.assessment.coverage}%`,
       标签: record.assessment.tags.join('、'),
       决策建议: record.assessment.recommendation,
@@ -713,7 +752,6 @@ async function exportKeywords() {
       抓取时间: record.collectedAt || '',
       趋势抓取时间: record.trendCollectedAt || '',
       评分模型: record.assessment.version,
-      人工筛选: reviewLabel(record.reviewStatus),
       备注: record.reviewNote || '',
     })),
   );
@@ -801,15 +839,15 @@ function saveMetrics() {
 }
 watch(collectedRange, () => { if (collectedRange.value.length) timeRange.value = 'ALL'; currentPage.value = 1; clearSelection(); });
 watch(timeRange, () => { if (timeRange.value !== 'ALL') collectedRange.value = []; });
-concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[]; category.value=rating.value=ratingStatus.value=timeRange.value=reviewFilter.value='ALL'; scoreFilter.value=emptyScoreFilter(); tagFilter.value=[]; favoritesOnly.value=false; currentPage.value=1; clearSelection();});
+concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[]; category.value=rating.value=ratingStatus.value=timeRange.value='ALL'; scoreFilter.value=emptyScoreFilter(); tagFilter.value=[]; favoritesOnly.value=false; currentPage.value=1; clearSelection();});
 </script>
 
 <template>
   <main class="hci-page">
     <ConceptBatchFilter :batch="concept.batch.value" :day="concept.day.value" :week="concept.week.value" @clear="concept.clear" />
     <PageHeader
-      title="关键词研究"
-      description="第一步：发现需求、核验趋势、评级打标，人工决定哪些词值得深入研究。"
+      title="概念研究"
+      description="从一个概念方向生成种子关键词，拓展并评分后决定哪些词值得继续研究。"
     >
       <Button @click="router.push('/selected-keywords')">
         已入选关键词（{{ summary.selected }}）
@@ -822,7 +860,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
         :disabled="researchSubmitting || checkingSource"
         @click="open = true"
       >
-        ＋ 新建关键词研究
+        ＋ 新建概念
       </Button>
     </PageHeader>
     <Alert
@@ -876,9 +914,9 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
         />
         <Input
           v-model:value="batchFilter"
-          placeholder="检索采集批次"
+          placeholder="检索任务名称"
           allow-clear
-          aria-label="按采集批次检索"
+          aria-label="按任务名称检索"
         />
         <Select
           v-model:value="category"
@@ -933,16 +971,6 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             { label: '最近180天', value: '180' },
           ]"
         />
-        <Select
-          v-model:value="reviewFilter"
-          aria-label="按人工筛选状态筛选"
-          :options="[
-            { label: '全部人工状态', value: 'ALL' },
-            { label: '待人工筛选', value: 'pending' },
-            { label: '已入选', value: 'selected' },
-            { label: '已排除', value: 'excluded' },
-          ]"
-        />
         <Checkbox v-model:checked="favoritesOnly">仅看收藏</Checkbox>
         <Button
           @click="
@@ -955,7 +983,6 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             tagFilter = [];
             timeRange = 'ALL';
             collectedRange = [];
-            reviewFilter = 'ALL';
             favoritesOnly = false;
           "
         >
@@ -1136,6 +1163,11 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
           <template v-else-if="column.key === 'tags'">
             <CompactTags :items="record.assessment.tags" label="分析标签" />
           </template>
+          <template v-else-if="column.key === 'naturalSearchKd'">
+            <Tooltip :title="record.metrics?.source || '尚未采集自然搜索 KD'">
+              <span>{{ record.metrics?.market === record.market ? record.metrics?.difficulty ?? '—' : '—' }}</span>
+            </Tooltip>
+          </template>
           <template v-else-if="column.key === 'semrushTrend'">
             <SemrushKeywordMetrics :keyword="record as Keyword" compact />
           </template>
@@ -1194,19 +1226,6 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
               </p>
             </Tooltip>
           </template>
-          <template v-else-if="column.key === 'review'">
-            <Tag
-              :color="
-                record.reviewStatus === 'selected'
-                  ? 'green'
-                  : record.reviewStatus === 'excluded'
-                    ? 'default'
-                    : 'blue'
-              "
-            >
-              {{ reviewLabel(record.reviewStatus) }}
-            </Tag>
-          </template>
           <template v-else-if="column.key === 'actions'">
             <PublicContentLauncher
               :query="record.term"
@@ -1226,43 +1245,52 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
       </div>
       <div>
         <b>评级与证据</b><span>A ≥80，B 65～79，C 50～64，D
-          &lt;50。搜索量或关键趋势不足则待评级；数据未覆盖完整时仅给暂评，缺失数据不按0分处理。</span>
+          &lt;50。新建概念后立即按已有维度给出暂评，趋势、搜索量或KD补齐后提高覆盖率并转正式评级。</span>
       </div>
     </div>
 
     <Modal
       v-model:open="open"
-      title="新建关键词研究"
+      :title="researchStep === 1 ? '新建概念 · 1/2' : '关键词拓展 · 2/2'"
       :width="720"
-      ok-text="开始找词与评级"
+      :ok-text="researchStep === 1 ? '下一步' : '开始拓词与评级'"
       cancel-text="取消"
       :confirm-loading="researchSubmitting || checkingSource"
-      @ok="createResearch"
+      @ok="researchStep === 1 ? nextResearchStep() : createResearch()"
     >
       <Alert
-        message="扩词与合并去重 → Semrush 指标（勾选时）→ 一年趋势 → 评级打标 → 人工入选"
+        :message="researchStep === 1 ? '先定义研究方向，AI将在几秒内生成可编辑的种子关键词。' : '确认种子关键词、市场、渠道和扩词深度后开始后台拓词与评级。'"
         type="info"
         show-icon
         style="margin: 16px 0"
       />
       <Form layout="vertical">
-        <Form.Item label="种子关键词（每行一个）" required>
-          <Input.TextArea
-            v-model:value="form.seeds"
-            :rows="3"
-            :maxlength="4000"
-            placeholder="magnesium glycinate&#10;probiotics for women"
-          />
-        </Form.Item>
-        <Form.Item label="采集批次（可选）">
+        <template v-if="researchStep === 1">
+        <Form.Item label="任务名称" required>
           <Input
             v-model:value="form.batch"
             :maxlength="100"
-            placeholder="例如：2026-11-02 美国益生菌"
+            placeholder="例如：GLP-1 companion 美国概念验证"
           />
-          <p class="hci-subtle">
-            同一批采集的关键词填写相同名称，提交后可在列表按批次检索。
-          </p>
+          <p class="hci-subtle">用于概念监控看板和关键词列表分组。</p>
+        </Form.Item>
+        <Form.Item label="方向描述（可选）">
+          <Input.TextArea
+            v-model:value="form.directionDescription"
+            :rows="4"
+            :maxlength="1000"
+            placeholder="例如：只关注胶囊相关，面向运动营养人群"
+          />
+        </Form.Item>
+        </template>
+        <template v-else>
+        <Form.Item label="种子关键词（AI建议，可编辑）" required>
+          <Input.TextArea
+            v-model:value="form.seeds"
+            :rows="6"
+            :maxlength="4000"
+            placeholder="AI会根据方向描述生成建议；也可以手动输入，每行一个"
+          />
         </Form.Item>
         <Form.Item label="目标市场" required>
           <Checkbox.Group
@@ -1340,6 +1368,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             seeds: form.seeds.split(/[\n,，]/).filter(Boolean),
           }"
         />
+        </template>
       </Form>
       <Alert
         v-if="researchError"
@@ -1347,11 +1376,12 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
         type="error"
         show-icon
       />
-      <p class="hci-subtle">
+      <p v-if="researchStep === 2" class="hci-subtle">
         Google／Amazon 联想为公开接口，可能限流；Sorftime
         使用你的账户额度。Semrush
         勾选后自动补充Semrush搜索量、自然搜索KD与月度趋势，也可手动补齐，来源与日期会保留。Google日/周及社媒趋势使用独立采集入口。提交成功后由腾讯云后台执行，关闭浏览器后继续运行。
       </p>
+      <Button v-if="researchStep === 2" type="link" @click="researchStep = 1">返回上一步</Button>
     </Modal>
 
     <Modal
@@ -1385,7 +1415,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
 
     <Modal
       v-model:open="modelOpen"
-      title="关键词研究评分模型"
+      title="概念研究评分模型"
       :width="740"
       :footer="null"
     >
@@ -1402,9 +1432,9 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
       </div>
       <div class="hci-evidence">
         A ≥80，B 65～79，C 50～64，D
-        &lt;50。缺失维度不补0，按已覆盖权重归一化；同市场搜索量与有效趋势齐备、覆盖至少80%时才允许暂评；再补齐
+        &lt;50。缺失维度不补0，按已覆盖权重归一化；新建概念后立即给出暂评，补齐搜索量、趋势和
         KD
-        后正式评级。搜索量或关键趋势缺失则待评级。手表等非保健品类目最高19分，医疗服务等非商品词最高39分；单独Omega有同名歧义，最高39分。
+        后转正式评级。手表等非保健品类目最高19分，医疗服务等非商品词最高39分；单独Omega有同名歧义，最高39分。
       </div>
       <p>
         业务相关性以关键词自身的保健品含义为依据，继承的分类与种子词不直接加分。鱼油等未明确成分的泛词最高59分，膳食补充剂等类目泛词最高49分；只有成分而缺少具体商品限定的短词最高69分。明确成分配合剂型、剂量或人群可获得更高评分；鱼油明确Omega-3/EPA/DHA，或同时明确剂型与剂量后，解除泛词限制。偏离种子成分最高59分，功效、副作用等内容查询最高64分。
@@ -1417,7 +1447,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
         只有一年数据不能确认年度季节性，因此不会自动下“季节性已证实”的结论。Semrush
         勾选后自动扩词和补充指标；Similarweb
         暂不参与自动评分。记录国家、来源与获取日期，90天以前的搜索指标不纳入当前评级。Semrush
-        商业／交易意图仅对已识别成分的商品需求在商品研究价值维度加10分（该维度封顶100），不解除类目或泛词限制。已识别品牌或导航意图关键词最高64分；搜索量明确为0最高49分。多条限制同时命中时取最低上限。
+        商业／交易意图仅对已识别成分的概念需求在概念研究价值维度加10分（该维度封顶100），不解除类目或泛词限制。已识别品牌或导航意图关键词最高64分；搜索量明确为0最高49分。多条限制同时命中时取最低上限。
       </p>
     </Modal>
 

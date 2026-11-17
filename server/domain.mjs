@@ -19,6 +19,7 @@ const sources = new Set([
 export const keywordFields = new Set([
   'adCollection',
   'batch',
+  'directionDescription',
   'category',
   'collectedAt',
   'dataNature',
@@ -77,6 +78,10 @@ export function cleanKeyword(value) {
     record.batch = normalizeTerm(record.batch).slice(0, 100);
     if (!record.batch) delete record.batch;
   } else delete record.batch;
+  if (typeof record.directionDescription === 'string') {
+    record.directionDescription = normalizeTerm(record.directionDescription).slice(0, 1000);
+    if (!record.directionDescription) delete record.directionDescription;
+  } else delete record.directionDescription;
   if (
     !record.term ||
     record.term.length > 255 ||
@@ -111,6 +116,9 @@ export function validateJob(value) {
   const input = {
     ...(typeof value.batch === 'string' && normalizeTerm(value.batch)
       ? { batch: normalizeTerm(value.batch).slice(0, 100) }
+      : {}),
+    ...(typeof value.directionDescription === 'string' && normalizeTerm(value.directionDescription)
+      ? { directionDescription: normalizeTerm(value.directionDescription).slice(0, 1000) }
       : {}),
     seeds: [
       ...new Set(
@@ -160,6 +168,7 @@ export function validateJob(value) {
         '补齐任务的勾选数量、名单和结果上限必须一致，且为所选市场的1～100个不同关键词；未提交部分名单',
       );
   } else {
+    if (!input.batch) throw new Error('任务名称必填');
     // Expansion research: no keyword-count ceiling; 0 / omitted means unlimited.
     if (rawLimit === undefined || rawLimit === null || rawLimit === 0) {
       input.limit = 0;
