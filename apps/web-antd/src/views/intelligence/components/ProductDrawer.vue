@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { Alert, Button, Drawer, message, Popover, Tabs, Tag } from 'ant-design-vue';
+import { Alert, Button, Drawer, Image, message, Popover, Tabs, Tag } from 'ant-design-vue';
 import { loadWorkspaceDetail } from '../cloud-workspace';
 
 import {
@@ -29,6 +29,7 @@ const props = defineProps<{ id?: string }>();
 const emit = defineEmits<{ close: [] }>();
 const router = useRouter();
 const detailError = ref('');
+const previewMask = () => '查看大图';
 watch(() => props.id, async (id) => {
   detailError.value = '';
   if (!id) return;
@@ -172,22 +173,22 @@ function addMonitor() {
           >
             {{ description }}
           </p>
-          <div
-            style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px"
-          >
-            <a
-              v-for="url in product.imageUrls?.slice(0, 6) || []"
-              :key="url"
-              :href="url"
-              target="_blank"
-              rel="noreferrer"
-              ><img
+          <Image.PreviewGroup>
+            <div
+              style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px"
+            >
+              <Image
+                v-for="url in product.imageUrls?.slice(0, 6) || []"
+                :key="url"
                 :src="url"
                 alt="平台商品素材"
                 loading="lazy"
+                :preview="{ src: url }"
+                :preview-mask="previewMask"
                 style="width: 100px; height: 100px; object-fit: contain"
-            /></a>
-          </div>
+              />
+            </div>
+          </Image.PreviewGroup>
           <p class="hci-subtle">
             平台商品描述和卖点属于品牌原文，不等于已验证的成品功效。
           </p>
