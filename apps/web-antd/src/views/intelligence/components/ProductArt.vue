@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { Image } from 'ant-design-vue';
 
 const props = defineProps<{
   brand: string;
@@ -9,6 +10,7 @@ const props = defineProps<{
   sourceLabel?: string;
 }>();
 const imageFailed = ref(false);
+const previewMask = () => '查看大图';
 watch(
   () => props.imageUrl,
   () => {
@@ -23,9 +25,12 @@ watch(
     :class="[color]"
     :aria-label="`${brand}商品图片`"
   >
-    <img
+    <Image
       :src="imageUrl"
       :alt="`${brand}商品图片`"
+      :preview="{ src: imageUrl }"
+      :preview-mask="previewMask"
+      @click.stop
       @error="imageFailed = true"
     />
     <span class="hci-art-caption">{{ sourceLabel || '官网商品图' }}</span>

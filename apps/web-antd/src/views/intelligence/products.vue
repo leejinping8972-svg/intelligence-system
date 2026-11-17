@@ -10,6 +10,7 @@ import {
   Checkbox,
   DatePicker,
   Empty,
+  Image,
   Input,
   message,
   Modal,
@@ -110,6 +111,7 @@ function tableChange(pagination: unknown, filters: unknown, sorter: any) {
   remote.tableChange(pagination, filters, value.order ? value : {});
 }
 const failedImages = ref(new Set<string>());
+const previewMask = () => '查看大图';
 const category = listMemory.field('category', 'ALL');
 const sourceCategory = listMemory.field('sourceCategory', 'ALL');
 const sourceCategoryOptions = computed(() => [{ label: '全部来源类目', value: 'ALL' }, ...(serverMode ? remote.facets.value.sourceCategory || [] : [...new Set(filteredProducts.value.flatMap(p => p.sourceCategories || []))]).map(value => ({ label: value, value }))]);
@@ -936,12 +938,15 @@ weekly.onEntry(resetSummaryFilters);
               :aria-label="`查看${record.title}`"
               @click="selected = record.id"
             >
-              <img
+              <Image
                 v-if="record.imageUrl && !failedImages.has(record.id)"
                 :src="record.imageUrl"
                 :alt="record.title"
+                :preview="{ src: record.imageUrl }"
+                :preview-mask="previewMask"
                 loading="lazy"
                 referrerpolicy="no-referrer"
+                @click.stop
                 @error="failedImages.add(record.id)"
               /><span v-else>暂无图片</span>
             </button>
@@ -1143,7 +1148,8 @@ weekly.onEntry(resetSummaryFilters);
   border-radius: 5px;
 }
 
-.product-list-thumb img {
+.product-list-thumb :deep(.ant-image),
+.product-list-thumb :deep(.ant-image-img) {
   width: 100%;
   height: 100%;
   object-fit: contain;
