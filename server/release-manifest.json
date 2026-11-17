@@ -1,60 +1,63 @@
 {
-  "title": "有效Cookie直入工作区与Semrush剩余额度自动计算",
-  "sourceSha": "1050b986efdcea9b7d31da30f2895cea7837fa3f",
+  "title": "概念研究两步流程、评分完善与自然搜索 KD",
+  "sourceSha": "9d39e6bb8139eada9530a78926990ecada60d351",
   "featureShas": [
-    "c95756069cd5159e7640882a8928d4d0a6985814",
-    "1050b986efdcea9b7d31da30f2895cea7837fa3f"
+    "9d39e6bb8139eada9530a78926990ecada60d351"
   ],
   "files": [
-    "apps/web-antd/src/login-entry.ts",
-    "apps/web-antd/src/session-entry-status.vue",
-    "apps/web-antd/src/views/intelligence/components/SemrushSettings.vue",
-    "apps/web-antd/src/views/intelligence/components/SourceConfiguration.vue",
-    "apps/web-antd/src/views/intelligence/components/SourceUsageDashboard.vue",
-    "apps/web-antd/src/views/intelligence/source-usage.ts",
-    "apps/web-antd/src/views/intelligence/usage.vue",
-    "server/SOURCE-USAGE.md",
-    "server/semrush-quota.mjs",
-    "server/semrush-quota.test.mjs",
-    "server/source-usage-domain.mjs",
-    "server/source-usage.mjs",
-    "server/source-usage.test.mjs",
-    "server/usage-summary.test.mjs",
-    "tests/login-entry.test.ts",
-    "tests/semrush-quota.test.ts"
-  ],
-  "ciFiles": [
-    ".github/workflows/testing.yml"
+    "apps/web-antd/src/router/routes/modules/intelligence.ts",
+    "apps/web-antd/src/views/intelligence/ai-config.vue",
+    "apps/web-antd/src/views/intelligence/components/ConceptBatchFilter.vue",
+    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
+    "apps/web-antd/src/views/intelligence/components/ConceptSeedSettings.vue",
+    "apps/web-antd/src/views/intelligence/components/NewResearchDialog.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
+    "apps/web-antd/src/views/intelligence/components/SemrushHotwordsSidebar.vue",
+    "apps/web-antd/src/views/intelligence/data.ts",
+    "apps/web-antd/src/views/intelligence/intelligence.css",
+    "apps/web-antd/src/views/intelligence/keyword-jobs.ts",
+    "apps/web-antd/src/views/intelligence/keyword-research.ts",
+    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
+    "apps/web-antd/src/views/intelligence/keyword-views.ts",
+    "apps/web-antd/src/views/intelligence/market-navigation.ts",
+    "apps/web-antd/src/views/intelligence/monitor.vue",
+    "apps/web-antd/src/views/intelligence/navigation.ts",
+    "apps/web-antd/src/views/intelligence/opportunities.vue",
+    "apps/web-antd/src/views/intelligence/overview.vue",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
+    "apps/web-antd/src/views/intelligence/trends.vue",
+    "server/concept-score.test.mjs",
+    "server/concept-seed-provider.mjs",
+    "server/domain.mjs",
+    "server/domain.test.mjs",
+    "server/enrichment.test.mjs",
+    "server/index.mjs",
+    "server/keyword-data.mjs",
+    "server/keyword-submit.mjs",
+    "server/model-provider.mjs",
+    "server/model.js",
+    "server/runner.mjs",
+    "server/task-context.mjs",
+    "server/workspace-reads.mjs"
   ],
   "changes": [
-    "有效Cookie先恢复会话，加载工作区期间不挂载登录表单；无会话才登录，连接错误可重试并保留目标路由",
-    "Semrush剩余按总额度减当前Key已记录确认API units自动计算，移除手动剩余输入与旧值，刷新消耗同步更新",
-    "保留历史Key/未归属/未知费用隔离、真实零与缺失口径；无收费查询、schema/迁移或队列行为变化"
+    "下线商品研究页面、路由和菜单入口，新建研究统一进入概念研究",
+    "新建概念改为任务名称与方向描述两步流程，接入可配置百炼模型生成可编辑种子关键词",
+    "关键词扩展后立即生成数字评分；新增自然搜索 KD 列并支持前后端排序；移除人工筛选状态展示",
+    "保留历史商品数据；无数据库 schema、迁移、启动写入或正式来源/模型调用"
   ],
-  "verification": "沿用开发登录36/36、额度Node8/8、前端9/9、相关服务端37/38（唯一旧公共采集脱敏失败在基线复现）、Web类型与独立前后端构建及无新增lint；发布重复验证/验证构建/CI等待按用户策略跳过",
+  "verification": "开发阶段已完成 Web 类型检查、前端生产构建、概念评分/任务校验/关键词提交定向测试 13/13、服务端语法检查与 git diff --check；既有 enrichment.test 因本机缺少 mysql2 未启动，未记为通过。发布阶段验证/CI等待按用户策略跳过。",
   "developmentVerification": [
     {
-      "sha": "c95756069cd5159e7640882a8928d4d0a6985814",
+      "sha": "9d39e6bb8139eada9530a78926990ecada60d351",
       "validation": {
-        "tests": "36/36",
+        "targetedNodeTests": "13/13",
+        "syntax": "passed",
         "webTypecheck": "passed",
-        "targetedLint": "passed",
-        "build": "D:/Project_Code/Intelligence_System/_builds/session-entry-restore-dev"
-      }
-    },
-    {
-      "sha": "1050b986efdcea9b7d31da30f2895cea7837fa3f",
-      "validation": {
-        "quotaServerTests": "8/8",
-        "frontendTests": "9/9",
-        "relatedServerTests": "37/38",
-        "existingFailure": "scheduled public collection records each real attempt without retaining secret query parameters",
-        "reproducedOnUnmodifiedBase": true,
-        "webTypecheck": "passed",
-        "frontendBuild": "passed",
-        "apiBundle": "passed",
-        "newLintDiagnostics": 0,
-        "diffCheck": "passed"
+        "knownGap": "server/enrichment.test.mjs requires locally unavailable mysql2",
+        "diffCheck": "passed",
+        "frontendBuild": "passed"
       }
     }
   ],
@@ -62,16 +65,17 @@
     "release-repeat-tests",
     "validation-build",
     "ci-wait",
-    "full-database-backup-no-schema-change",
-    "database-consistency-reconciliation-by-user"
+    "database-consistency-reconciliation-by-user",
+    "full-database-backup-no-schema-change"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
+    "startupDataWrite": false,
     "consistency": "skipped-by-user"
   },
   "operator": "Codex",
-  "id": "20261116094050-4ed2bbe3",
-  "builtAt": "2026-11-16T09:40:50.143Z",
-  "sourceDigest": "4ed2bbe33a99693c47099f5ce63de054b950615749bb5a77d1e586f38f06c02b"
+  "id": "20261117015107-65e17916",
+  "builtAt": "2026-11-17T01:51:07.244Z",
+  "sourceDigest": "65e179161774b8a10b5e849edcd6afefc9d2733e1f7c5402e8dc7e063935b6a1"
 }
