@@ -1,81 +1,42 @@
 {
-  "title": "概念研究两步流程、评分完善与自然搜索 KD",
-  "sourceSha": "9d39e6bb8139eada9530a78926990ecada60d351",
-  "featureShas": [
-    "9d39e6bb8139eada9530a78926990ecada60d351"
-  ],
-  "files": [
-    "apps/web-antd/src/router/routes/modules/intelligence.ts",
-    "apps/web-antd/src/views/intelligence/ai-config.vue",
-    "apps/web-antd/src/views/intelligence/components/ConceptBatchFilter.vue",
-    "apps/web-antd/src/views/intelligence/components/ConceptMonitorDashboard.vue",
-    "apps/web-antd/src/views/intelligence/components/ConceptSeedSettings.vue",
-    "apps/web-antd/src/views/intelligence/components/NewResearchDialog.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
-    "apps/web-antd/src/views/intelligence/components/SemrushHotwordsSidebar.vue",
-    "apps/web-antd/src/views/intelligence/data.ts",
-    "apps/web-antd/src/views/intelligence/intelligence.css",
-    "apps/web-antd/src/views/intelligence/keyword-jobs.ts",
-    "apps/web-antd/src/views/intelligence/keyword-research.ts",
-    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
-    "apps/web-antd/src/views/intelligence/keyword-views.ts",
-    "apps/web-antd/src/views/intelligence/market-navigation.ts",
-    "apps/web-antd/src/views/intelligence/monitor.vue",
-    "apps/web-antd/src/views/intelligence/navigation.ts",
-    "apps/web-antd/src/views/intelligence/opportunities.vue",
-    "apps/web-antd/src/views/intelligence/overview.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
-    "apps/web-antd/src/views/intelligence/trends.vue",
-    "server/concept-score.test.mjs",
-    "server/concept-seed-provider.mjs",
-    "server/domain.mjs",
-    "server/domain.test.mjs",
-    "server/enrichment.test.mjs",
-    "server/index.mjs",
-    "server/keyword-data.mjs",
-    "server/keyword-submit.mjs",
-    "server/model-provider.mjs",
-    "server/model.js",
-    "server/runner.mjs",
-    "server/task-context.mjs",
-    "server/workspace-reads.mjs"
+  "title": "商品图片同页查看大图",
+  "sourceSha": "5a66e70dcca88cf1b6ea4a9793f9e0abf08224b2",
+  "includedCommits": [
+    "5a66e70dcca88cf1b6ea4a9793f9e0abf08224b2"
   ],
   "changes": [
-    "下线商品研究页面、路由和菜单入口，新建研究统一进入概念研究",
-    "新建概念改为任务名称与方向描述两步流程，接入可配置百炼模型生成可编辑种子关键词",
-    "关键词扩展后立即生成数字评分；新增自然搜索 KD 列并支持前后端排序；移除人工筛选状态展示",
-    "保留历史商品数据；无数据库 schema、迁移、启动写入或正式来源/模型调用"
+    "商品卡片主图和列表缩略图点击后打开同页大图预览",
+    "商品详情平台素材使用预览组，可在大图中切换素材",
+    "保留图片加载失败占位和商品详情打开行为"
   ],
-  "verification": "开发阶段已完成 Web 类型检查、前端生产构建、概念评分/任务校验/关键词提交定向测试 13/13、服务端语法检查与 git diff --check；既有 enrichment.test 因本机缺少 mysql2 未启动，未记为通过。发布阶段验证/CI等待按用户策略跳过。",
-  "developmentVerification": [
-    {
-      "sha": "9d39e6bb8139eada9530a78926990ecada60d351",
-      "validation": {
-        "targetedNodeTests": "13/13",
-        "syntax": "passed",
-        "webTypecheck": "passed",
-        "knownGap": "server/enrichment.test.mjs requires locally unavailable mysql2",
-        "diffCheck": "passed",
-        "frontendBuild": "passed"
-      }
-    }
+  "files": [
+    "apps/web-antd/src/views/intelligence/components/ProductArt.vue",
+    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
+    "apps/web-antd/src/views/intelligence/intelligence.css",
+    "apps/web-antd/src/views/intelligence/products.vue"
   ],
-  "skipped": [
-    "release-repeat-tests",
-    "validation-build",
-    "ci-wait",
-    "database-consistency-reconciliation-by-user",
-    "full-database-backup-no-schema-change"
+  "developmentVerification": {
+    "typecheck": "Web 类型检查通过",
+    "build": "前端生产构建通过，8482 modules",
+    "diff": "git diff --check 通过",
+    "ui": "本地商品页加载无运行时错误；服务器模式无演示商品数据，未完成本机实际图片点击"
+  },
+  "releaseSkipped": [
+    "发布阶段重复验证",
+    "独立验证构建",
+    "CI等待",
+    "数据库一致性核对按用户要求跳过",
+    "完整数据库备份按无结构变更/迁移策略跳过"
   ],
   "database": {
     "schemaChange": false,
     "migration": false,
-    "startupDataWrite": false,
+    "startupDataBackfill": false,
+    "backupStatus": "skipped-by-user-policy-no-schema-change",
     "consistency": "skipped-by-user"
   },
   "operator": "Codex",
-  "id": "20261117015107-65e17916",
-  "builtAt": "2026-11-17T01:51:07.244Z",
-  "sourceDigest": "65e179161774b8a10b5e849edcd6afefc9d2733e1f7c5402e8dc7e063935b6a1"
+  "id": "20261117050915-0894df4e",
+  "builtAt": "2026-11-17T05:09:15.434Z",
+  "sourceDigest": "0894df4eaff1ea45582f645df45de11a781fa7d152ec90d49e6315c4d1565f80"
 }
