@@ -31,6 +31,7 @@ import {
   syncCloudWorkspace,
 } from './cloud-workspace';
 import { researchSourceTags } from './competitor-monitor';
+import { useConceptSeedSuggestions } from './concept-seed-suggestions';
 import CollectionEstimate from './components/CollectionEstimate.vue';
 import CompactTags from './components/CompactTags.vue';
 import CoreListControls from './components/CoreListControls.vue';
@@ -95,6 +96,14 @@ const semrushRefreshMetrics = ref(false);
 const researchError = ref('');
 const checkingSource = ref(false);
 const researchSubmitting = ref(false);
+const seedSuggestions = useConceptSeedSuggestions(async (input) => {
+  if (!serverMode) return { configured: false };
+  return adminRequest<{ configured?: boolean; keywords?: string[]; message?: string }>(
+    'server_concept_seed_suggest', input, 6500,
+  );
+});
+const { busy: suggestingSeeds, notice: seedNotice, noticeType: seedNoticeType, needsConfiguration: seedNeedsConfiguration } = seedSuggestions;
+const conceptSeedConfigUrl = router.resolve({ path: '/ai-config', hash: '#concept-seed-provider' }).href;
 const reviewSaving = ref(false);
 const collectedRange = listMemory.field<string[]>('collectedRange', []);
 const search = listMemory.field('search', '');
@@ -230,6 +239,7 @@ watch(
   { immediate: true },
 );
 watch(open, (value) => {
+  seedSuggestions.reset();
   if (value) {
     researchStep.value = 1;
     form.seeds = '';
@@ -547,7 +557,7 @@ async function markRecords(
   }
 }
 async function nextResearchStep() {
-  if (researchSubmitting.value || checkingSource.value) return;
+  if (researchSubmitting.value || checkingSource.value || suggestingSeeds.value) return;
   const taskName = form.batch.normalize('NFKC').replaceAll(/\s+/g, ' ').trim();
   if (!taskName) {
     researchError.value = '请输入任务名称。';
@@ -555,29 +565,19 @@ async function nextResearchStep() {
   }
   form.batch = taskName.slice(0, 100);
   researchError.value = '';
-  researchSubmitting.value = true;
-  try {
-    if (serverMode && form.directionDescription.trim()) {
-      const result = await adminRequest<{ keywords?: string[] }>(
-        'server_concept_seed_suggest',
-        { description: form.directionDescription.trim() },
-        6000,
-      );
-      form.seeds = [...new Set((result.keywords || []).map((item) => String(item).trim()).filter(Boolean))].join('\n');
-    }
-  } catch (error) {
-    researchError.value = error instanceof Error ? error.message : 'AI生成种子关键词失败，请手动填写';
-  } finally {
-    researchSubmitting.value = false;
-    researchStep.value = 2;
-  }
+  researchStep.value = 2;
+  await generateSeedSuggestions();
+}
+async function generateSeedSuggestions() {
+  const keywords = await seedSuggestions.generate(form.batch, form.directionDescription);
+  if (keywords && open.value) form.seeds = keywords.join('\n');
 }
 function toggleFavorite(record: Record<string, unknown>) {
   const current = state.keywords.find((item) => item.id === record.id);
   if (current) current.favorite = !current.favorite;
 }
 async function createResearch() {
-  if (checkingSource.value || researchSubmitting.value) return;
+  if (checkingSource.value || researchSubmitting.value || suggestingSeeds.value) return;
   const seeds: string[] = [
     ...new Set(
       form.seeds
@@ -1255,15 +1255,18 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
       :width="720"
       :ok-text="researchStep === 1 ? '下一步' : '开始拓词与评级'"
       cancel-text="取消"
-      :confirm-loading="researchSubmitting || checkingSource"
+      :confirm-loading="researchSubmitting || checkingSource || suggestingSeeds"
       @ok="researchStep === 1 ? nextResearchStep() : createResearch()"
     >
       <Alert
-        :message="researchStep === 1 ? '先定义研究方向，AI将在几秒内生成可编辑的种子关键词。' : '确认种子关键词、市场、渠道和扩词深度后开始后台拓词与评级。'"
+        :message="researchStep === 1 ? '下一步将根据任务名称和方向描述生成 AI 种子关键词建议；需先配置概念种子词模型。' : '确认种子关键词、市场、渠道和扩词深度后开始后台拓词与评级。'"
         type="info"
         show-icon
         style="margin: 16px 0"
       />
+      <p v-if="researchStep === 1" class="hci-subtle">
+        <a :href="conceptSeedConfigUrl" target="_blank" rel="noopener">配置概念种子词模型</a>
+      </p>
       <Form layout="vertical">
         <template v-if="researchStep === 1">
         <Form.Item label="任务名称" required>
@@ -1281,16 +1284,27 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             :maxlength="1000"
             placeholder="例如：只关注胶囊相关，面向运动营养人群"
           />
+          <p class="hci-subtle">不填方向描述时，AI 将根据任务名称生成种子关键词。</p>
         </Form.Item>
         </template>
         <template v-else>
+        <Alert v-if="suggestingSeeds" message="正在生成 AI 种子关键词建议…" type="info" show-icon style="margin-bottom: 16px" />
+        <Alert v-if="seedNotice" :message="seedNotice" :type="seedNoticeType" show-icon style="margin-bottom: 16px">
+          <template v-if="seedNeedsConfiguration" #description>
+            <a :href="conceptSeedConfigUrl" target="_blank" rel="noopener">前往 AI 配置 · 概念种子词模型</a>，保存后返回此处点击“生成 AI 建议”。
+          </template>
+        </Alert>
         <Form.Item label="种子关键词（AI建议，可编辑）" required>
           <Input.TextArea
             v-model:value="form.seeds"
             :rows="6"
             :maxlength="4000"
-            placeholder="AI会根据方向描述生成建议；也可以手动输入，每行一个"
+            :disabled="suggestingSeeds"
+            placeholder="AI 建议将填写在这里；也可以手动输入，每行一个"
           />
+          <Button type="link" :loading="suggestingSeeds" :disabled="checkingSource || researchSubmitting" @click="generateSeedSuggestions">
+            {{ form.seeds ? '重新生成 AI 建议' : '生成 AI 建议' }}
+          </Button>
         </Form.Item>
         <Form.Item label="目标市场" required>
           <Checkbox.Group
@@ -1381,7 +1395,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
         使用你的账户额度。Semrush
         勾选后自动补充Semrush搜索量、自然搜索KD与月度趋势，也可手动补齐，来源与日期会保留。Google日/周及社媒趋势使用独立采集入口。提交成功后由腾讯云后台执行，关闭浏览器后继续运行。
       </p>
-      <Button v-if="researchStep === 2" type="link" @click="researchStep = 1">返回上一步</Button>
+      <Button v-if="researchStep === 2" type="link" :disabled="suggestingSeeds" @click="researchStep = 1">返回上一步</Button>
     </Modal>
 
     <Modal

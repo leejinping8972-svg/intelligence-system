@@ -57,16 +57,17 @@ export async function conceptSeedAction(input, user) {
   }
   if (input.action === 'server_concept_seed_status') return publicStatus(stored);
   if (input.action !== 'server_concept_seed_suggest') throw new Error('概念种子词请求无效');
+  const taskName = String(input.taskName || '').normalize('NFKC').replaceAll(/\s+/g, ' ').trim().slice(0, 100);
   const description = String(input.description || '').normalize('NFKC').replaceAll(/\s+/g, ' ').trim().slice(0, 1000);
-  if (!description) return { keywords: [], configured: Boolean(stored), message: '未填写方向描述，请手动输入种子关键词' };
-  if (!stored) return { keywords: [], configured: false, message: '尚未配置模型，请手动输入种子关键词' };
+  if (!stored) return { keywords: [], configured: false, message: '请先在 AI 配置中配置概念种子词模型的接口地址、模型名称和 Key' };
+  if (!description && !taskName) return { keywords: [], configured: true, message: '请填写任务名称或方向描述，再生成 AI 建议' };
   const config = JSON.parse(openAdsKey(stored));
   const result = await postModel(config, [
     {
       role: 'system',
       content: '你是关键词研究助手。根据用户的概念方向，输出与方向直接相关的英文种子关键词。只返回JSON，不要Markdown和解释，格式必须是 {"keywords":["..."]}。最多12个，每个不超过80个字符，避免品牌词、重复词和无关泛词。',
     },
-    { role: 'user', content: JSON.stringify({ directionDescription: description }) },
+    { role: 'user', content: JSON.stringify({ taskName, directionDescription: description || taskName }) },
   ], 5000);
   let parsed;
   try {
@@ -74,5 +75,7 @@ export async function conceptSeedAction(input, user) {
   } catch {
     throw new Error('种子关键词模型未返回有效 JSON');
   }
-  return { keywords: cleanKeywords(parsed), configured: true, model: config.model };
+  const keywords = cleanKeywords(parsed);
+  if (!keywords.length) throw new Error('AI 未返回有效种子关键词，请重新生成或手动填写');
+  return { keywords, configured: true, model: config.model };
 }
