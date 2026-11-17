@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import CollectionTimeFilter from './components/CollectionTimeFilter.vue';
 import { matchesCollectionRange } from '../../../../../server/collection-time.mjs';
+import { CONCEPT_SEED_OUTPUT_SPEC } from '../../../../../server/concept-seed-prompt.mjs';
 import type { Keyword, Market } from './data';
 import type { KeywordViewFilters } from './keyword-views';
 
@@ -1259,7 +1260,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
       @ok="researchStep === 1 ? nextResearchStep() : createResearch()"
     >
       <Alert
-        :message="researchStep === 1 ? '下一步将根据任务名称和方向描述生成 AI 种子关键词建议；需先配置概念种子词模型。' : '确认种子关键词、市场、渠道和扩词深度后开始后台拓词与评级。'"
+        :message="researchStep === 1 ? 'AI 将结合任务名称、可选的方向描述和固定输出规范生成种子关键词建议；需先配置概念种子词模型。' : '确认种子关键词、市场、渠道和扩词深度后开始后台拓词与评级。'"
         type="info"
         show-icon
         style="margin: 16px 0"
@@ -1275,7 +1276,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             :maxlength="100"
             placeholder="例如：GLP-1 companion 美国概念验证"
           />
-          <p class="hci-subtle">用于概念监控看板和关键词列表分组。</p>
+          <p class="hci-subtle">作为 AI 生成的研究主题，也用于概念监控看板和关键词列表分组。</p>
         </Form.Item>
         <Form.Item label="方向描述（可选）">
           <Input.TextArea
@@ -1284,7 +1285,10 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             :maxlength="1000"
             placeholder="例如：只关注胶囊相关，面向运动营养人群"
           />
-          <p class="hci-subtle">不填方向描述时，AI 将根据任务名称生成种子关键词。</p>
+          <p class="hci-subtle">留空时直接围绕任务名称生成；输出规范会自动附加。</p>
+        </Form.Item>
+        <Form.Item label="输出规范（固定）">
+          <p class="hci-subtle">{{ CONCEPT_SEED_OUTPUT_SPEC }}</p>
         </Form.Item>
         </template>
         <template v-else>

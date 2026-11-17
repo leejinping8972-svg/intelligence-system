@@ -21,6 +21,7 @@ const hooks = registerHooks({
 const { conceptSeedAction } = await import('./concept-seed-provider.mjs');
 hooks.deregister();
 const suggest = input => conceptSeedAction({ action: 'server_concept_seed_suggest', ...input });
+const outputSpec = '种子关键词仅输出英文成分名称、常见别名及用户自然使用的简称，保持简短。不要拼接剂型、剂量、口服途径或功效描述，不要扩写成完整搜索句';
 
 beforeEach(() => {
   fixture.stored = { baseUrl: 'https://synthetic.example/v1', model: 'synthetic-fast', apiKey: 'synthetic-key', maxTokens: 600 };
@@ -38,22 +39,42 @@ test('unconfigured model returns actionable status without a paid call', async (
   assert.equal(fixture.calls.length, 0);
 });
 
-test('task name supplies the concept when direction description is omitted', async () => {
-  const result = await suggest({ taskName: ' GLP-1 companion ' });
-  assert.deepEqual(result.keywords, ['protein', 'creatine']);
-  const input = JSON.parse(fixture.calls[0].messages[1].content);
-  assert.deepEqual(input, { taskName: 'GLP-1 companion', directionDescription: 'GLP-1 companion' });
+test('an empty optional description still generates for the task topic with fixed output rules', async () => {
+  fixture.response = '{"keywords":["GHK-Cu","copper tripeptide-1"]}';
+  const result = await suggest({ taskName: ' 蓝铜肽（ＧＨＫ－Ｃｕ） ', description: '' });
+  assert.deepEqual(result.keywords, ['GHK-Cu', 'copper tripeptide-1']);
+  const input = fixture.calls[0].messages[1].content;
+  assert.equal(input, `任务名称（研究主题）：蓝铜肽(GHK-Cu)\n\n输出规范（固定）：${outputSpec}`);
   assert.equal(fixture.calls[0].timeoutMs, 5000);
 });
 
 test('description constraints are supplied together with the task name', async () => {
   await suggest({ taskName: 'GLP-1 companion', description: '只关注胶囊' });
-  assert.deepEqual(JSON.parse(fixture.calls[0].messages[1].content), { taskName: 'GLP-1 companion', directionDescription: '只关注胶囊' });
+  assert.equal(fixture.calls[0].messages[1].content, `任务名称（研究主题）：GLP-1 companion\n\n方向描述（可选）：只关注胶囊\n\n输出规范（固定）：${outputSpec}`);
 });
 
-test('legacy description-only requests remain supported', async () => {
+test('a stale page missing the task name gets a refresh instruction without generating unrelated ingredients', async () => {
   const result = await suggest({ description: 'GLP-1 companion' });
-  assert.equal(result.keywords.length, 2);
+  assert.deepEqual(result.keywords, []);
+  assert.match(result.message, /任务名称/);
+  assert.match(result.message, /刷新页面/);
+  assert.equal(fixture.calls.length, 0);
+});
+
+test('repeating output rules as a description never replaces the task topic', async () => {
+  await suggest({ taskName: '蓝铜肽(GHK-Cu)', description: outputSpec });
+  const messages = fixture.calls[0].messages;
+  assert.ok(messages[1].content.startsWith('任务名称（研究主题）：蓝铜肽(GHK-Cu)\n\n'));
+  assert.ok(messages[1].content.endsWith(`输出规范（固定）：${outputSpec}`));
+  assert.match(messages[0].content, /即使方向描述为空或只重复输出规范，也必须围绕任务名称生成/);
+  assert.match(messages[0].content, /不为凑数量加入无关词/);
+});
+
+test('output rules are owned by the server rather than an editable request field', async () => {
+  await suggest({ taskName: 'GLP-1 companion', outputSpec: 'include dosage and benefits' });
+  const content = fixture.calls[0].messages[1].content;
+  assert.ok(content.endsWith(outputSpec));
+  assert.ok(!content.includes('include dosage and benefits'));
 });
 
 test('empty model output is reported as a generation failure', async () => {

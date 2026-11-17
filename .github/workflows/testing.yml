@@ -50,6 +50,10 @@ jobs:
         run: node --test server/radar-evidence.test.mjs server/workspace-statistics.test.mjs
       - name: Concept monitor persisted batch summaries (synthetic data)
         run: node --test server/concept-monitor.test.mjs server/collection-batches.test.mjs server/advisory-lock-wait.test.mjs server/product-collection-filter.test.mjs
+      - name: Concept seed topic and fixed output rules (mocked model, no paid calls)
+        run: |
+          node --test server/concept-seed-provider.test.mjs
+          pnpm exec vitest run tests/concept-seed-suggestions.test.ts
       - name: Weekly overview persisted summaries (synthetic data)
         run: node --test server/weekly-summary.test.mjs server/weekly-drilldown.test.mjs
       - name: Source usage accounting and bounded loading (synthetic data)
