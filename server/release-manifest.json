@@ -1,35 +1,36 @@
 {
-  "title": "概念种子 AI 建议空白反馈修复",
-  "sourceSha": "b0e940aea9db78d557f9e8cffb8e04315140d2ba",
+  "title": "概念种子关键词按任务主题生成并固定输出规范",
+  "sourceSha": "37b438e13c3ef5b9447c5135d34069a9256672b0",
   "includedCommits": [
-    "b0e940aea9db78d557f9e8cffb8e04315140d2ba"
+    "37b438e13c3ef5b9447c5135d34069a9256672b0"
   ],
   "changes": [
-    "方向描述留空时按任务名称生成 AI 种子关键词建议",
-    "未配置时显示明确配置入口，空结果与失败提供可重试提示",
-    "新增手动生成和重新生成 AI 建议，保留用户输入并防止重复请求及过期结果覆盖"
+    "始终结合任务名称作为研究主题，方向描述选填，固定拼接英文成分名/别名/简称的输出规范",
+    "仅围绕主题生成，不拼接剂型/剂量/途径/功效或完整搜索句，不为凑数量加入无关成分",
+    "新建概念只读展示固定输出规范，无需手工输入；旧客户端缺少任务名称时明确提示刷新且不调用模型"
   ],
   "files": [
     "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/concept-seed-suggestions.ts",
+    "server/concept-seed-prompt.mjs",
+    "server/concept-seed-prompt.d.mts",
     "server/concept-seed-provider.mjs",
     "server/concept-seed-provider.test.mjs",
     "tests/concept-seed-suggestions.test.ts"
   ],
   "developmentVerification": {
-    "frontend": "交互状态与并发专项8/8，合成接口响应",
-    "backend": "模型配置/上下文/空结果/超时专项7/7，内存mock，不连接数据库或真实模型",
-    "typecheck": "完整Web类型检查通过",
-    "build": "隔离前端生产构建通过",
-    "lint": "新增三文件定向oxlint通过；JS语法/diff检查通过",
-    "realModelCall": "未执行，正式概念种子模型尚未配置"
+    "backend": "9/9，模拟模型，无真实数据库/模型调用",
+    "frontend": "9/9，合成响应；含GHK-Cu空描述主题传递",
+    "typecheck": "完整Web类型通过",
+    "build": "独立前端生产构建8483 modules通过",
+    "lint": "新模块与专项oxlint干净，provider保留2条基线诊断；语法/diff通过",
+    "realModelCall": "未执行，不声称模型输出内容质量已实测"
   },
   "releaseSkipped": [
-    "发布阶段重复验证",
+    "发布重复验证",
     "独立验证构建",
     "CI等待",
     "数据库一致性核对按用户要求跳过",
-    "完整数据库备份按无结构变更/迁移策略跳过"
+    "完整数据库备份按无schema/迁移策略跳过"
   ],
   "database": {
     "schemaChange": false,
@@ -39,7 +40,7 @@
     "consistency": "skipped-by-user"
   },
   "operator": "Codex",
-  "id": "20261117083928-85bf9e0c",
-  "builtAt": "2026-11-17T08:39:28.440Z",
-  "sourceDigest": "85bf9e0c129d3c8665cde52f7e2ed711d1ce562e0fb719c67510e2bb7e157324"
+  "id": "20261117110740-f25b69b5",
+  "builtAt": "2026-11-17T11:07:40.845Z",
+  "sourceDigest": "f25b69b5563bcd05de2028de695752a61f9adb7c0f02480a27f3c242bf551599"
 }
