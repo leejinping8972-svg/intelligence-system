@@ -1,25 +1,28 @@
 {
-  "title": "商品图片同页查看大图",
-  "sourceSha": "5a66e70dcca88cf1b6ea4a9793f9e0abf08224b2",
+  "title": "概念种子 AI 建议空白反馈修复",
+  "sourceSha": "b0e940aea9db78d557f9e8cffb8e04315140d2ba",
   "includedCommits": [
-    "5a66e70dcca88cf1b6ea4a9793f9e0abf08224b2"
+    "b0e940aea9db78d557f9e8cffb8e04315140d2ba"
   ],
   "changes": [
-    "商品卡片主图和列表缩略图点击后打开同页大图预览",
-    "商品详情平台素材使用预览组，可在大图中切换素材",
-    "保留图片加载失败占位和商品详情打开行为"
+    "方向描述留空时按任务名称生成 AI 种子关键词建议",
+    "未配置时显示明确配置入口，空结果与失败提供可重试提示",
+    "新增手动生成和重新生成 AI 建议，保留用户输入并防止重复请求及过期结果覆盖"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/ProductArt.vue",
-    "apps/web-antd/src/views/intelligence/components/ProductDrawer.vue",
-    "apps/web-antd/src/views/intelligence/intelligence.css",
-    "apps/web-antd/src/views/intelligence/products.vue"
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/concept-seed-suggestions.ts",
+    "server/concept-seed-provider.mjs",
+    "server/concept-seed-provider.test.mjs",
+    "tests/concept-seed-suggestions.test.ts"
   ],
   "developmentVerification": {
-    "typecheck": "Web 类型检查通过",
-    "build": "前端生产构建通过，8482 modules",
-    "diff": "git diff --check 通过",
-    "ui": "本地商品页加载无运行时错误；服务器模式无演示商品数据，未完成本机实际图片点击"
+    "frontend": "交互状态与并发专项8/8，合成接口响应",
+    "backend": "模型配置/上下文/空结果/超时专项7/7，内存mock，不连接数据库或真实模型",
+    "typecheck": "完整Web类型检查通过",
+    "build": "隔离前端生产构建通过",
+    "lint": "新增三文件定向oxlint通过；JS语法/diff检查通过",
+    "realModelCall": "未执行，正式概念种子模型尚未配置"
   },
   "releaseSkipped": [
     "发布阶段重复验证",
@@ -36,7 +39,7 @@
     "consistency": "skipped-by-user"
   },
   "operator": "Codex",
-  "id": "20261117050915-0894df4e",
-  "builtAt": "2026-11-17T05:09:15.434Z",
-  "sourceDigest": "0894df4eaff1ea45582f645df45de11a781fa7d152ec90d49e6315c4d1565f80"
+  "id": "20261117083928-85bf9e0c",
+  "builtAt": "2026-11-17T08:39:28.440Z",
+  "sourceDigest": "85bf9e0c129d3c8665cde52f7e2ed711d1ce562e0fb719c67510e2bb7e157324"
 }
