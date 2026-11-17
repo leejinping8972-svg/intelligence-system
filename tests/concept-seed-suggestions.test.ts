@@ -21,9 +21,16 @@ it('still requests AI suggestions with a task name and no optional description',
 });
 
 it('passes task name and direction constraints together', async () => {
-  const suggest = vi.fn(async () => ({ keywords: ['protein capsules'] }));
+  const suggest = vi.fn(async () => ({ keywords: ['protein'] }));
   await useConceptSeedSuggestions(suggest).generate('GLP-1 companion', ' 只关注胶囊 ');
   expect(suggest).toHaveBeenCalledWith({ taskName: 'GLP-1 companion', description: '只关注胶囊' });
+});
+
+it('keeps a named ingredient as the topic when the optional direction is empty', async () => {
+  const suggest = vi.fn(async () => ({ keywords: ['GHK-Cu', 'copper tripeptide-1'] }));
+  const ai = useConceptSeedSuggestions(suggest);
+  expect(await ai.generate('蓝铜肽(GHK-Cu)', '')).toEqual(['GHK-Cu', 'copper tripeptide-1']);
+  expect(suggest).toHaveBeenCalledWith({ taskName: '蓝铜肽(GHK-Cu)', description: '' });
 });
 
 it('reports an empty result instead of presenting a successful blank input', async () => {
