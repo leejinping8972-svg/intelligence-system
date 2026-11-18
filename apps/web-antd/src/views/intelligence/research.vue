@@ -203,6 +203,10 @@ async function applyView(filters: KeywordViewFilters) {
   currentPage.value = 1;
   clearSelection();
 }
+const evidenceStatusLabels = {
+  available: '已有依据', missing: '待补充', stale: '已过期',
+  unavailable: '未返回有效数据', failed: '采集失败', pending: '采集中', mismatch: '范围不匹配',
+};
 const gradeColors: Record<string, string> = {
   A: 'green',
   B: 'blue',
@@ -746,7 +750,9 @@ async function exportKeywords() {
       ],
       评分: record.assessment.score ?? '',
       '自然搜索 KD': record.metrics?.market === record.market ? record.metrics?.difficulty ?? '' : '',
-      数据覆盖率: `${record.assessment.coverage}%`,
+      评分输入覆盖率: `${record.assessment.coverage}%`,
+      研究优先级: record.assessment.decision?.label || '',
+      证据缺项: (record.assessment.checks || []).filter((item) => item.status !== 'available').map((item) => `${item.label}：${evidenceStatusLabels[item.status]}；${item.message}`).join(' / '),
       标签: record.assessment.tags.join('、'),
       决策建议: record.assessment.recommendation,
       来源: record.source,
@@ -1159,7 +1165,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
               {{ record.assessment.score ?? '—'
               }}{{ record.assessment.score === null ? '' : ' / 100' }}
             </button>
-            <p class="hci-subtle">覆盖 {{ record.assessment.coverage }}%</p>
+            <p class="hci-subtle">{{ record.assessment.decision?.label }} · 输入覆盖 {{ record.assessment.coverage }}%</p>
           </template>
           <template v-else-if="column.key === 'tags'">
             <CompactTags :items="record.assessment.tags" label="分析标签" />
@@ -1246,7 +1252,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
       </div>
       <div>
         <b>评级与证据</b><span>A ≥80，B 65～79，C 50～64，D
-          &lt;50。新建概念后立即按已有维度给出暂评，趋势、搜索量或KD补齐后提高覆盖率并转正式评级。</span>
+          &lt;50。≥80优先深入研究，65～79继续观察，50～64低优先观察；缺需求或趋势先补证据，偏题词排除。输入覆盖率不等于选品成功率。</span>
       </div>
     </div>
 
@@ -1450,22 +1456,16 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
       </div>
       <div class="hci-evidence">
         A ≥80，B 65～79，C 50～64，D
-        &lt;50。缺失维度不补0，按已覆盖权重归一化；新建概念后立即给出暂评，补齐搜索量、趋势和
-        KD
-        后转正式评级。手表等非保健品类目最高19分，医疗服务等非商品词最高39分；单独Omega有同名歧义，最高39分。
+        &lt;50。缺失维度不补0，按已覆盖权重归一化并立即给出数字暂评。搜索量和趋势均缺失最高49分，缺其中一项最高64分；缺可追溯口服商品原文线索最高79分。≥80优先深入研究，65～79继续观察，50～64低优先观察，低于50暂缓；缺证据显示“先补证据”，不能把低分解释为没有市场。
       </div>
       <p>
-        业务相关性以关键词自身的保健品含义为依据，继承的分类与种子词不直接加分。鱼油等未明确成分的泛词最高59分，膳食补充剂等类目泛词最高49分；只有成分而缺少具体商品限定的短词最高69分。明确成分配合剂型、剂量或人群可获得更高评分；鱼油明确Omega-3/EPA/DHA，或同时明确剂型与剂量后，解除泛词限制。偏离种子成分最高59分，功效、副作用等内容查询最高64分。
+        按关键词自身识别成分，并与任务主题核对。GHK-Cu与Copper Tripeptide-1为同一成分表达；Tripeptide-1及其修饰肽不能当成同一市场。成分主词不因简短限分，剂型、剂量、人群不机械加分。泛铜肽在GHK-Cu方向最高74分；类目泛词最高49分，偏离主题最高39分，明确外用、注射或科研用途最高19分。信息查询、品牌与纯导航词最高64分。
       </p>
       <p>
-        Google Trends
-        仅用于走势，不代替搜索量。需求规模按同市场固定参考上沿评分：美国10万/月，墨西哥与越南5万/月；当前批次增减不会改变该参考。竞争维度按100−自然搜索KD计分；广告竞争度、CPC和前三站点份额仅作参考，不混为自然搜索难度。指标超过90天、趋势超过45天会提示补采。
+        趋势优先使用有效Google Trends，否则复用同市场Semrush的12点月度相对趋势，不重复计分。持续性占40%、动量占60%，尖峰降权；Google比较近30天与此前30天，Semrush比较最近3点与此前3点。二者都不是绝对搜索量。搜索量按固定参考上沿评分：美国10万/月，墨西哥与越南5万/月；同义变体不能相加成独立市场。SEO仅占5%，按100−KD计分，不代表商品竞争或盈利。搜索指标与Semrush趋势有效期90天，Google趋势45天。
       </p>
       <p class="hci-subtle">
-        只有一年数据不能确认年度季节性，因此不会自动下“季节性已证实”的结论。Semrush
-        勾选后自动扩词和补充指标；Similarweb
-        暂不参与自动评分。记录国家、来源与获取日期，90天以前的搜索指标不纳入当前评级。Semrush
-        商业／交易意图仅对已识别成分的概念需求在概念研究价值维度加10分（该维度封顶100），不解除类目或泛词限制。已识别品牌或导航意图关键词最高64分；搜索量明确为0最高49分。多条限制同时命中时取最低上限。
+        商品线索必须有已关联商品、原文引用、来源URL、来源ID、指纹及180天内日期，并明确口服用途；仅计文本线索固定70分，不以关联数量、剂型词或商业意图加分。来源未收录、失败、过期和明确返回0分别显示；月搜索量明确为0最高49分。输入覆盖100%仅表示评分输入齐备，不包含销量、复购、利润、人体口服功效或市场准入验证，阈值仍需后续用真实选品结果校准。不会自动发起额外收费补采。
       </p>
     </Modal>
 
@@ -1521,7 +1521,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             {{ assessment.grade || '待评级'
             }}{{ assessment.status === 'provisional' ? ' · 暂评' : '' }}
           </Tag>
-          <b>{{ assessment.score ?? '—' }} / 100</b><span>数据覆盖 {{ assessment.coverage }}%</span>
+          <b>{{ assessment.score ?? '—' }} / 100</b><span>评分输入覆盖 {{ assessment.coverage }}%</span>
         </div>
         <Alert
           :message="assessment.recommendation"
@@ -1530,11 +1530,21 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
               ? '当前仅为基于已覆盖维度的暂评，缺失证据请逐项补充。'
               : assessment.status === 'pending'
                 ? '未将接口失败或缺失指标作为低分处理。'
-                : '当前五个维度的数据已齐备。'
+                : '评分输入已齐备，仍需核对销量、复购、毛利、口服证据与目标市场准入。'
           "
           type="info"
           show-icon
         />
+        <section v-if="assessment.checks?.length" class="hci-evidence" style="margin-top: 16px">
+          <b>证据完整性与下一步</b>
+          <p class="hci-subtle">覆盖率是已参与评分的权重，不是数据穷尽率或成功概率。缺项可用本页补齐指标、补采趋势或人工补充来源；采集完成也可能未收录。</p>
+          <div v-for="check in assessment.checks" :key="check.key" style="margin-top: 12px">
+            <b>{{ check.label }}</b>
+            <Tag :color="check.status === 'available' ? 'green' : 'orange'">{{ evidenceStatusLabels[check.status] }}</Tag>
+            <p>{{ check.message }}</p>
+            <p class="hci-subtle">来源：{{ check.source || '待补' }} · 采集时间：{{ formatTime(check.collectedAt) }}</p>
+          </div>
+        </section>
         <div class="keyword-tags" style="margin: 16px 0">
           <Tag v-for="tag in assessment.tags" :key="tag">{{ tag }}</Tag>
         </div>
@@ -1586,7 +1596,7 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             }}
           </p>
           <p class="hci-subtle">
-            意图编码：0 信息型 / 1 导航型 / 2 商业型 / 3 交易型；广告竞争度与
+            意图编码：0 商业型 / 1 信息型 / 2 导航型 / 3 交易型；广告竞争度与
             CPC 仅供参考，不代替自然搜索 KD。
           </p>
         </section>

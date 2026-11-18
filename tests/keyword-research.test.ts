@@ -46,22 +46,23 @@ describe('keyword research decision model', () => {
   });
   it('does not rate missing trends as a bad opportunity', () => {
     const result = assessKeyword(sample({ series: [], trendPoints: [] }));
-    expect(result.grade).toBeNull();
-    expect(result.score).toBeNull();
-    expect(result.status).toBe('pending');
-    expect(result.coverage).toBe(45);
+    expect(result.grade).toBeTruthy();
+    expect(typeof result.score).toBe('number');
+    expect(result.decision?.action).toBe('collect');
+    expect(result.status).toBe('provisional');
+    expect(result.coverage).toBe(30);
   });
-  it('keeps free-data results pending and exposes missing weights', () => {
+  it('keeps free-data results provisional and exposes missing weights', () => {
     const result = assessKeyword(sample());
-    expect(result.status).toBe('pending');
-    expect(result.coverage).toBe(65);
-    expect(result.grade).toBeNull();
+    expect(result.status).toBe('provisional');
+    expect(result.coverage).toBe(55);
+    expect(result.grade).toBeTruthy();
     expect(result.tags).toContain('待补搜索量');
     expect(
       result.dimensions.find((item) => item.key === 'demand')?.score,
     ).toBeNull();
   });
-  it('only produces a full rating when same-market dated indicators are present', () => {
+  it('still requires product evidence after same-market search indicators are present', () => {
     const result = assessKeyword(
       sample({
         metrics: {
@@ -74,9 +75,9 @@ describe('keyword research decision model', () => {
         },
       }),
     );
-    expect(result.status).toBe('rated');
-    expect(result.coverage).toBe(100);
-    expect(result.grade).toBe('A');
+    expect(result.status).toBe('provisional');
+    expect(result.coverage).toBe(85);
+    expect(result.grade).toBe('B');
   });
   it('rejects other markets and stale metrics rather than silently using them', () => {
     for (const metrics of [
@@ -98,7 +99,7 @@ describe('keyword research decision model', () => {
       },
     ]) {
       const result = assessKeyword(sample({ metrics }));
-      expect(result.coverage).toBe(65);
+      expect(result.coverage).toBe(55);
       expect(result.tags).toContain('指标待核验或过期');
     }
   });
@@ -116,7 +117,7 @@ describe('keyword research decision model', () => {
     expect(result.dimensions.find((item) => item.key === 'demand')?.score).toBe(
       0,
     );
-    expect(result.coverage).toBe(85);
+    expect(result.coverage).toBe(80);
   });
   it('treats verified natural-search KD as complete without top3 traffic share', () => {
     const result = assessKeyword(
@@ -130,8 +131,8 @@ describe('keyword research decision model', () => {
         },
       }),
     );
-    expect(result.coverage).toBe(100);
-    expect(result.status).toBe('rated');
+    expect(result.coverage).toBe(85);
+    expect(result.status).toBe('provisional');
   });
   it('treats all-zero Google samples as insufficient evidence', () => {
     const record = sample();
@@ -140,12 +141,12 @@ describe('keyword research decision model', () => {
       ...point,
       value: 0,
     }));
-    expect(assessKeyword(record).grade).toBeNull();
+    expect(assessKeyword(record).decision?.action).toBe('collect');
   });
   it('keeps Amazon discovery evidence separate from Google search volume', () => {
     const result = assessKeyword(sample({ source: 'Sorftime · Amazon' }));
     expect(result.tags).toContain('Amazon站内来源');
-    expect(result.coverage).toBe(65);
+    expect(result.coverage).toBe(55);
     expect(
       result.dimensions.find((item) => item.key === 'demand')?.score,
     ).toBeNull();
@@ -161,7 +162,7 @@ describe('keyword research decision model', () => {
     const off = assessKeyword(sample({ term: "women's health clinic jobs" }));
     expect(off.tags).toContain('非商品需求');
     expect(off.dimensions.find((item) => item.key === 'product')?.score).toBe(
-      10,
+      null,
     );
   });
 });

@@ -18,7 +18,7 @@ test('new concept receives a provisional score when trend, volume and KD are abs
   assert.equal(typeof assessment.score, 'number');
   assert.ok(assessment.grade);
   assert.equal(assessment.status, 'provisional');
-  assert.equal(assessment.coverage, 45);
+  assert.equal(assessment.coverage, 30);
   assert.ok(assessment.tags.includes('待补KD'));
 });
 
@@ -42,5 +42,5 @@ test('natural search KD contributes to the competition dimension', () => {
   });
   const competition = assessment.dimensions.find((item) => item.key === 'competition');
   assert.equal(competition?.score, 75);
-  assert.equal(competition?.coveredWeight, 15);
+  assert.equal(competition?.coveredWeight, 5);
 });

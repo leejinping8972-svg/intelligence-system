@@ -2,7 +2,10 @@ import type { Keyword } from '../apps/web-antd/src/views/intelligence/data';
 
 import { describe, expect, it } from 'vitest';
 
-import { assessKeyword } from '../apps/web-antd/src/views/intelligence/keyword-scoring';
+import {
+  assessKeyword,
+  KEYWORD_MODEL_VERSION,
+} from '../apps/web-antd/src/views/intelligence/keyword-scoring';
 import { assessKeyword as assessServerKeyword } from '../server/model.js';
 
 function sample(term: string, overrides: Partial<Keyword> = {}): Keyword {
@@ -97,13 +100,16 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
     '鱼油',
     'aceite de pescado',
     'dầu cá',
-  ])('lowers broad fish-oil expressions: %s', (term) => {
-    const result = assessKeyword(sample(term));
-    expect(result.score).toBe(59);
-    expect(result.tags).toContain('泛词降权');
-    expect(result.tags).toContain('种子成分匹配');
-    expect(result.recommendation).toContain('细化');
-  });
+  ])(
+    'recognizes natural fish-oil ingredient expressions without requiring a form: %s',
+    (term) => {
+      const result = assessKeyword(sample(term));
+      expect(result.score).toBe(79);
+      expect(result.tags).not.toContain('泛词降权');
+      expect(result.tags).toContain('种子成分匹配');
+      expect(result.decision?.label).toBe('继续观察');
+    },
+  );
 
   it.each([
     'dietary supplements',
@@ -115,7 +121,7 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
     const result = assessKeyword(sample(term));
     expect(result.score).toBeLessThanOrEqual(49);
     expect(result.tags).toContain('泛词降权');
-    expect(dimension(result, 'product')).toBe(25);
+    expect(dimension(result, 'product')).toBeNull();
   });
 
   it.each([
@@ -129,7 +135,7 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
     'fish oil EPA DHA softgels',
   ])('recognizes specific supplement demand across markets: %s', (term) => {
     const result = assessKeyword(sample(term));
-    expect(result.grade).toBe('A');
+    expect(result.grade).toBe('B');
     expect(result.tags).toContain('成分词');
     expect(result.tags).toContain('剂型词');
     expect(result.tags).not.toContain('泛词降权');
@@ -137,25 +143,17 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
     expect(result.tags).not.toContain('非保健品类目');
   });
 
-  it('prioritizes a precise product with modest demand above broad high-volume words and watches', () => {
-    const precise = sample('omega-3 softgels 1000 mg');
-    Object.assign(precise.metrics ?? {}, {
-      monthlySearchVolume: 1000,
-      difficulty: 40,
-    });
-    const scores = [
-      'omega seamaster',
-      'dietary supplements',
-      'fish oil',
-      'omega-3',
-      'omega-3 softgels 1000 mg',
-    ].map(
-      (term) =>
-        assessKeyword(term === precise.term ? precise : sample(term)).score ??
-        -1,
+  it('does not reward a form or dose above the ingredient with the same demand evidence', () => {
+    const ingredient = assessKeyword(sample('omega-3'));
+    const specific = assessKeyword(sample('omega-3 softgels 1000 mg'));
+    expect(specific.score).toBe(ingredient.score);
+    expect(dimension(specific, 'product')).toBeNull();
+    expect(ingredient.score).toBeGreaterThan(
+      assessKeyword(sample('dietary supplements')).score ?? 0,
     );
-    expect(scores).toEqual(scores.toSorted((a, b) => a - b));
-    expect(scores[4]).toBeGreaterThan(scores[3] ?? -1);
+    expect(ingredient.score).toBeGreaterThan(
+      assessKeyword(sample('omega seamaster')).score ?? 0,
+    );
   });
 
   it('keeps the keyword category out of the evidence and applies seed matching only to observed ingredients', () => {
@@ -166,20 +164,20 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
       '偏离种子成分',
     );
     expect(assessKeyword(sample('creatine gummies')).score).toBeLessThanOrEqual(
-      59,
+      39,
     );
     expect(
       assessKeyword(sample('creatine gummies', { seedTerm: '肌酸' })).grade,
-    ).toBe('A');
+    ).toBe('B');
     expect(
       assessKeyword(
         sample('magnesium glycinate capsules', { seedTerm: 'magnesium' }),
       ).grade,
-    ).toBe('A');
+    ).toBe('B');
     expect(
       assessKeyword(sample('men vi sinh dạng viên', { seedTerm: 'probiotics' }))
         .grade,
-    ).toBe('A');
+    ).toBe('B');
     expect(
       assessKeyword(sample('unknown wellness', { category: '女性健康' })).score,
     ).toBeLessThanOrEqual(49);
@@ -197,7 +195,7 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
     ).toBeLessThanOrEqual(64);
   });
 
-  it('keeps missing data pending, preserves human decisions and never mutates source records', () => {
+  it('keeps missing data provisional, preserves human decisions and never mutates source records', () => {
     const row = sample('omega watches', {
       metrics: undefined,
       trendPoints: [],
@@ -208,20 +206,20 @@ describe('supplement relevance and specificity outrank unrelated traffic', () =>
     });
     const before = structuredClone(row);
     const result = assessKeyword(row);
-    expect(result.score).toBeNull();
-    expect(result.status).toBe('pending');
+    expect(typeof result.score).toBe('number');
+    expect(result.status).toBe('provisional');
     expect(result.recommendation).toContain('建议排除');
-    expect(result.version).toBe('keyword-research-v3.1-30d');
+    expect(result.version).toBe(KEYWORD_MODEL_VERSION);
     expect(row).toEqual(before);
     expect(
       assessKeyword(sample('omega-3 softgels', { metrics: undefined })).score,
-    ).toBeNull();
+    ).toBeLessThanOrEqual(64);
     const zero = sample('omega-3 softgels');
     Object.assign(zero.metrics ?? {}, { monthlySearchVolume: 0 });
     expect(assessKeyword(zero).score).toBeLessThanOrEqual(49);
     const stale = sample('omega-3 softgels');
     Object.assign(stale.metrics ?? {}, { collectedAt: '2020-01-01' });
-    expect(assessKeyword(stale).score).toBeNull();
+    expect(assessKeyword(stale).decision?.action).toBe('collect');
   });
 
   it.each([
