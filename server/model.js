@@ -1,8 +1,61 @@
+// server/semrush-keyword-trends.mjs
+function validSemrushTrend(value) {
+  return value?.version === 1 && value.status === "collected" && value.scale === "relative_0_1" && Array.isArray(value.values) && value.values.length === 12 && [...value.values].every(
+    (n) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1
+  ) && Number.isFinite(Date.parse(value.collectedAt));
+}
+function semrushTrendSummary(metrics, market) {
+  const trend = metrics?.market === market && /Semrush/i.test(metrics?.source || "") ? metrics.searchTrend : void 0;
+  if (!validSemrushTrend(trend))
+    return {
+      available: false,
+      values: [],
+      collectedAt: trend?.collectedAt || "",
+      message: trend?.message || "\u5C1A\u672A\u83B7\u53D6Semrush\u6708\u5EA6\u8D8B\u52BF\uFF1B\u53EF\u5728\u8865\u9F50\u6307\u6807\u4E2D\u66F4\u65B0\u5B57\u6BB5",
+      monthChange: null,
+      quarterChange: null,
+      halfChange: null,
+      peakPositions: [],
+      latestHeat: null
+    };
+  const values = trend.values.map((v) => Math.round(v * 1e4) / 100);
+  const mean = (v) => v.reduce((a, b) => a + b, 0) / v.length;
+  const change = (recent, previous) => previous > 0 ? Math.round((recent / previous - 1) * 1e3) / 10 : null;
+  const peak = Math.max(...values);
+  return {
+    available: true,
+    values,
+    collectedAt: trend.collectedAt,
+    message: trend.message,
+    latestHeat: values.at(-1),
+    monthChange: change(trend.values[11], trend.values[10]),
+    quarterChange: change(
+      mean(trend.values.slice(-3)),
+      mean(trend.values.slice(-6, -3))
+    ),
+    halfChange: change(
+      mean(trend.values.slice(-6)),
+      mean(trend.values.slice(0, 6))
+    ),
+    peakPositions: peak > 0 ? values.flatMap((v, i) => v === peak ? [i + 1] : []) : []
+  };
+}
+
 // apps/web-antd/src/views/intelligence/keyword-relevance.ts
-function normalize(value) {
+function normalizeKeywordText(value) {
   return value.normalize("NFKD").replaceAll(/\p{M}/gu, "").toLowerCase().replaceAll("\u0111", "d").replaceAll(/[‐‑‒–—−]/g, "-").replaceAll(/\s+/g, " ").trim();
 }
 var families = [
+  [
+    "ghk-cu",
+    /\b(?:ghk\s*-?\s*cu|ghkcu|ghk[ -]copper[ -]peptides?|copper[ -]tripeptide\s*-?\s*1)\b|蓝铜肽|藍銅肽|蓝铜胜肽|铜三肽[ -]?1|三肽[ -]?1[ -]?铜/
+  ],
+  ["copper-peptide", /\bcopper[ -]peptides?\b|铜肽|銅肽/],
+  [
+    "modified-peptide",
+    /\b(?:(?:palmitoyl|biotinoyl|myristoyl)[ -]tripeptide[ -]?1|tripeptide[ -]?10)\b/
+  ],
+  ["ghk", /\b(?:ghk|tripeptide[ -]?1)\b/],
   ["omega", /\b(?:omega\s*-?\s*[369]|dha|epa)\b|欧米伽\s*[369]|欧米茄\s*[369]/],
   ["fish-oil", /\b(?:fish[ -]oil|aceite de pescado|dau ca)\b|鱼油|魚油/],
   ["magnesium", /\b(?:magnesium|magnesio|magie)\b|镁|鎂/],
@@ -32,38 +85,49 @@ var families = [
 var formPattern = /\b(?:gumm(?:y|ies)|capsules?|capsulas?|powders?|polvo|softgels?|tablets?|liquid|liquido|bot|vien)\b|软糖|軟糖|胶囊|膠囊|粉剂|片剂|滴剂/;
 var supplementPattern = /\b(?:supplements?|suplementos?|complementos? alimenticios?|thuc pham (?:bo sung|chuc nang)|bo sung|health products?)\b|保健品|膳食补充剂|营养补充剂|營養補充劑/;
 var purchasePattern = /\b(?:buy|price|shop|comprar|precio|mua|gia)\b|购买|價格|价格/;
-var dosePattern = /\b\d+(?:[.,]\d+)?\s*(?:mg|mcg|ug|g|iu|cfu|ui)\b|\d+\s*(?:毫克|微克|亿菌|%)/;
 var audiencePattern = /\b(?:women|female|menopause|prenatal|pregnancy|kids|children|seniors|phu nu|mujeres?|ninos)\b|女性|孕妇|儿童|老年/;
 var informationPattern = /\b(?:how|what|benefits?|side effects?|cach|la gi|como|para que)\b|功效|副作用|是什么/;
 var brandPattern = /\b(?:amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/;
-var excludedPattern = /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoo|serum|face cream)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜/;
+var excludedPattern = /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoos?|serums?|creams?|topical|balms?|tallow|scalp complex|inject(?:ions?|ables?|ed|ing)?|vials?|syringes?|research use only|laboratory use|not for human consumption|niod|the ordinary|ordinary copper|geek (?:and|&) gorgeous|remedy copper)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜|精华液|外用|注射|仅供科研/;
 var servicePattern = /\b(?:hospitals?|clinics?|doctors?|jobs?|salary|magazine|badge reel|services?|partners|specialists?|environmental protection agency)\b|benh vien|tuyen dung|招聘|医院/;
 function ingredients(text) {
-  return families.filter(([, pattern]) => pattern.test(text)).map(([key]) => key);
+  const found = families.filter(([, pattern]) => pattern.test(text)).map(([key]) => key);
+  return found.filter(
+    (key) => !(key === "ghk" && (found.includes("ghk-cu") || found.includes("modified-peptide"))) && !(key === "copper-peptide" && found.includes("ghk-cu"))
+  );
+}
+function hasOralProductContext(value) {
+  const text = normalizeKeywordText(value);
+  return !excludedPattern.test(text) && !/\b(?:not for oral|not (?:an? )?(?:oral|dietary) supplement|do not (?:swallow|ingest)|for external use|external use only|not intended for ingestion)\b|非口服|禁止口服|不可口服/.test(
+    text
+  ) && (supplementPattern.test(text) || /\b(?:oral|by mouth|swallow|capsules?|tablets?|softgels?|gummies)\b|口服|胶囊|片剂|软胶囊/.test(
+    text
+  ));
 }
 function assessSupplementRelevance(keyword) {
-  const text = normalize(keyword.term);
+  const text = normalizeKeywordText(keyword.term);
   const found = ingredients(text);
-  const seeds = ingredients(normalize(keyword.seedTerm || ""));
+  const topic = ingredients(normalizeKeywordText(keyword.batch || ""));
+  const seeds = topic.length > 0 ? topic : ingredients(normalizeKeywordText(keyword.seedTerm || ""));
   const scope = (key) => key === "fish-oil" ? "omega" : key;
   const seedMatch = found.some(
     (key) => seeds.some((seed) => scope(key) === scope(seed))
   );
-  const seedMismatch = found.length > 0 && seeds.length > 0 && !seedMatch;
-  const ingredient = found.length > 0;
+  const adjacentCopper = found.includes("copper-peptide") && seeds.includes("ghk-cu");
+  const seedMismatch = found.length > 0 && seeds.length > 0 && !seedMatch && !adjacentCopper;
+  const ingredient = found.some(
+    (key) => !["ghk", "modified-peptide"].includes(key)
+  );
   const form = formPattern.test(text);
   const commercial = supplementPattern.test(text) || purchasePattern.test(text);
   const information = informationPattern.test(text);
   const brand = brandPattern.test(text);
   const audience = audiencePattern.test(text);
-  const dose = dosePattern.test(text);
   const excluded = excludedPattern.test(text) || /\bomega\b.*\b(?:constellation|de ville|planet ocean)\b/.test(text);
   const service = servicePattern.test(text);
   const offTopic = excluded || service;
   const ambiguous = /\bomega\b/.test(text) && !ingredient;
-  const broadFishOil = found.length === 1 && found.includes("fish-oil") && !(form && dose);
   const broadCategory = !ingredient && supplementPattern.test(text);
-  const bareIngredient = ingredient && !form && !dose && !audience;
   const tags = [];
   if (ingredient && !offTopic) tags.push("\u6210\u5206\u8BCD");
   if (form && ingredient && !offTopic) tags.push("\u5242\u578B\u8BCD");
@@ -73,33 +137,25 @@ function assessSupplementRelevance(keyword) {
   if (information) tags.push("\u5185\u5BB9\u7814\u7A76\u8BCD");
   if (seedMatch && !offTopic) tags.push("\u79CD\u5B50\u6210\u5206\u5339\u914D");
   if (seedMismatch && !offTopic) tags.push("\u504F\u79BB\u79CD\u5B50\u6210\u5206");
+  if (adjacentCopper && !offTopic) tags.push("\u94DC\u80BD\u8303\u56F4\u5F85\u6838\u9A8C");
   let relevance = 20;
-  let product = 10;
   let scoreCap = 49;
   let evidence = "\u5173\u952E\u8BCD\u81EA\u8EAB\u7F3A\u5C11\u53EF\u8BC6\u522B\u7684\u4FDD\u5065\u54C1\u6210\u5206\u4F9D\u636E\uFF0C\u5206\u7C7B\u6807\u7B7E\u4E0E\u79CD\u5B50\u8BCD\u4E0D\u4F5C\u4E3A\u76F8\u5173\u6027\u8BC1\u660E\uFF1B\u603B\u5206\u6700\u9AD849";
   if (ingredient) {
-    relevance = Math.min(
-      100,
-      75 + (form ? 15 : 0) + (dose ? 5 : 0) + (audience ? 5 : 0) + (seedMatch ? 5 : 0)
-    );
-    product = Math.min(
-      100,
-      55 + (form ? 25 : 0) + (commercial ? 10 : 0) + (dose ? 10 : 0) + (audience ? 5 : 0)
-    );
-    scoreCap = bareIngredient ? 69 : 100;
-    evidence = `\u5173\u952E\u8BCD\u81EA\u8EAB\u8BC6\u522B\u5230\u4FDD\u5065\u54C1\u6210\u5206${form ? "\u3001\u5242\u578B" : ""}${dose ? "\u3001\u5242\u91CF" : ""}${audience ? "\u3001\u9002\u7528\u4EBA\u7FA4" : ""}${seedMatch ? "\uFF1B\u4E0E\u79CD\u5B50\u6210\u5206\u5339\u914D" : ""}${bareIngredient ? "\uFF1B\u6210\u5206\u77ED\u8BCD\u7F3A\u5C11\u5177\u4F53\u5546\u54C1\u9650\u5B9A\uFF0C\u603B\u5206\u6700\u9AD869" : ""}`;
+    relevance = seedMatch ? 95 : 85;
+    scoreCap = adjacentCopper ? 74 : 100;
+    evidence = `\u5173\u952E\u8BCD\u81EA\u8EAB\u8BC6\u522B\u5230\u6210\u5206${seedMatch ? "\uFF0C\u4E0E\u7814\u7A76\u4E3B\u9898\u6210\u5206\u5339\u914D" : ""}\uFF1B\u5242\u578B\u3001\u5242\u91CF\u548C\u4EBA\u7FA4\u4E0D\u673A\u68B0\u52A0\u5206\uFF0C\u6210\u5206\u4E3B\u8BCD\u4E0D\u56E0\u7B80\u77ED\u9650\u5206${adjacentCopper ? "\uFF1B\u6CDB\u94DC\u80BD\u4E0D\u7B49\u4E8EGHK-Cu\uFF0C\u6700\u9AD874" : ""}\uFF1B\u53E3\u670D\u4EA7\u54C1\u4ECD\u9700\u6765\u6E90\u6838\u9A8C`;
   }
-  if (broadFishOil || broadCategory) {
-    relevance = broadFishOil ? 55 : 40;
-    product = broadFishOil ? 40 : 25;
-    scoreCap = broadFishOil ? 59 : 49;
+  if (broadCategory) {
+    relevance = 40;
+    scoreCap = 49;
     tags.push("\u6CDB\u8BCD\u964D\u6743");
-    evidence = `${broadFishOil ? "\u9C7C\u6CB9\u7C7B\u6CDB\u8BCD\uFF0C\u672A\u660E\u786EOmega-3/EPA/DHA\u6216\u5242\u578B\u4E0E\u5242\u91CF\u7EC4\u5408" : "\u4FDD\u5065\u54C1\u7C7B\u76EE\u6CDB\u8BCD\uFF0C\u672A\u660E\u786E\u5177\u4F53\u6210\u5206"}\uFF1B\u603B\u5206\u6700\u9AD8${scoreCap}`;
+    evidence = "\u4FDD\u5065\u54C1\u7C7B\u76EE\u6CDB\u8BCD\uFF0C\u672A\u660E\u786E\u5177\u4F53\u6210\u5206\uFF1B\u603B\u5206\u6700\u9AD849";
   }
   if (seedMismatch) {
     relevance = Math.min(relevance, 45);
-    scoreCap = Math.min(scoreCap, 59);
-    evidence += "\uFF1B\u5173\u952E\u8BCD\u6210\u5206\u4E0E\u79CD\u5B50\u6210\u5206\u4E0D\u5339\u914D\uFF0C\u603B\u5206\u6700\u9AD859";
+    scoreCap = Math.min(scoreCap, 39);
+    evidence += "\uFF1B\u6210\u5206\u504F\u79BB\u7814\u7A76\u4E3B\u9898\uFF0C\u4E0D\u80FD\u628A\u5176\u4ED6\u80BD\u6216\u5176\u4ED6\u6210\u5206\u5F53\u6210\u540C\u4E00\u5E02\u573A\uFF0C\u6700\u9AD839";
   }
   if (information && !offTopic) {
     scoreCap = Math.min(scoreCap, 64);
@@ -107,24 +163,61 @@ function assessSupplementRelevance(keyword) {
   }
   if (ambiguous && !offTopic) {
     relevance = 15;
-    product = 10;
     scoreCap = 39;
     tags.push("\u540C\u540D\u6B67\u4E49\u5F85\u6838\u9A8C");
     evidence = "\u5355\u72ECOmega\u4E0D\u80FD\u8BC1\u660E\u662FOmega-3\u4FDD\u5065\u54C1\uFF1B\u9700\u660E\u786E\u6210\u5206\u8868\u8FBE\uFF0C\u603B\u5206\u6700\u9AD839";
   }
   if (offTopic) {
     relevance = excluded ? 0 : 10;
-    product = excluded ? 0 : 10;
     scoreCap = excluded ? 19 : 39;
     tags.push("\u975E\u5546\u54C1\u9700\u6C42", ...excluded ? ["\u975E\u4FDD\u5065\u54C1\u7C7B\u76EE"] : []);
     evidence = `${excluded ? "\u547D\u4E2D\u624B\u8868\u3001\u6C7D\u8F66\u3001\u5BA0\u7269\u6216\u5916\u7528\u62A4\u80A4\u7B49\u975E\u76EE\u6807\u7C7B\u76EE" : "\u547D\u4E2D\u533B\u7597\u670D\u52A1\u3001\u62DB\u8058\u6216\u5A92\u4F53\u7B49\u975E\u5546\u54C1\u8868\u8FBE"}\uFF1B\u79CD\u5B50\u4E0E\u5206\u7C7B\u4E0D\u80FD\u62B5\u6D88\uFF0C\u603B\u5206\u6700\u9AD8${scoreCap}`;
   }
-  return { relevance, product, scoreCap, evidence, tags, offTopic, brand };
+  return {
+    relevance,
+    scoreCap,
+    evidence,
+    tags,
+    offTopic,
+    brand,
+    ingredient,
+    commercial,
+    seedMismatch
+  };
 }
 
 // apps/web-antd/src/views/intelligence/keyword-scoring.ts
-var KEYWORD_MODEL_VERSION = "concept-research-v3.2-30d";
+var KEYWORD_MODEL_VERSION = "product-research-v4-evidence";
 var clamp = (value) => Math.round(Math.max(0, Math.min(100, value)));
+var ageDays = (date2) => (Date.now() - Date.parse(date2 || "")) / 864e5;
+var fresh = (date2, days) => ageDays(date2) >= -1 && ageDays(date2) <= days;
+function productEvidence(keyword) {
+  const text = (value) => normalizeKeywordText(value).replaceAll(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return (keyword.productKeywordEvidence || []).filter((item) => {
+    let validUrl = false;
+    try {
+      validUrl = ["http:", "https:"].includes(new URL(item.url).protocol);
+    } catch {
+    }
+    return item.basis === "product_text_candidate" && (keyword.productIds || []).includes(item.productId) && Boolean(item.sourceId?.trim() && item.fingerprint?.trim()) && validUrl && fresh(item.collectedAt, 180) && Boolean(text(keyword.term)) && ` ${text(item.quote)} `.includes(` ${text(keyword.term)} `) && hasOralProductContext(`${item.productTitle || ""} ${item.quote}`);
+  });
+}
+function missingCollectionStatus(status) {
+  if (status === "failed") return "failed";
+  if (["pending", "queued", "running", "collecting"].includes(status || ""))
+    return "pending";
+  if ([
+    "empty",
+    "unavailable",
+    "collected",
+    "partial",
+    "completed",
+    "unsupported",
+    "invalid"
+  ].includes(status || ""))
+    return "unavailable";
+  return "missing";
+}
 function gradeForScore(score) {
   if (score >= 80) return "A";
   if (score >= 65) return "B";
@@ -137,7 +230,6 @@ function assessKeyword(keyword) {
   const { relevance, offTopic, brand } = business;
   const tags = new Set(business.tags);
   if (keyword.source.includes("Sorftime")) tags.add("Amazon\u7AD9\u5185\u6765\u6E90");
-  let product = business.product;
   const normalized = new Map(
     (keyword.trendPoints || []).filter(
       (p) => !p.isPartial && Number.isFinite(p.value) && p.value >= 0 && p.value <= 100 && Number.isFinite(Date.parse(p.date))
@@ -147,30 +239,28 @@ function assessKeyword(keyword) {
     (a, b) => Date.parse(a.date) - Date.parse(b.date)
   );
   const annualSeries = points.map((p) => p.value);
-  const span = points.length > 1 ? (Date.parse(points.at(-1).date) - Date.parse(points[0].date)) / 864e5 : 0;
-  const trendAge = keyword.trendCollectedAt ? (Date.now() - Date.parse(keyword.trendCollectedAt)) / 864e5 : Number.NaN;
-  const usableTrend = points.length >= 8 && span >= 56 && span <= 800 && annualSeries.some((v) => v > 0) && trendAge >= -1 && trendAge <= 45;
+  const span = points.length > 1 ? (Date.parse(points.at(-1)?.date || "") - Date.parse(points[0]?.date || "")) / 864e5 : 0;
+  const usableTrend = points.length >= 8 && span >= 56 && span <= 800 && annualSeries.some((v) => v > 0) && fresh(keyword.trendCollectedAt, 45) && fresh(points.at(-1)?.date, 60);
   let trendScore = null;
   let trendEvidence = keyword.trendMessage || "\u5C1A\u65E0\u8DB3\u591F\u7684\u6709\u6548\u8D8B\u52BF\u65F6\u5E8F";
+  let trendSource = "";
+  let trendDate = keyword.trendCollectedAt;
   if (usableTrend) {
     const daily = (keyword.trendDailyPoints || []).filter(
       (p) => !p.isPartial && Number.isFinite(p.value) && p.value >= 0 && p.value <= 100 && Number.isFinite(Date.parse(p.date))
     ).toSorted((a, b) => Date.parse(a.date) - Date.parse(b.date));
-    const dailySpan = daily.length > 1 ? (Date.parse(daily.at(-1).date) - Date.parse(daily[0].date)) / 864e5 : 0;
-    const windowPoints = daily.length >= 60 && dailySpan >= 59 ? daily : points;
+    const dailySpan = daily.length > 1 ? (Date.parse(daily.at(-1)?.date || "") - Date.parse(daily[0]?.date || "")) / 864e5 : 0;
+    const windowPoints = daily.length >= 60 && dailySpan >= 59 && fresh(keyword.trendDailyCollectedAt, 45) && fresh(daily.at(-1)?.date, 45) ? daily : points;
     const dailyUsed = windowPoints === daily;
     const step = dailyUsed ? 1 : Math.min(31, Math.max(1, Math.round(span / (points.length - 1))));
-    const end = Date.parse(windowPoints.at(-1).date) + step * 864e5;
+    const end = Date.parse(windowPoints.at(-1)?.date || "") + step * 864e5;
     const avgWindow = (start, finish) => {
       let days = 0;
       let sum = 0;
-      for (let i = 0; i < windowPoints.length; i++) {
-        const p = windowPoints[i];
+      for (const [i, p] of windowPoints.entries()) {
         const from = Date.parse(p.date);
-        const to = i + 1 < windowPoints.length ? Math.min(
-          Date.parse(windowPoints[i + 1].date),
-          from + step * 864e5
-        ) : from + step * 864e5;
+        const next = windowPoints[i + 1];
+        const to = next ? Math.min(Date.parse(next.date), from + step * 864e5) : from + step * 864e5;
         const overlap = Math.max(0, Math.min(to, finish) - Math.max(from, start)) / 864e5;
         sum += p.value * overlap;
         days += overlap;
@@ -188,9 +278,7 @@ function assessKeyword(keyword) {
     }
     const total = annualSeries.reduce((sum, v) => sum + v, 0);
     const spike = Math.max(...annualSeries) / total > 0.45;
-    trendScore = clamp(
-      (continuity * 65 + momentum * 0.35) * (spike ? 0.65 : 1)
-    );
+    trendScore = clamp((continuity * 40 + momentum * 0.6) * (spike ? 0.65 : 1));
     if (spike) tags.add("\u5076\u53D1\u5C16\u5CF0");
     else if (continuity >= 0.7) tags.add("\u9700\u6C42\u6301\u7EED");
     if (recent !== null && previous !== null) {
@@ -200,14 +288,41 @@ function assessKeyword(keyword) {
       else if (continuity >= 0.7) tags.add("\u8D70\u52BF\u5E73\u7A33");
     }
     if (continuity < 0.2) tags.add("\u4F4E\u6837\u672C\u4FE1\u53F7");
-    trendEvidence = `\u4E00\u5E74\u8D8B\u52BF\u6301\u7EED\u602765% + \u8FD130\u5929\u76F8\u5BF9\u6B64\u524D30\u5929\u52A8\u91CF35%\uFF1B${dailyUsed ? "\u65E5\u6570\u636E" : "\u6309\u539F\u59CB\u65F6\u70B9\u8986\u76D6\u5929\u6570\u52A0\u6743"}\uFF0C\u6709\u6548\u70B9${points.length}\u4E2A\uFF0C\u8986\u76D6${Math.round(span)}\u5929\uFF1B\u5C16\u5CF0\u964D\u6743\uFF0C\u4E0D\u4EE3\u8868\u641C\u7D22\u91CF`;
-  } else tags.add(points.length > 0 ? "\u8D8B\u52BF\u6837\u672C\u4E0D\u8DB3\u6216\u8FC7\u671F" : "\u5F85\u8865\u8D8B\u52BF");
+    trendSource = "Google Trends";
+    trendEvidence = `Google\u8D8B\u52BF\u6301\u7EED\u602740% + \u8FD130\u5929\u76F8\u5BF9\u6B64\u524D30\u5929\u52A8\u91CF60%\uFF1B${dailyUsed ? "\u65E5\u6570\u636E" : "\u6309\u539F\u59CB\u65F6\u70B9\u8986\u76D6\u5929\u6570\u52A0\u6743"}\uFF0C\u6709\u6548\u70B9${points.length}\u4E2A\uFF0C\u8986\u76D6${Math.round(span)}\u5929\uFF1B\u5C16\u5CF0\u964D\u6743\uFF0C\u4E0D\u4EE3\u8868\u641C\u7D22\u91CF`;
+  }
   const metrics = keyword.metrics;
   const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;
   const metricAge = (Date.now() - metricDate) / 864e5;
   const validMetrics = Boolean(
     metrics?.source.trim() && metrics.market === keyword.market && Number.isFinite(metricDate) && metricAge >= -1 && metricAge <= 90
   );
+  const monthly = semrushTrendSummary(metrics, keyword.market);
+  if (trendScore === null && validMetrics && monthly.available && fresh(monthly.collectedAt, 90) && monthly.values.some((v) => v > 0)) {
+    const values = monthly.values;
+    const mean = (items) => items.reduce((sum, n) => sum + n, 0) / items.length;
+    const previous = mean(values.slice(-6, -3));
+    const recent = mean(values.slice(-3));
+    const continuity = values.filter((v) => v > 0).length / values.length;
+    let momentum = recent > 0 ? 70 : 20;
+    if (previous > 0) momentum = clamp(50 + 50 * (recent / previous - 1));
+    const spike = Math.max(...values) / values.reduce((sum, n) => sum + n, 0) > 0.45;
+    trendScore = clamp((40 * continuity + 0.6 * momentum) * (spike ? 0.65 : 1));
+    trendSource = "Semrush\u6708\u5EA6\u76F8\u5BF9\u8D8B\u52BF";
+    trendDate = monthly.collectedAt;
+    trendEvidence = `Semrush\u8FC7\u53BB12\u4E2A\u6708\u76F8\u5BF9\u70ED\u5EA6\uFF0C\u6301\u7EED\u602740% + \u6700\u8FD13\u70B9\u76F8\u5BF9\u6B64\u524D3\u70B9\u52A8\u91CF60%\uFF1B${monthly.quarterChange === null ? "\u6B64\u524D\u7A97\u53E3\u4E3A0\uFF0C\u53D8\u5316\u7387\u672A\u77E5" : `\u76F8\u5BF9\u53D8\u5316${monthly.quarterChange}%`}\uFF1B\u5C16\u5CF0\u964D\u6743\uFF0C\u6765\u6E90\u672A\u63D0\u4F9B\u9010\u6708\u65E5\u671F\uFF0C\u4E0D\u6362\u7B97\u641C\u7D22\u6B21\u6570`;
+    tags.add("Semrush\u8D8B\u52BF");
+    if (spike) tags.add("\u5076\u53D1\u5C16\u5CF0");
+    else if (continuity >= 0.7) tags.add("\u9700\u6C42\u6301\u7EED");
+    if (previous > 0 && recent < previous * 0.8) tags.add("\u8FD1\u671F\u56DE\u843D");
+    else if (recent > previous * 1.2 && recent > 0)
+      tags.add(previous > 0 ? "\u8FD1\u671F\u589E\u957F" : "\u65B0\u51FA\u73B0\u4FE1\u53F7");
+    else if (continuity >= 0.7) tags.add("\u8D70\u52BF\u5E73\u7A33");
+  }
+  if (trendScore === null) {
+    tags.add("\u5F85\u8865\u8D8B\u52BF");
+    trendEvidence = "\u7F3A\u5C11\u65B0\u9C9C\u3001\u540C\u5E02\u573A\u4E14\u6837\u672C\u5145\u5206\u7684Google\u8D8B\u52BF\u6216Semrush\u6708\u8D8B\u52BF\uFF1B\u672A\u6536\u5F55\u3001\u51680\u548C\u91C7\u96C6\u5931\u8D25\u5747\u4E0D\u63A8\u7B97\u589E\u957F";
+  }
   const volume = validMetrics && Number.isFinite(metrics?.monthlySearchVolume) && (metrics?.monthlySearchVolume ?? -1) >= 0 ? metrics?.monthlySearchVolume : void 0;
   const volumeCeiling = keyword.market === "US" ? 1e5 : 5e4;
   const demandScore = volume === void 0 ? null : clamp(Math.log10(1 + volume) / Math.log10(1 + volumeCeiling) * 100);
@@ -221,49 +336,52 @@ function assessKeyword(keyword) {
     if (metrics.intent) tags.add(`\u641C\u7D22\u610F\u56FE\uFF1A${metrics.intent}`);
   }
   const intent = validMetrics ? metrics?.intent || "" : "";
-  const purchaseIntent = /(?:^|[,;\s])(2|3)(?:$|[,;\s])|commercial|transactional/i.test(intent);
-  const navigationIntent = /^1$|^navigational$/i.test(intent.trim());
-  const purchaseBonus = purchaseIntent && !offTopic && business.scoreCap > 49;
-  if (purchaseBonus) product = clamp(product + 10);
+  const semrushIntent = /Semrush/i.test(metrics?.source || "");
+  const purchaseIntent = /commercial|transactional/i.test(intent) || semrushIntent && /(?:^|[,;\s])[03](?:$|[,;\s])/.test(intent);
+  const navigationIntent = /^navigational$/i.test(intent.trim()) || semrushIntent && /^2$/.test(intent.trim());
+  if (purchaseIntent) tags.add("\u5546\u4E1A\u610F\u56FE\u7EBF\u7D22");
+  const products = productEvidence(keyword);
+  const productScore = products.length > 0 && !offTopic && !business.seedMismatch && business.ingredient ? 70 : null;
+  if (productScore === null) tags.add("\u5F85\u6838\u9A8C\u53E3\u670D\u5546\u54C1");
   if (volume === 0) tags.add("\u5E73\u53F0\u641C\u7D22\u91CF\u4E3A0");
   const dimensions = [
     {
       key: "relevance",
-      label: "\u4E1A\u52A1\u76F8\u5173\u6027",
-      weight: 25,
-      coveredWeight: 25,
+      label: "\u6210\u5206\u4E0E\u7814\u7A76\u4E3B\u9898",
+      weight: 30,
+      coveredWeight: 30,
       score: relevance,
       evidence: business.evidence
     },
     {
       key: "demand",
-      label: "\u9700\u6C42\u89C4\u6A21",
-      weight: 20,
-      coveredWeight: demandScore === null ? 0 : 20,
+      label: "\u641C\u7D22\u9700\u6C42\u89C4\u6A21",
+      weight: 25,
+      coveredWeight: demandScore === null ? 0 : 25,
       score: demandScore,
       evidence: volume === void 0 ? "\u7F3A\u5C11\u6709\u6765\u6E90\u3001\u65E5\u671F\u548C\u540C\u5E02\u573A\u7684\u641C\u7D22\u91CF\u6307\u6807" : `\u6708\u641C\u7D22\u91CF${volume}\uFF1B${metrics?.source}\uFF1B\u5E02\u573A\u56FA\u5B9A\u53C2\u8003\u4E0A\u6CBF${volumeCeiling}`
     },
     {
       key: "trend",
-      label: "\u8D8B\u52BF\u8868\u73B0",
-      weight: 20,
-      coveredWeight: trendScore === null ? 0 : 20,
+      label: "\u9700\u6C42\u8D8B\u52BF",
+      weight: 25,
+      coveredWeight: trendScore === null ? 0 : 25,
       score: trendScore,
       evidence: trendEvidence
     },
     {
       key: "product",
-      label: "\u6982\u5FF5\u7814\u7A76\u4EF7\u503C",
-      weight: 20,
-      coveredWeight: 20,
-      score: product,
-      evidence: `\u4FDD\u5065\u54C1\u6210\u5206\u3001\u5242\u578B\u3001\u5242\u91CF\u3001\u4EBA\u7FA4\u4E0E\u6982\u5FF5\u8868\u8FBE\u7684\u89C4\u5219\u8BC4\u5206${purchaseBonus ? "\uFF1BSemrush \u5546\u4E1A\u6216\u4EA4\u6613\u610F\u56FE\u52A010\u5206\uFF08\u672C\u7EF4\u5EA6\u5C01\u9876100\uFF09" : ""}\uFF1B\u4E0D\u4EE3\u8868\u9500\u91CF\u6216\u5229\u6DA6`
+      label: "\u53E3\u670D\u5546\u54C1\u6587\u672C\u7EBF\u7D22",
+      weight: 15,
+      coveredWeight: productScore === null ? 0 : 15,
+      score: productScore,
+      evidence: productScore === null ? "\u672A\u627E\u5230\u7B26\u5408\u6761\u4EF6\u7684\u5DF2\u5173\u8054\u53E3\u670D\u5546\u54C1\u539F\u6587\uFF1A\u9700\u6765\u6E90URL\u3001\u5F15\u7528\u3001\u6765\u6E90ID\u3001\u6307\u7EB9\u548C180\u5929\u5185\u65E5\u671F\uFF1B\u5242\u578B\u8BCD\u3001\u610F\u56FE\u4EE3\u7801\u3001\u5173\u8054\u6570\u91CF\u5747\u4E0D\u7B97\u5546\u54C1\u8BC1\u636E" : `\u6709\u53EF\u8FFD\u6EAF\u53E3\u670D\u5546\u54C1\u539F\u6587\u7EBF\u7D22\uFF0C\u56FA\u5B9A70\u5206\uFF1B${products[0]?.url}\uFF1B\u4EC5\u8BC1\u660E\u5546\u54C1\u6587\u672C\u63D0\u53CA\uFF0C\u4E0D\u4EE3\u8868\u9500\u91CF\u3001\u4EBA\u4F53\u529F\u6548\u3001\u5E02\u573A\u51C6\u5165\u6216\u5229\u6DA6`
     },
     {
       key: "competition",
-      label: "\u7ADE\u4E89\u5207\u5165\u7A7A\u95F4",
-      weight: 15,
-      coveredWeight: kd === void 0 ? 0 : 15,
+      label: "SEO\u5207\u5165\u96BE\u5EA6",
+      weight: 5,
+      coveredWeight: kd === void 0 ? 0 : 5,
       score: competitionScore,
       evidence: kd === void 0 ? "\u7F3A\u5C11\u540C\u5E02\u573A\u81EA\u7136\u641C\u7D22 KD\uFF1B\u5E7F\u544A\u7ADE\u4E89\u5EA6\u4E0D\u662F KD" : `100 \u2212 KD(${kd})\uFF1B${metrics?.source}\uFF1B\u4EC5\u53CD\u6620\u81EA\u7136\u641C\u7D22\u6392\u540D\u96BE\u5EA6\uFF0C\u4E0D\u7B49\u4E8E\u5546\u4E1A\u7ADE\u4E89\u3001\u76C8\u5229\u6216\u524D\u4E09\u7AD9\u70B9\u6D41\u91CF\u4EFD\u989D`
     }
@@ -282,21 +400,113 @@ function assessKeyword(keyword) {
     score = Math.min(score, business.scoreCap);
     if (brand || navigationIntent) score = Math.min(score, 64);
     if (volume === 0) score = Math.min(score, 49);
+    if (demandScore === null && trendScore === null)
+      score = Math.min(score, 49);
+    else if (demandScore === null || trendScore === null)
+      score = Math.min(score, 64);
+    if (productScore === null) score = Math.min(score, 79);
   }
   const grade = gradeForScore(score);
   const status = coverage === 100 ? "rated" : "provisional";
-  const recommendations = {
-    A: "\u4F18\u5148\u4EBA\u5DE5\u590D\u6838\uFF0C\u53EF\u5165\u9009\u4E0B\u4E00\u6B65\u72EC\u7ACB\u7AD9\u7814\u7A76",
-    B: "\u6709\u7814\u7A76\u4EF7\u503C\uFF0C\u7ED3\u5408\u5206\u9879\u4F9D\u636E\u51B3\u5B9A\u662F\u5426\u5165\u9009",
-    C: "\u7EE7\u7EED\u89C2\u5BDF\uFF0C\u4F18\u5148\u8865\u5145\u7F3A\u5931\u8BC1\u636E",
-    D: "\u6682\u7F13\u6DF1\u5165\u7814\u7A76\uFF0C\u68C0\u67E5\u76F8\u5173\u6027\u548C\u9700\u6C42\u4FE1\u53F7"
+  let decision = {
+    action: "defer",
+    label: "\u6682\u7F13\u7814\u7A76",
+    reason: "\u73B0\u6709\u4FE1\u53F7\u8F83\u5F31\uFF0C\u6682\u4E0D\u4F18\u5148\u6295\u5165\u9009\u54C1\u8D44\u6E90"
   };
-  let recommendation = grade ? recommendations[grade] : "\u8BC4\u5206\u5DF2\u751F\u6210\uFF0C\u53EF\u7EE7\u7EED\u8865\u5145\u8D8B\u52BF\u3001\u641C\u7D22\u91CF\u548CKD\u63D0\u9AD8\u8986\u76D6\u7387";
-  if (tags.has("\u6CDB\u8BCD\u964D\u6743"))
-    recommendation = "\u6CDB\u8BCD\u4F18\u5148\u7EC6\u5316\u6210\u5206\u3001\u5242\u578B\u3001\u5242\u91CF\u6216\u4EBA\u7FA4\uFF0C\u518D\u8BC4\u4F30\u5546\u54C1\u673A\u4F1A";
-  if (tags.has("\u540C\u540D\u6B67\u4E49\u5F85\u6838\u9A8C"))
-    recommendation = "\u5148\u6838\u9A8C\u662F\u5426\u6307Omega-3\u4FDD\u5065\u54C1\uFF0C\u660E\u786E\u6210\u5206\u540E\u518D\u7814\u7A76";
-  if (offTopic) recommendation = "\u4E0D\u5C5E\u4E8E\u76EE\u6807\u4FDD\u5065\u54C1\u5546\u54C1\u9700\u6C42\uFF0C\u5EFA\u8BAE\u6392\u9664\u6216\u4EBA\u5DE5\u6838\u9A8C";
+  if (score >= 80) {
+    decision = {
+      action: "research",
+      label: "\u4F18\u5148\u6DF1\u5165\u7814\u7A76",
+      reason: "\u9700\u6C42\u3001\u8D8B\u52BF\u4E0E\u53E3\u670D\u5546\u54C1\u7EBF\u7D22\u652F\u6301\u4F18\u5148\u6838\u9A8C\uFF1B\u7EE7\u7EED\u6838\u5BF9\u5B9E\u9645\u9500\u91CF\u3001\u590D\u8D2D\u3001\u6BDB\u5229\u53CA\u76EE\u6807\u5E02\u573A\u51C6\u5165"
+    };
+  } else if (score >= 65) {
+    decision = {
+      action: "observe",
+      label: "\u7EE7\u7EED\u89C2\u5BDF",
+      reason: "\u6709\u7814\u7A76\u4FE1\u53F7\uFF0C\u8865\u5145\u53E3\u670D\u5546\u54C1\u4E0E\u7EC6\u5206\u7528\u9014\u8BC1\u636E\u540E\u518D\u51B3\u5B9A\u6295\u5165"
+    };
+  } else if (score >= 50) {
+    decision = {
+      action: "observe",
+      label: "\u4F4E\u4F18\u5148\u89C2\u5BDF",
+      reason: "\u5F53\u524D\u4FE1\u53F7\u4E00\u822C\uFF0C\u5148\u9A8C\u8BC1\u7EC6\u5206\u9700\u6C42\u4E0E\u5546\u54C1\u7EBF\u7D22"
+    };
+  }
+  if (demandScore === null || trendScore === null || !business.ingredient)
+    decision = {
+      action: "collect",
+      label: "\u5148\u8865\u8BC1\u636E",
+      reason: "\u7F3A\u5C11\u6210\u5206\u6838\u9A8C\u3001\u641C\u7D22\u91CF\u6216\u6709\u6548\u8D8B\u52BF\uFF1B\u5F53\u524D\u4F4E\u5206\u4E0D\u7B49\u4E8E\u6CA1\u6709\u5E02\u573A\uFF0C\u4E0D\u8FDB\u5165\u4F18\u5148\u7814\u7A76\u6C60"
+    };
+  if (offTopic || business.seedMismatch)
+    decision = {
+      action: "exclude",
+      label: "\u6392\u9664\u5F53\u524D\u65B9\u5411",
+      reason: "\u975E\u76EE\u6807\u53E3\u670D\u5546\u54C1\u6216\u504F\u79BB\u7814\u7A76\u6210\u5206\uFF0C\u5EFA\u8BAE\u6392\u9664\uFF1B\u53EF\u53E6\u5EFA\u9002\u7528\u65B9\u5411\u7814\u7A76"
+    };
+  const recommendation = `${decision.label}\uFF1A${decision.reason}\u3002\u5206\u6570\u7528\u4E8E\u7814\u7A76\u6392\u5E8F\uFF0C\u4E0D\u4EE3\u8868\u5907\u8D27\u5EFA\u8BAE\u3002`;
+  const metricStatus = (present) => {
+    if (present) return "available";
+    if (metrics && metrics.market !== keyword.market) return "mismatch";
+    if (metrics && Number.isFinite(metricDate) && !fresh(metrics.collectedAt, 90))
+      return "stale";
+    return missingCollectionStatus(keyword.semrushCollection?.status);
+  };
+  let relevanceStatus = "missing";
+  if (offTopic || business.seedMismatch) relevanceStatus = "mismatch";
+  else if (business.ingredient) relevanceStatus = "available";
+  const trendStatus = () => {
+    if (trendScore !== null) return "available";
+    if (metrics?.searchTrend && metrics.market !== keyword.market)
+      return "mismatch";
+    if (monthly.available && !fresh(monthly.collectedAt, 90) || points.length > 0 && !fresh(keyword.trendCollectedAt, 45))
+      return "stale";
+    if (monthly.available || points.length > 0) return "unavailable";
+    return missingCollectionStatus(
+      keyword.trendStatus || metrics?.searchTrend?.status
+    );
+  };
+  const checks = [
+    {
+      key: "relevance",
+      label: "\u6210\u5206\u4E0E\u7814\u7A76\u4E3B\u9898",
+      status: relevanceStatus,
+      source: "\u6210\u5206\u89C4\u5219\u4E0E\u4EFB\u52A1\u4E3B\u9898\u6838\u5BF9",
+      message: business.evidence
+    },
+    {
+      key: "demand",
+      label: "\u540C\u5E02\u573A\u6708\u641C\u7D22\u91CF",
+      status: metricStatus(demandScore !== null),
+      source: metrics?.source,
+      collectedAt: metrics?.collectedAt,
+      message: volume === void 0 ? keyword.semrushCollection?.message || "\u672A\u77E5\uFF0C\u4E0D\u63090\u5904\u7406\uFF1B\u9700\u540C\u5E02\u573A\u6765\u6E90\u4E0E90\u5929\u5185\u91C7\u96C6\u65E5\u671F" : `\u6765\u6E90\u4F30\u7B97${volume}/\u6708${volume === 0 ? "\uFF0C\u5DF2\u660E\u786E\u8FD4\u56DE0\uFF0C\u533A\u522B\u4E8E\u672A\u6536\u5F55" : "\uFF1B\u4E0D\u4EE3\u8868\u53E3\u670D\u8D2D\u4E70\u91CF"}`
+    },
+    {
+      key: "trend",
+      label: "\u6709\u6548\u9700\u6C42\u8D8B\u52BF",
+      status: trendStatus(),
+      source: trendSource || "Google Trends / Semrush",
+      collectedAt: trendScore === null ? metrics?.searchTrend?.collectedAt || keyword.trendCollectedAt : trendDate,
+      message: trendEvidence
+    },
+    {
+      key: "product",
+      label: "\u53EF\u8FFD\u6EAF\u53E3\u670D\u5546\u54C1\u539F\u6587",
+      status: productScore === null ? "missing" : "available",
+      source: productScore === null ? void 0 : products[0]?.url,
+      collectedAt: productScore === null ? void 0 : products[0]?.collectedAt,
+      message: productScore === null ? "\u5F85\u8865\u539F\u6587\u6216\u6838\u9A8C\u5173\u8054\u3001\u53E3\u670D\u7528\u9014\u4E0E\u65E5\u671F\uFF1B\u4E0D\u4EE5\u5546\u54C1ID\u6216\u641C\u7D22\u610F\u56FE\u4EE3\u66FF\u8BC1\u636E" : "\u5173\u8054\u53E3\u670D\u5546\u54C1\u7684\u539F\u6587\u7EBF\u7D22\u53EF\u8FFD\u6EAF\uFF1B\u4ECD\u9700\u4EBA\u5DE5\u6838\u9A8C\u5546\u54C1\u5E02\u573A\u3001\u6807\u7B7E\u4E0E\u5B9E\u9645\u9500\u552E"
+    },
+    {
+      key: "competition",
+      label: "\u540C\u5E02\u573A\u81EA\u7136\u641C\u7D22KD",
+      status: metricStatus(kd !== void 0),
+      source: metrics?.source,
+      collectedAt: metrics?.collectedAt,
+      message: kd === void 0 ? "\u7F3A\u5C11\u6709\u6548KD\uFF1B\u5E7F\u544A\u7ADE\u4E89\u5EA6\u4E0D\u80FD\u4EE3\u66FF" : `KD ${kd}\uFF1B\u4EC5\u4F5CSEO\u53C2\u8003\uFF0C\u4E0D\u662F\u5546\u54C1\u7ADE\u4E89\u5EA6`
+    }
+  ];
   return {
     version: KEYWORD_MODEL_VERSION,
     assessedAt: metrics?.collectedAt || keyword.trendCollectedAt || keyword.collectedAt || keyword.updatedAt || "",
@@ -306,6 +516,8 @@ function assessKeyword(keyword) {
     coverage,
     tags: [...tags],
     recommendation,
+    decision,
+    checks,
     dimensions
   };
 }
@@ -1499,7 +1711,7 @@ function sourceUrl(product) {
     return false;
   }
 }
-function productEvidence(product, ads, keywords) {
+function productEvidence2(product, ads, keywords) {
   const relatedAds = ads.filter((ad) => ad.productId === product.id);
   const relatedKeywords = keywords.filter(
     (keyword) => keyword.productIds.includes(product.id)
@@ -1541,7 +1753,7 @@ function productFindings(state, windowDays, includeDemo) {
     const decision = discoveryDecision(product, "product");
     const keywords = linkedKeywords(state, [product]);
     const ads = linkedAds(state, [product], windowDays, includeDemo);
-    const evidence = productEvidence(product, ads, keywords);
+    const evidence = productEvidence2(product, ads, keywords);
     const growth = keywordGrowth(keywords);
     const relatedAds = ads.length;
     const confidence = Math.min(decision.isNew === true ? 95 : 69, clamp2(
@@ -2734,6 +2946,7 @@ function classifyKeyword(...values) {
   return rules.find(([pattern]) => pattern.test(text))?.[1] || "\u5F85\u5206\u7C7B";
 }
 export {
+  KEYWORD_MODEL_VERSION,
   RADAR_RULES_VERSION,
   assessKeyword,
   buildCollectedRadarFindings,

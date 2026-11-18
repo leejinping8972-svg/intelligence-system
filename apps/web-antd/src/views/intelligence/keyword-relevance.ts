@@ -2,7 +2,7 @@ import type { Keyword } from './data';
 
 // Match the expression itself. A discovery seed or an inherited category is not
 // evidence that a homonym belongs to the supplement business.
-function normalize(value: string) {
+export function normalizeKeywordText(value: string) {
   return value
     .normalize('NFKD')
     .replaceAll(/\p{M}/gu, '')
@@ -14,6 +14,16 @@ function normalize(value: string) {
 }
 
 const families: Array<[string, RegExp]> = [
+  [
+    'ghk-cu',
+    /\b(?:ghk\s*-?\s*cu|ghkcu|ghk[ -]copper[ -]peptides?|copper[ -]tripeptide\s*-?\s*1)\b|蓝铜肽|藍銅肽|蓝铜胜肽|铜三肽[ -]?1|三肽[ -]?1[ -]?铜/,
+  ],
+  ['copper-peptide', /\bcopper[ -]peptides?\b|铜肽|銅肽/],
+  [
+    'modified-peptide',
+    /\b(?:(?:palmitoyl|biotinoyl|myristoyl)[ -]tripeptide[ -]?1|tripeptide[ -]?10)\b/,
+  ],
+  ['ghk', /\b(?:ghk|tripeptide[ -]?1)\b/],
   ['omega', /\b(?:omega\s*-?\s*[369]|dha|epa)\b|欧米伽\s*[369]|欧米茄\s*[369]/],
   ['fish-oil', /\b(?:fish[ -]oil|aceite de pescado|dau ca)\b|鱼油|魚油/],
   ['magnesium', /\b(?:magnesium|magnesio|magie)\b|镁|鎂/],
@@ -46,8 +56,6 @@ const supplementPattern =
   /\b(?:supplements?|suplementos?|complementos? alimenticios?|thuc pham (?:bo sung|chuc nang)|bo sung|health products?)\b|保健品|膳食补充剂|营养补充剂|營養補充劑/;
 const purchasePattern =
   /\b(?:buy|price|shop|comprar|precio|mua|gia)\b|购买|價格|价格/;
-const dosePattern =
-  /\b\d+(?:[.,]\d+)?\s*(?:mg|mcg|ug|g|iu|cfu|ui)\b|\d+\s*(?:毫克|微克|亿菌|%)/;
 const audiencePattern =
   /\b(?:women|female|menopause|prenatal|pregnancy|kids|children|seniors|phu nu|mujeres?|ninos)\b|女性|孕妇|儿童|老年/;
 const informationPattern =
@@ -56,45 +64,72 @@ const brandPattern =
   /\b(?:amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/;
 // Explicit incompatible objects win even when the expression also says omega-3.
 const excludedPattern =
-  /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoo|serum|face cream)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜/;
+  /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoos?|serums?|creams?|topical|balms?|tallow|scalp complex|inject(?:ions?|ables?|ed|ing)?|vials?|syringes?|research use only|laboratory use|not for human consumption|niod|the ordinary|ordinary copper|geek (?:and|&) gorgeous|remedy copper)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜|精华液|外用|注射|仅供科研/;
 const servicePattern =
   /\b(?:hospitals?|clinics?|doctors?|jobs?|salary|magazine|badge reel|services?|partners|specialists?|environmental protection agency)\b|benh vien|tuyen dung|招聘|医院/;
 
 function ingredients(text: string) {
-  return families
+  const found = families
     .filter(([, pattern]) => pattern.test(text))
     .map(([key]) => key);
+  // A metal complex, an unbound peptide and a modified peptide are distinct.
+  return found.filter(
+    (key) =>
+      !(
+        key === 'ghk' &&
+        (found.includes('ghk-cu') || found.includes('modified-peptide'))
+      ) && !(key === 'copper-peptide' && found.includes('ghk-cu')),
+  );
+}
+
+export function hasOralProductContext(value: string) {
+  const text = normalizeKeywordText(value);
+  return (
+    !excludedPattern.test(text) &&
+    !/\b(?:not for oral|not (?:an? )?(?:oral|dietary) supplement|do not (?:swallow|ingest)|for external use|external use only|not intended for ingestion)\b|非口服|禁止口服|不可口服/.test(
+      text,
+    ) &&
+    (supplementPattern.test(text) ||
+      /\b(?:oral|by mouth|swallow|capsules?|tablets?|softgels?|gummies)\b|口服|胶囊|片剂|软胶囊/.test(
+        text,
+      ))
+  );
 }
 
 export function assessSupplementRelevance(
-  keyword: Pick<Keyword, 'seedTerm' | 'term'>,
+  keyword: Pick<Keyword, 'batch' | 'seedTerm' | 'term'>,
 ) {
-  const text = normalize(keyword.term);
+  const text = normalizeKeywordText(keyword.term);
   const found = ingredients(text);
-  const seeds = ingredients(normalize(keyword.seedTerm || ''));
+  const topic = ingredients(normalizeKeywordText(keyword.batch || ''));
+  const seeds =
+    topic.length > 0
+      ? topic
+      : ingredients(normalizeKeywordText(keyword.seedTerm || ''));
   // Fish oil and omega-3 are related discovery expressions, not separate scopes.
   const scope = (key: string) => (key === 'fish-oil' ? 'omega' : key);
   const seedMatch = found.some((key) =>
     seeds.some((seed) => scope(key) === scope(seed)),
   );
-  const seedMismatch = found.length > 0 && seeds.length > 0 && !seedMatch;
-  const ingredient = found.length > 0;
+  const adjacentCopper =
+    found.includes('copper-peptide') && seeds.includes('ghk-cu');
+  const seedMismatch =
+    found.length > 0 && seeds.length > 0 && !seedMatch && !adjacentCopper;
+  const ingredient = found.some(
+    (key) => !['ghk', 'modified-peptide'].includes(key),
+  );
   const form = formPattern.test(text);
   const commercial = supplementPattern.test(text) || purchasePattern.test(text);
   const information = informationPattern.test(text);
   const brand = brandPattern.test(text);
   const audience = audiencePattern.test(text);
-  const dose = dosePattern.test(text);
   const excluded =
     excludedPattern.test(text) ||
     /\bomega\b.*\b(?:constellation|de ville|planet ocean)\b/.test(text);
   const service = servicePattern.test(text);
   const offTopic = excluded || service;
   const ambiguous = /\bomega\b/.test(text) && !ingredient;
-  const broadFishOil =
-    found.length === 1 && found.includes('fish-oil') && !(form && dose);
   const broadCategory = !ingredient && supplementPattern.test(text);
-  const bareIngredient = ingredient && !form && !dose && !audience;
   const tags: string[] = [];
   if (ingredient && !offTopic) tags.push('成分词');
   if (form && ingredient && !offTopic) tags.push('剂型词');
@@ -104,43 +139,28 @@ export function assessSupplementRelevance(
   if (information) tags.push('内容研究词');
   if (seedMatch && !offTopic) tags.push('种子成分匹配');
   if (seedMismatch && !offTopic) tags.push('偏离种子成分');
+  if (adjacentCopper && !offTopic) tags.push('铜肽范围待核验');
 
   let relevance = 20;
-  let product = 10;
   let scoreCap = 49;
   let evidence =
     '关键词自身缺少可识别的保健品成分依据，分类标签与种子词不作为相关性证明；总分最高49';
   if (ingredient) {
-    relevance = Math.min(
-      100,
-      75 +
-        (form ? 15 : 0) +
-        (dose ? 5 : 0) +
-        (audience ? 5 : 0) +
-        (seedMatch ? 5 : 0),
-    );
-    product = Math.min(
-      100,
-      55 +
-        (form ? 25 : 0) +
-        (commercial ? 10 : 0) +
-        (dose ? 10 : 0) +
-        (audience ? 5 : 0),
-    );
-    scoreCap = bareIngredient ? 69 : 100;
-    evidence = `关键词自身识别到保健品成分${form ? '、剂型' : ''}${dose ? '、剂量' : ''}${audience ? '、适用人群' : ''}${seedMatch ? '；与种子成分匹配' : ''}${bareIngredient ? '；成分短词缺少具体商品限定，总分最高69' : ''}`;
+    relevance = seedMatch ? 95 : 85;
+    scoreCap = adjacentCopper ? 74 : 100;
+    evidence = `关键词自身识别到成分${seedMatch ? '，与研究主题成分匹配' : ''}；剂型、剂量和人群不机械加分，成分主词不因简短限分${adjacentCopper ? '；泛铜肽不等于GHK-Cu，最高74' : ''}；口服产品仍需来源核验`;
   }
-  if (broadFishOil || broadCategory) {
-    relevance = broadFishOil ? 55 : 40;
-    product = broadFishOil ? 40 : 25;
-    scoreCap = broadFishOil ? 59 : 49;
+  if (broadCategory) {
+    relevance = 40;
+    scoreCap = 49;
     tags.push('泛词降权');
-    evidence = `${broadFishOil ? '鱼油类泛词，未明确Omega-3/EPA/DHA或剂型与剂量组合' : '保健品类目泛词，未明确具体成分'}；总分最高${scoreCap}`;
+    evidence = '保健品类目泛词，未明确具体成分；总分最高49';
   }
   if (seedMismatch) {
     relevance = Math.min(relevance, 45);
-    scoreCap = Math.min(scoreCap, 59);
-    evidence += '；关键词成分与种子成分不匹配，总分最高59';
+    scoreCap = Math.min(scoreCap, 39);
+    evidence +=
+      '；成分偏离研究主题，不能把其他肽或其他成分当成同一市场，最高39';
   }
   if (information && !offTopic) {
     scoreCap = Math.min(scoreCap, 64);
@@ -148,17 +168,25 @@ export function assessSupplementRelevance(
   }
   if (ambiguous && !offTopic) {
     relevance = 15;
-    product = 10;
     scoreCap = 39;
     tags.push('同名歧义待核验');
     evidence = '单独Omega不能证明是Omega-3保健品；需明确成分表达，总分最高39';
   }
   if (offTopic) {
     relevance = excluded ? 0 : 10;
-    product = excluded ? 0 : 10;
     scoreCap = excluded ? 19 : 39;
     tags.push('非商品需求', ...(excluded ? ['非保健品类目'] : []));
     evidence = `${excluded ? '命中手表、汽车、宠物或外用护肤等非目标类目' : '命中医疗服务、招聘或媒体等非商品表达'}；种子与分类不能抵消，总分最高${scoreCap}`;
   }
-  return { relevance, product, scoreCap, evidence, tags, offTopic, brand };
+  return {
+    relevance,
+    scoreCap,
+    evidence,
+    tags,
+    offTopic,
+    brand,
+    ingredient,
+    commercial,
+    seedMismatch,
+  };
 }

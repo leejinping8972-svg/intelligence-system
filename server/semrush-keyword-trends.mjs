@@ -170,7 +170,7 @@ export function sanitizeSemrushExtras(metrics) {
 
 export function semrushTrendSummary(metrics, market) {
   const trend =
-    metrics?.market === market && /Semrush/i.test(metrics.source || '')
+    metrics?.market === market && /Semrush/i.test(metrics?.source || '')
       ? metrics.searchTrend
       : undefined;
   if (!validSemrushTrend(trend))

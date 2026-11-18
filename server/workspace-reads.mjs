@@ -6,6 +6,7 @@ import {conceptMemberCondition} from './concept-members.mjs';
 import { createConceptMonitor } from './concept-monitor.mjs';
 import {
   assessKeyword,
+  KEYWORD_MODEL_VERSION,
   groupAdvertisers,
   productDataSource,
   productDecisions,
@@ -477,6 +478,7 @@ export function createWorkspaceReads({
     // Time-dependent scores and decision labels are recalibrated without charging providers.
     if (
       marker?.version === MODEL_VERSION &&
+      marker?.keywordScoreVersion === KEYWORD_MODEL_VERSION &&
       Date.now() - Number(marker.at) < 3_600_000
     )
       return;
@@ -498,7 +500,7 @@ export function createWorkspaceReads({
     await putDocument(
       'workspace_documents',
       'read:model-version',
-      { version: MODEL_VERSION, at: Date.now() },
+      { version: MODEL_VERSION, keywordScoreVersion: KEYWORD_MODEL_VERSION, at: Date.now() },
       false,
       connection,
     );

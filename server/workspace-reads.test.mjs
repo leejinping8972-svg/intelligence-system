@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { migrateWorkspaceReads } from './workspace-read-schema.mjs';
 import { createWorkspaceReads, projectRecord } from './workspace-reads.mjs';
-import { coreMetrics } from './model.js';
+import { coreMetrics, KEYWORD_MODEL_VERSION } from './model.js';
 import { readReportSummaries } from './report-read-summaries.mjs';
 
 const pgSql = (postgres) => postgres;
@@ -187,6 +187,18 @@ async function exerciseReadModel(
     });
   await drain();
   const firstProducts = await reads.list({ collection: 'products', pageSize: 1 });
+  // A scoring-only release must rebuild cached keyword grades even when the
+  // global read model and the hourly marker have not changed.
+  const markerResult = await pool.query("SELECT value FROM workspace_documents WHERE name='read:model-version'");
+  const marker = markerResult.rows[0].value;
+  assert.equal(marker.keywordScoreVersion, KEYWORD_MODEL_VERSION);
+  await pool.query("UPDATE workspace_read_rows SET payload=$1 WHERE collection='keywords' AND id='k0'", [{ ...keyword(0), assessment: { version: 'legacy-score', score: 99 } }]);
+  await putDocument('workspace_documents', 'read:model-version', { ...marker, keywordScoreVersion: 'legacy-score' });
+  await drain();
+  const projectionResult = await pool.query("SELECT payload FROM workspace_read_rows WHERE collection='keywords' AND id='k0'");
+  const refreshedProjection = projectionResult.rows[0].payload;
+  assert.equal(refreshedProjection.assessment.version, KEYWORD_MODEL_VERSION);
+  assert.notEqual(refreshedProjection.assessment.score, 99);
   const keywordSummary = await reads.list({ collection: 'keywords', market: 'US', search: 'magnesium gummies 0', pageSize: 1 });
   assert.equal(keywordSummary.total, 1);
   // The list must retain counts when merging freshly saved trend evidence.
