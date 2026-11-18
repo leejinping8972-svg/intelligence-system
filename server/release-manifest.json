@@ -1,46 +1,54 @@
 {
-  "title": "概念种子关键词按任务主题生成并固定输出规范",
-  "sourceSha": "37b438e13c3ef5b9447c5135d34069a9256672b0",
-  "includedCommits": [
-    "37b438e13c3ef5b9447c5135d34069a9256672b0"
-  ],
-  "changes": [
-    "始终结合任务名称作为研究主题，方向描述选填，固定拼接英文成分名/别名/简称的输出规范",
-    "仅围绕主题生成，不拼接剂型/剂量/途径/功效或完整搜索句，不为凑数量加入无关成分",
-    "新建概念只读展示固定输出规范，无需手工输入；旧客户端缺少任务名称时明确提示刷新且不调用模型"
+  "title": "关键词按选品研究考量评分与证据完整性",
+  "sourceSha": "e49413da0b3716fe93fad1d9919c7cd4ed8dfb9f",
+  "featureShas": [
+    "e49413da0b3716fe93fad1d9919c7cd4ed8dfb9f"
   ],
   "files": [
+    "apps/web-antd/src/views/intelligence/keyword-relevance.ts",
+    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
     "apps/web-antd/src/views/intelligence/research.vue",
-    "server/concept-seed-prompt.mjs",
-    "server/concept-seed-prompt.d.mts",
-    "server/concept-seed-provider.mjs",
-    "server/concept-seed-provider.test.mjs",
-    "tests/concept-seed-suggestions.test.ts"
+    "server/KEYWORD-PRODUCT-SELECTION.md",
+    "server/concept-score.test.mjs",
+    "server/model.js",
+    "server/model.ts",
+    "server/semrush-keyword-trends.mjs",
+    "server/workspace-reads.mjs",
+    "server/workspace-reads.test.mjs",
+    "tests/keyword-product-selection.test.ts",
+    "tests/keyword-relevance.test.ts",
+    "tests/keyword-research.test.ts"
   ],
-  "developmentVerification": {
-    "backend": "9/9，模拟模型，无真实数据库/模型调用",
-    "frontend": "9/9，合成响应；含GHK-Cu空描述主题传递",
-    "typecheck": "完整Web类型通过",
-    "build": "独立前端生产构建8483 modules通过",
-    "lint": "新模块与专项oxlint干净，provider保留2条基线诊断；语法/diff通过",
-    "realModelCall": "未执行，不声称模型输出内容质量已实测"
+  "changes": [
+    "识别GHK-Cu与Copper Tripeptide-1并区分其他肽和非口服用途；取消剂型、剂量机械加分",
+    "复用已有Semrush月趋势，纠正搜索意图代码，将SEO与口服商品文本线索分开计分",
+    "显示证据状态、来源、日期与研究建议；按80/65/50及缺项门槛排序；评分版本变化刷新派生读模型"
+  ],
+  "verification": {
+    "status": "skipped",
+    "note": "发布阶段重复验证、验证构建和CI等待按用户策略跳过；沿用功能开发106项前端、14项Node、Web类型和独立构建结果。新增评分模块lint通过，旧文件187条基线诊断无新增，开发提交钩子未执行。",
+    "ci": "not-awaited",
+    "development": {
+      "frontendTests": 106,
+      "serverTests": 14,
+      "typecheck": "passed",
+      "build": "passed"
+    }
   },
-  "releaseSkipped": [
-    "发布重复验证",
-    "独立验证构建",
-    "CI等待",
-    "数据库一致性核对按用户要求跳过",
-    "完整数据库备份按无schema/迁移策略跳过"
-  ],
   "database": {
     "schemaChange": false,
     "migration": false,
-    "startupDataBackfill": false,
-    "backupStatus": "skipped-by-user-policy-no-schema-change",
-    "consistency": "skipped-by-user"
+    "backup": "skipped-by-user-policy-no-schema-change",
+    "consistencyStatus": "skipped-by-user"
   },
-  "operator": "Codex",
-  "id": "20261117110740-f25b69b5",
-  "builtAt": "2026-11-17T11:07:40.845Z",
-  "sourceDigest": "f25b69b5563bcd05de2028de695752a61f9adb7c0f02480a27f3c242bf551599"
+  "readModel": {
+    "globalVersionUnchanged": true,
+    "keywordScoreVersion": "product-research-v4-evidence",
+    "effect": "existing worker refreshes derived projections only; no external recollection"
+  },
+  "paidCallsForRelease": 0,
+  "id": "20261118061602-34ed8604",
+  "builtAt": "2026-11-18T06:16:02.356Z",
+  "sourceDigest": "34ed8604d53adb10956458c2e8095e7d4ffea0930300c42c1889217aa7a2c185",
+  "operator": "Codex"
 }
