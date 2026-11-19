@@ -23,6 +23,7 @@ import { projectReportSummary } from './report-read-summaries.mjs';
 import { keywordTrendList } from './keyword-trend-list.mjs';
 import { keywordMetricEvidence } from './keyword-metric-evidence.mjs';
 import { keywordVolumeSql } from './keyword-volume-sort.mjs';
+import { keywordIdentity, keywordIdentitySql } from './keyword-identity.mjs';
 
 function keywordDifficultySql(sql) {
   return sql(
@@ -67,10 +68,6 @@ function keywordAssociationRows(slots, collection) {
     WHERE l.collection='keywords' AND ${kind}${slots ? ` AND l.id IN (${slots})` : ''}`;
 }
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
-const keywordIdentitySql = (sql, alias) => sql(
-  `LOWER(REGEXP_REPLACE(REGEXP_REPLACE(COALESCE(${alias}.payload->>'term',''), '[-‐‑‒–—−﹘﹣－]+', ' ', 'g'), '[[:space:]]+', ' ', 'g'))`,
-  `LOWER(REGEXP_REPLACE(REGEXP_REPLACE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(${alias}.payload,'$.term')), ''), '[-‐‑‒–—−﹘﹣－]+', ' '), '[[:space:]]+', ' '))`,
-);
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
 const pick = (value, keys) =>
@@ -139,6 +136,7 @@ export function projectRecord(collection, value) {
     data.benefitEvidence = truncate(value.benefitEvidence, 1200);
   }
   if (collection === 'keywords') {
+    data.keywordIdentity = keywordIdentity(value.term);
     data.assessment = assessKeyword(value);
     data.score = data.assessment.score;
     data.trendSummary = trendComparisons(value);
@@ -390,20 +388,42 @@ export function createWorkspaceReads({
     }
     if (collection === 'keywords') {
       records = await keywordMetricEvidence(records, pool, sql);
-      const terms = records.map((record) => normalizeTerm(record.term));
+      const identities = [];
+      const variantQueries = [...new Set(records.map(record => record.market))].map(market => {
+        const marketSlot = `$${identities.push(market)}`;
+        const keys = [...new Set(records.filter(record => record.market === market).map(record => keywordIdentity(record.term)))];
+        const keySlots = keys.map(key => `$${identities.push(key)}`).join(',');
+        return `(r.market=${marketSlot} AND ${keywordIdentitySql(sql, 'r')} IN (${keySlots}))`;
+      });
+      const variants = (await pool.query(`SELECT r.payload FROM workspace_read_rows r WHERE r.collection='keywords' AND (${variantQueries.join(' OR ')})`, identities)).rows.map(row => row.payload);
+      const variantGroups = new Map(records.map(record => [record.id, variants.filter(variant => variant.market === record.market && keywordIdentity(variant.term) === keywordIdentity(record.term))]));
+      const groupFor = record => variantGroups.get(record.id)?.length ? variantGroups.get(record.id) : [record];
+      records = records.map(record => {
+        const group = groupFor(record);
+        return { ...record,
+          source: [...new Set(group.map(variant => variant.source).filter(Boolean))].join(' · '),
+          productIds: [...new Set(group.flatMap(variant => variant.productIds || []))],
+          siteIds: [...new Set(group.flatMap(variant => variant.siteIds || []))],
+          favorite: record.favorite || group.some(variant => variant.favorite),
+        };
+      });
+      const values = [...new Set(records.flatMap(record => groupFor(record).map(variant => variant.id)))];
+      const slots = values.map((_, index) => `$${index + 1}`).join(',');
+      const terms = [...new Set(records.flatMap(record => groupFor(record).map(variant => normalizeTerm(variant.term))))];
+      const termSlots = terms.map((_, index) => `$${index + 1}`).join(',');
       const field = (name) => sql(`r.payload->>'${name}'`, `JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.${name}'))`);
       const [expansions, counts] = await Promise.all([
-        pool.query(`SELECT r.market,l.target,${field('term')} AS term,${field('source')} AS source FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE l.collection='keywords' AND l.relation='seed' AND l.target IN (${slots})`, terms),
+        pool.query(`SELECT r.market,l.target,${field('term')} AS term,${field('source')} AS source FROM workspace_read_links l JOIN workspace_read_rows r ON r.collection=l.collection AND r.id=l.id WHERE l.collection='keywords' AND l.relation='seed' AND l.target IN (${termSlots})`, terms),
         // Match the keyword filter in both directions. UNION counts a saved
         // business record once even when both sides contain the association.
-        pool.query(`SELECT a.target,
-          SUM(CASE WHEN a.collection='ads' THEN 1 ELSE 0 END) AS ads,
-          SUM(CASE WHEN a.collection='products' THEN 1 ELSE 0 END) AS products,
-          SUM(CASE WHEN a.collection='sites' THEN 1 ELSE 0 END) AS sites
-          FROM (${keywordAssociationRows(slots)}) a GROUP BY a.target`, values),
+        pool.query(`SELECT DISTINCT a.target,a.collection,a.id FROM (${keywordAssociationRows(slots)}) a`, values),
       ]);
-      const countMap = new Map(counts.rows.map((item) => [item.target, { ads: Number(item.ads) || 0, products: Number(item.products) || 0, sites: Number(item.sites) || 0 }]));
-      return records.map((record) => ({ ...record, relatedCounts: countMap.get(record.id) || { ads: 0, products: 0, sites: 0 }, coreSummary: { ...record.coreSummary, related: { expansions: expansions.rows.filter((item) => item.market === record.market && item.target === normalizeTerm(record.term) && normalizeTerm(item.term) !== normalizeTerm(record.term)).map((item) => ({ term: item.term, source: item.source || '' })) } } }));
+      return records.map(record => {
+        const ids = new Set(groupFor(record).map(variant => variant.id));
+        const seeds = new Set(groupFor(record).map(variant => normalizeTerm(variant.term)));
+        const relatedCounts = Object.fromEntries(['ads', 'products', 'sites'].map(kind => [kind, new Set(counts.rows.filter(item => ids.has(item.target) && item.collection === kind).map(item => item.id)).size]));
+        return { ...record, relatedCounts, coreSummary: { ...record.coreSummary, related: { expansions: expansions.rows.filter(item => item.market === record.market && seeds.has(item.target) && keywordIdentity(item.term) !== keywordIdentity(record.term)).map(item => ({ term: item.term, source: item.source || '' })) } } };
+      });
     }
     return records;
   }
@@ -817,7 +837,7 @@ export function createWorkspaceReads({
       const duplicateIdentity = keywordIdentitySql(sql, 'd');
       clauses.push(
         `NOT EXISTS (SELECT 1 FROM workspace_read_rows d WHERE d.collection='keywords' AND d.market=r.market AND ${duplicateIdentity}=${identity} AND (\
-          (d.review_status='selected' AND r.review_status<>'selected') OR\
+          ((CASE d.review_status WHEN 'selected' THEN 2 WHEN 'excluded' THEN 0 ELSE 1 END)>(CASE r.review_status WHEN 'selected' THEN 2 WHEN 'excluded' THEN 0 ELSE 1 END)) OR\
           (d.review_status=r.review_status AND d.favorite>r.favorite) OR\
           (d.review_status=r.review_status AND d.favorite=r.favorite AND COALESCE(d.score,-1)>COALESCE(r.score,-1)) OR\
           (d.review_status=r.review_status AND d.favorite=r.favorite AND COALESCE(d.score,-1)=COALESCE(r.score,-1) AND d.id<r.id)\
@@ -876,7 +896,9 @@ export function createWorkspaceReads({
           ) + `=${bind(input.status)}`,
         );
     }
-    if (input.favorite) clauses.push('r.favorite=1');
+    if (input.favorite) clauses.push(collection === 'keywords'
+      ? `EXISTS(SELECT 1 FROM workspace_read_rows f WHERE f.collection='keywords' AND f.market=r.market AND f.favorite=1 AND ${keywordIdentitySql(sql, 'f')}=${keywordIdentitySql(sql, 'r')})`
+      : 'r.favorite=1');
     const range = collectionRange(input.collectedFrom, input.collectedTo);
     if (collection === 'products' && input.collectionBasis === 'first') {
       if (range.from || range.to) clauses.push(`EXISTS(SELECT 1 FROM workspace_read_links d WHERE d.collection=r.collection AND d.id=r.id AND d.relation='discoveredDay'${range.from ? ` AND d.target>=${bind(input.collectedFrom)}` : ''}${range.to ? ` AND d.target<=${bind(input.collectedTo)}` : ''})`);
@@ -956,8 +978,9 @@ export function createWorkspaceReads({
       const search = bind(
         `%${String(input.search).normalize('NFKC').trim().toLowerCase().slice(0, 200).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`,
       );
+      const canonicalSearch = collection === 'keywords' ? bind(`%${keywordIdentity(input.search).slice(0,200).replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_')}%`) : null;
       clauses.push(
-        `(r.search_text LIKE ${search} ESCAPE '!' OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.target WHERE l.collection=r.collection AND l.id=r.id AND l.relation='keyword' AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.id WHERE l.collection='keywords' AND l.relation=r.collection AND l.target=r.id AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_rows s WHERE s.collection='sites' AND s.id=r.site_id AND s.search_text LIKE ${search} ESCAPE '!'))`,
+        `(r.search_text LIKE ${search} ESCAPE '!'${canonicalSearch ? ` OR ${keywordIdentitySql(sql, 'r')} LIKE ${canonicalSearch} ESCAPE '!'` : ''} OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.target WHERE l.collection=r.collection AND l.id=r.id AND l.relation='keyword' AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_links l JOIN workspace_read_rows k ON k.collection='keywords' AND k.id=l.id WHERE l.collection='keywords' AND l.relation=r.collection AND l.target=r.id AND k.search_text LIKE ${search} ESCAPE '!') OR EXISTS(SELECT 1 FROM workspace_read_rows s WHERE s.collection='sites' AND s.id=r.site_id AND s.search_text LIKE ${search} ESCAPE '!'))`,
       );
     }
     return { collection, values, where: clauses.join(' AND ') };
@@ -1009,9 +1032,11 @@ export function createWorkspaceReads({
       // rows. Ties always use the keyword ID so adjacent pages remain stable.
       result = await pool.query(
         `SELECT r.payload FROM workspace_read_rows r LEFT JOIN (
-          SELECT a.target,COUNT(*) AS related_count
+          SELECT k.id AS target,COUNT(DISTINCT a.id) AS related_count
           FROM (${keywordAssociationRows(null, keywordAssociationSorts.get(input.sort))}) a
-          GROUP BY a.target
+          JOIN workspace_read_rows v ON v.collection='keywords' AND v.id=a.target
+          JOIN workspace_read_rows k ON k.collection='keywords' AND k.market=v.market AND ${keywordIdentitySql(sql, 'k')}=${keywordIdentitySql(sql, 'v')}
+          GROUP BY k.id
         ) association_counts ON association_counts.target=r.id
         WHERE ${query.where}
         ORDER BY COALESCE(association_counts.related_count,0) ${direction},r.id ASC
@@ -1051,7 +1076,7 @@ export function createWorkspaceReads({
       const [trends, relations] = await Promise.all([
         withKeywordTrends(records), withRelations(query.collection, records),
       ]);
-      related = trends.map((record, index) => ({ ...record, batch: relations[index].batch, relatedCounts: relations[index].relatedCounts, semrushCollection: relations[index].semrushCollection, coreSummary: relations[index].coreSummary }));
+      related = trends.map((record, index) => ({ ...record, batch: relations[index].batch, source: relations[index].source, productIds: relations[index].productIds, siteIds: relations[index].siteIds, favorite: relations[index].favorite, relatedCounts: relations[index].relatedCounts, semrushCollection: relations[index].semrushCollection, coreSummary: relations[index].coreSummary }));
     } else related = await withRelations(query.collection, records);
     return {
       rows: related,

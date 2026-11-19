@@ -62,6 +62,8 @@ const informationPattern =
   /\b(?:benefits?|side effects?|before(?:[ -]+(?:(?:and|&)[ -]+)?|\/)after|safe(?:ty)?|unsafe|dos(?:e|es|age|ages|ing)|risks?|dangerous|contraindications?|precautions?|warnings?|fda approved|clinical (?:studies|trials?)|mechanism|cach|la gi|para que|segur[oa]s?|seguridad|dosis|antes y despues|an toan|lieu dung|truoc va sau)\b|功效|副作用|是什么|是否安全|安全吗|安全性|用量|剂量|劑量|怎么用|如何使用|使用前后|使用前後|前后对比|前後對比|注意事项|禁忌/;
 const questionPattern =
   /\b(?:how|what|why|when|como)\b|^(?:is|are|do|does|can|could|should|will|would)\b|能否|可以.*吗|能.*吗|有效吗|有用吗/;
+const comparisonPattern =
+  /\b(?:vs\.?|versus|compar(?:e|ed|ing|ison|isons)|differences? between|different from|the same as|better than|comparar|comparado con|comparacion|diferencia entre|so sanh|khac nhau)\b|\bwhich\b.{0,100}\b(?:better|best)\b|对比|對比|比较|比較|区别|區別|哪个好|哪個好|哪种好|哪種好/;
 // Reviews and results can also be commercial research. Only a fresh source's
 // purely informational intent resolves these otherwise ambiguous expressions.
 const informationQualifierPattern =
@@ -131,7 +133,11 @@ export function assessSupplementRelevance(
   const purchase = purchasePattern.test(text);
   const commercial = supplementPattern.test(text) || purchase;
   const oralContext = hasOralProductContext(text);
+  const comparison = comparisonPattern.test(
+    text.replaceAll(/(?:使用)?前[后後](?:的)?[对對]比/g, ''),
+  );
   const information =
+    comparison ||
     informationPattern.test(text) ||
     (!purchase && questionPattern.test(text)) ||
     (informationalIntent &&
@@ -159,6 +165,7 @@ export function assessSupplementRelevance(
   if (audience) tags.push('人群词');
   if (brand) tags.push('品牌导航词');
   if (information) tags.push('内容研究词');
+  if (comparison) tags.push('对比查询词');
   if (seedMatch && !offTopic) tags.push('种子成分匹配');
   if (seedMismatch && !offTopic) tags.push('偏离种子成分');
   if (adjacentCopper && !offTopic) tags.push('铜肽范围待核验');
@@ -185,9 +192,12 @@ export function assessSupplementRelevance(
       '；成分偏离研究主题，不能把其他肽或其他成分当成同一市场，最高39';
   }
   if (information && !offTopic) {
-    const informationCap = oralContext ? 64 : 49;
+    let informationCap = oralContext ? 64 : 49;
+    if (comparison) informationCap = 39;
     scoreCap = Math.min(scoreCap, informationCap);
-    evidence += `；效果、使用或安全等信息查询仅供内容研究${oralContext ? '，明确口服表达不代表购买意图' : '，口服用途未明确，搜索热度不能证明保健品需求'}，总分最高${informationCap}`;
+    evidence += comparison
+      ? '；成分或商品之间的比较查询仅供内容研究，不作为商品、成分或广告检索主词，总分最高39'
+      : `；效果、使用或安全等信息查询仅供内容研究${oralContext ? '，明确口服表达不代表购买意图' : '，口服用途未明确，搜索热度不能证明保健品需求'}，总分最高${informationCap}`;
   } else if (uncertainUse && !offTopic) {
     scoreCap = Math.min(scoreCap, 64);
     evidence += '；功效用途或原料形态未明确口服，先核验用途，总分最高64';
@@ -215,6 +225,7 @@ export function assessSupplementRelevance(
     commercial,
     seedMismatch,
     information,
+    comparison,
     oralContext,
     uncertainUse,
   };

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { validateResearchTrends } from './keyword-research-trends.mjs';
 import { sanitizeSemrushExtras } from './semrush-keyword-trends.mjs';
-import { keywordIdentity } from './keyword-identity.mjs';
+import { keywordIdentity, keywordStorageIdentity } from './keyword-identity.mjs';
 
 export { keywordIdentity } from './keyword-identity.mjs';
 
@@ -11,7 +11,7 @@ export const normalizeTerm = (value) =>
     .replaceAll(/\s+/g, ' ')
     .trim();
 export const naturalKey = (record) =>
-  `${record.market}|${keywordIdentity(record.term)}`;
+  `${record.market}|${keywordStorageIdentity(record.term)}`;
 const markets = new Set(['MX', 'US', 'VN']);
 const sources = new Set([
   'amazon_autocomplete',
@@ -161,7 +161,7 @@ export function validateJob(value) {
       input.expectedKeywordCount !== input.existingRecords.length ||
       new Set(input.existingRecords.map((r) => r.id)).size !==
         input.existingRecords.length ||
-      new Set(input.existingRecords.map(naturalKey)).size !==
+      new Set(input.existingRecords.map(record => `${record.market}|${keywordIdentity(record.term)}`)).size !==
         input.existingRecords.length ||
       input.existingRecords.some(
         (record) => !input.markets.includes(record.market),

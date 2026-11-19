@@ -32,7 +32,8 @@ test('list requests share in-flight status and overlap independent keyword reads
     statements.filter((s) => s.includes('FROM workspace_read_dirty')).length,
     1,
   );
-  assert.equal(statements.filter((s) => s.includes('COUNT(*)')).length, 2);
+  // Each list has its filtered count and the market keyword summary.
+  assert.equal(statements.filter((s) => s.includes('COUNT(*)')).length, 4);
   release(/COUNT\(\*\)/, [{ total: 1 }]);
   release(/FROM workspace_read_versions/, [
     { collection: 'published', revision: 1 },
@@ -55,10 +56,15 @@ test('list requests share in-flight status and overlap independent keyword reads
     2,
   );
   assert.equal(
-    pending.filter((item) => /FROM workspace_read_links/.test(item.statement))
+    pending.filter((item) => /SELECT value FROM workspace_documents WHERE name=/.test(item.statement))
       .length,
     2,
   );
+  release(/SELECT value FROM workspace_documents WHERE name=/, []);
+  await new Promise((resolve) => setImmediate(resolve));
+  release(/SELECT r.payload FROM workspace_read_rows r/, [{ payload: { id: 'k', term: 'creatine', market: 'US', source: 'saved' } }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pending.filter(item => /FROM workspace_read_links/.test(item.statement)).length, 4);
   release(/SELECT k.data/, [
     { data: { id: 'k', trendStatus: 'completed', trendPoints: [] } },
   ]);

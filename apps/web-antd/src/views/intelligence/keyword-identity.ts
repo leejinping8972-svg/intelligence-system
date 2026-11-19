@@ -1,13 +1,6 @@
-const keywordDash = /[-‐‑‒–—−﹘﹣－]+/g;
+import { keywordIdentity } from '../../../../../server/keyword-identity.mjs';
 
-export function keywordIdentity(value: null | string | undefined) {
-  return String(value ?? '')
-    .normalize('NFKC')
-    .replace(keywordDash, ' ')
-    .replaceAll(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
+export { keywordIdentity };
 
 export function dedupeKeywords<T extends { market?: string; term?: string }>(
   records: T[],

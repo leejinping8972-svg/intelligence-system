@@ -66,7 +66,7 @@ export interface KeywordAssessment {
     evidence: string;
   }>;
 }
-export const KEYWORD_MODEL_VERSION = 'product-research-v4.1-intent';
+export const KEYWORD_MODEL_VERSION = 'product-research-v4.2-comparison';
 export const KEYWORD_MODEL_WEIGHTS = [
   { key: 'relevance', label: '成分与研究主题', weight: 30 },
   { key: 'demand', label: '搜索需求规模', weight: 25 },
@@ -464,14 +464,18 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       label: '先核验用途',
       reason: '功效用途或原料形态未明确口服，不以搜索热度代替保健品需求证据',
     };
-  if (business.ingredient && business.information)
+  if (business.ingredient && business.information) {
+    let reason = business.oralContext
+      ? '口服产品的效果、用法或安全咨询，可用于内容研究，不进入选品优先池'
+      : '效果、用法或安全咨询且口服用途未明确，搜索量与趋势不作为保健品购买需求';
+    if (business.comparison)
+      reason = '比较咨询不作为商品、成分或广告检索主词，不进入选品优先池';
     decision = {
       action: 'content',
       label: '仅供内容研究',
-      reason: business.oralContext
-        ? '口服产品的效果、用法或安全咨询，可用于内容研究，不进入选品优先池'
-        : '效果、用法或安全咨询且口服用途未明确，搜索量与趋势不作为保健品购买需求',
+      reason,
     };
+  }
   if (offTopic || business.seedMismatch)
     decision = {
       action: 'exclude',

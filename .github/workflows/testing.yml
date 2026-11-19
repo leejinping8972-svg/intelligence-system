@@ -32,7 +32,8 @@ jobs:
       - name: Keyword supplement relevance and scoring regressions (synthetic data)
         run: |
           server/node_modules/.bin/esbuild server/model.ts --bundle --platform=node --format=esm --outfile=server/model.js
-          pnpm exec vitest run tests/keyword-relevance.test.ts tests/keyword-research.test.ts tests/keyword-product-selection.test.ts tests/keyword-intent-scoring.test.ts
+          pnpm exec vitest run tests/keyword-relevance.test.ts tests/keyword-research.test.ts tests/keyword-product-selection.test.ts tests/keyword-intent-scoring.test.ts tests/keyword-plural-comparison.test.ts
+          node --test server/keyword-identity.test.mjs server/workspace-read-latency.test.mjs
       - name: Keyword 30-day, half-year and annual comparisons (synthetic data)
         run: |
           server/node_modules/.bin/esbuild server/collector.ts --bundle --platform=node --format=esm --outfile=server/collector.js

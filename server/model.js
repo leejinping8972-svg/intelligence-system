@@ -88,6 +88,7 @@ var purchasePattern = /\b(?:buy|price|shop|comprar|precio|mua|gia)\b|购买|價�
 var audiencePattern = /\b(?:women|female|menopause|prenatal|pregnancy|kids|children|seniors|phu nu|mujeres?|ninos)\b|女性|孕妇|儿童|老年/;
 var informationPattern = /\b(?:benefits?|side effects?|before(?:[ -]+(?:(?:and|&)[ -]+)?|\/)after|safe(?:ty)?|unsafe|dos(?:e|es|age|ages|ing)|risks?|dangerous|contraindications?|precautions?|warnings?|fda approved|clinical (?:studies|trials?)|mechanism|cach|la gi|para que|segur[oa]s?|seguridad|dosis|antes y despues|an toan|lieu dung|truoc va sau)\b|功效|副作用|是什么|是否安全|安全吗|安全性|用量|剂量|劑量|怎么用|如何使用|使用前后|使用前後|前后对比|前後對比|注意事项|禁忌/;
 var questionPattern = /\b(?:how|what|why|when|como)\b|^(?:is|are|do|does|can|could|should|will|would)\b|能否|可以.*吗|能.*吗|有效吗|有用吗/;
+var comparisonPattern = /\b(?:vs\.?|versus|compar(?:e|ed|ing|ison|isons)|differences? between|different from|the same as|better than|comparar|comparado con|comparacion|diferencia entre|so sanh|khac nhau)\b|\bwhich\b.{0,100}\b(?:better|best)\b|对比|對比|比较|比較|区别|區別|哪个好|哪個好|哪种好|哪種好/;
 var informationQualifierPattern = /\b(?:reviews?|results?|experiences?|reddit|forums?|work|works)\b|评价|評價|效果|心得/;
 var uncertainUsePattern = /\b(?:hair|skin|face|acne|wrinkles?|anti[ -]?aging|wound healing|retinol|powders?|liquid)\b|生发|生髮|头发|頭髮|皮肤|皮膚|脸部|臉部|痘痘|抗衰|粉末/;
 var brandPattern = /\b(?:amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/;
@@ -124,7 +125,10 @@ function assessSupplementRelevance(keyword, { informationalIntent = false } = {}
   const purchase = purchasePattern.test(text);
   const commercial = supplementPattern.test(text) || purchase;
   const oralContext = hasOralProductContext(text);
-  const information = informationPattern.test(text) || !purchase && questionPattern.test(text) || informationalIntent && !purchase && informationQualifierPattern.test(text);
+  const comparison = comparisonPattern.test(
+    text.replaceAll(/(?:使用)?前[后後](?:的)?[对對]比/g, "")
+  );
+  const information = comparison || informationPattern.test(text) || !purchase && questionPattern.test(text) || informationalIntent && !purchase && informationQualifierPattern.test(text);
   const brand = brandPattern.test(text);
   const audience = audiencePattern.test(text);
   const excluded = excludedPattern.test(text) || nonOralPattern.test(text) || /\bomega\b.*\b(?:constellation|de ville|planet ocean)\b/.test(text);
@@ -144,6 +148,7 @@ function assessSupplementRelevance(keyword, { informationalIntent = false } = {}
   if (audience) tags.push("\u4EBA\u7FA4\u8BCD");
   if (brand) tags.push("\u54C1\u724C\u5BFC\u822A\u8BCD");
   if (information) tags.push("\u5185\u5BB9\u7814\u7A76\u8BCD");
+  if (comparison) tags.push("\u5BF9\u6BD4\u67E5\u8BE2\u8BCD");
   if (seedMatch && !offTopic) tags.push("\u79CD\u5B50\u6210\u5206\u5339\u914D");
   if (seedMismatch && !offTopic) tags.push("\u504F\u79BB\u79CD\u5B50\u6210\u5206");
   if (adjacentCopper && !offTopic) tags.push("\u94DC\u80BD\u8303\u56F4\u5F85\u6838\u9A8C");
@@ -167,9 +172,10 @@ function assessSupplementRelevance(keyword, { informationalIntent = false } = {}
     evidence += "\uFF1B\u6210\u5206\u504F\u79BB\u7814\u7A76\u4E3B\u9898\uFF0C\u4E0D\u80FD\u628A\u5176\u4ED6\u80BD\u6216\u5176\u4ED6\u6210\u5206\u5F53\u6210\u540C\u4E00\u5E02\u573A\uFF0C\u6700\u9AD839";
   }
   if (information && !offTopic) {
-    const informationCap = oralContext ? 64 : 49;
+    let informationCap = oralContext ? 64 : 49;
+    if (comparison) informationCap = 39;
     scoreCap = Math.min(scoreCap, informationCap);
-    evidence += `\uFF1B\u6548\u679C\u3001\u4F7F\u7528\u6216\u5B89\u5168\u7B49\u4FE1\u606F\u67E5\u8BE2\u4EC5\u4F9B\u5185\u5BB9\u7814\u7A76${oralContext ? "\uFF0C\u660E\u786E\u53E3\u670D\u8868\u8FBE\u4E0D\u4EE3\u8868\u8D2D\u4E70\u610F\u56FE" : "\uFF0C\u53E3\u670D\u7528\u9014\u672A\u660E\u786E\uFF0C\u641C\u7D22\u70ED\u5EA6\u4E0D\u80FD\u8BC1\u660E\u4FDD\u5065\u54C1\u9700\u6C42"}\uFF0C\u603B\u5206\u6700\u9AD8${informationCap}`;
+    evidence += comparison ? "\uFF1B\u6210\u5206\u6216\u5546\u54C1\u4E4B\u95F4\u7684\u6BD4\u8F83\u67E5\u8BE2\u4EC5\u4F9B\u5185\u5BB9\u7814\u7A76\uFF0C\u4E0D\u4F5C\u4E3A\u5546\u54C1\u3001\u6210\u5206\u6216\u5E7F\u544A\u68C0\u7D22\u4E3B\u8BCD\uFF0C\u603B\u5206\u6700\u9AD839" : `\uFF1B\u6548\u679C\u3001\u4F7F\u7528\u6216\u5B89\u5168\u7B49\u4FE1\u606F\u67E5\u8BE2\u4EC5\u4F9B\u5185\u5BB9\u7814\u7A76${oralContext ? "\uFF0C\u660E\u786E\u53E3\u670D\u8868\u8FBE\u4E0D\u4EE3\u8868\u8D2D\u4E70\u610F\u56FE" : "\uFF0C\u53E3\u670D\u7528\u9014\u672A\u660E\u786E\uFF0C\u641C\u7D22\u70ED\u5EA6\u4E0D\u80FD\u8BC1\u660E\u4FDD\u5065\u54C1\u9700\u6C42"}\uFF0C\u603B\u5206\u6700\u9AD8${informationCap}`;
   } else if (uncertainUse && !offTopic) {
     scoreCap = Math.min(scoreCap, 64);
     evidence += "\uFF1B\u529F\u6548\u7528\u9014\u6216\u539F\u6599\u5F62\u6001\u672A\u660E\u786E\u53E3\u670D\uFF0C\u5148\u6838\u9A8C\u7528\u9014\uFF0C\u603B\u5206\u6700\u9AD864";
@@ -197,13 +203,14 @@ function assessSupplementRelevance(keyword, { informationalIntent = false } = {}
     commercial,
     seedMismatch,
     information,
+    comparison,
     oralContext,
     uncertainUse
   };
 }
 
 // apps/web-antd/src/views/intelligence/keyword-scoring.ts
-var KEYWORD_MODEL_VERSION = "product-research-v4.1-intent";
+var KEYWORD_MODEL_VERSION = "product-research-v4.2-comparison";
 var clamp = (value) => Math.round(Math.max(0, Math.min(100, value)));
 var ageDays = (date2) => (Date.now() - Date.parse(date2 || "")) / 864e5;
 var fresh = (date2, days) => ageDays(date2) >= -1 && ageDays(date2) <= days;
@@ -466,12 +473,16 @@ function assessKeyword(keyword) {
       label: "\u5148\u6838\u9A8C\u7528\u9014",
       reason: "\u529F\u6548\u7528\u9014\u6216\u539F\u6599\u5F62\u6001\u672A\u660E\u786E\u53E3\u670D\uFF0C\u4E0D\u4EE5\u641C\u7D22\u70ED\u5EA6\u4EE3\u66FF\u4FDD\u5065\u54C1\u9700\u6C42\u8BC1\u636E"
     };
-  if (business.ingredient && business.information)
+  if (business.ingredient && business.information) {
+    let reason = business.oralContext ? "\u53E3\u670D\u4EA7\u54C1\u7684\u6548\u679C\u3001\u7528\u6CD5\u6216\u5B89\u5168\u54A8\u8BE2\uFF0C\u53EF\u7528\u4E8E\u5185\u5BB9\u7814\u7A76\uFF0C\u4E0D\u8FDB\u5165\u9009\u54C1\u4F18\u5148\u6C60" : "\u6548\u679C\u3001\u7528\u6CD5\u6216\u5B89\u5168\u54A8\u8BE2\u4E14\u53E3\u670D\u7528\u9014\u672A\u660E\u786E\uFF0C\u641C\u7D22\u91CF\u4E0E\u8D8B\u52BF\u4E0D\u4F5C\u4E3A\u4FDD\u5065\u54C1\u8D2D\u4E70\u9700\u6C42";
+    if (business.comparison)
+      reason = "\u6BD4\u8F83\u54A8\u8BE2\u4E0D\u4F5C\u4E3A\u5546\u54C1\u3001\u6210\u5206\u6216\u5E7F\u544A\u68C0\u7D22\u4E3B\u8BCD\uFF0C\u4E0D\u8FDB\u5165\u9009\u54C1\u4F18\u5148\u6C60";
     decision = {
       action: "content",
       label: "\u4EC5\u4F9B\u5185\u5BB9\u7814\u7A76",
-      reason: business.oralContext ? "\u53E3\u670D\u4EA7\u54C1\u7684\u6548\u679C\u3001\u7528\u6CD5\u6216\u5B89\u5168\u54A8\u8BE2\uFF0C\u53EF\u7528\u4E8E\u5185\u5BB9\u7814\u7A76\uFF0C\u4E0D\u8FDB\u5165\u9009\u54C1\u4F18\u5148\u6C60" : "\u6548\u679C\u3001\u7528\u6CD5\u6216\u5B89\u5168\u54A8\u8BE2\u4E14\u53E3\u670D\u7528\u9014\u672A\u660E\u786E\uFF0C\u641C\u7D22\u91CF\u4E0E\u8D8B\u52BF\u4E0D\u4F5C\u4E3A\u4FDD\u5065\u54C1\u8D2D\u4E70\u9700\u6C42"
+      reason
     };
+  }
   if (offTopic || business.seedMismatch)
     decision = {
       action: "exclude",
