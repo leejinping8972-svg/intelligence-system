@@ -1,8 +1,9 @@
 {
   "title": "关键词单复数去重与比较查询降分",
-  "sourceSha": "e069d23bc37ed61860abf38b3b225c654708f662",
+  "sourceSha": "f0762bb12bb4d8327957ec93a9c089ebf9623670",
   "featureShas": [
-    "e069d23bc37ed61860abf38b3b225c654708f662"
+    "e069d23bc37ed61860abf38b3b225c654708f662",
+    "f0762bb12bb4d8327957ec93a9c089ebf9623670"
   ],
   "files": [
     "apps/web-antd/src/views/intelligence/keyword-identity.ts",
@@ -21,7 +22,8 @@
   "changes": [
     "同市场常见名词单复数去重，统一分页、总数、全选、收藏、搜索与关联排序；汇集来源和关联并保留原始资料与人工状态",
     "vs、compare、same as、对比、区别等比较查询最高39，仅供内容研究，不作为商品/成分/广告检索主词",
-    "升级product-research-v4.2-comparison；原始存储键不变，无迁移或额外来源/模型调用"
+    "升级product-research-v4.2-comparison；原始存储键不变，无迁移或额外来源/模型调用",
+    "MySQL正则替换显式utf8mb4编码，健康确认覆盖历史身份SQL回退"
   ],
   "verification": {
     "status": "skipped-by-user",
@@ -34,7 +36,8 @@
       "typecheck": "passed",
       "oxlint": "changed identity/scoring modules and new tests passed",
       "format": "passed",
-      "build": "passed 8485 modules; final comparison expressions additionally covered by parity tests"
+      "build": "passed 8485 modules; final comparison expressions additionally covered by parity tests",
+      "mysqlIdentity": "4 literal values confirmed, no business tables read or changed"
     }
   },
   "database": {
@@ -51,7 +54,7 @@
   },
   "paidCallsForRelease": 0,
   "operator": "Codex",
-  "id": "20261119123615-17aebdaf",
-  "builtAt": "2026-11-19T12:36:15.515Z",
-  "sourceDigest": "17aebdaf66edf7c9c8d3753acb180dc5829b7cdd7ce2ea9fc8ec5ad540bdd292"
+  "id": "20261119124945-ef85c3ff",
+  "builtAt": "2026-11-19T12:49:45.674Z",
+  "sourceDigest": "ef85c3ff730f17153adf3dcc7c430ae82a3991b9aff94e62ea944b422fe63f33"
 }
