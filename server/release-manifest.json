@@ -1,52 +1,50 @@
 {
-  "title": "关键词列表去重、来源折叠与空值显示",
-  "sourceSha": "38b828aa69222db1140f8dfc87346678bc94a81d",
+  "title": "关键词信息咨询与口服用途评分修正",
+  "sourceSha": "a8c0ea722532eb58f5c69a89261d1333575d7bcc",
   "featureShas": [
-    "38b828aa69222db1140f8dfc87346678bc94a81d"
+    "a8c0ea722532eb58f5c69a89261d1333575d7bcc"
   ],
   "files": [
-    "apps/web-antd/src/app.vue",
-    "apps/web-antd/src/views/intelligence/keyword-identity.ts",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
-    "server/domain.mjs",
-    "server/domain.test.mjs",
-    "server/keyword-associations.mjs",
-    "server/keyword-associations.test.mjs",
-    "server/keyword-identity.mjs",
-    "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs"
+    "apps/web-antd/src/views/intelligence/keyword-relevance.ts",
+    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
+    "server/model.js",
+    "server/KEYWORD-PRODUCT-SELECTION.md",
+    "tests/keyword-intent-scoring.test.ts"
   ],
   "changes": [
-    "按市场与规范化词身份去重GHK Cu/GHK-Cu，列表分页、全选、摘要和直接关键词入口隐藏历史重复投影",
-    "研究与已入选关键词列表的来源最多展示前两个，悬浮可查看完整来源",
-    "后台表格缺失值统一显示—，补齐研究与已入选关键词分类和批次空值显示",
-    "保留指定历史关键词详情可读，不删除或合并原始数据库记录"
+    "效果、安全性、剂量与用法等信息咨询未明确口服最高49分，明确口服最高64分，统一仅供内容研究",
+    "成分匹配本身不再标商品需求，保留成分主词研究入口；用途和原料形态待核验最高64分",
+    "明确外用、注射、科研或否定口服排除；来源意图不能抵消明确咨询语义",
+    "升级product-research-v4.1-intent，刷新已有派生评分，不触发来源重采或模型调用"
   ],
   "verification": {
-    "status": "skipped",
-    "note": "发布阶段重复单测、回归、类型检查、lint、验证构建和CI等待按用户策略跳过；沿用功能开发9项Node专项、其余投影专项、Web类型检查和前端生产构建结果。workspace-reads完整PGlite集成测试因工作树缺少@electric-sql/pglite未执行；提交钩子既有oxlint/eslint基线错误已记录。",
+    "status": "skipped-by-user",
+    "note": "发布重复测试、回归、类型、lint、隔离数据库测试、界面验收、验证构建及CI等待按用户策略跳过；沿用功能开发交付。",
     "ci": "not-awaited",
     "development": {
-      "serverTests": "domain/keyword-associations 9/9",
-      "projectionTests": "4 passed",
+      "frontendTests": 162,
+      "serverTests": 13,
+      "isolatedProjectionInvalidation": "passed",
       "typecheck": "passed",
-      "build": "passed"
+      "oxlint": "changed scoring modules and new test passed",
+      "build": "passed 8484 modules"
     }
   },
   "database": {
     "schemaChange": false,
     "migration": false,
+    "startupMigration": false,
     "backup": "skipped-by-user-policy-no-schema-change",
     "consistencyStatus": "skipped-by-user"
   },
   "readModel": {
     "globalVersionUnchanged": true,
-    "effect": "列表读取与显示层去重；不删除历史源行、不触发来源采集或模型调用"
+    "keywordScoreVersion": "product-research-v4.1-intent",
+    "effect": "按已有评分版本失效机制刷新派生投影，优先本批210记录；保留原始业务/人工状态/请求账本/检查点"
   },
   "paidCallsForRelease": 0,
   "operator": "Codex",
-  "id": "20261119082646-2d950247",
-  "builtAt": "2026-11-19T08:26:46.586Z",
-  "sourceDigest": "2d9502478ec1fb85495568b22faea937a4c8f170489757700b649afefaaf5220"
+  "id": "20261119114014-613df7e6",
+  "builtAt": "2026-11-19T11:40:14.179Z",
+  "sourceDigest": "613df7e6f44ee256625437a6c3eeeb42275473b9fb33eaf7d587a14d4d64c5c0"
 }
