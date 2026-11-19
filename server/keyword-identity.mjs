@@ -52,7 +52,7 @@ export function keywordIdentitySql(sql, alias, { cached = true } = {}) {
   // CHAR(36) keeps ICU backreferences out of the database adapter's $n binds.
   expression = sql(
     `REGEXP_REPLACE(${expression},'${pattern}',E'\\\\1\\\\2','g')`,
-    `REGEXP_REPLACE(${expression},'${pattern}',CONCAT(CHAR(36),'1',CHAR(36),'2'))`,
+    `REGEXP_REPLACE(${expression},'${pattern}',CONCAT(CHAR(36 USING utf8mb4),'1',CHAR(36 USING utf8mb4),'2'))`,
   );
   expression = `CONCAT(' ',${expression},' ')`;
   for (const [plural, singular] of [
