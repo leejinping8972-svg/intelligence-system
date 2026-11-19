@@ -65,6 +65,7 @@ import {
 import { keywordJob, startKeywordJob, stopKeywordJob } from './keyword-jobs';
 import { keywordAssociationColumns } from './keyword-association-columns';
 import { keywordChineseName } from './keyword-names';
+import { dedupeKeywords } from './keyword-identity';
 import {
   assessKeyword,
   KEYWORD_MODEL_VERSION,
@@ -255,7 +256,7 @@ watch(open, (value) => {
   }
 });
 const allRows = computed(() =>
-  filteredKeywords.value.map((record) => {
+  dedupeKeywords(filteredKeywords.value).map((record) => {
     const assessment = assessKeyword(record);
     return {
       ...record,
@@ -315,7 +316,7 @@ const localRows = computed(() =>
 );
 const rows = computed(() =>
   serverMode
-    ? remote.rows.value.map((record) => ({
+    ? dedupeKeywords(remote.rows.value).map((record) => ({
         ...record,
         assessment: assessKeyword(record),
       }))
@@ -512,16 +513,27 @@ function formatTime(value?: string) {
     ? value
     : date.toLocaleString('zh-CN', { hour12: false });
 }
-function sourceLabels(value: string) {
+function sourceLabels(value?: string) {
   return [
     ...new Set(
-      value
+      String(value || '')
         .replaceAll(' · 实采', '')
         .split(' / ')
         .map((item) => item.trim())
         .filter(Boolean),
     ),
-  ];
+  ].slice(0, 2);
+}
+function sourceTooltip(value?: string) {
+  return [
+    ...new Set(
+      String(value || '')
+        .replaceAll(' · 实采', '')
+        .split(' / ')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ].join('、');
 }
 function reviewLabel(value?: string) {
   if (value === 'selected') return '已入选';
@@ -1138,13 +1150,13 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
           </template>
           <template v-else-if="column.key === 'market'">
             <Tag>{{ marketName(record.market) }}</Tag>
-            <p class="hci-subtle">{{ record.category }}</p>
+            <p class="hci-subtle">{{ record.category || '—' }}</p>
           </template>
           <template v-else-if="column.key === 'batch'">
             <Tooltip v-if="record.batch" :title="record.batch">
               <span class="keyword-batch">{{ record.batch }}</span>
             </Tooltip>
-            <span v-else class="hci-subtle">未标记</span>
+            <span v-else class="hci-subtle">—</span>
           </template>
           <template v-else-if="column.key === 'grade'">
             <Tag :color="gradeColors[record.assessment.grade] || 'default'">
@@ -1210,11 +1222,16 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             />
           </template>
           <template v-else-if="column.key === 'source'">
-            <div class="keyword-tags">
-              <Tag v-for="source in sourceLabels(record.source)" :key="source">
-                {{ source }}
-              </Tag>
+            <div v-if="sourceLabels(record.source).length" class="keyword-tags">
+              <Tooltip :title="sourceTooltip(record.source)">
+                <span class="keyword-tags">
+                  <Tag v-for="source in sourceLabels(record.source)" :key="source">
+                    {{ source }}
+                  </Tag>
+                </span>
+              </Tooltip>
             </div>
+            <span v-else class="hci-subtle">—</span>
           </template>
            <template v-else-if="['relatedAds', 'relatedProducts', 'relatedSites'].includes(String(column.key))">
              <Button

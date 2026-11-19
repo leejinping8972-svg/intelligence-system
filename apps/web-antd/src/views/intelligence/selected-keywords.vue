@@ -45,6 +45,7 @@ const evidenceKeyword = ref<Keyword>();
 import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import { keywordChineseName } from './keyword-names';
+import { dedupeKeywords } from './keyword-identity';
 import SelectionBar from './components/SelectionBar.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
@@ -128,8 +129,8 @@ function stopReports() {
   reportActive = false;
   if (reportTimer) clearTimeout(reportTimer);
 }
-const rows = computed(() => serverMode ? remote.rows.value.map((k) => ({ ...k, score: assessKeyword(k).score })) :
-  selected.value
+const rows = computed(() => serverMode ? dedupeKeywords(remote.rows.value).map((k) => ({ ...k, score: assessKeyword(k).score })) :
+  dedupeKeywords(selected.value)
     .filter(
       (k) =>
         (status.value === 'ALL' ||
@@ -400,7 +401,7 @@ async function exportSelectedKeywords() {
           </template>
           <template v-else-if="column.key === 'market'">
             {{ marketName(record.market) }}
-            <p class="hci-subtle">{{ record.category }}</p>
+            <p class="hci-subtle">{{ record.category || '—' }}</p>
           </template>
           <template v-else-if="column.key === 'score'">
             {{ record.score === null ? '待评级' : `${record.score} / 100` }}

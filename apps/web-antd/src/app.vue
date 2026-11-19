@@ -13,6 +13,13 @@ defineOptions({ name: 'App' });
 const { isDark } = usePreferences();
 const { tokens } = useAntdDesignTokens();
 
+function transformCellText({ text }: { text: unknown }) {
+  if (text === null || text === undefined) return '—';
+  if (typeof text === 'string' && !text.trim()) return '—';
+  if (Array.isArray(text) && text.length === 0) return '—';
+  return text;
+}
+
 const tokenTheme = computed(() => {
   const algorithm = isDark.value
     ? [theme.darkAlgorithm]
@@ -31,7 +38,11 @@ const tokenTheme = computed(() => {
 </script>
 
 <template>
-  <ConfigProvider :locale="antdLocale" :theme="tokenTheme">
+  <ConfigProvider
+    :locale="antdLocale"
+    :theme="tokenTheme"
+    :transform-cell-text="transformCellText"
+  >
     <App>
       <RouterView />
     </App>

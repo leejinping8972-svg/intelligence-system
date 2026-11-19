@@ -67,6 +67,10 @@ function keywordAssociationRows(slots, collection) {
     WHERE l.collection='keywords' AND ${kind}${slots ? ` AND l.id IN (${slots})` : ''}`;
 }
 const normalizeTerm = (term) => String(term || '').normalize('NFKC').trim().toLowerCase().replaceAll(/\s+/g, ' ');
+const keywordIdentitySql = (sql, alias) => sql(
+  `LOWER(REGEXP_REPLACE(REGEXP_REPLACE(COALESCE(${alias}.payload->>'term',''), '[-‐‑‒–—−﹘﹣－]+', ' ', 'g'), '[[:space:]]+', ' ', 'g'))`,
+  `LOWER(REGEXP_REPLACE(REGEXP_REPLACE(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(${alias}.payload,'$.term')), ''), '[-‐‑‒–—−﹘﹣－]+', ' '), '[[:space:]]+', ' '))`,
+);
 const truncate = (value, length) =>
   Array.from(String(value ?? '')).slice(0, length).join('');
 const pick = (value, keys) =>
@@ -805,6 +809,21 @@ export function createWorkspaceReads({
         clauses.push(`r.${column}=${bind(input[key])}`);
     };
     equals('market', 'market');
+    // Historical imports may already contain both spellings. Keep one
+    // deterministic winner in list results until those source rows are
+    // explicitly repaired, so pagination and totals cannot expose a duplicate.
+    if (collection === 'keywords' && !input.keywordId) {
+      const identity = keywordIdentitySql(sql, 'r');
+      const duplicateIdentity = keywordIdentitySql(sql, 'd');
+      clauses.push(
+        `NOT EXISTS (SELECT 1 FROM workspace_read_rows d WHERE d.collection='keywords' AND d.market=r.market AND ${duplicateIdentity}=${identity} AND (\
+          (d.review_status='selected' AND r.review_status<>'selected') OR\
+          (d.review_status=r.review_status AND d.favorite>r.favorite) OR\
+          (d.review_status=r.review_status AND d.favorite=r.favorite AND COALESCE(d.score,-1)>COALESCE(r.score,-1)) OR\
+          (d.review_status=r.review_status AND d.favorite=r.favorite AND COALESCE(d.score,-1)=COALESCE(r.score,-1) AND d.id<r.id)\
+        ))`,
+      );
+    }
     const conceptCondition = conceptMemberCondition(input, collection, bind, sql);
     if (conceptCondition) clauses.push(conceptCondition);
     const weeklyCondition = weeklyMemberCondition(input, collection, bind, sql);
@@ -955,6 +974,9 @@ export function createWorkspaceReads({
   }
   async function list(input) {
     const query = filter(input);
+    const keywordSummary = query.collection === 'keywords'
+      ? filter({ collection: 'keywords', market: input.market || 'ALL' })
+      : null;
     const pageSize = Math.max(
       1,
       Math.min(100, Math.trunc(Number(input.pageSize) || 20)),
@@ -969,9 +991,9 @@ export function createWorkspaceReads({
         query.values,
       ),
       status(input.collection),
-      query.collection === 'keywords' ? pool.query(
-        `SELECT COUNT(*) AS total,SUM(CASE WHEN grade IN ('A','B') THEN 1 ELSE 0 END) AS priority,SUM(CASE WHEN grade IS NULL OR grade='' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN review_status='selected' THEN 1 ELSE 0 END) AS selected FROM workspace_read_rows WHERE collection='keywords'${input.market && input.market !== 'ALL' ? ' AND market=$1' : ''}`,
-        input.market && input.market !== 'ALL' ? [input.market] : [],
+      keywordSummary ? pool.query(
+        `SELECT COUNT(*) AS total,SUM(CASE WHEN r.grade IN ('A','B') THEN 1 ELSE 0 END) AS priority,SUM(CASE WHEN r.grade IS NULL OR r.grade='' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN r.review_status='selected' THEN 1 ELSE 0 END) AS selected FROM workspace_read_rows r WHERE ${keywordSummary.where}`,
+        keywordSummary.values,
       ) : null,
     ]);
     const total = Number(counted.rows[0].total);

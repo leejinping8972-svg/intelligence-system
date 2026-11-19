@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { validateResearchTrends } from './keyword-research-trends.mjs';
 import { sanitizeSemrushExtras } from './semrush-keyword-trends.mjs';
+import { keywordIdentity } from './keyword-identity.mjs';
+
+export { keywordIdentity } from './keyword-identity.mjs';
 
 export const normalizeTerm = (value) =>
   String(value || '')
@@ -8,7 +11,7 @@ export const normalizeTerm = (value) =>
     .replaceAll(/\s+/g, ' ')
     .trim();
 export const naturalKey = (record) =>
-  `${record.market}|${normalizeTerm(record.term).toLowerCase()}`;
+  `${record.market}|${keywordIdentity(record.term)}`;
 const markets = new Set(['MX', 'US', 'VN']);
 const sources = new Set([
   'amazon_autocomplete',

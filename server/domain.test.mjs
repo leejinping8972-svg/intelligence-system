@@ -5,9 +5,20 @@ import test from 'node:test';
 import {
   cleanKeyword,
   editableKeywordPatch,
+  keywordIdentity,
   naturalKey,
   validateJob,
 } from './domain.mjs';
+
+test('keyword identity treats hyphen and space spellings as one term', () => {
+  assert.equal(keywordIdentity(' GHK-Cu '), 'ghk cu');
+  assert.equal(keywordIdentity('GHK  Cu'), 'ghk cu');
+  assert.equal(naturalKey({ market: 'US', term: 'GHK-Cu' }), 'US|ghk cu');
+  assert.notEqual(
+    naturalKey({ market: 'US', term: 'GHK-Cu' }),
+    naturalKey({ market: 'MX', term: 'GHK Cu' }),
+  );
+});
 
 test('supplementation requires the selected count, received list and target to agree exactly', () => {
   const records = Array.from({ length: 34 }, (_, i) => ({

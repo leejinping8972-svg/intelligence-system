@@ -677,6 +677,16 @@ async function exerciseReadModel(
     assert.ok(exported.rows.every(p => /-[12]$/.test(p.id)));
     await assert.rejects(reads.list({...query,collectedFrom:'2026-02-30'}), /采集日期/);
   }
+  await pool.query('INSERT INTO research_keywords(natural_key,data) VALUES($1,$2)', [
+    'dedupe-space', { ...keyword(0), id: 'dedupe-space', term: 'GHK Cu', market: 'US' },
+  ]);
+  await pool.query('INSERT INTO research_keywords(natural_key,data) VALUES($1,$2)', [
+    'dedupe-hyphen', { ...keyword(0), id: 'dedupe-hyphen', term: 'GHK-Cu', market: 'US' },
+  ]);
+  await drain();
+  const dedupePage = await reads.list({ collection: 'keywords', market: 'US', search: 'ghk', pageSize: 20 });
+  assert.equal(dedupePage.total, 1);
+  assert.equal(dedupePage.rows.length, 1);
   const today=shanghaiDay();
   for (const [id,market,firstSeenAt,pool] of [
     ['today-new','US',`${today}T01:00:00+08:00`,true],

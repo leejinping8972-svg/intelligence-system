@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { cleanKeyword, naturalKey, normalizeTerm } from './domain.mjs';
+import { cleanKeyword, keywordIdentity, naturalKey, normalizeTerm } from './domain.mjs';
 import { siteKeywordProvenance } from './site-keyword-provenance.mjs';
 
 const BUSINESS_COLLECTIONS = new Set(['ads', 'products', 'sites']);
@@ -157,7 +157,7 @@ export async function reconcileKeywordAssociations({ connection, sql, putDocumen
 
 /** Add direct-search terms only. No expansion, trends, translation, or provider call. */
 export async function ensureDirectKeywords({ connection, sql, terms, market }) {
-  const normalized = [...new Map((terms || []).map((term) => [normalizeTerm(term).toLowerCase(), normalizeTerm(term)]))
+  const normalized = [...new Map((terms || []).map((term) => [keywordIdentity(term), normalizeTerm(term)]))
     .values()]
     .filter(Boolean);
   if (normalized.length === 0) return [];

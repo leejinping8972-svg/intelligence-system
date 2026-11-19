@@ -47,11 +47,12 @@ test('ensureDirectKeywords inserts only missing normalized terms and reuses exis
   const second = await ensureDirectKeywords({
     connection,
     sql: (postgres) => postgres,
-    terms: ['magnesium gummies'],
+    terms: ['magnesium gummies', 'GHK-Cu', 'GHK Cu'],
     market: 'US',
   });
   assert.equal(first.length, 1);
   assert.equal(first[0].id, second[0].id);
-  assert.equal(rows.size, 1);
+  assert.equal(rows.size, 2);
   assert.equal(first[0].term, 'magnesium gummies');
+  assert.equal(second.filter((row) => row.term.toLowerCase().includes('ghk')).length, 1);
 });
