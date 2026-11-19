@@ -1,36 +1,35 @@
 {
-  "title": "关键词按选品研究考量评分与证据完整性",
-  "sourceSha": "e49413da0b3716fe93fad1d9919c7cd4ed8dfb9f",
+  "title": "关键词列表去重、来源折叠与空值显示",
+  "sourceSha": "38b828aa69222db1140f8dfc87346678bc94a81d",
   "featureShas": [
-    "e49413da0b3716fe93fad1d9919c7cd4ed8dfb9f"
+    "38b828aa69222db1140f8dfc87346678bc94a81d"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/keyword-relevance.ts",
-    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
+    "apps/web-antd/src/app.vue",
+    "apps/web-antd/src/views/intelligence/keyword-identity.ts",
     "apps/web-antd/src/views/intelligence/research.vue",
-    "server/KEYWORD-PRODUCT-SELECTION.md",
-    "server/concept-score.test.mjs",
-    "server/model.js",
-    "server/model.ts",
-    "server/semrush-keyword-trends.mjs",
+    "apps/web-antd/src/views/intelligence/selected-keywords.vue",
+    "server/domain.mjs",
+    "server/domain.test.mjs",
+    "server/keyword-associations.mjs",
+    "server/keyword-associations.test.mjs",
+    "server/keyword-identity.mjs",
     "server/workspace-reads.mjs",
-    "server/workspace-reads.test.mjs",
-    "tests/keyword-product-selection.test.ts",
-    "tests/keyword-relevance.test.ts",
-    "tests/keyword-research.test.ts"
+    "server/workspace-reads.test.mjs"
   ],
   "changes": [
-    "识别GHK-Cu与Copper Tripeptide-1并区分其他肽和非口服用途；取消剂型、剂量机械加分",
-    "复用已有Semrush月趋势，纠正搜索意图代码，将SEO与口服商品文本线索分开计分",
-    "显示证据状态、来源、日期与研究建议；按80/65/50及缺项门槛排序；评分版本变化刷新派生读模型"
+    "按市场与规范化词身份去重GHK Cu/GHK-Cu，列表分页、全选、摘要和直接关键词入口隐藏历史重复投影",
+    "研究与已入选关键词列表的来源最多展示前两个，悬浮可查看完整来源",
+    "后台表格缺失值统一显示—，补齐研究与已入选关键词分类和批次空值显示",
+    "保留指定历史关键词详情可读，不删除或合并原始数据库记录"
   ],
   "verification": {
     "status": "skipped",
-    "note": "发布阶段重复验证、验证构建和CI等待按用户策略跳过；沿用功能开发106项前端、14项Node、Web类型和独立构建结果。新增评分模块lint通过，旧文件187条基线诊断无新增，开发提交钩子未执行。",
+    "note": "发布阶段重复单测、回归、类型检查、lint、验证构建和CI等待按用户策略跳过；沿用功能开发9项Node专项、其余投影专项、Web类型检查和前端生产构建结果。workspace-reads完整PGlite集成测试因工作树缺少@electric-sql/pglite未执行；提交钩子既有oxlint/eslint基线错误已记录。",
     "ci": "not-awaited",
     "development": {
-      "frontendTests": 106,
-      "serverTests": 14,
+      "serverTests": "domain/keyword-associations 9/9",
+      "projectionTests": "4 passed",
       "typecheck": "passed",
       "build": "passed"
     }
@@ -43,12 +42,11 @@
   },
   "readModel": {
     "globalVersionUnchanged": true,
-    "keywordScoreVersion": "product-research-v4-evidence",
-    "effect": "existing worker refreshes derived projections only; no external recollection"
+    "effect": "列表读取与显示层去重；不删除历史源行、不触发来源采集或模型调用"
   },
   "paidCallsForRelease": 0,
-  "id": "20261118061602-34ed8604",
-  "builtAt": "2026-11-18T06:16:02.356Z",
-  "sourceDigest": "34ed8604d53adb10956458c2e8095e7d4ffea0930300c42c1889217aa7a2c185",
-  "operator": "Codex"
+  "operator": "Codex",
+  "id": "20261119082646-2d950247",
+  "builtAt": "2026-11-19T08:26:46.586Z",
+  "sourceDigest": "2d9502478ec1fb85495568b22faea937a4c8f170489757700b649afefaaf5220"
 }
