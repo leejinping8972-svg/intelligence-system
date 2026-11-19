@@ -1,33 +1,40 @@
 {
-  "title": "关键词信息咨询与口服用途评分修正",
-  "sourceSha": "a8c0ea722532eb58f5c69a89261d1333575d7bcc",
+  "title": "关键词单复数去重与比较查询降分",
+  "sourceSha": "e069d23bc37ed61860abf38b3b225c654708f662",
   "featureShas": [
-    "a8c0ea722532eb58f5c69a89261d1333575d7bcc"
+    "e069d23bc37ed61860abf38b3b225c654708f662"
   ],
   "files": [
+    "apps/web-antd/src/views/intelligence/keyword-identity.ts",
     "apps/web-antd/src/views/intelligence/keyword-relevance.ts",
     "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
-    "server/model.js",
     "server/KEYWORD-PRODUCT-SELECTION.md",
-    "tests/keyword-intent-scoring.test.ts"
+    "server/domain.mjs",
+    "server/keyword-identity.d.mts",
+    "server/keyword-identity.mjs",
+    "server/keyword-identity.test.mjs",
+    "server/model.js",
+    "server/workspace-read-latency.test.mjs",
+    "server/workspace-reads.mjs",
+    "tests/keyword-plural-comparison.test.ts"
   ],
   "changes": [
-    "效果、安全性、剂量与用法等信息咨询未明确口服最高49分，明确口服最高64分，统一仅供内容研究",
-    "成分匹配本身不再标商品需求，保留成分主词研究入口；用途和原料形态待核验最高64分",
-    "明确外用、注射、科研或否定口服排除；来源意图不能抵消明确咨询语义",
-    "升级product-research-v4.1-intent，刷新已有派生评分，不触发来源重采或模型调用"
+    "同市场常见名词单复数去重，统一分页、总数、全选、收藏、搜索与关联排序；汇集来源和关联并保留原始资料与人工状态",
+    "vs、compare、same as、对比、区别等比较查询最高39，仅供内容研究，不作为商品/成分/广告检索主词",
+    "升级product-research-v4.2-comparison；原始存储键不变，无迁移或额外来源/模型调用"
   ],
   "verification": {
     "status": "skipped-by-user",
-    "note": "发布重复测试、回归、类型、lint、隔离数据库测试、界面验收、验证构建及CI等待按用户策略跳过；沿用功能开发交付。",
     "ci": "not-awaited",
+    "note": "发布重复测试/回归/类型/lint/验证构建/CI等待按用户策略跳过；沿用功能开发自测",
     "development": {
-      "frontendTests": 162,
-      "serverTests": 13,
-      "isolatedProjectionInvalidation": "passed",
+      "frontendTests": 197,
+      "serverTests": 17,
+      "finalIdentityTests": 3,
       "typecheck": "passed",
-      "oxlint": "changed scoring modules and new test passed",
-      "build": "passed 8484 modules"
+      "oxlint": "changed identity/scoring modules and new tests passed",
+      "format": "passed",
+      "build": "passed 8485 modules; final comparison expressions additionally covered by parity tests"
     }
   },
   "database": {
@@ -39,12 +46,12 @@
   },
   "readModel": {
     "globalVersionUnchanged": true,
-    "keywordScoreVersion": "product-research-v4.1-intent",
-    "effect": "按已有评分版本失效机制刷新派生投影，优先本批210记录；保留原始业务/人工状态/请求账本/检查点"
+    "keywordScoreVersion": "product-research-v4.2-comparison",
+    "effect": "existing score invalidation refreshes derived projections including cached identity; prioritize specified 210 raw records; preserve raw records, human decisions, ledgers and checkpoints"
   },
   "paidCallsForRelease": 0,
   "operator": "Codex",
-  "id": "20261119114014-613df7e6",
-  "builtAt": "2026-11-19T11:40:14.179Z",
-  "sourceDigest": "613df7e6f44ee256625437a6c3eeeb42275473b9fb33eaf7d587a14d4d64c5c0"
+  "id": "20261119123615-17aebdaf",
+  "builtAt": "2026-11-19T12:36:15.515Z",
+  "sourceDigest": "17aebdaf66edf7c9c8d3753acb180dc5829b7cdd7ce2ea9fc8ec5ad540bdd292"
 }
