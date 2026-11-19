@@ -86,10 +86,14 @@ var formPattern = /\b(?:gumm(?:y|ies)|capsules?|capsulas?|powders?|polvo|softgel
 var supplementPattern = /\b(?:supplements?|suplementos?|complementos? alimenticios?|thuc pham (?:bo sung|chuc nang)|bo sung|health products?)\b|保健品|膳食补充剂|营养补充剂|營養補充劑/;
 var purchasePattern = /\b(?:buy|price|shop|comprar|precio|mua|gia)\b|购买|價格|价格/;
 var audiencePattern = /\b(?:women|female|menopause|prenatal|pregnancy|kids|children|seniors|phu nu|mujeres?|ninos)\b|女性|孕妇|儿童|老年/;
-var informationPattern = /\b(?:how|what|benefits?|side effects?|cach|la gi|como|para que)\b|功效|副作用|是什么/;
+var informationPattern = /\b(?:benefits?|side effects?|before(?:[ -]+(?:(?:and|&)[ -]+)?|\/)after|safe(?:ty)?|unsafe|dos(?:e|es|age|ages|ing)|risks?|dangerous|contraindications?|precautions?|warnings?|fda approved|clinical (?:studies|trials?)|mechanism|cach|la gi|para que|segur[oa]s?|seguridad|dosis|antes y despues|an toan|lieu dung|truoc va sau)\b|功效|副作用|是什么|是否安全|安全吗|安全性|用量|剂量|劑量|怎么用|如何使用|使用前后|使用前後|前后对比|前後對比|注意事项|禁忌/;
+var questionPattern = /\b(?:how|what|why|when|como)\b|^(?:is|are|do|does|can|could|should|will|would)\b|能否|可以.*吗|能.*吗|有效吗|有用吗/;
+var informationQualifierPattern = /\b(?:reviews?|results?|experiences?|reddit|forums?|work|works)\b|评价|評價|效果|心得/;
+var uncertainUsePattern = /\b(?:hair|skin|face|acne|wrinkles?|anti[ -]?aging|wound healing|retinol|powders?|liquid)\b|生发|生髮|头发|頭髮|皮肤|皮膚|脸部|臉部|痘痘|抗衰|粉末/;
 var brandPattern = /\b(?:amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/;
-var excludedPattern = /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoos?|serums?|creams?|topical|balms?|tallow|scalp complex|inject(?:ions?|ables?|ed|ing)?|vials?|syringes?|research use only|laboratory use|not for human consumption|niod|the ordinary|ordinary copper|geek (?:and|&) gorgeous|remedy copper)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜|精华液|外用|注射|仅供科研/;
+var excludedPattern = /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoos?|serums?|creams?|topical|balms?|tallow|scalp complex|skin[ -]?care|tretinoin|inject(?:ions?|ables?|ed|ing)?|vials?|syringes?|research use only|laboratory use|not for human consumption|niod|the ordinary|ordinary copper|geek (?:and|&) gorgeous|remedy copper)\b|\b(?:apply|applied|applying)\b.*\b(?:skin|face|scalp)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜|精华液|外用|注射|仅供科研|涂抹|塗抹/;
 var servicePattern = /\b(?:hospitals?|clinics?|doctors?|jobs?|salary|magazine|badge reel|services?|partners|specialists?|environmental protection agency)\b|benh vien|tuyen dung|招聘|医院/;
+var nonOralPattern = /\b(?:not for oral|not (?:an? )?(?:oral|dietary) supplement|do not (?:swallow|ingest)|for external use|external use only|not intended for ingestion)\b|非口服|禁止口服|不可口服/;
 function ingredients(text) {
   const found = families.filter(([, pattern]) => pattern.test(text)).map(([key]) => key);
   return found.filter(
@@ -98,13 +102,11 @@ function ingredients(text) {
 }
 function hasOralProductContext(value) {
   const text = normalizeKeywordText(value);
-  return !excludedPattern.test(text) && !/\b(?:not for oral|not (?:an? )?(?:oral|dietary) supplement|do not (?:swallow|ingest)|for external use|external use only|not intended for ingestion)\b|非口服|禁止口服|不可口服/.test(
-    text
-  ) && (supplementPattern.test(text) || /\b(?:oral|by mouth|swallow|capsules?|tablets?|softgels?|gummies)\b|口服|胶囊|片剂|软胶囊/.test(
+  return !excludedPattern.test(text) && !nonOralPattern.test(text) && (supplementPattern.test(text) || /\b(?:oral|by mouth|swallow|capsules?|capsulas?|tablets?|softgels?|gumm(?:y|ies))\b|口服|胶囊|膠囊|片剂|軟膠囊|软胶囊|软糖|軟糖/.test(
     text
   ));
 }
-function assessSupplementRelevance(keyword) {
+function assessSupplementRelevance(keyword, { informationalIntent = false } = {}) {
   const text = normalizeKeywordText(keyword.term);
   const found = ingredients(text);
   const topic = ingredients(normalizeKeywordText(keyword.batch || ""));
@@ -119,19 +121,26 @@ function assessSupplementRelevance(keyword) {
     (key) => !["ghk", "modified-peptide"].includes(key)
   );
   const form = formPattern.test(text);
-  const commercial = supplementPattern.test(text) || purchasePattern.test(text);
-  const information = informationPattern.test(text);
+  const purchase = purchasePattern.test(text);
+  const commercial = supplementPattern.test(text) || purchase;
+  const oralContext = hasOralProductContext(text);
+  const information = informationPattern.test(text) || !purchase && questionPattern.test(text) || informationalIntent && !purchase && informationQualifierPattern.test(text);
   const brand = brandPattern.test(text);
   const audience = audiencePattern.test(text);
-  const excluded = excludedPattern.test(text) || /\bomega\b.*\b(?:constellation|de ville|planet ocean)\b/.test(text);
+  const excluded = excludedPattern.test(text) || nonOralPattern.test(text) || /\bomega\b.*\b(?:constellation|de ville|planet ocean)\b/.test(text);
   const service = servicePattern.test(text);
   const offTopic = excluded || service;
+  const uncertainUse = !oralContext && uncertainUsePattern.test(text);
   const ambiguous = /\bomega\b/.test(text) && !ingredient;
   const broadCategory = !ingredient && supplementPattern.test(text);
   const tags = [];
   if (ingredient && !offTopic) tags.push("\u6210\u5206\u8BCD");
   if (form && ingredient && !offTopic) tags.push("\u5242\u578B\u8BCD");
-  if ((ingredient || broadCategory) && !offTopic) tags.push("\u5546\u54C1\u9700\u6C42\u8BCD");
+  if ((ingredient || broadCategory) && !offTopic && !information) {
+    if (commercial || oralContext) tags.push("\u5546\u54C1\u9700\u6C42\u8BCD");
+    else if (ingredient) tags.push("\u6210\u5206\u7814\u7A76\u8BCD");
+  }
+  if (ingredient && !oralContext && !offTopic) tags.push("\u7528\u9014\u5F85\u6838\u9A8C");
   if (audience) tags.push("\u4EBA\u7FA4\u8BCD");
   if (brand) tags.push("\u54C1\u724C\u5BFC\u822A\u8BCD");
   if (information) tags.push("\u5185\u5BB9\u7814\u7A76\u8BCD");
@@ -158,8 +167,12 @@ function assessSupplementRelevance(keyword) {
     evidence += "\uFF1B\u6210\u5206\u504F\u79BB\u7814\u7A76\u4E3B\u9898\uFF0C\u4E0D\u80FD\u628A\u5176\u4ED6\u80BD\u6216\u5176\u4ED6\u6210\u5206\u5F53\u6210\u540C\u4E00\u5E02\u573A\uFF0C\u6700\u9AD839";
   }
   if (information && !offTopic) {
+    const informationCap = oralContext ? 64 : 49;
+    scoreCap = Math.min(scoreCap, informationCap);
+    evidence += `\uFF1B\u6548\u679C\u3001\u4F7F\u7528\u6216\u5B89\u5168\u7B49\u4FE1\u606F\u67E5\u8BE2\u4EC5\u4F9B\u5185\u5BB9\u7814\u7A76${oralContext ? "\uFF0C\u660E\u786E\u53E3\u670D\u8868\u8FBE\u4E0D\u4EE3\u8868\u8D2D\u4E70\u610F\u56FE" : "\uFF0C\u53E3\u670D\u7528\u9014\u672A\u660E\u786E\uFF0C\u641C\u7D22\u70ED\u5EA6\u4E0D\u80FD\u8BC1\u660E\u4FDD\u5065\u54C1\u9700\u6C42"}\uFF0C\u603B\u5206\u6700\u9AD8${informationCap}`;
+  } else if (uncertainUse && !offTopic) {
     scoreCap = Math.min(scoreCap, 64);
-    evidence += "\uFF1B\u4FE1\u606F\u67E5\u8BE2\u7528\u4E8E\u5185\u5BB9\u7814\u7A76\uFF0C\u603B\u5206\u6700\u9AD864";
+    evidence += "\uFF1B\u529F\u6548\u7528\u9014\u6216\u539F\u6599\u5F62\u6001\u672A\u660E\u786E\u53E3\u670D\uFF0C\u5148\u6838\u9A8C\u7528\u9014\uFF0C\u603B\u5206\u6700\u9AD864";
   }
   if (ambiguous && !offTopic) {
     relevance = 15;
@@ -182,12 +195,15 @@ function assessSupplementRelevance(keyword) {
     brand,
     ingredient,
     commercial,
-    seedMismatch
+    seedMismatch,
+    information,
+    oralContext,
+    uncertainUse
   };
 }
 
 // apps/web-antd/src/views/intelligence/keyword-scoring.ts
-var KEYWORD_MODEL_VERSION = "product-research-v4-evidence";
+var KEYWORD_MODEL_VERSION = "product-research-v4.1-intent";
 var clamp = (value) => Math.round(Math.max(0, Math.min(100, value)));
 var ageDays = (date2) => (Date.now() - Date.parse(date2 || "")) / 864e5;
 var fresh = (date2, days) => ageDays(date2) >= -1 && ageDays(date2) <= days;
@@ -226,7 +242,18 @@ function gradeForScore(score) {
 }
 function assessKeyword(keyword) {
   if (keyword.listSummary && keyword.assessment) return keyword.assessment;
-  const business = assessSupplementRelevance(keyword);
+  const metrics = keyword.metrics;
+  const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;
+  const metricAge = (Date.now() - metricDate) / 864e5;
+  const validMetrics = Boolean(
+    metrics?.source.trim() && metrics.market === keyword.market && Number.isFinite(metricDate) && metricAge >= -1 && metricAge <= 90
+  );
+  const intent = validMetrics ? metrics?.intent || "" : "";
+  const semrushIntent = /Semrush/i.test(metrics?.source || "");
+  const purchaseIntent = /commercial|transactional/i.test(intent) || semrushIntent && /(?:^|[,;\s])[03](?:$|[,;\s])/.test(intent);
+  const navigationIntent = /^navigational$/i.test(intent.trim()) || semrushIntent && /^2$/.test(intent.trim());
+  const informationalIntent = !purchaseIntent && !navigationIntent && (/^informational$/i.test(intent.trim()) || semrushIntent && /^1$/.test(intent.trim()));
+  const business = assessSupplementRelevance(keyword, { informationalIntent });
   const { relevance, offTopic, brand } = business;
   const tags = new Set(business.tags);
   if (keyword.source.includes("Sorftime")) tags.add("Amazon\u7AD9\u5185\u6765\u6E90");
@@ -291,12 +318,6 @@ function assessKeyword(keyword) {
     trendSource = "Google Trends";
     trendEvidence = `Google\u8D8B\u52BF\u6301\u7EED\u602740% + \u8FD130\u5929\u76F8\u5BF9\u6B64\u524D30\u5929\u52A8\u91CF60%\uFF1B${dailyUsed ? "\u65E5\u6570\u636E" : "\u6309\u539F\u59CB\u65F6\u70B9\u8986\u76D6\u5929\u6570\u52A0\u6743"}\uFF0C\u6709\u6548\u70B9${points.length}\u4E2A\uFF0C\u8986\u76D6${Math.round(span)}\u5929\uFF1B\u5C16\u5CF0\u964D\u6743\uFF0C\u4E0D\u4EE3\u8868\u641C\u7D22\u91CF`;
   }
-  const metrics = keyword.metrics;
-  const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;
-  const metricAge = (Date.now() - metricDate) / 864e5;
-  const validMetrics = Boolean(
-    metrics?.source.trim() && metrics.market === keyword.market && Number.isFinite(metricDate) && metricAge >= -1 && metricAge <= 90
-  );
   const monthly = semrushTrendSummary(metrics, keyword.market);
   if (trendScore === null && validMetrics && monthly.available && fresh(monthly.collectedAt, 90) && monthly.values.some((v) => v > 0)) {
     const values = monthly.values;
@@ -335,14 +356,15 @@ function assessKeyword(keyword) {
     tags.add("Semrush\u6307\u6807");
     if (metrics.intent) tags.add(`\u641C\u7D22\u610F\u56FE\uFF1A${metrics.intent}`);
   }
-  const intent = validMetrics ? metrics?.intent || "" : "";
-  const semrushIntent = /Semrush/i.test(metrics?.source || "");
-  const purchaseIntent = /commercial|transactional/i.test(intent) || semrushIntent && /(?:^|[,;\s])[03](?:$|[,;\s])/.test(intent);
-  const navigationIntent = /^navigational$/i.test(intent.trim()) || semrushIntent && /^2$/.test(intent.trim());
   if (purchaseIntent) tags.add("\u5546\u4E1A\u610F\u56FE\u7EBF\u7D22");
+  if (informationalIntent) tags.add("\u6765\u6E90\u504F\u4FE1\u606F\u67E5\u8BE2");
   const products = productEvidence(keyword);
   const productScore = products.length > 0 && !offTopic && !business.seedMismatch && business.ingredient ? 70 : null;
   if (productScore === null) tags.add("\u5F85\u6838\u9A8C\u53E3\u670D\u5546\u54C1");
+  else {
+    tags.add("\u53E3\u670D\u5546\u54C1\u539F\u6587\u7EBF\u7D22");
+    tags.delete("\u7528\u9014\u5F85\u6838\u9A8C");
+  }
   if (volume === 0) tags.add("\u5E73\u53F0\u641C\u7D22\u91CF\u4E3A0");
   const dimensions = [
     {
@@ -438,6 +460,18 @@ function assessKeyword(keyword) {
       label: "\u5148\u8865\u8BC1\u636E",
       reason: "\u7F3A\u5C11\u6210\u5206\u6838\u9A8C\u3001\u641C\u7D22\u91CF\u6216\u6709\u6548\u8D8B\u52BF\uFF1B\u5F53\u524D\u4F4E\u5206\u4E0D\u7B49\u4E8E\u6CA1\u6709\u5E02\u573A\uFF0C\u4E0D\u8FDB\u5165\u4F18\u5148\u7814\u7A76\u6C60"
     };
+  if (business.ingredient && business.uncertainUse && !business.information)
+    decision = {
+      action: "collect",
+      label: "\u5148\u6838\u9A8C\u7528\u9014",
+      reason: "\u529F\u6548\u7528\u9014\u6216\u539F\u6599\u5F62\u6001\u672A\u660E\u786E\u53E3\u670D\uFF0C\u4E0D\u4EE5\u641C\u7D22\u70ED\u5EA6\u4EE3\u66FF\u4FDD\u5065\u54C1\u9700\u6C42\u8BC1\u636E"
+    };
+  if (business.ingredient && business.information)
+    decision = {
+      action: "content",
+      label: "\u4EC5\u4F9B\u5185\u5BB9\u7814\u7A76",
+      reason: business.oralContext ? "\u53E3\u670D\u4EA7\u54C1\u7684\u6548\u679C\u3001\u7528\u6CD5\u6216\u5B89\u5168\u54A8\u8BE2\uFF0C\u53EF\u7528\u4E8E\u5185\u5BB9\u7814\u7A76\uFF0C\u4E0D\u8FDB\u5165\u9009\u54C1\u4F18\u5148\u6C60" : "\u6548\u679C\u3001\u7528\u6CD5\u6216\u5B89\u5168\u54A8\u8BE2\u4E14\u53E3\u670D\u7528\u9014\u672A\u660E\u786E\uFF0C\u641C\u7D22\u91CF\u4E0E\u8D8B\u52BF\u4E0D\u4F5C\u4E3A\u4FDD\u5065\u54C1\u8D2D\u4E70\u9700\u6C42"
+    };
   if (offTopic || business.seedMismatch)
     decision = {
       action: "exclude",
@@ -466,6 +500,18 @@ function assessKeyword(keyword) {
       keyword.trendStatus || metrics?.searchTrend?.status
     );
   };
+  let intentStatus = "missing";
+  let intentMessage = "\u6210\u5206\u6216\u7528\u9014\u7814\u7A76\u5165\u53E3\uFF0C\u53E3\u670D\u9700\u6C42\u5C1A\u5F85\u6838\u9A8C\uFF1B\u6765\u6E90\u4FE1\u606F\u610F\u56FE\u4E0D\u5355\u72EC\u5426\u5B9A\u6210\u5206\u4E3B\u8BCD\u7684\u7814\u7A76\u4EF7\u503C";
+  if (offTopic || business.seedMismatch) {
+    intentStatus = "mismatch";
+    intentMessage = "\u660E\u786E\u975E\u76EE\u6807\u7528\u9014\u6216\u504F\u79BB\u7814\u7A76\u6210\u5206\uFF0C\u6392\u9664\u5F53\u524D\u53E3\u670D\u9009\u54C1\u65B9\u5411";
+  } else if (business.information) {
+    intentStatus = "available";
+    intentMessage = `\u4FE1\u606F\u54A8\u8BE2\uFF0C\u4EC5\u4F9B\u5185\u5BB9\u7814\u7A76\uFF1B${business.oralContext ? "\u8868\u8FBE\u660E\u786E\u53E3\u670D\uFF0C\u4F46\u4E0D\u4EE3\u8868\u8D2D\u4E70\u610F\u56FE" : "\u672A\u660E\u786E\u53E3\u670D\u7528\u9014\uFF0C\u4E0D\u80FD\u4ECE\u901A\u7528\u6210\u5206\u641C\u7D22\u91CF\u63A8\u65AD\u4FDD\u5065\u54C1\u9700\u6C42"}`;
+  } else if (business.oralContext || productScore !== null) {
+    intentStatus = "available";
+    intentMessage = "\u6709\u53E3\u670D\u8868\u8FBE\u6216\u5546\u54C1\u539F\u6587\u7EBF\u7D22\uFF1B\u4ECD\u4E0D\u8BC1\u660E\u5173\u952E\u8BCD\u5168\u90E8\u641C\u7D22\u91CF\u5C5E\u4E8E\u53E3\u670D\u8D2D\u4E70\u9700\u6C42";
+  }
   const checks = [
     {
       key: "relevance",
@@ -473,6 +519,14 @@ function assessKeyword(keyword) {
       status: relevanceStatus,
       source: "\u6210\u5206\u89C4\u5219\u4E0E\u4EFB\u52A1\u4E3B\u9898\u6838\u5BF9",
       message: business.evidence
+    },
+    {
+      key: "intent",
+      label: "\u641C\u7D22\u610F\u56FE\u4E0E\u53E3\u670D\u7528\u9014",
+      status: intentStatus,
+      source: intent ? `\u5173\u952E\u8BCD\u8BED\u4E49 / ${metrics?.source}\u610F\u56FE${intent}` : "\u5173\u952E\u8BCD\u8BED\u4E49",
+      collectedAt: intent ? metrics?.collectedAt : void 0,
+      message: intentMessage
     },
     {
       key: "demand",

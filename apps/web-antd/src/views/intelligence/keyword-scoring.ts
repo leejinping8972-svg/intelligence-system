@@ -32,7 +32,13 @@ export interface KeywordAssessment {
   tags: string[];
   recommendation: string;
   decision?: {
-    action: 'research' | 'observe' | 'collect' | 'exclude' | 'defer';
+    action:
+      | 'research'
+      | 'observe'
+      | 'collect'
+      | 'exclude'
+      | 'defer'
+      | 'content';
     label: string;
     reason: string;
   };
@@ -60,7 +66,7 @@ export interface KeywordAssessment {
     evidence: string;
   }>;
 }
-export const KEYWORD_MODEL_VERSION = 'product-research-v4-evidence';
+export const KEYWORD_MODEL_VERSION = 'product-research-v4.1-intent';
 export const KEYWORD_MODEL_WEIGHTS = [
   { key: 'relevance', label: '成分与研究主题', weight: 30 },
   { key: 'demand', label: '搜索需求规模', weight: 25 },
@@ -127,7 +133,31 @@ export function gradeForScore(score: number): KeywordGrade {
 }
 export function assessKeyword(keyword: Keyword): KeywordAssessment {
   if (keyword.listSummary && keyword.assessment) return keyword.assessment;
-  const business = assessSupplementRelevance(keyword);
+  const metrics = keyword.metrics;
+  const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;
+  const metricAge = (Date.now() - metricDate) / 86_400_000;
+  const validMetrics = Boolean(
+    metrics?.source.trim() &&
+    metrics.market === keyword.market &&
+    Number.isFinite(metricDate) &&
+    metricAge >= -1 &&
+    metricAge <= 90,
+  );
+  const intent = validMetrics ? metrics?.intent || '' : '';
+  // Semrush: 0 commercial, 1 informational, 2 navigational, 3 transactional.
+  const semrushIntent = /Semrush/i.test(metrics?.source || '');
+  const purchaseIntent =
+    /commercial|transactional/i.test(intent) ||
+    (semrushIntent && /(?:^|[,;\s])[03](?:$|[,;\s])/.test(intent));
+  const navigationIntent =
+    /^navigational$/i.test(intent.trim()) ||
+    (semrushIntent && /^2$/.test(intent.trim()));
+  const informationalIntent =
+    !purchaseIntent &&
+    !navigationIntent &&
+    (/^informational$/i.test(intent.trim()) ||
+      (semrushIntent && /^1$/.test(intent.trim())));
+  const business = assessSupplementRelevance(keyword, { informationalIntent });
   const { relevance, offTopic, brand } = business;
   const tags = new Set<string>(business.tags);
   if (keyword.source.includes('Sorftime')) tags.add('Amazon站内来源');
@@ -235,16 +265,6 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     trendSource = 'Google Trends';
     trendEvidence = `Google趋势持续性40% + 近30天相对此前30天动量60%；${dailyUsed ? '日数据' : '按原始时点覆盖天数加权'}，有效点${points.length}个，覆盖${Math.round(span)}天；尖峰降权，不代表搜索量`;
   }
-  const metrics = keyword.metrics;
-  const metricDate = metrics ? Date.parse(metrics.collectedAt) : Number.NaN;
-  const metricAge = (Date.now() - metricDate) / 86_400_000;
-  const validMetrics = Boolean(
-    metrics?.source.trim() &&
-    metrics.market === keyword.market &&
-    Number.isFinite(metricDate) &&
-    metricAge >= -1 &&
-    metricAge <= 90,
-  );
   const monthly = semrushTrendSummary(metrics, keyword.market);
   if (
     trendScore === null &&
@@ -308,16 +328,8 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
     tags.add('Semrush指标');
     if (metrics.intent) tags.add(`搜索意图：${metrics.intent}`);
   }
-  const intent = validMetrics ? metrics?.intent || '' : '';
-  // Semrush: 0 commercial, 1 informational, 2 navigational, 3 transactional.
-  const semrushIntent = /Semrush/i.test(metrics?.source || '');
-  const purchaseIntent =
-    /commercial|transactional/i.test(intent) ||
-    (semrushIntent && /(?:^|[,;\s])[03](?:$|[,;\s])/.test(intent));
-  const navigationIntent =
-    /^navigational$/i.test(intent.trim()) ||
-    (semrushIntent && /^2$/.test(intent.trim()));
   if (purchaseIntent) tags.add('商业意图线索');
+  if (informationalIntent) tags.add('来源偏信息查询');
   const products = productEvidence(keyword);
   const productScore =
     products.length > 0 &&
@@ -327,6 +339,10 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       ? 70
       : null;
   if (productScore === null) tags.add('待核验口服商品');
+  else {
+    tags.add('口服商品原文线索');
+    tags.delete('用途待核验');
+  }
   if (volume === 0) tags.add('平台搜索量为0');
   const dimensions: KeywordAssessment['dimensions'] = [
     {
@@ -442,6 +458,20 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       reason:
         '缺少成分核验、搜索量或有效趋势；当前低分不等于没有市场，不进入优先研究池',
     };
+  if (business.ingredient && business.uncertainUse && !business.information)
+    decision = {
+      action: 'collect',
+      label: '先核验用途',
+      reason: '功效用途或原料形态未明确口服，不以搜索热度代替保健品需求证据',
+    };
+  if (business.ingredient && business.information)
+    decision = {
+      action: 'content',
+      label: '仅供内容研究',
+      reason: business.oralContext
+        ? '口服产品的效果、用法或安全咨询，可用于内容研究，不进入选品优先池'
+        : '效果、用法或安全咨询且口服用途未明确，搜索量与趋势不作为保健品购买需求',
+    };
   if (offTopic || business.seedMismatch)
     decision = {
       action: 'exclude',
@@ -480,6 +510,20 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       keyword.trendStatus || metrics?.searchTrend?.status,
     );
   };
+  let intentStatus: CheckStatus = 'missing';
+  let intentMessage =
+    '成分或用途研究入口，口服需求尚待核验；来源信息意图不单独否定成分主词的研究价值';
+  if (offTopic || business.seedMismatch) {
+    intentStatus = 'mismatch';
+    intentMessage = '明确非目标用途或偏离研究成分，排除当前口服选品方向';
+  } else if (business.information) {
+    intentStatus = 'available';
+    intentMessage = `信息咨询，仅供内容研究；${business.oralContext ? '表达明确口服，但不代表购买意图' : '未明确口服用途，不能从通用成分搜索量推断保健品需求'}`;
+  } else if (business.oralContext || productScore !== null) {
+    intentStatus = 'available';
+    intentMessage =
+      '有口服表达或商品原文线索；仍不证明关键词全部搜索量属于口服购买需求';
+  }
   const checks: KeywordAssessment['checks'] = [
     {
       key: 'relevance',
@@ -487,6 +531,16 @@ export function assessKeyword(keyword: Keyword): KeywordAssessment {
       status: relevanceStatus,
       source: '成分规则与任务主题核对',
       message: business.evidence,
+    },
+    {
+      key: 'intent',
+      label: '搜索意图与口服用途',
+      status: intentStatus,
+      source: intent
+        ? `关键词语义 / ${metrics?.source}意图${intent}`
+        : '关键词语义',
+      collectedAt: intent ? metrics?.collectedAt : undefined,
+      message: intentMessage,
     },
     {
       key: 'demand',

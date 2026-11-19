@@ -59,14 +59,24 @@ const purchasePattern =
 const audiencePattern =
   /\b(?:women|female|menopause|prenatal|pregnancy|kids|children|seniors|phu nu|mujeres?|ninos)\b|女性|孕妇|儿童|老年/;
 const informationPattern =
-  /\b(?:how|what|benefits?|side effects?|cach|la gi|como|para que)\b|功效|副作用|是什么/;
+  /\b(?:benefits?|side effects?|before(?:[ -]+(?:(?:and|&)[ -]+)?|\/)after|safe(?:ty)?|unsafe|dos(?:e|es|age|ages|ing)|risks?|dangerous|contraindications?|precautions?|warnings?|fda approved|clinical (?:studies|trials?)|mechanism|cach|la gi|para que|segur[oa]s?|seguridad|dosis|antes y despues|an toan|lieu dung|truoc va sau)\b|功效|副作用|是什么|是否安全|安全吗|安全性|用量|剂量|劑量|怎么用|如何使用|使用前后|使用前後|前后对比|前後對比|注意事项|禁忌/;
+const questionPattern =
+  /\b(?:how|what|why|when|como)\b|^(?:is|are|do|does|can|could|should|will|would)\b|能否|可以.*吗|能.*吗|有效吗|有用吗/;
+// Reviews and results can also be commercial research. Only a fresh source's
+// purely informational intent resolves these otherwise ambiguous expressions.
+const informationQualifierPattern =
+  /\b(?:reviews?|results?|experiences?|reddit|forums?|work|works)\b|评价|評價|效果|心得/;
+const uncertainUsePattern =
+  /\b(?:hair|skin|face|acne|wrinkles?|anti[ -]?aging|wound healing|retinol|powders?|liquid)\b|生发|生髮|头发|頭髮|皮肤|皮膚|脸部|臉部|痘痘|抗衰|粉末/;
 const brandPattern =
   /\b(?:amazon|walmart|iherb|now foods|nature made|garden of life|lemme|goli)\b/;
 // Explicit incompatible objects win even when the expression also says omega-3.
 const excludedPattern =
-  /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoos?|serums?|creams?|topical|balms?|tallow|scalp complex|inject(?:ions?|ables?|ed|ing)?|vials?|syringes?|research use only|laboratory use|not for human consumption|niod|the ordinary|ordinary copper|geek (?:and|&) gorgeous|remedy copper)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜|精华液|外用|注射|仅供科研/;
+  /\b(?:watch(?:es)?|watchbands?|watchstraps?|seamaster|speedmaster|swatch|rolex|reloj(?:es)?|dong ho|cars?|car parts?|motor oil|engine oil|pet food|dog food|cat food|dogs?|cats?|puppies|pets?|veterinary|perros?|gatos?|thu cung|cho meo|shampoos?|serums?|creams?|topical|balms?|tallow|scalp complex|skin[ -]?care|tretinoin|inject(?:ions?|ables?|ed|ing)?|vials?|syringes?|research use only|laboratory use|not for human consumption|niod|the ordinary|ordinary copper|geek (?:and|&) gorgeous|remedy copper)\b|\b(?:apply|applied|applying)\b.*\b(?:skin|face|scalp)\b|手表|腕表|欧米茄手表|汽车|机油|宠物|猫粮|狗粮|洗发水|面霜|精华液|外用|注射|仅供科研|涂抹|塗抹/;
 const servicePattern =
   /\b(?:hospitals?|clinics?|doctors?|jobs?|salary|magazine|badge reel|services?|partners|specialists?|environmental protection agency)\b|benh vien|tuyen dung|招聘|医院/;
+const nonOralPattern =
+  /\b(?:not for oral|not (?:an? )?(?:oral|dietary) supplement|do not (?:swallow|ingest)|for external use|external use only|not intended for ingestion)\b|非口服|禁止口服|不可口服/;
 
 function ingredients(text: string) {
   const found = families
@@ -86,11 +96,9 @@ export function hasOralProductContext(value: string) {
   const text = normalizeKeywordText(value);
   return (
     !excludedPattern.test(text) &&
-    !/\b(?:not for oral|not (?:an? )?(?:oral|dietary) supplement|do not (?:swallow|ingest)|for external use|external use only|not intended for ingestion)\b|非口服|禁止口服|不可口服/.test(
-      text,
-    ) &&
+    !nonOralPattern.test(text) &&
     (supplementPattern.test(text) ||
-      /\b(?:oral|by mouth|swallow|capsules?|tablets?|softgels?|gummies)\b|口服|胶囊|片剂|软胶囊/.test(
+      /\b(?:oral|by mouth|swallow|capsules?|capsulas?|tablets?|softgels?|gumm(?:y|ies))\b|口服|胶囊|膠囊|片剂|軟膠囊|软胶囊|软糖|軟糖/.test(
         text,
       ))
   );
@@ -98,6 +106,7 @@ export function hasOralProductContext(value: string) {
 
 export function assessSupplementRelevance(
   keyword: Pick<Keyword, 'batch' | 'seedTerm' | 'term'>,
+  { informationalIntent = false }: { informationalIntent?: boolean } = {},
 ) {
   const text = normalizeKeywordText(keyword.term);
   const found = ingredients(text);
@@ -119,21 +128,34 @@ export function assessSupplementRelevance(
     (key) => !['ghk', 'modified-peptide'].includes(key),
   );
   const form = formPattern.test(text);
-  const commercial = supplementPattern.test(text) || purchasePattern.test(text);
-  const information = informationPattern.test(text);
+  const purchase = purchasePattern.test(text);
+  const commercial = supplementPattern.test(text) || purchase;
+  const oralContext = hasOralProductContext(text);
+  const information =
+    informationPattern.test(text) ||
+    (!purchase && questionPattern.test(text)) ||
+    (informationalIntent &&
+      !purchase &&
+      informationQualifierPattern.test(text));
   const brand = brandPattern.test(text);
   const audience = audiencePattern.test(text);
   const excluded =
     excludedPattern.test(text) ||
+    nonOralPattern.test(text) ||
     /\bomega\b.*\b(?:constellation|de ville|planet ocean)\b/.test(text);
   const service = servicePattern.test(text);
   const offTopic = excluded || service;
+  const uncertainUse = !oralContext && uncertainUsePattern.test(text);
   const ambiguous = /\bomega\b/.test(text) && !ingredient;
   const broadCategory = !ingredient && supplementPattern.test(text);
   const tags: string[] = [];
   if (ingredient && !offTopic) tags.push('成分词');
   if (form && ingredient && !offTopic) tags.push('剂型词');
-  if ((ingredient || broadCategory) && !offTopic) tags.push('商品需求词');
+  if ((ingredient || broadCategory) && !offTopic && !information) {
+    if (commercial || oralContext) tags.push('商品需求词');
+    else if (ingredient) tags.push('成分研究词');
+  }
+  if (ingredient && !oralContext && !offTopic) tags.push('用途待核验');
   if (audience) tags.push('人群词');
   if (brand) tags.push('品牌导航词');
   if (information) tags.push('内容研究词');
@@ -163,8 +185,12 @@ export function assessSupplementRelevance(
       '；成分偏离研究主题，不能把其他肽或其他成分当成同一市场，最高39';
   }
   if (information && !offTopic) {
+    const informationCap = oralContext ? 64 : 49;
+    scoreCap = Math.min(scoreCap, informationCap);
+    evidence += `；效果、使用或安全等信息查询仅供内容研究${oralContext ? '，明确口服表达不代表购买意图' : '，口服用途未明确，搜索热度不能证明保健品需求'}，总分最高${informationCap}`;
+  } else if (uncertainUse && !offTopic) {
     scoreCap = Math.min(scoreCap, 64);
-    evidence += '；信息查询用于内容研究，总分最高64';
+    evidence += '；功效用途或原料形态未明确口服，先核验用途，总分最高64';
   }
   if (ambiguous && !offTopic) {
     relevance = 15;
@@ -188,5 +214,8 @@ export function assessSupplementRelevance(
     ingredient,
     commercial,
     seedMismatch,
+    information,
+    oralContext,
+    uncertainUse,
   };
 }
