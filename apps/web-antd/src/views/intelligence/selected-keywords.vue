@@ -43,6 +43,7 @@ const { period: corePeriod } = core;
 listMemory.bind('period', corePeriod);
 const evidenceKeyword = ref<Keyword>();
 import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
+import KeywordScorePopover from './components/KeywordScorePopover.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import { keywordChineseName } from './keyword-names';
 import { dedupeKeywords } from './keyword-identity';
@@ -129,7 +130,11 @@ function stopReports() {
   reportActive = false;
   if (reportTimer) clearTimeout(reportTimer);
 }
-const rows = computed(() => serverMode ? dedupeKeywords(remote.rows.value).map((k) => ({ ...k, score: assessKeyword(k).score })) :
+const withAssessment = (keyword: Keyword) => {
+  const assessment = assessKeyword(keyword);
+  return { ...keyword, assessment, score: assessment.score };
+};
+const rows = computed(() => serverMode ? dedupeKeywords(remote.rows.value).map(withAssessment) :
   dedupeKeywords(selected.value)
     .filter(
       (k) =>
@@ -139,7 +144,7 @@ const rows = computed(() => serverMode ? dedupeKeywords(remote.rows.value).map((
           .toLowerCase()
           .includes(search.value.toLowerCase()),
     )
-    .map((k) => ({ ...k, score: assessKeyword(k).score }))
+    .map(withAssessment)
     .toSorted((a, b) => (b.score ?? -1) - (a.score ?? -1)),
 );
 const { selectable, selectAll, clear, rowSelection } = useFilteredSelection(
@@ -404,10 +409,10 @@ async function exportSelectedKeywords() {
             <p class="hci-subtle">{{ record.category || '—' }}</p>
           </template>
           <template v-else-if="column.key === 'score'">
-            {{ record.score === null ? '待评级' : `${record.score} / 100` }}
+            <KeywordScorePopover :assessment="record.assessment" />
             <p class="hci-subtle">
               {{
-                assessKeyword(record as Keyword).status === 'rated'
+                record.assessment.status === 'rated'
                   ? '证据完整'
                   : '含缺项，仅供筛选'
               }}
