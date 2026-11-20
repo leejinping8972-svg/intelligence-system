@@ -299,6 +299,26 @@ export async function translateCollectionRecords(
     for (const item of plan.items)
       if (!translated.has(item.key)) issues.set(item.key, error.message);
   }
+  const missing = plan.items.filter((item) => !translated.has(item.key));
+  if (optional && context.fallback && missing.length > 0) {
+    try {
+      if (await io?.isCancelled?.())
+        throw Object.assign(new Error('任务已取消，原始采集响应已保留'), { code: 'COLLECTION_TRANSLATION_CANCELLED' });
+      const fallback = await context.fallback(missing);
+      for (const item of missing) {
+        if (fallback.values.has(item.key)) {
+          translated.set(item.key, fallback.values.get(item.key));
+          issues.delete(item.key);
+        } else if (fallback.issues.get(item.key)) {
+          issues.set(item.key, `${issues.get(item.key) || '模型翻译未完成'}；${fallback.issues.get(item.key)}`);
+        }
+      }
+    } catch (error) {
+      if (error.code === 'COLLECTION_TRANSLATION_CANCELLED') throw error;
+      for (const item of missing)
+        issues.set(item.key, `${issues.get(item.key) || '模型翻译未完成'}；机翻暂不可用，已保留原文`);
+    }
+  }
   return applyTranslations(records, plan, translated, optional ? issues : undefined);
 }
 

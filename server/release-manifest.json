@@ -1,47 +1,36 @@
 {
-  "title": "关键词分数悬停显示评分依据",
-  "sourceSha": "b8a0fee8070fbc8a4b57d0b739f8097a0e8968f9",
+  "title": "独立站监控翻译失败兜底，避免阻断采集保存",
+  "sourceSha": "259fcdf30460f50144e95f8e20a033814669af03",
   "featureShas": [
-    "b8a0fee8070fbc8a4b57d0b739f8097a0e8968f9"
+    "259fcdf30460f50144e95f8e20a033814669af03"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/components/KeywordScorePopover.vue",
-    "apps/web-antd/src/views/intelligence/research.vue",
-    "apps/web-antd/src/views/intelligence/selected-keywords.vue"
+    "server/MONITOR-TRANSLATION.md",
+    "server/collection-translation.mjs",
+    "server/competitor-monitor-store.mjs",
+    "server/machine-translation.mjs",
+    "server/monitor-translation.integration.test.mjs",
+    "server/monitor-translation.mjs",
+    "server/monitor-translation.test.mjs"
   ],
   "changes": [
-    "关键词研究与已入选关键词列表：鼠标悬停或键盘聚焦分数即可查看五维度得分、权重、证据、覆盖率和研究建议",
-    "展示缺失/失败/过期证据及已应用的评分上限，保留研究列表点击分数打开详情",
-    "长依据面板内部滚动并适配窄屏；复用现有assessment，无重新评分或来源/模型调用"
+    "独立站观察及衍生关键词保存改用可降级翻译；复用有效AI/人工译文，失败文本使用独立机翻兜底",
+    "模型与机翻均失败时保留原文和警告，继续观察保存及完整扫描基线，不重放未知模型请求",
+    "机翻独立缓存、在途去重、限长批次、超时和冷却；官网错误和覆盖不足仍保留原失败状态"
   ],
   "verification": {
     "status": "skipped-by-user",
     "ci": "not-awaited",
-    "note": "发布重复测试/回归/类型/lint/验证构建/CI等待按用户策略跳过；仅生成一次同候选正式配置部署产物",
+    "note": "发布重复测试/类型/lint/回归/界面验收/验证构建/CI等待按用户策略跳过；同候选正式配置部署产物只生成一次",
     "development": {
-      "gitDiffCheck": "passed",
-      "browser": {
-        "at": "2026-11-20T02:27:14.107Z",
-        "hover": "passed",
-        "keyboardFocus": "passed",
-        "researchClick": "passed",
-        "dimensions": 5,
-        "missingAndStaleEvidence": "passed",
-        "pendingScore": "passed",
-        "narrowViewport": "passed",
-        "externalRequests": 0,
-        "pageErrors": []
-      },
-      "newComponentOxlint": "passed",
-      "newComponentOxfmt": "passed",
-      "webTypecheck": "passed",
-      "finalBuild": {
-        "status": "passed",
-        "directory": "D:/Project_Code/Intelligence_System/_builds/keyword-score-hover-dev-20261120",
-        "log": ".artifacts/build-final.log",
-        "modules": 8488
-      },
-      "commitlint": "passed"
+      "testsPassed": 89,
+      "testsFailed": 0,
+      "newModuleLint": "passed",
+      "existingFilesNewDiagnostics": 0,
+      "syntax": "passed",
+      "serverBundle": "passed",
+      "paidCalls": 0,
+      "evidence": "_worktrees/site-monitor-translation-fallback/.artifacts/delivery.json"
     }
   },
   "database": {
@@ -54,11 +43,11 @@
   "readModel": {
     "globalVersionUnchanged": true,
     "keywordScoreVersion": "product-research-v4.2-comparison",
-    "effect": "No scoring rules or versions changed; no keyword projection refresh needed"
+    "effect": "No projection or scoring change; no manual refresh"
   },
   "paidCallsForRelease": 0,
   "operator": "Codex",
-  "id": "20261120025107-5d327c26",
-  "builtAt": "2026-11-20T02:51:07.517Z",
-  "sourceDigest": "5d327c26a9881c592b7770ee0329b7659311134808d6984a43ca000825a4ca95"
+  "id": "20261120033308-ada559e7",
+  "builtAt": "2026-11-20T03:33:08.028Z",
+  "sourceDigest": "ada559e7c0b77e90db4efee007778a880f46e6fe0d848736cf5dfd97d0038833"
 }

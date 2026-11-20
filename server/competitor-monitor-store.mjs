@@ -36,6 +36,7 @@ import { parallelItems } from './source-scheduler.mjs';
 import { requestFailed, requestStarted, requestSucceeded } from './request-log.mjs';
 import { saveKeyword } from './store.mjs';
 import { translateCollectionRecords } from './collection-translation.mjs';
+import { translateMonitorRecords } from './monitor-translation.mjs';
 import { decorateMonitorAnalysis, withAnalysisTask } from './source-analysis-stage.mjs';
 
 import { westmonthChannelKey } from './westmonth-market.mjs';
@@ -270,7 +271,7 @@ export async function competitorAction(input, user) {
   });
 }
 
-export async function persistObservation(c, target, kind, item, event, at, translate = translateCollectionRecords) {
+export async function persistObservation(c, target, kind, item, event, at, translate = translateMonitorRecords) {
   [item] = await translate(kind, [item]);
   const eventKeywords = await translate('keywords', (event?.terms || []).map((term) => ({ term })));
   const db = createMonitorStore(c);
@@ -563,7 +564,7 @@ export async function competitorTick(c, providers = {}, selectedEntry) {
         seen: (kind, itemId) =>
           db.read(`${PREFIX}seen:${id}:${channelKey(kind)}:${digest(itemId)}`),
         persist: (kind, item, event) =>
-          persistObservation(c, config, kind, item, event, at, providers.translate || translateCollectionRecords),
+          persistObservation(c, config, kind, item, event, at, providers.translate || translateMonitorRecords),
         saveProgress: (kind, value) =>
           value
             ? db.write(`${PREFIX}crawl:${id}:${kind}`, value)
