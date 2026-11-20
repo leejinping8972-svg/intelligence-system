@@ -40,6 +40,7 @@ import CoreMetricsPanel from './components/CoreMetricsPanel.vue';
 import EvidenceMetric from './components/EvidenceMetric.vue';
 import KeywordNamesDialog from './components/KeywordNamesDialog.vue';
 import KeywordRelatedQueries from './components/KeywordRelatedQueries.vue';
+import KeywordScorePopover from './components/KeywordScorePopover.vue';
 import KeywordTrendComparison from './components/KeywordTrendComparison.vue';
 import KeywordTrendDialog from './components/KeywordTrendDialog.vue';
 import KeywordTrendsControl from './components/KeywordTrendsControl.vue';
@@ -1173,10 +1174,12 @@ concept.onEntry(()=>{search.value=batchFilter.value=''; collectedRange.value=[];
             </p>
           </template>
           <template v-else-if="column.key === 'score'">
-            <button class="hci-link" @click="openDetail(record)">
-              {{ record.assessment.score ?? '—'
-              }}{{ record.assessment.score === null ? '' : ' / 100' }}
-            </button>
+            <KeywordScorePopover :assessment="record.assessment">
+              <button class="hci-link" type="button" @click="openDetail(record)">
+                {{ record.assessment.score ?? '—'
+                }}{{ record.assessment.score === null ? '' : ' / 100' }}
+              </button>
+            </KeywordScorePopover>
             <p class="hci-subtle">{{ record.assessment.decision?.label }} · 输入覆盖 {{ record.assessment.coverage }}%</p>
           </template>
           <template v-else-if="column.key === 'tags'">
