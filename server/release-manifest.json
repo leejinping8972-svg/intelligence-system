@@ -1,43 +1,47 @@
 {
-  "title": "关键词单复数去重与比较查询降分",
-  "sourceSha": "f0762bb12bb4d8327957ec93a9c089ebf9623670",
+  "title": "关键词分数悬停显示评分依据",
+  "sourceSha": "b8a0fee8070fbc8a4b57d0b739f8097a0e8968f9",
   "featureShas": [
-    "e069d23bc37ed61860abf38b3b225c654708f662",
-    "f0762bb12bb4d8327957ec93a9c089ebf9623670"
+    "b8a0fee8070fbc8a4b57d0b739f8097a0e8968f9"
   ],
   "files": [
-    "apps/web-antd/src/views/intelligence/keyword-identity.ts",
-    "apps/web-antd/src/views/intelligence/keyword-relevance.ts",
-    "apps/web-antd/src/views/intelligence/keyword-scoring.ts",
-    "server/KEYWORD-PRODUCT-SELECTION.md",
-    "server/domain.mjs",
-    "server/keyword-identity.d.mts",
-    "server/keyword-identity.mjs",
-    "server/keyword-identity.test.mjs",
-    "server/model.js",
-    "server/workspace-read-latency.test.mjs",
-    "server/workspace-reads.mjs",
-    "tests/keyword-plural-comparison.test.ts"
+    "apps/web-antd/src/views/intelligence/components/KeywordScorePopover.vue",
+    "apps/web-antd/src/views/intelligence/research.vue",
+    "apps/web-antd/src/views/intelligence/selected-keywords.vue"
   ],
   "changes": [
-    "同市场常见名词单复数去重，统一分页、总数、全选、收藏、搜索与关联排序；汇集来源和关联并保留原始资料与人工状态",
-    "vs、compare、same as、对比、区别等比较查询最高39，仅供内容研究，不作为商品/成分/广告检索主词",
-    "升级product-research-v4.2-comparison；原始存储键不变，无迁移或额外来源/模型调用",
-    "MySQL正则替换显式utf8mb4编码，健康确认覆盖历史身份SQL回退"
+    "关键词研究与已入选关键词列表：鼠标悬停或键盘聚焦分数即可查看五维度得分、权重、证据、覆盖率和研究建议",
+    "展示缺失/失败/过期证据及已应用的评分上限，保留研究列表点击分数打开详情",
+    "长依据面板内部滚动并适配窄屏；复用现有assessment，无重新评分或来源/模型调用"
   ],
   "verification": {
     "status": "skipped-by-user",
     "ci": "not-awaited",
-    "note": "发布重复测试/回归/类型/lint/验证构建/CI等待按用户策略跳过；沿用功能开发自测",
+    "note": "发布重复测试/回归/类型/lint/验证构建/CI等待按用户策略跳过；仅生成一次同候选正式配置部署产物",
     "development": {
-      "frontendTests": 197,
-      "serverTests": 17,
-      "finalIdentityTests": 3,
-      "typecheck": "passed",
-      "oxlint": "changed identity/scoring modules and new tests passed",
-      "format": "passed",
-      "build": "passed 8485 modules; final comparison expressions additionally covered by parity tests",
-      "mysqlIdentity": "4 literal values confirmed, no business tables read or changed"
+      "gitDiffCheck": "passed",
+      "browser": {
+        "at": "2026-11-20T02:27:14.107Z",
+        "hover": "passed",
+        "keyboardFocus": "passed",
+        "researchClick": "passed",
+        "dimensions": 5,
+        "missingAndStaleEvidence": "passed",
+        "pendingScore": "passed",
+        "narrowViewport": "passed",
+        "externalRequests": 0,
+        "pageErrors": []
+      },
+      "newComponentOxlint": "passed",
+      "newComponentOxfmt": "passed",
+      "webTypecheck": "passed",
+      "finalBuild": {
+        "status": "passed",
+        "directory": "D:/Project_Code/Intelligence_System/_builds/keyword-score-hover-dev-20261120",
+        "log": ".artifacts/build-final.log",
+        "modules": 8488
+      },
+      "commitlint": "passed"
     }
   },
   "database": {
@@ -50,11 +54,11 @@
   "readModel": {
     "globalVersionUnchanged": true,
     "keywordScoreVersion": "product-research-v4.2-comparison",
-    "effect": "existing score invalidation refreshes derived projections including cached identity; prioritize specified 210 raw records; preserve raw records, human decisions, ledgers and checkpoints"
+    "effect": "No scoring rules or versions changed; no keyword projection refresh needed"
   },
   "paidCallsForRelease": 0,
   "operator": "Codex",
-  "id": "20261119124945-ef85c3ff",
-  "builtAt": "2026-11-19T12:49:45.674Z",
-  "sourceDigest": "ef85c3ff730f17153adf3dcc7c430ae82a3991b9aff94e62ea944b422fe63f33"
+  "id": "20261120025107-5d327c26",
+  "builtAt": "2026-11-20T02:51:07.517Z",
+  "sourceDigest": "5d327c26a9881c592b7770ee0329b7659311134808d6984a43ca000825a4ca95"
 }
